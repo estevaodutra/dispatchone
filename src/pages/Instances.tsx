@@ -166,6 +166,13 @@ export default function Instances() {
   const [connectionStep, setConnectionStep] = useState<"select" | "qr" | "phone">("select");
   const [phoneForConnection, setPhoneForConnection] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
+  const [webhookResponse, setWebhookResponse] = useState<{
+    qrCode?: string;
+    qrCodeUrl?: string;
+    sessionId?: string;
+    expiresAt?: string;
+    message?: string;
+  } | null>(null);
 
   const triggerConnectionWebhook = async (method: "qr" | "phone") => {
     if (!selectedInstance) return;
@@ -173,6 +180,8 @@ export default function Instances() {
     const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_generate_qrcode";
 
     setIsConnecting(true);
+    setWebhookResponse(null);
+    
     try {
       const response = await fetch(webhookUrl, {
         method: "POST",
@@ -191,8 +200,11 @@ export default function Instances() {
         }),
       });
 
-      console.log("Webhook triggered:", method, selectedInstance.name, response.status);
-      return response;
+      const data = await response.json();
+      console.log("Webhook response:", data);
+      setWebhookResponse(data);
+      
+      return data;
     } catch (error) {
       console.error("Error triggering webhook:", error);
       toast({
@@ -260,6 +272,7 @@ export default function Instances() {
     setShowConfigDialog(false);
     setConnectionStep("select");
     setPhoneForConnection("");
+    setWebhookResponse(null);
   };
 
   const handleConnectWithPhone = async () => {
@@ -791,11 +804,30 @@ export default function Instances() {
           {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
             <div className="space-y-4 py-4">
               <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
-                <div className="w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4">
-                  <QrCode className="h-24 w-24 text-muted-foreground" />
+                <div className="w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4 overflow-hidden">
+                  {isConnecting ? (
+                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                  ) : webhookResponse?.qrCode ? (
+                    <img 
+                      src={webhookResponse.qrCode} 
+                      alt="QR Code" 
+                      className="w-full h-full object-contain"
+                    />
+                  ) : webhookResponse?.qrCodeUrl ? (
+                    <img 
+                      src={webhookResponse.qrCodeUrl} 
+                      alt="QR Code" 
+                      className="w-full h-full object-contain"
+                    />
+                  ) : (
+                    <QrCode className="h-24 w-24 text-muted-foreground" />
+                  )}
                 </div>
                 <p className="text-sm text-muted-foreground text-center">
-                  {t("instances.waitingForScan")}
+                  {isConnecting 
+                    ? "Gerando QR Code..." 
+                    : webhookResponse?.message || t("instances.waitingForScan")
+                  }
                 </p>
               </div>
             </div>
@@ -836,7 +868,18 @@ export default function Instances() {
               </Button>
             )}
             {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
-              <Button variant="outline" onClick={() => setConnectionStep("qr")}>
+              <Button 
+                variant="outline" 
+                onClick={async () => {
+                  try {
+                    await triggerConnectionWebhook("qr");
+                  } catch {
+                    // Error handled
+                  }
+                }}
+                disabled={isConnecting}
+              >
+                {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t("instances.generateNewQR")}
               </Button>
             )}
