@@ -197,7 +197,7 @@ export default function Instances() {
           connectionMethod: method,
           timestamp: new Date().toISOString(),
           origin: window.location.origin,
-          phoneNumber: method === "phone" ? phoneForConnection : undefined,
+          phoneNumber: method === "phone" ? selectedInstance.phoneNumber : undefined,
         }),
       });
 
@@ -282,45 +282,6 @@ export default function Instances() {
     setWebhookResponse(null);
   };
 
-  const handleConnectWithPhone = async () => {
-    if (!phoneForConnection) {
-      toast({
-        title: t("common.error"),
-        description: t("instances.phoneNumber") + " " + t("common.required").toLowerCase(),
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      // Chamar webhook com o número de telefone preenchido
-      await triggerConnectionWebhook("phone");
-
-      if (selectedInstance) {
-        setInstances((prev) =>
-          prev.map((inst) =>
-            inst.id === selectedInstance.id
-              ? {
-                  ...inst,
-                  status: "connected" as const,
-                  health: 100,
-                  lastCheck: "Just now",
-                  connectedNumber: phoneForConnection,
-                }
-              : inst
-          )
-        );
-      }
-
-      handleCloseConnectionDialog();
-      toast({
-        title: t("instances.instanceConnected"),
-        description: `${selectedInstance?.name} ${t("instances.instanceConnected").toLowerCase()}.`,
-      });
-    } catch (error) {
-      // Error já tratado no triggerConnectionWebhook
-    }
-  };
 
   const handleSaveConfig = async () => {
     if (!configForm.apiKey) {
@@ -784,7 +745,34 @@ export default function Instances() {
                 <Button
                   variant="outline"
                   className="w-full justify-start h-auto p-4"
-                  onClick={() => setConnectionStep("phone")}
+                  disabled={!selectedInstance?.phoneNumber || isConnecting}
+                  onClick={async () => {
+                    try {
+                      await triggerConnectionWebhook("phone");
+                      if (selectedInstance) {
+                        setInstances((prev) =>
+                          prev.map((inst) =>
+                            inst.id === selectedInstance.id
+                              ? {
+                                  ...inst,
+                                  status: "connected" as const,
+                                  health: 100,
+                                  lastCheck: "Just now",
+                                  connectedNumber: selectedInstance.phoneNumber,
+                                }
+                              : inst
+                          )
+                        );
+                      }
+                      handleCloseConnectionDialog();
+                      toast({
+                        title: t("instances.instanceConnected"),
+                        description: `${selectedInstance?.name} ${t("instances.instanceConnected").toLowerCase()}.`,
+                      });
+                    } catch {
+                      // Error handled in triggerConnectionWebhook
+                    }
+                  }}
                 >
                   {isConnecting ? (
                     <Loader2 className="h-5 w-5 mr-3 animate-spin" />
@@ -794,7 +782,10 @@ export default function Instances() {
                   <div className="text-left">
                     <p className="font-medium">{t("instances.connectWithPhone")}</p>
                     <p className="text-xs text-muted-foreground">
-                      {t("instances.connectWithPhoneDesc")}
+                      {selectedInstance?.phoneNumber 
+                        ? `Conectar com ${selectedInstance.phoneNumber}`
+                        : "Nenhum número cadastrado"
+                      }
                     </p>
                   </div>
                 </Button>
@@ -841,23 +832,6 @@ export default function Instances() {
             </div>
           )}
 
-          {/* Connect Mode - Step 2B: Phone Number */}
-          {selectedInstance?.status !== "connected" && connectionStep === "phone" && (
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="connectionPhone">{t("instances.phoneNumber")}</Label>
-                <Input
-                  id="connectionPhone"
-                  placeholder="+55 (11) 99999-9999"
-                  value={phoneForConnection}
-                  onChange={(e) => setPhoneForConnection(formatPhoneNumber(e.target.value))}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {t("instances.phoneNumberHint")}
-                </p>
-              </div>
-            </div>
-          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={handleCloseConnectionDialog}>
@@ -889,18 +863,6 @@ export default function Instances() {
               >
                 {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t("instances.generateNewQR")}
-              </Button>
-            )}
-            {selectedInstance?.status !== "connected" && connectionStep === "phone" && (
-              <Button onClick={handleConnectWithPhone} disabled={isSaving}>
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {t("instances.connecting")}
-                  </>
-                ) : (
-                  t("instances.connect")
-                )}
               </Button>
             )}
           </DialogFooter>
