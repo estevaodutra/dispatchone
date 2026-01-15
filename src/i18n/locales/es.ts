@@ -5,7 +5,7 @@ export const es = {
     campaigns: "Campañas",
     phoneNumbers: "Números",
     dispatchLogs: "Registros de Envío",
-    providers: "Proveedores",
+    instances: "Instancias",
     alerts: "Alertas",
     billing: "Facturación",
     settings: "Configuración",
@@ -196,38 +196,81 @@ export const es = {
     errorMessage: "Mensaje de Error",
   },
 
-  // Providers
-  providers: {
-    title: "Proveedores",
-    description: "Gestione sus integraciones de proveedores",
-    refreshStatus: "Actualizar Estado",
-    addProvider: "Agregar Proveedor",
-    addNewProvider: "Agregar Nuevo Proveedor",
-    providerName: "Nombre del Proveedor",
-    providerNamePlaceholder: "Ingrese el nombre del proveedor",
-    providerType: "Tipo de Proveedor",
-    selectType: "Seleccione el tipo",
+  // Instances
+  instances: {
+    title: "Instancias",
+    description: "Administre sus instancias de WhatsApp",
+    
+    // Tabs
+    whatsapp: "WhatsApp",
+    settings: "Configuración",
+    
+    // Instancia
+    instanceName: "Nombre de Instancia",
+    instanceNamePlaceholder: "Ingrese el nombre de la instancia",
+    provider: "Proveedor",
+    selectProvider: "Seleccione proveedor",
+    connectedNumber: "Número Conectado",
+    addInstance: "Agregar Instancia",
+    addNewInstance: "Agregar Nueva Instancia",
+    createInstance: "Crear Instancia",
+    
+    // Status
+    connected: "Conectado",
+    disconnected: "Desconectado",
+    qrPending: "QR Pendiente",
+    degraded: "Degradado",
+    
+    // Campos
     apiKey: "Clave API",
     apiKeyPlaceholder: "Ingrese su clave API",
-    connectedProviders: "Conectados",
-    disconnectedProviders: "Desconectados",
+    webhookUrl: "URL del Webhook",
+    instanceId: "ID de Instancia",
+    instanceIdOptional: "ID de Instancia (opcional)",
+    
+    // Acciones
+    configure: "Configurar",
+    connect: "Conectar",
+    disconnect: "Desconectar",
+    viewQR: "Ver Código QR",
+    reconnect: "Reconectar",
+    refreshStatus: "Actualizar Estado",
+    refreshing: "Actualizando...",
+    documentation: "Documentación",
+    
+    // Stats
+    features: "Características",
+    health: "Salud",
+    dispatches: "Envíos",
     totalDispatches: "Total de Envíos",
     lastCheck: "Última Verificación",
-    features: "Características",
-    documentation: "Documentación",
-    viewDocs: "Ver Docs",
-    statusRefreshed: "Estado del proveedor actualizado",
-    providerConnected: "Proveedor conectado exitosamente",
+    lastActivity: "Última Actividad",
+    
+    // Alertas
+    instanceDisconnected: "Instancia Desconectada",
+    instanceDisconnectedDescription: "no está conectada. Conéctela para desbloquear sus características.",
+    disconnectedWarning: "Algunas instancias están desconectadas. Verifique sus configuraciones.",
+    
+    // Diálogos
+    configureInstance: "Configurar Instancia",
+    connectInstance: "Conectar Instancia",
+    updateConfiguration: "Actualice la configuración de su instancia.",
+    enterCredentials: "Ingrese sus credenciales API para conectar esta instancia.",
+    connectNewInstance: "Conecte una nueva instancia de WhatsApp.",
+    scanQR: "Escanee el código QR con WhatsApp",
+    
+    // Toasts
+    statusRefreshed: "Estado actualizado",
+    instanceConnected: "Instancia conectada exitosamente",
     configSaved: "Configuración guardada",
-    providerAdded: "Proveedor agregado exitosamente",
-    configureProvider: "Configurar Proveedor",
-    connectProvider: "Conectar Proveedor",
+    instanceAdded: "Instancia agregada exitosamente",
+    
+    // Botones
+    saveChanges: "Guardar Cambios",
     saveConfig: "Guardar Configuración",
-    messaging: "Mensajes",
-    voice: "Voz",
-    webhook: "Webhook",
-    api: "API",
-    disconnectedWarning: "Algunos proveedores están desconectados. Verifique sus configuraciones.",
+    saving: "Guardando...",
+    connecting: "Conectando...",
+    adding: "Agregando...",
   },
 
   // Alerts

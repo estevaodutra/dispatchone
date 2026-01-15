@@ -5,7 +5,7 @@ import {
   Megaphone,
   Phone,
   FileText,
-  Plug,
+  MessageSquare,
   Bell,
   CreditCard,
   Settings,
@@ -40,7 +40,7 @@ export function AppSidebar() {
   ];
 
   const systemNavItems = [
-    { title: t("nav.providers"), url: "/providers", icon: Plug },
+    { title: t("nav.instances"), url: "/instances", icon: MessageSquare },
     { title: t("nav.alerts"), url: "/alerts", icon: Bell },
     { title: t("nav.billing"), url: "/billing", icon: CreditCard },
     { title: t("nav.settings"), url: "/settings", icon: Settings },

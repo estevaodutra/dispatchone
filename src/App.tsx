@@ -12,7 +12,7 @@ import Dashboard from "./pages/Dashboard";
 import Campaigns from "./pages/Campaigns";
 import PhoneNumbers from "./pages/PhoneNumbers";
 import DispatchLogs from "./pages/DispatchLogs";
-import Providers from "./pages/Providers";
+import Instances from "./pages/Instances";
 import Alerts from "./pages/Alerts";
 import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
@@ -34,7 +34,7 @@ const App = () => (
                 <Route path="/campaigns" element={<Campaigns />} />
                 <Route path="/numbers" element={<PhoneNumbers />} />
                 <Route path="/logs" element={<DispatchLogs />} />
-                <Route path="/providers" element={<Providers />} />
+                <Route path="/instances" element={<Instances />} />
                 <Route path="/alerts" element={<Alerts />} />
                 <Route path="/billing" element={<Billing />} />
                 <Route path="/settings" element={<Settings />} />

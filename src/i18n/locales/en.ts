@@ -5,7 +5,7 @@ export const en = {
     campaigns: "Campaigns",
     phoneNumbers: "Phone Numbers",
     dispatchLogs: "Dispatch Logs",
-    providers: "Providers",
+    instances: "Instances",
     alerts: "Alerts",
     billing: "Billing",
     settings: "Settings",
@@ -196,38 +196,81 @@ export const en = {
     errorMessage: "Error Message",
   },
 
-  // Providers
-  providers: {
-    title: "Providers",
-    description: "Manage your dispatch provider integrations",
-    refreshStatus: "Refresh Status",
-    addProvider: "Add Provider",
-    addNewProvider: "Add New Provider",
-    providerName: "Provider Name",
-    providerNamePlaceholder: "Enter provider name",
-    providerType: "Provider Type",
-    selectType: "Select type",
+  // Instances
+  instances: {
+    title: "Instances",
+    description: "Manage your WhatsApp instances",
+    
+    // Tabs
+    whatsapp: "WhatsApp",
+    settings: "Settings",
+    
+    // Instance
+    instanceName: "Instance Name",
+    instanceNamePlaceholder: "Enter instance name",
+    provider: "Provider",
+    selectProvider: "Select provider",
+    connectedNumber: "Connected Number",
+    addInstance: "Add Instance",
+    addNewInstance: "Add New Instance",
+    createInstance: "Create Instance",
+    
+    // Status
+    connected: "Connected",
+    disconnected: "Disconnected",
+    qrPending: "QR Pending",
+    degraded: "Degraded",
+    
+    // Fields
     apiKey: "API Key",
     apiKeyPlaceholder: "Enter your API key",
-    connectedProviders: "Connected",
-    disconnectedProviders: "Disconnected",
+    webhookUrl: "Webhook URL",
+    instanceId: "Instance ID",
+    instanceIdOptional: "Instance ID (optional)",
+    
+    // Actions
+    configure: "Configure",
+    connect: "Connect",
+    disconnect: "Disconnect",
+    viewQR: "View QR Code",
+    reconnect: "Reconnect",
+    refreshStatus: "Refresh Status",
+    refreshing: "Refreshing...",
+    documentation: "Documentation",
+    
+    // Stats
+    features: "Features",
+    health: "Health",
+    dispatches: "Dispatches",
     totalDispatches: "Total Dispatches",
     lastCheck: "Last Check",
-    features: "Features",
-    documentation: "Documentation",
-    viewDocs: "View Docs",
-    statusRefreshed: "Provider status refreshed",
-    providerConnected: "Provider connected successfully",
+    lastActivity: "Last Activity",
+    
+    // Alerts
+    instanceDisconnected: "Instance Disconnected",
+    instanceDisconnectedDescription: "is not connected. Connect to unlock its features.",
+    disconnectedWarning: "Some instances are disconnected. Check your configurations.",
+    
+    // Dialogs
+    configureInstance: "Configure Instance",
+    connectInstance: "Connect Instance",
+    updateConfiguration: "Update your instance configuration.",
+    enterCredentials: "Enter your API credentials to connect this instance.",
+    connectNewInstance: "Connect a new WhatsApp instance.",
+    scanQR: "Scan the QR Code with WhatsApp",
+    
+    // Toasts
+    statusRefreshed: "Status refreshed",
+    instanceConnected: "Instance connected successfully",
     configSaved: "Configuration saved",
-    providerAdded: "Provider added successfully",
-    configureProvider: "Configure Provider",
-    connectProvider: "Connect Provider",
+    instanceAdded: "Instance added successfully",
+    
+    // Buttons
+    saveChanges: "Save Changes",
     saveConfig: "Save Configuration",
-    messaging: "Messaging",
-    voice: "Voice",
-    webhook: "Webhook",
-    api: "API",
-    disconnectedWarning: "Some providers are disconnected. Check your configurations.",
+    saving: "Saving...",
+    connecting: "Connecting...",
+    adding: "Adding...",
   },
 
   // Alerts
