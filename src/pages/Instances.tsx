@@ -165,6 +165,46 @@ export default function Instances() {
   } | null>(null);
   const [connectionStep, setConnectionStep] = useState<"select" | "qr" | "phone">("select");
   const [phoneForConnection, setPhoneForConnection] = useState("");
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  const triggerConnectionWebhook = async (method: "qr" | "phone") => {
+    if (!selectedInstance) return;
+
+    const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_generate_qrcode";
+
+    setIsConnecting(true);
+    try {
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          instanceId: selectedInstance.id,
+          instanceName: selectedInstance.name,
+          provider: selectedInstance.provider,
+          function: selectedInstance.function,
+          connectionMethod: method,
+          timestamp: new Date().toISOString(),
+          origin: window.location.origin,
+          phoneNumber: method === "phone" ? phoneForConnection : undefined,
+        }),
+      });
+
+      console.log("Webhook triggered:", method, selectedInstance.name, response.status);
+      return response;
+    } catch (error) {
+      console.error("Error triggering webhook:", error);
+      toast({
+        title: t("common.error"),
+        description: "Falha ao conectar com o servidor. Tente novamente.",
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setIsConnecting(false);
+    }
+  };
 
   // Persist instances to localStorage
   useEffect(() => {
@@ -696,9 +736,21 @@ export default function Instances() {
                 <Button
                   variant="outline"
                   className="w-full justify-start h-auto p-4"
-                  onClick={() => setConnectionStep("qr")}
+                  disabled={isConnecting}
+                  onClick={async () => {
+                    try {
+                      await triggerConnectionWebhook("qr");
+                      setConnectionStep("qr");
+                    } catch {
+                      // Error already handled in triggerConnectionWebhook
+                    }
+                  }}
                 >
-                  <QrCode className="h-5 w-5 mr-3" />
+                  {isConnecting ? (
+                    <Loader2 className="h-5 w-5 mr-3 animate-spin" />
+                  ) : (
+                    <QrCode className="h-5 w-5 mr-3" />
+                  )}
                   <div className="text-left">
                     <p className="font-medium">{t("instances.connectWithQR")}</p>
                     <p className="text-xs text-muted-foreground">
@@ -709,9 +761,21 @@ export default function Instances() {
                 <Button
                   variant="outline"
                   className="w-full justify-start h-auto p-4"
-                  onClick={() => setConnectionStep("phone")}
+                  disabled={isConnecting}
+                  onClick={async () => {
+                    try {
+                      await triggerConnectionWebhook("phone");
+                      setConnectionStep("phone");
+                    } catch {
+                      // Error already handled in triggerConnectionWebhook
+                    }
+                  }}
                 >
-                  <Phone className="h-5 w-5 mr-3" />
+                  {isConnecting ? (
+                    <Loader2 className="h-5 w-5 mr-3 animate-spin" />
+                  ) : (
+                    <Phone className="h-5 w-5 mr-3" />
+                  )}
                   <div className="text-left">
                     <p className="font-medium">{t("instances.connectWithPhone")}</p>
                     <p className="text-xs text-muted-foreground">
