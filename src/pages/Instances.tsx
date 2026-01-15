@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil } from "lucide-react";
+import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 
@@ -163,6 +163,8 @@ export default function Instances() {
     function: InstanceFunction;
     phoneNumber: string;
   } | null>(null);
+  const [connectionStep, setConnectionStep] = useState<"select" | "qr" | "phone">("select");
+  const [phoneForConnection, setPhoneForConnection] = useState("");
 
   // Persist instances to localStorage
   useEffect(() => {
@@ -209,8 +211,52 @@ export default function Instances() {
 
   const handleConnect = (instance: Instance) => {
     setSelectedInstance(instance);
-    setConfigForm({ apiKey: "", webhookUrl: "", instanceId: "" });
+    setConnectionStep("select");
+    setPhoneForConnection("");
     setShowConfigDialog(true);
+  };
+
+  const handleCloseConnectionDialog = () => {
+    setShowConfigDialog(false);
+    setConnectionStep("select");
+    setPhoneForConnection("");
+  };
+
+  const handleConnectWithPhone = async () => {
+    if (!phoneForConnection) {
+      toast({
+        title: t("common.error"),
+        description: t("instances.phoneNumber") + " " + t("common.required").toLowerCase(),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+    if (selectedInstance) {
+      setInstances((prev) =>
+        prev.map((inst) =>
+          inst.id === selectedInstance.id
+            ? {
+                ...inst,
+                status: "connected" as const,
+                health: 100,
+                lastCheck: "Just now",
+                connectedNumber: phoneForConnection,
+              }
+            : inst
+        )
+      );
+    }
+
+    setIsSaving(false);
+    handleCloseConnectionDialog();
+    toast({
+      title: t("instances.instanceConnected"),
+      description: `${selectedInstance?.name} ${t("instances.instanceConnected").toLowerCase()}.`,
+    });
   };
 
   const handleSaveConfig = async () => {
@@ -575,65 +621,173 @@ export default function Instances() {
       </Tabs>
 
       {/* Configure/Connect Dialog */}
-      <Dialog open={showConfigDialog} onOpenChange={setShowConfigDialog}>
+      <Dialog open={showConfigDialog} onOpenChange={handleCloseConnectionDialog}>
         <DialogContent>
           <DialogHeader>
+            {connectionStep !== "select" && selectedInstance?.status !== "connected" && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute left-4 top-4 p-0 h-auto"
+                onClick={() => setConnectionStep("select")}
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                {t("common.back")}
+              </Button>
+            )}
             <DialogTitle>
-              {selectedInstance?.status === "connected" ? t("instances.configureInstance") : t("instances.connectInstance")}{" "}
-              - {selectedInstance?.name}
+              {selectedInstance?.status === "connected" 
+                ? `${t("instances.configureInstance")} - ${selectedInstance?.name}`
+                : connectionStep === "select"
+                  ? `${t("instances.connectInstance")} - ${selectedInstance?.name}`
+                  : connectionStep === "qr"
+                    ? t("instances.connectWithQR")
+                    : t("instances.connectWithPhone")}
             </DialogTitle>
             <DialogDescription>
               {selectedInstance?.status === "connected"
                 ? t("instances.updateConfiguration")
-                : t("instances.enterCredentials")}
+                : connectionStep === "select"
+                  ? t("instances.howToConnect")
+                  : connectionStep === "qr"
+                    ? t("instances.connectWithQRDesc")
+                    : t("instances.connectWithPhoneDesc")}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="apiKey">{t("instances.apiKey")}</Label>
-              <Input
-                id="apiKey"
-                type="password"
-                placeholder={t("instances.apiKeyPlaceholder")}
-                value={configForm.apiKey}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, apiKey: e.target.value }))}
-              />
+
+          {/* Configure Mode - Show technical fields */}
+          {selectedInstance?.status === "connected" && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="apiKey">{t("instances.apiKey")}</Label>
+                <Input
+                  id="apiKey"
+                  type="password"
+                  placeholder={t("instances.apiKeyPlaceholder")}
+                  value={configForm.apiKey}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, apiKey: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="instanceId">{t("instances.instanceIdOptional")}</Label>
+                <Input
+                  id="instanceId"
+                  placeholder={t("instances.instanceId")}
+                  value={configForm.instanceId}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, instanceId: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="webhookUrl">{t("instances.webhookUrl")} ({t("common.optional")})</Label>
+                <Input
+                  id="webhookUrl"
+                  placeholder="https://your-domain.com/webhook"
+                  value={configForm.webhookUrl}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, webhookUrl: e.target.value }))}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="instanceId">{t("instances.instanceIdOptional")}</Label>
-              <Input
-                id="instanceId"
-                placeholder={t("instances.instanceId")}
-                value={configForm.instanceId}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, instanceId: e.target.value }))}
-              />
+          )}
+
+          {/* Connect Mode - Step 1: Select Method */}
+          {selectedInstance?.status !== "connected" && connectionStep === "select" && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-3">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start h-auto p-4"
+                  onClick={() => setConnectionStep("qr")}
+                >
+                  <QrCode className="h-5 w-5 mr-3" />
+                  <div className="text-left">
+                    <p className="font-medium">{t("instances.connectWithQR")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("instances.connectWithQRDesc")}
+                    </p>
+                  </div>
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full justify-start h-auto p-4"
+                  onClick={() => setConnectionStep("phone")}
+                >
+                  <Phone className="h-5 w-5 mr-3" />
+                  <div className="text-left">
+                    <p className="font-medium">{t("instances.connectWithPhone")}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {t("instances.connectWithPhoneDesc")}
+                    </p>
+                  </div>
+                </Button>
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="webhookUrl">{t("instances.webhookUrl")} ({t("common.optional")})</Label>
-              <Input
-                id="webhookUrl"
-                placeholder="https://your-domain.com/webhook"
-                value={configForm.webhookUrl}
-                onChange={(e) => setConfigForm((prev) => ({ ...prev, webhookUrl: e.target.value }))}
-              />
+          )}
+
+          {/* Connect Mode - Step 2A: QR Code */}
+          {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
+            <div className="space-y-4 py-4">
+              <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
+                <div className="w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4">
+                  <QrCode className="h-24 w-24 text-muted-foreground" />
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  {t("instances.waitingForScan")}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Connect Mode - Step 2B: Phone Number */}
+          {selectedInstance?.status !== "connected" && connectionStep === "phone" && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="connectionPhone">{t("instances.phoneNumber")}</Label>
+                <Input
+                  id="connectionPhone"
+                  placeholder="+55 (11) 99999-9999"
+                  value={phoneForConnection}
+                  onChange={(e) => setPhoneForConnection(formatPhoneNumber(e.target.value))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("instances.phoneNumberHint")}
+                </p>
+              </div>
+            </div>
+          )}
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowConfigDialog(false)}>
+            <Button variant="outline" onClick={handleCloseConnectionDialog}>
               {t("common.cancel")}
             </Button>
-            <Button onClick={handleSaveConfig} disabled={isSaving}>
-              {isSaving ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {selectedInstance?.status === "connected" ? t("instances.saving") : t("instances.connecting")}
-                </>
-              ) : selectedInstance?.status === "connected" ? (
-                t("instances.saveChanges")
-              ) : (
-                t("instances.connect")
-              )}
-            </Button>
+            {selectedInstance?.status === "connected" && (
+              <Button onClick={handleSaveConfig} disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("instances.saving")}
+                  </>
+                ) : (
+                  t("instances.saveChanges")
+                )}
+              </Button>
+            )}
+            {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
+              <Button variant="outline" onClick={() => setConnectionStep("qr")}>
+                {t("instances.generateNewQR")}
+              </Button>
+            )}
+            {selectedInstance?.status !== "connected" && connectionStep === "phone" && (
+              <Button onClick={handleConnectWithPhone} disabled={isSaving}>
+                {isSaving ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("instances.connecting")}
+                  </>
+                ) : (
+                  t("instances.connect")
+                )}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

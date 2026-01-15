@@ -63,6 +63,7 @@ export const es = {
     info: "Info",
     sent: "Enviado",
     delivered: "Entregado",
+    back: "Volver",
   },
 
   // Status badges
@@ -263,6 +264,8 @@ export const es = {
     qrCodeDescription: "Escanea el código con tu WhatsApp para conectar",
     qrCodeError: "Error al generar Código QR",
     generateNew: "Generar Nuevo",
+    generateNewQR: "Generar Nuevo QR",
+    waitingForScan: "Esperando escaneo...",
     connectionError: "Error de conexión con el servidor",
     
     // Edición
