@@ -246,7 +246,7 @@ export const es = {
     configure: "Configurar",
     connect: "Conectar",
     disconnect: "Desconectar",
-    viewQR: "Ver Código QR",
+    viewQR: "Conectar",
     reconnect: "Reconectar",
     refreshStatus: "Actualizar Estado",
     refreshing: "Actualizando...",

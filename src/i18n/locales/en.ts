@@ -246,7 +246,7 @@ export const en = {
     configure: "Configure",
     connect: "Connect",
     disconnect: "Disconnect",
-    viewQR: "View QR Code",
+    viewQR: "Connect",
     reconnect: "Reconnect",
     refreshStatus: "Refresh Status",
     refreshing: "Refreshing...",

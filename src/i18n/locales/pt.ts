@@ -246,7 +246,7 @@ export const pt = {
     configure: "Configurar",
     connect: "Conectar",
     disconnect: "Desconectar",
-    viewQR: "Ver QR Code",
+    viewQR: "Conectar",
     reconnect: "Reconectar",
     refreshStatus: "Atualizar Status",
     refreshing: "Atualizando...",
