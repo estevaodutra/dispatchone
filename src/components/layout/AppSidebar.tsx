@@ -25,24 +25,26 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-
-const mainNavItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Campaigns", url: "/campaigns", icon: Megaphone },
-  { title: "Phone Numbers", url: "/numbers", icon: Phone },
-  { title: "Dispatch Logs", url: "/logs", icon: FileText },
-];
-
-const systemNavItems = [
-  { title: "Providers", url: "/providers", icon: Plug },
-  { title: "Alerts", url: "/alerts", icon: Bell },
-  { title: "Billing", url: "/billing", icon: CreditCard },
-  { title: "Settings", url: "/settings", icon: Settings },
-];
+import { useLanguage } from "@/i18n";
 
 export function AppSidebar() {
   const { state } = useSidebar();
+  const { t } = useLanguage();
   const isCollapsed = state === "collapsed";
+
+  const mainNavItems = [
+    { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
+    { title: t("nav.campaigns"), url: "/campaigns", icon: Megaphone },
+    { title: t("nav.phoneNumbers"), url: "/numbers", icon: Phone },
+    { title: t("nav.dispatchLogs"), url: "/logs", icon: FileText },
+  ];
+
+  const systemNavItems = [
+    { title: t("nav.providers"), url: "/providers", icon: Plug },
+    { title: t("nav.alerts"), url: "/alerts", icon: Bell },
+    { title: t("nav.billing"), url: "/billing", icon: CreditCard },
+    { title: t("nav.settings"), url: "/settings", icon: Settings },
+  ];
 
   return (
     <Sidebar
@@ -68,7 +70,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild tooltip={item.title}>
                     <NavLink
                       to={item.url}
@@ -93,7 +95,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {systemNavItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
+                <SidebarMenuItem key={item.url}>
                   <SidebarMenuButton asChild tooltip={item.title}>
                     <NavLink
                       to={item.url}
@@ -117,7 +119,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t border-sidebar-border p-2">
         <SidebarTrigger className="w-full justify-center text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
           <ChevronLeft className={cn("h-4 w-4 transition-transform", isCollapsed && "rotate-180")} />
-          {!isCollapsed && <span className="ml-2 text-sm">Collapse</span>}
+          {!isCollapsed && <span className="ml-2 text-sm">{t("nav.collapse")}</span>}
         </SidebarTrigger>
       </SidebarFooter>
     </Sidebar>

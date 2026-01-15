@@ -10,8 +10,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useLanguage } from "@/i18n";
 
 export function AppHeader() {
+  const { t } = useLanguage();
+
   return (
     <header className="sticky top-0 z-40 flex h-14 items-center gap-4 border-b bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <SidebarTrigger className="md:hidden" />
@@ -22,7 +25,7 @@ export function AppHeader() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search campaigns, numbers..."
+            placeholder={t("header.search")}
             className="h-9 pl-9 bg-muted/50 border-transparent focus:border-input"
           />
         </div>
@@ -33,7 +36,7 @@ export function AppHeader() {
         {/* System status indicator */}
         <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-success/10 text-success text-xs font-medium">
           <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse-subtle" />
-          All Systems Operational
+          {t("header.allSystemsOperational")}
         </div>
 
         {/* Notifications */}
@@ -56,15 +59,15 @@ export function AppHeader() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium">Operator</p>
+                <p className="text-sm font-medium">{t("header.operator")}</p>
                 <p className="text-xs text-muted-foreground">operator@dispatchone.io</p>
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Account Settings</DropdownMenuItem>
+            <DropdownMenuItem>{t("header.profile")}</DropdownMenuItem>
+            <DropdownMenuItem>{t("header.accountSettings")}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-error">Sign Out</DropdownMenuItem>
+            <DropdownMenuItem className="text-error">{t("header.signOut")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
