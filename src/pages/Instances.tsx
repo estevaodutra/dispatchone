@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch } from "lucide-react";
+import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 
@@ -127,6 +127,14 @@ export default function Instances() {
     provider: "Z-API" as Instance["provider"],
     function: "dispatcher" as InstanceFunction,
   });
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [editInstance, setEditInstance] = useState<{
+    id: string;
+    name: string;
+    provider: Instance["provider"];
+    function: InstanceFunction;
+    phoneNumber: string;
+  } | null>(null);
 
   const getFunctionIcon = (fn: InstanceFunction) => {
     switch (fn) {
@@ -256,6 +264,53 @@ export default function Instances() {
       });
       setInstanceToDelete(null);
     }
+  };
+
+  const handleEditClick = (instance: Instance) => {
+    setEditInstance({
+      id: instance.id,
+      name: instance.name,
+      provider: instance.provider,
+      function: instance.function,
+      phoneNumber: (instance as any).phoneNumber || "",
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editInstance?.name) {
+      toast({
+        title: t("common.error"),
+        description: t("instances.instanceName") + " " + t("common.required").toLowerCase(),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    setInstances((prev) =>
+      prev.map((inst) =>
+        inst.id === editInstance.id
+          ? {
+              ...inst,
+              name: editInstance.name,
+              provider: editInstance.provider,
+              function: editInstance.function,
+              ...(editInstance.provider === "Z-API" ? { phoneNumber: editInstance.phoneNumber } : {}),
+            }
+          : inst
+      )
+    );
+
+    setIsSaving(false);
+    setShowEditDialog(false);
+    toast({
+      title: t("instances.instanceUpdated"),
+      description: `${editInstance.name} ${t("instances.instanceUpdatedDescription")}`,
+    });
+    setEditInstance(null);
   };
 
   const disconnectedInstances = instances.filter((inst) => inst.status === "disconnected");
@@ -426,6 +481,14 @@ export default function Instances() {
                         {instance.status === "connected" ? t("instances.configure") : t("instances.connect")}
                       </Button>
                     )}
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => handleEditClick(instance)}
+                      title={t("instances.edit")}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
                     <Button variant="ghost" size="sm" asChild>
                       <a href={instance.documentation} target="_blank" rel="noopener noreferrer">
                         <ExternalLink className="h-4 w-4" />
@@ -643,6 +706,125 @@ export default function Instances() {
                   <Plus className="mr-2 h-4 w-4" />
                   {t("instances.addInstance")}
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Instance Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("instances.editInstance")}</DialogTitle>
+            <DialogDescription>
+              {t("instances.editInstanceDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="editInstanceName">{t("instances.instanceName")}</Label>
+              <Input
+                id="editInstanceName"
+                placeholder={t("instances.instanceNamePlaceholder")}
+                value={editInstance?.name || ""}
+                onChange={(e) => setEditInstance((prev) => prev ? { ...prev, name: e.target.value } : null)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="editProvider">{t("instances.provider")}</Label>
+              <Select
+                value={editInstance?.provider || "Z-API"}
+                onValueChange={(value) => setEditInstance((prev) => prev ? { ...prev, provider: value as Instance["provider"] } : null)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("instances.selectProvider")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Z-API">Z-API</SelectItem>
+                  <SelectItem value="Evolution API">Evolution API</SelectItem>
+                  <SelectItem value="Meta Business API">Meta Business API</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editInstance?.provider === "Z-API" && (
+              <div className="space-y-2">
+                <Label htmlFor="editPhoneNumber">
+                  {t("instances.phoneNumber")} ({t("instances.optional")})
+                </Label>
+                <Input
+                  id="editPhoneNumber"
+                  placeholder={t("instances.phoneNumberPlaceholder")}
+                  value={editInstance?.phoneNumber || ""}
+                  onChange={(e) => setEditInstance((prev) => prev ? { ...prev, phoneNumber: e.target.value } : null)}
+                />
+                <p className="text-xs text-muted-foreground">{t("instances.phoneNumberHint")}</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>{t("instances.function")}</Label>
+              <Select
+                value={editInstance?.function || "dispatcher"}
+                onValueChange={(value: InstanceFunction) =>
+                  setEditInstance((prev) => prev ? { ...prev, function: value } : null)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("instances.selectFunction")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dispatcher">
+                    <div className="flex items-center gap-2">
+                      <Radio className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionDispatcher")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionDispatcherDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionAdmin")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionAdminDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="spy">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionSpy")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionSpyDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="funnel">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionFunnel")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionFunnelDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={isSaving}>
+              {isSaving ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {t("instances.saving")}
+                </>
+              ) : (
+                t("instances.saveChanges")
               )}
             </Button>
           </DialogFooter>

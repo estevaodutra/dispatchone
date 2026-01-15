@@ -265,6 +265,13 @@ export const en = {
     generateNew: "Generate New",
     connectionError: "Connection error with server",
     
+    // Editing
+    editInstance: "Edit Instance",
+    editInstanceDescription: "Change instance data",
+    edit: "Edit",
+    instanceUpdated: "Instance updated",
+    instanceUpdatedDescription: "was successfully updated",
+    
     // Stats
     features: "Features",
     health: "Health",

@@ -265,6 +265,13 @@ export const pt = {
     generateNew: "Gerar Novo",
     connectionError: "Erro de conexão com o servidor",
     
+    // Edição
+    editInstance: "Editar Instância",
+    editInstanceDescription: "Altere os dados da instância",
+    edit: "Editar",
+    instanceUpdated: "Instância atualizada",
+    instanceUpdatedDescription: "foi atualizada com sucesso",
+    
     // Stats
     features: "Recursos",
     health: "Saúde",
