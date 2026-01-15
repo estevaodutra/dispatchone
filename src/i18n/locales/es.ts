@@ -226,7 +226,7 @@ export const es = {
     instanceId: "ID de Instancia",
     instanceIdOptional: "ID de Instancia (opcional)",
     phoneNumber: "Número de Teléfono",
-    phoneNumberPlaceholder: "+5511999999999",
+    phoneNumberPlaceholder: "+55 (11) 99999-9999",
     phoneNumberHint: "Si se proporciona, permite conexión vía número",
     optional: "opcional",
     

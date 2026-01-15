@@ -106,6 +106,18 @@ const initialInstances: Instance[] = [
   },
 ];
 
+// Função para formatar número de telefone brasileiro
+const formatPhoneNumber = (value: string): string => {
+  const numbers = value.replace(/\D/g, "");
+  const limited = numbers.slice(0, 13);
+  
+  if (limited.length === 0) return "";
+  if (limited.length <= 2) return `+${limited}`;
+  if (limited.length <= 4) return `+${limited.slice(0, 2)} (${limited.slice(2)}`;
+  if (limited.length <= 9) return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4)}`;
+  return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4, 9)}-${limited.slice(9)}`;
+};
+
 export default function Instances() {
   const { toast } = useToast();
   const { t } = useLanguage();
@@ -652,9 +664,9 @@ export default function Instances() {
                 </Label>
                 <Input
                   id="newPhoneNumber"
-                  placeholder={t("instances.phoneNumberPlaceholder")}
+                  placeholder="+55 (11) 99999-9999"
                   value={newInstance.phoneNumber}
-                  onChange={(e) => setNewInstance((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                  onChange={(e) => setNewInstance((prev) => ({ ...prev, phoneNumber: formatPhoneNumber(e.target.value) }))}
                 />
                 <p className="text-xs text-muted-foreground">
                   {t("instances.phoneNumberHint")}
@@ -776,9 +788,9 @@ export default function Instances() {
                 </Label>
                 <Input
                   id="editPhoneNumber"
-                  placeholder={t("instances.phoneNumberPlaceholder")}
+                  placeholder="+55 (11) 99999-9999"
                   value={editInstance?.phoneNumber || ""}
-                  onChange={(e) => setEditInstance((prev) => prev ? { ...prev, phoneNumber: e.target.value } : null)}
+                  onChange={(e) => setEditInstance((prev) => prev ? { ...prev, phoneNumber: formatPhoneNumber(e.target.value) } : null)}
                 />
                 <p className="text-xs text-muted-foreground">{t("instances.phoneNumberHint")}</p>
               </div>
