@@ -271,6 +271,14 @@ export const es = {
     saving: "Guardando...",
     connecting: "Conectando...",
     adding: "Agregando...",
+    
+    // Eliminación
+    deleteInstance: "Eliminar Instancia",
+    deleteConfirmTitle: "¿Eliminar instancia?",
+    deleteConfirmDescription: "Esta acción es irreversible. La instancia será eliminada permanentemente y todas las configuraciones se perderán.",
+    instanceDeleted: "Instancia eliminada",
+    instanceDeletedDescription: "fue eliminada con éxito.",
+    deleting: "Eliminando...",
   },
 
   // Alerts

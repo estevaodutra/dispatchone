@@ -15,13 +15,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2 } from "lucide-react";
+import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 
@@ -98,7 +108,9 @@ export default function Instances() {
   const [instances, setInstances] = useState<Instance[]>(initialInstances);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedInstance, setSelectedInstance] = useState<Instance | null>(null);
+  const [instanceToDelete, setInstanceToDelete] = useState<Instance | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showDisconnectedAlert, setShowDisconnectedAlert] = useState(true);
@@ -212,6 +224,18 @@ export default function Instances() {
       title: t("instances.instanceAdded"),
       description: `${instance.name} - ${t("instances.scanQR")}`,
     });
+  };
+
+  const handleDeleteInstance = () => {
+    if (instanceToDelete) {
+      setInstances((prev) => prev.filter((inst) => inst.id !== instanceToDelete.id));
+      setShowDeleteDialog(false);
+      toast({
+        title: t("instances.instanceDeleted"),
+        description: `${instanceToDelete.name} ${t("instances.instanceDeletedDescription")}`,
+      });
+      setInstanceToDelete(null);
+    }
   };
 
   const disconnectedInstances = instances.filter((inst) => inst.status === "disconnected");
@@ -381,6 +405,17 @@ export default function Instances() {
                         <ExternalLink className="h-4 w-4" />
                       </a>
                     </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        setInstanceToDelete(instance);
+                        setShowDeleteDialog(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
@@ -546,6 +581,34 @@ export default function Instances() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("instances.deleteConfirmTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("instances.deleteConfirmDescription")}
+              {instanceToDelete && (
+                <span className="block mt-2 font-medium text-foreground">
+                  {instanceToDelete.name} ({instanceToDelete.provider})
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setInstanceToDelete(null)}>
+              {t("common.cancel")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteInstance}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {t("common.delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
