@@ -271,6 +271,14 @@ export const pt = {
     saving: "Salvando...",
     connecting: "Conectando...",
     adding: "Adicionando...",
+    
+    // Exclusão
+    deleteInstance: "Excluir Instância",
+    deleteConfirmTitle: "Excluir instância?",
+    deleteConfirmDescription: "Esta ação é irreversível. A instância será permanentemente removida e todas as configurações serão perdidas.",
+    instanceDeleted: "Instância excluída",
+    instanceDeletedDescription: "foi removida com sucesso.",
+    deleting: "Excluindo...",
   },
 
   // Alerts

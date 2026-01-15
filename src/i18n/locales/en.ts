@@ -271,6 +271,14 @@ export const en = {
     saving: "Saving...",
     connecting: "Connecting...",
     adding: "Adding...",
+    
+    // Delete
+    deleteInstance: "Delete Instance",
+    deleteConfirmTitle: "Delete instance?",
+    deleteConfirmDescription: "This action cannot be undone. The instance will be permanently removed and all settings will be lost.",
+    instanceDeleted: "Instance deleted",
+    instanceDeletedDescription: "was successfully removed.",
+    deleting: "Deleting...",
   },
 
   // Alerts
