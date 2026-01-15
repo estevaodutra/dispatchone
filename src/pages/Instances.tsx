@@ -167,6 +167,7 @@ export default function Instances() {
   const [phoneForConnection, setPhoneForConnection] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [webhookResponse, setWebhookResponse] = useState<{
+    value?: string;      // Base64 do QR Code (formato real da API)
     qrCode?: string;
     qrCodeUrl?: string;
     sessionId?: string;
@@ -202,9 +203,15 @@ export default function Instances() {
 
       const data = await response.json();
       console.log("Webhook response:", data);
-      setWebhookResponse(data);
       
-      return data;
+      // Normalizar resposta - pode ser array ou objeto
+      let normalizedData = data;
+      if (Array.isArray(data) && data.length > 0) {
+        normalizedData = data[0];
+      }
+      
+      setWebhookResponse(normalizedData);
+      return normalizedData;
     } catch (error) {
       console.error("Error triggering webhook:", error);
       toast({
@@ -807,6 +814,12 @@ export default function Instances() {
                 <div className="w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4 overflow-hidden">
                   {isConnecting ? (
                     <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                  ) : webhookResponse?.value ? (
+                    <img 
+                      src={webhookResponse.value} 
+                      alt="QR Code" 
+                      className="w-full h-full object-contain"
+                    />
                   ) : webhookResponse?.qrCode ? (
                     <img 
                       src={webhookResponse.qrCode} 
