@@ -197,7 +197,9 @@ export default function Instances() {
           connectionMethod: method,
           timestamp: new Date().toISOString(),
           origin: window.location.origin,
-          phoneNumber: method === "phone" ? selectedInstance.phoneNumber : undefined,
+          phoneNumber: method === "phone" && selectedInstance.phoneNumber 
+            ? selectedInstance.phoneNumber.replace(/\D/g, '') 
+            : undefined,
         }),
       });
 
