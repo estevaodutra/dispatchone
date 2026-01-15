@@ -50,6 +50,7 @@ interface Instance {
   connectedNumber?: string;
   features: string[];
   documentation: string;
+  phoneNumber?: string;
 }
 
 const initialInstances: Instance[] = [
@@ -126,6 +127,7 @@ export default function Instances() {
     name: "",
     provider: "Z-API" as Instance["provider"],
     function: "dispatcher" as InstanceFunction,
+    phoneNumber: "",
   });
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editInstance, setEditInstance] = useState<{
@@ -241,12 +243,13 @@ export default function Instances() {
       lastCheck: "Just now",
       features: ["Text", "Media"],
       documentation: newInstance.provider === "Z-API" ? "https://developer.z-api.io" : "https://doc.evolution-api.com",
+      phoneNumber: newInstance.provider === "Z-API" ? newInstance.phoneNumber : undefined,
     };
 
     setInstances((prev) => [...prev, instance]);
     setIsSaving(false);
     setShowAddDialog(false);
-    setNewInstance({ name: "", provider: "Z-API", function: "dispatcher" });
+    setNewInstance({ name: "", provider: "Z-API", function: "dispatcher", phoneNumber: "" });
 
     toast({
       title: t("instances.instanceAdded"),
@@ -639,6 +642,25 @@ export default function Instances() {
                 </SelectContent>
               </Select>
             </div>
+            {newInstance.provider === "Z-API" && (
+              <div className="space-y-2">
+                <Label htmlFor="newPhoneNumber">
+                  {t("instances.phoneNumber")}
+                  <span className="text-muted-foreground ml-1 text-xs">
+                    ({t("instances.optional")})
+                  </span>
+                </Label>
+                <Input
+                  id="newPhoneNumber"
+                  placeholder={t("instances.phoneNumberPlaceholder")}
+                  value={newInstance.phoneNumber}
+                  onChange={(e) => setNewInstance((prev) => ({ ...prev, phoneNumber: e.target.value }))}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("instances.phoneNumberHint")}
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>{t("instances.function")}</Label>
               <Select
