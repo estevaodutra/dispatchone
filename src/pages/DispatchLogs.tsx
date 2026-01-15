@@ -9,8 +9,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { FileText, Search, Download, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { FileText, Search, Download, ChevronDown, ChevronRight, RefreshCw, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock data
 interface DispatchLog {
@@ -111,12 +120,18 @@ const mockLogs: DispatchLog[] = [
 ];
 
 export default function DispatchLogs() {
+  const { toast } = useToast();
+  const [logs, setLogs] = useState<DispatchLog[]>(mockLogs);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [channelFilter, setChannelFilter] = useState<string>("all");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [selectedLog, setSelectedLog] = useState<DispatchLog | null>(null);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const filteredLogs = mockLogs.filter((log) => {
+  const filteredLogs = logs.filter((log) => {
     const matchesSearch =
       log.campaign.toLowerCase().includes(searchQuery.toLowerCase()) ||
       log.recipient.includes(searchQuery) ||
@@ -125,6 +140,82 @@ export default function DispatchLogs() {
     const matchesChannel = channelFilter === "all" || log.channel === channelFilter;
     return matchesSearch && matchesStatus && matchesChannel;
   });
+
+  const handleExport = async () => {
+    setIsExporting(true);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    
+    // Generate CSV content
+    const headers = ["Timestamp", "Campaign", "From", "To", "Provider", "Channel", "Status", "Error"];
+    const csvContent = [
+      headers.join(","),
+      ...filteredLogs.map((log) =>
+        [
+          log.timestamp,
+          `"${log.campaign}"`,
+          log.number,
+          log.recipient,
+          log.provider,
+          log.channel,
+          log.status,
+          log.errorMessage || "",
+        ].join(",")
+      ),
+    ].join("\n");
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `dispatch-logs-${new Date().toISOString().split("T")[0]}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    setIsExporting(false);
+    toast({
+      title: "Export complete",
+      description: `${filteredLogs.length} log entries exported to CSV.`,
+    });
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsRefreshing(false);
+    toast({
+      title: "Logs refreshed",
+      description: "Dispatch logs have been updated.",
+    });
+  };
+
+  const handleRetry = (log: DispatchLog) => {
+    setLogs((prev) =>
+      prev.map((l) => (l.id === log.id ? { ...l, status: "retrying" as const } : l))
+    );
+    toast({
+      title: "Retry initiated",
+      description: `Retrying dispatch to ${log.recipient}...`,
+    });
+
+    // Simulate successful retry after 2 seconds
+    setTimeout(() => {
+      setLogs((prev) =>
+        prev.map((l) => (l.id === log.id ? { ...l, status: "sent" as const, errorMessage: undefined } : l))
+      );
+      toast({
+        title: "Retry successful",
+        description: `Message to ${log.recipient} was sent successfully.`,
+      });
+    }, 2000);
+  };
+
+  const handleRowClick = (log: DispatchLog) => {
+    setSelectedLog(log);
+    setShowDetailDialog(true);
+  };
 
   const columns: Column<DispatchLog>[] = [
     {
@@ -193,10 +284,10 @@ export default function DispatchLogs() {
   ];
 
   const stats = {
-    total: mockLogs.length,
-    sent: mockLogs.filter((l) => l.status === "sent").length,
-    pending: mockLogs.filter((l) => l.status === "pending").length,
-    failed: mockLogs.filter((l) => l.status === "failed" || l.status === "retrying").length,
+    total: logs.length,
+    sent: logs.filter((l) => l.status === "sent").length,
+    pending: logs.filter((l) => l.status === "pending").length,
+    failed: logs.filter((l) => l.status === "failed" || l.status === "retrying").length,
   };
 
   return (
@@ -205,10 +296,19 @@ export default function DispatchLogs() {
         title="Dispatch Logs"
         description="Real-time monitoring of all dispatch activities"
         actions={
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </Button>
+            <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              {isExporting ? "Exporting..." : "Export"}
+            </Button>
+          </div>
         }
       />
 
@@ -276,7 +376,7 @@ export default function DispatchLogs() {
           columns={columns}
           data={filteredLogs}
           keyExtractor={(log) => log.id}
-          onRowClick={(log) => setExpandedRow(expandedRow === log.id ? null : log.id)}
+          onRowClick={handleRowClick}
         />
       ) : (
         <EmptyState
@@ -285,6 +385,72 @@ export default function DispatchLogs() {
           description="Dispatch logs will appear here once campaigns start running"
         />
       )}
+
+      {/* Log Detail Dialog */}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Dispatch Details</DialogTitle>
+            <DialogDescription>Full information about this dispatch event</DialogDescription>
+          </DialogHeader>
+          {selectedLog && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <StatusBadge status={selectedLog.status} size="lg" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Timestamp</p>
+                  <p className="font-mono text-sm">{selectedLog.timestamp}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Campaign</p>
+                  <p className="font-medium">{selectedLog.campaign}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Channel</p>
+                  <p className="font-medium capitalize">{selectedLog.channel}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">From</p>
+                  <p className="font-mono text-sm">{selectedLog.number}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">To</p>
+                  <p className="font-mono text-sm">{selectedLog.recipient}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Provider</p>
+                  <p className="font-medium">{selectedLog.provider}</p>
+                </div>
+              </div>
+              {selectedLog.errorMessage && (
+                <div className="rounded-lg border border-error/30 bg-error/10 p-3">
+                  <p className="text-sm font-medium text-error">Error</p>
+                  <p className="text-sm text-muted-foreground">{selectedLog.errorMessage}</p>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
+              Close
+            </Button>
+            {selectedLog && selectedLog.status === "failed" && (
+              <Button
+                onClick={() => {
+                  handleRetry(selectedLog);
+                  setShowDetailDialog(false);
+                }}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Retry
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

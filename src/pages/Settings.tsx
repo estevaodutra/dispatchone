@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PageHeader } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -12,18 +13,87 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save, Globe, Bell, Shield, Palette } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Save, Globe, Bell, Shield, Palette, Loader2, Check } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "next-themes";
 
 export default function Settings() {
+  const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
+  
+  const [isSaving, setIsSaving] = useState(false);
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [show2FADialog, setShow2FADialog] = useState(false);
+  
+  // Form state
+  const [settings, setSettings] = useState({
+    companyName: "Acme Corp",
+    timezone: "america_sao_paulo",
+    language: "en",
+    emailNotifications: true,
+    webhookNotifications: false,
+    highFailureAlerts: true,
+    providerOutageAlerts: true,
+    sessionTimeout: "60",
+    compactMode: false,
+  });
+
+  const handleSaveChanges = async () => {
+    setIsSaving(true);
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsSaving(false);
+    toast({
+      title: "Settings saved",
+      description: "Your configuration has been updated successfully.",
+    });
+  };
+
+  const handleEnable2FA = () => {
+    setShow2FADialog(true);
+  };
+
+  const confirm2FA = () => {
+    setShow2FADialog(false);
+    toast({
+      title: "2FA Enabled",
+      description: "Two-factor authentication is now active on your account.",
+    });
+  };
+
+  const handleManageApiKeys = () => {
+    setShowApiKeyDialog(true);
+  };
+
+  const handleToggleChange = (key: keyof typeof settings) => (checked: boolean) => {
+    setSettings((prev) => ({ ...prev, [key]: checked }));
+    toast({
+      title: "Setting updated",
+      description: `${key.replace(/([A-Z])/g, ' $1').toLowerCase()} has been ${checked ? 'enabled' : 'disabled'}.`,
+    });
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <PageHeader
         title="Settings"
         description="Configure your DispatchOne platform"
         actions={
-          <Button className="gap-2">
-            <Save className="h-4 w-4" />
-            Save Changes
+          <Button className="gap-2" onClick={handleSaveChanges} disabled={isSaving}>
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {isSaving ? "Saving..." : "Save Changes"}
           </Button>
         }
       />
@@ -42,11 +112,18 @@ export default function Settings() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="company">Company Name</Label>
-                <Input id="company" defaultValue="Acme Corp" />
+                <Input
+                  id="company"
+                  value={settings.companyName}
+                  onChange={(e) => setSettings((prev) => ({ ...prev, companyName: e.target.value }))}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="timezone">Timezone</Label>
-                <Select defaultValue="america_sao_paulo">
+                <Select
+                  value={settings.timezone}
+                  onValueChange={(value) => setSettings((prev) => ({ ...prev, timezone: value }))}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -61,7 +138,10 @@ export default function Settings() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="language">Language</Label>
-              <Select defaultValue="en">
+              <Select
+                value={settings.language}
+                onValueChange={(value) => setSettings((prev) => ({ ...prev, language: value }))}
+              >
                 <SelectTrigger className="w-[200px]">
                   <SelectValue />
                 </SelectTrigger>
@@ -92,7 +172,10 @@ export default function Settings() {
                   Receive critical alerts via email
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={settings.emailNotifications}
+                onCheckedChange={handleToggleChange("emailNotifications")}
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -102,7 +185,10 @@ export default function Settings() {
                   Send alerts to external systems
                 </p>
               </div>
-              <Switch />
+              <Switch
+                checked={settings.webhookNotifications}
+                onCheckedChange={handleToggleChange("webhookNotifications")}
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -112,7 +198,10 @@ export default function Settings() {
                   Alert when campaign failure rate exceeds threshold
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={settings.highFailureAlerts}
+                onCheckedChange={handleToggleChange("highFailureAlerts")}
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -122,7 +211,10 @@ export default function Settings() {
                   Alert when a provider becomes unavailable
                 </p>
               </div>
-              <Switch defaultChecked />
+              <Switch
+                checked={settings.providerOutageAlerts}
+                onCheckedChange={handleToggleChange("providerOutageAlerts")}
+              />
             </div>
           </CardContent>
         </Card>
@@ -144,7 +236,7 @@ export default function Settings() {
                   Add an extra layer of security to your account
                 </p>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handleEnable2FA}>
                 Enable
               </Button>
             </div>
@@ -156,7 +248,10 @@ export default function Settings() {
                   Automatically log out after inactivity
                 </p>
               </div>
-              <Select defaultValue="60">
+              <Select
+                value={settings.sessionTimeout}
+                onValueChange={(value) => setSettings((prev) => ({ ...prev, sessionTimeout: value }))}
+              >
                 <SelectTrigger className="w-[150px]">
                   <SelectValue />
                 </SelectTrigger>
@@ -176,7 +271,7 @@ export default function Settings() {
                   Manage API keys for external integrations
                 </p>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="outline" size="sm" onClick={handleManageApiKeys}>
                 Manage Keys
               </Button>
             </div>
@@ -200,7 +295,16 @@ export default function Settings() {
                   Switch between light and dark themes
                 </p>
               </div>
-              <Switch />
+              <Switch
+                checked={theme === "dark"}
+                onCheckedChange={(checked) => {
+                  setTheme(checked ? "dark" : "light");
+                  toast({
+                    title: `${checked ? "Dark" : "Light"} mode enabled`,
+                    description: "Theme has been updated.",
+                  });
+                }}
+              />
             </div>
             <Separator />
             <div className="flex items-center justify-between">
@@ -210,11 +314,103 @@ export default function Settings() {
                   Reduce spacing for denser information display
                 </p>
               </div>
-              <Switch />
+              <Switch
+                checked={settings.compactMode}
+                onCheckedChange={handleToggleChange("compactMode")}
+              />
             </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* 2FA Dialog */}
+      <Dialog open={show2FADialog} onOpenChange={setShow2FADialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Enable Two-Factor Authentication</DialogTitle>
+            <DialogDescription>
+              Scan this QR code with your authenticator app to enable 2FA.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center py-6">
+            <div className="h-48 w-48 rounded-lg bg-muted flex items-center justify-center">
+              <span className="text-muted-foreground text-sm">QR Code Placeholder</span>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="verify-code">Verification Code</Label>
+            <Input id="verify-code" placeholder="Enter 6-digit code" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShow2FADialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirm2FA} className="gap-2">
+              <Check className="h-4 w-4" />
+              Verify & Enable
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* API Keys Dialog */}
+      <Dialog open={showApiKeyDialog} onOpenChange={setShowApiKeyDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>API Key Management</DialogTitle>
+            <DialogDescription>
+              Create and manage API keys for external integrations.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Production Key</p>
+                  <p className="text-sm text-muted-foreground font-mono">pk_live_****************************1234</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => {
+                  toast({
+                    title: "API Key copied",
+                    description: "The API key has been copied to your clipboard.",
+                  });
+                }}>
+                  Copy
+                </Button>
+              </div>
+            </div>
+            <div className="rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium">Test Key</p>
+                  <p className="text-sm text-muted-foreground font-mono">pk_test_****************************5678</p>
+                </div>
+                <Button variant="outline" size="sm" onClick={() => {
+                  toast({
+                    title: "API Key copied",
+                    description: "The API key has been copied to your clipboard.",
+                  });
+                }}>
+                  Copy
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowApiKeyDialog(false)}>
+              Close
+            </Button>
+            <Button onClick={() => {
+              toast({
+                title: "New API key generated",
+                description: "A new API key has been created.",
+              });
+            }}>
+              Generate New Key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

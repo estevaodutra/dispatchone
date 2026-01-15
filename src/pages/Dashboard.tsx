@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { PageHeader, MetricCard } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +12,7 @@ import {
   TrendingUp,
   Activity,
   Clock,
+  RefreshCw,
 } from "lucide-react";
 import {
   LineChart,
@@ -22,6 +25,7 @@ import {
   BarChart,
   Bar,
 } from "recharts";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock data for charts
 const dispatchTrend = [
@@ -48,16 +52,47 @@ const recentActivity = [
 ];
 
 export default function Dashboard() {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handleNewCampaign = () => {
+    navigate("/campaigns");
+    toast({
+      title: "Create Campaign",
+      description: "Redirecting to campaign creation...",
+    });
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    setIsRefreshing(false);
+    toast({
+      title: "Dashboard refreshed",
+      description: "All metrics have been updated.",
+    });
+  };
+
+  const handleViewAll = () => {
+    navigate("/logs");
+  };
+
   return (
     <div className="space-y-8 animate-fade-in">
       <PageHeader
         title="Dashboard"
         description="Real-time overview of your communication dispatch system"
         actions={
-          <Button className="gap-2">
-            <Megaphone className="h-4 w-4" />
-            New Campaign
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </Button>
+            <Button className="gap-2" onClick={handleNewCampaign}>
+              <Megaphone className="h-4 w-4" />
+              New Campaign
+            </Button>
+          </div>
         }
       />
 
@@ -207,7 +242,7 @@ export default function Dashboard() {
             <Clock className="h-4 w-4 text-primary" />
             Recent Activity
           </CardTitle>
-          <Button variant="ghost" size="sm" className="text-xs">
+          <Button variant="ghost" size="sm" className="text-xs" onClick={handleViewAll}>
             View All
           </Button>
         </CardHeader>
@@ -216,7 +251,8 @@ export default function Dashboard() {
             {recentActivity.map((activity) => (
               <div
                 key={activity.id}
-                className="flex items-center gap-4 rounded-lg border bg-muted/30 p-3 transition-colors hover:bg-muted/50"
+                className="flex items-center gap-4 rounded-lg border bg-muted/30 p-3 transition-colors hover:bg-muted/50 cursor-pointer"
+                onClick={() => navigate("/logs")}
               >
                 <div
                   className={`flex h-8 w-8 items-center justify-center rounded-full ${

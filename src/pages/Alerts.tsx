@@ -9,8 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Bell, AlertTriangle, AlertCircle, Info, CheckCircle, Filter } from "lucide-react";
+import { Bell, AlertTriangle, AlertCircle, Info, CheckCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock data
 interface Alert {
@@ -23,7 +24,7 @@ interface Alert {
   read: boolean;
 }
 
-const mockAlerts: Alert[] = [
+const initialAlerts: Alert[] = [
   {
     id: "1",
     severity: "error",
@@ -104,10 +105,12 @@ const severityConfig = {
 };
 
 export default function Alerts() {
+  const { toast } = useToast();
+  const [alerts, setAlerts] = useState<Alert[]>(initialAlerts);
   const [severityFilter, setSeverityFilter] = useState<string>("all");
   const [readFilter, setReadFilter] = useState<string>("all");
 
-  const filteredAlerts = mockAlerts.filter((alert) => {
+  const filteredAlerts = alerts.filter((alert) => {
     const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
     const matchesRead =
       readFilter === "all" ||
@@ -116,7 +119,27 @@ export default function Alerts() {
     return matchesSeverity && matchesRead;
   });
 
-  const unreadCount = mockAlerts.filter((a) => !a.read).length;
+  const unreadCount = alerts.filter((a) => !a.read).length;
+
+  const handleMarkAllAsRead = () => {
+    setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
+    toast({
+      title: "All alerts marked as read",
+      description: `${unreadCount} alerts have been marked as read.`,
+    });
+  };
+
+  const handleAlertClick = (alert: Alert) => {
+    if (!alert.read) {
+      setAlerts((prev) =>
+        prev.map((a) => (a.id === alert.id ? { ...a, read: true } : a))
+      );
+      toast({
+        title: "Alert marked as read",
+        description: alert.title,
+      });
+    }
+  };
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -124,7 +147,12 @@ export default function Alerts() {
         title="Alerts"
         description="System notifications and critical alerts"
         actions={
-          <Button variant="outline" size="sm">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleMarkAllAsRead}
+            disabled={unreadCount === 0}
+          >
             Mark All as Read
           </Button>
         }
@@ -176,9 +204,10 @@ export default function Alerts() {
             return (
               <Card
                 key={alert.id}
-                className={`shadow-elevation-sm transition-all hover:shadow-elevation-md ${
+                className={`shadow-elevation-sm transition-all hover:shadow-elevation-md cursor-pointer ${
                   !alert.read ? "border-l-2 border-l-primary" : ""
                 }`}
+                onClick={() => handleAlertClick(alert)}
               >
                 <CardContent className="flex items-start gap-4 p-4">
                   <div className={`rounded-full p-2 ${config.bgClass}`}>
