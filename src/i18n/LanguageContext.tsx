@@ -1,3 +1,4 @@
+// Language Context - provides i18n support
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { en } from "./locales/en";
 import { pt } from "./locales/pt";
