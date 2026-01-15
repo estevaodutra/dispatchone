@@ -265,6 +265,13 @@ export const es = {
     generateNew: "Generar Nuevo",
     connectionError: "Error de conexión con el servidor",
     
+    // Edición
+    editInstance: "Editar Instancia",
+    editInstanceDescription: "Cambie los datos de la instancia",
+    edit: "Editar",
+    instanceUpdated: "Instancia actualizada",
+    instanceUpdatedDescription: "fue actualizada con éxito",
+    
     // Stats
     features: "Características",
     health: "Salud",
