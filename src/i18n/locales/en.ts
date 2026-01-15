@@ -226,7 +226,7 @@ export const en = {
     instanceId: "Instance ID",
     instanceIdOptional: "Instance ID (optional)",
     phoneNumber: "Phone Number",
-    phoneNumberPlaceholder: "+5511999999999",
+    phoneNumberPlaceholder: "+55 (11) 99999-9999",
     phoneNumberHint: "If provided, allows connection via phone number",
     optional: "optional",
     
