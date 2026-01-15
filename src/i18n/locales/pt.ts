@@ -225,6 +225,10 @@ export const pt = {
     webhookUrl: "URL do Webhook",
     instanceId: "ID da Instância",
     instanceIdOptional: "ID da Instância (opcional)",
+    phoneNumber: "Número de Telefone",
+    phoneNumberPlaceholder: "+5511999999999",
+    phoneNumberHint: "Se informado, permite conexão via número",
+    optional: "opcional",
     
     // Função
     function: "Função",
@@ -247,6 +251,19 @@ export const pt = {
     refreshStatus: "Atualizar Status",
     refreshing: "Atualizando...",
     documentation: "Documentação",
+    
+    // Conexão
+    howToConnect: "Como deseja conectar esta instância?",
+    connectWithPhone: "Conectar com Número de Telefone",
+    connectWithPhoneDesc: "Conexão automática via API",
+    connectWithQR: "Conectar com QR Code",
+    connectWithQRDesc: "Escaneie o código com WhatsApp",
+    generatingQR: "Gerando QR Code...",
+    qrCodeTitle: "QR Code da Instância",
+    qrCodeDescription: "Escaneie o código com seu WhatsApp para conectar",
+    qrCodeError: "Erro ao gerar QR Code",
+    generateNew: "Gerar Novo",
+    connectionError: "Erro de conexão com o servidor",
     
     // Stats
     features: "Recursos",
