@@ -31,7 +31,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft } from "lucide-react";
+import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 
@@ -163,7 +163,7 @@ export default function Instances() {
     function: InstanceFunction;
     phoneNumber: string;
   } | null>(null);
-  const [connectionStep, setConnectionStep] = useState<"select" | "qr" | "phone">("select");
+  const [connectionStep, setConnectionStep] = useState<"select" | "qr" | "phone" | "code">("select");
   const [phoneForConnection, setPhoneForConnection] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [webhookResponse, setWebhookResponse] = useState<{
@@ -173,6 +173,7 @@ export default function Instances() {
     sessionId?: string;
     expiresAt?: string;
     message?: string;
+    code?: string;       // Código de conexão via telefone
   } | null>(null);
 
   const triggerConnectionWebhook = async (method: "qr" | "phone") => {
@@ -750,27 +751,10 @@ export default function Instances() {
                   disabled={!selectedInstance?.phoneNumber || isConnecting}
                   onClick={async () => {
                     try {
-                      await triggerConnectionWebhook("phone");
-                      if (selectedInstance) {
-                        setInstances((prev) =>
-                          prev.map((inst) =>
-                            inst.id === selectedInstance.id
-                              ? {
-                                  ...inst,
-                                  status: "connected" as const,
-                                  health: 100,
-                                  lastCheck: "Just now",
-                                  connectedNumber: selectedInstance.phoneNumber,
-                                }
-                              : inst
-                          )
-                        );
+                      const response = await triggerConnectionWebhook("phone");
+                      if (response?.code) {
+                        setConnectionStep("code");
                       }
-                      handleCloseConnectionDialog();
-                      toast({
-                        title: t("instances.instanceConnected"),
-                        description: `${selectedInstance?.name} ${t("instances.instanceConnected").toLowerCase()}.`,
-                      });
                     } catch {
                       // Error handled in triggerConnectionWebhook
                     }
@@ -831,6 +815,48 @@ export default function Instances() {
                   }
                 </p>
               </div>
+            </div>
+          )}
+
+          {/* Connect Mode - Step 2B: Code Display */}
+          {selectedInstance?.status !== "connected" && connectionStep === "code" && (
+            <div className="space-y-4 py-4">
+              <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
+                {isConnecting ? (
+                  <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                ) : webhookResponse?.code ? (
+                  <>
+                    <div className="text-center mb-4">
+                      <p className="text-sm text-muted-foreground mb-2">
+                        Código de conexão
+                      </p>
+                      <div className="flex items-center gap-2 bg-background border rounded-lg px-6 py-4">
+                        <span className="text-3xl font-mono font-bold tracking-widest">
+                          {webhookResponse.code}
+                        </span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(webhookResponse.code!);
+                        toast({
+                          title: "Código copiado!",
+                          description: "O código foi copiado para a área de transferência.",
+                        });
+                      }}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar código
+                    </Button>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Aguardando código...</p>
+                )}
+              </div>
+              <p className="text-sm text-muted-foreground text-center">
+                {webhookResponse?.message || "Informe este código no seu WhatsApp para conectar."}
+              </p>
             </div>
           )}
 
