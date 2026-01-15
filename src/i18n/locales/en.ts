@@ -225,6 +225,10 @@ export const en = {
     webhookUrl: "Webhook URL",
     instanceId: "Instance ID",
     instanceIdOptional: "Instance ID (optional)",
+    phoneNumber: "Phone Number",
+    phoneNumberPlaceholder: "+5511999999999",
+    phoneNumberHint: "If provided, allows connection via phone number",
+    optional: "optional",
     
     // Function
     function: "Function",
@@ -247,6 +251,19 @@ export const en = {
     refreshStatus: "Refresh Status",
     refreshing: "Refreshing...",
     documentation: "Documentation",
+    
+    // Connection
+    howToConnect: "How would you like to connect this instance?",
+    connectWithPhone: "Connect with Phone Number",
+    connectWithPhoneDesc: "Automatic connection via API",
+    connectWithQR: "Connect with QR Code",
+    connectWithQRDesc: "Scan the code with WhatsApp",
+    generatingQR: "Generating QR Code...",
+    qrCodeTitle: "Instance QR Code",
+    qrCodeDescription: "Scan the code with your WhatsApp to connect",
+    qrCodeError: "Error generating QR Code",
+    generateNew: "Generate New",
+    connectionError: "Connection error with server",
     
     // Stats
     features: "Features",
