@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader, StatusBadge, HealthBar, AlertBanner } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -118,10 +118,24 @@ const formatPhoneNumber = (value: string): string => {
   return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4, 9)}-${limited.slice(9)}`;
 };
 
+const STORAGE_KEY = "whatsapp-instances";
+
+const getInitialInstances = (): Instance[] => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      return JSON.parse(saved);
+    } catch {
+      return initialInstances;
+    }
+  }
+  return initialInstances;
+};
+
 export default function Instances() {
   const { toast } = useToast();
   const { t } = useLanguage();
-  const [instances, setInstances] = useState<Instance[]>(initialInstances);
+  const [instances, setInstances] = useState<Instance[]>(getInitialInstances);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -149,6 +163,11 @@ export default function Instances() {
     function: InstanceFunction;
     phoneNumber: string;
   } | null>(null);
+
+  // Persist instances to localStorage
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(instances));
+  }, [instances]);
 
   const getFunctionIcon = (fn: InstanceFunction) => {
     switch (fn) {
