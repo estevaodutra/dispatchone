@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Phone, Plus, Search, MoreHorizontal, RefreshCw, Pause, Play } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Phone, Plus, Search, MoreHorizontal, RefreshCw, Pause, Play, Loader2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +34,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock data
 interface PhoneNumber {
@@ -38,7 +48,7 @@ interface PhoneNumber {
   lastUsed: string;
 }
 
-const mockNumbers: PhoneNumber[] = [
+const initialNumbers: PhoneNumber[] = [
   {
     id: "1",
     number: "+55 11 98765-4321",
@@ -92,16 +102,83 @@ const mockNumbers: PhoneNumber[] = [
 ];
 
 export default function PhoneNumbers() {
+  const { toast } = useToast();
+  const [numbers, setNumbers] = useState<PhoneNumber[]>(initialNumbers);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
+  const [newNumber, setNewNumber] = useState({
+    number: "",
+    type: "whatsapp_business",
+    provider: "Z-API",
+  });
 
-  const filteredNumbers = mockNumbers.filter((num) => {
+  const filteredNumbers = numbers.filter((num) => {
     const matchesSearch = num.number.includes(searchQuery);
     const matchesStatus = statusFilter === "all" || num.status === statusFilter;
     const matchesProvider = providerFilter === "all" || num.provider === providerFilter;
     return matchesSearch && matchesStatus && matchesProvider;
   });
+
+  const handleAddNumber = async () => {
+    if (!newNumber.number) {
+      toast({
+        title: "Error",
+        description: "Phone number is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsAdding(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const phoneNumber: PhoneNumber = {
+      id: String(Date.now()),
+      number: newNumber.number,
+      type: newNumber.type as "whatsapp_business" | "whatsapp_normal",
+      provider: newNumber.provider,
+      status: "warming",
+      health: 50,
+      cycleUsage: { used: 0, total: 50 },
+      lastUsed: "Never",
+    };
+
+    setNumbers((prev) => [phoneNumber, ...prev]);
+    setShowAddDialog(false);
+    setNewNumber({ number: "", type: "whatsapp_business", provider: "Z-API" });
+    setIsAdding(false);
+
+    toast({
+      title: "Number added",
+      description: `${phoneNumber.number} has been added and is warming up.`,
+    });
+  };
+
+  const handleToggleStatus = (num: PhoneNumber) => {
+    const newStatus = num.status === "active" ? "paused" : "active";
+    setNumbers((prev) =>
+      prev.map((n) => (n.id === num.id ? { ...n, status: newStatus } : n))
+    );
+    toast({
+      title: newStatus === "active" ? "Number activated" : "Number paused",
+      description: `${num.number} is now ${newStatus}.`,
+    });
+  };
+
+  const handleResetCycle = (num: PhoneNumber) => {
+    setNumbers((prev) =>
+      prev.map((n) =>
+        n.id === num.id ? { ...n, cycleUsage: { ...n.cycleUsage, used: 0 } } : n
+      )
+    );
+    toast({
+      title: "Cycle reset",
+      description: `Cycle counter for ${num.number} has been reset.`,
+    });
+  };
 
   const columns: Column<PhoneNumber>[] = [
     {
@@ -167,15 +244,15 @@ export default function PhoneNumbers() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             {num.status === "active" ? (
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleStatus(num)}>
                 <Pause className="mr-2 h-4 w-4" /> Pause
               </DropdownMenuItem>
             ) : num.status === "paused" ? (
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleStatus(num)}>
                 <Play className="mr-2 h-4 w-4" /> Activate
               </DropdownMenuItem>
             ) : null}
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleResetCycle(num)}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reset Cycle
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -186,10 +263,10 @@ export default function PhoneNumbers() {
   ];
 
   const stats = {
-    total: mockNumbers.length,
-    active: mockNumbers.filter((n) => n.status === "active").length,
-    warming: mockNumbers.filter((n) => n.status === "warming").length,
-    banned: mockNumbers.filter((n) => n.status === "banned").length,
+    total: numbers.length,
+    active: numbers.filter((n) => n.status === "active").length,
+    warming: numbers.filter((n) => n.status === "warming").length,
+    banned: numbers.filter((n) => n.status === "banned").length,
   };
 
   return (
@@ -198,7 +275,7 @@ export default function PhoneNumbers() {
         title="Phone Numbers"
         description="Manage your phone number registry and rotation cycles"
         actions={
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4" />
             Add Number
           </Button>
@@ -289,13 +366,81 @@ export default function PhoneNumbers() {
           title="No numbers found"
           description="Add phone numbers to start dispatching messages"
           action={
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4" />
               Add Number
             </Button>
           }
         />
       )}
+
+      {/* Add Number Dialog */}
+      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Phone Number</DialogTitle>
+            <DialogDescription>
+              Register a new phone number for dispatching messages.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                placeholder="+55 11 99999-9999"
+                value={newNumber.number}
+                onChange={(e) => setNewNumber((prev) => ({ ...prev, number: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="type">Number Type</Label>
+              <Select
+                value={newNumber.type}
+                onValueChange={(value) => setNewNumber((prev) => ({ ...prev, type: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp_business">WhatsApp Business</SelectItem>
+                  <SelectItem value="whatsapp_normal">WhatsApp Normal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="provider">Provider</Label>
+              <Select
+                value={newNumber.provider}
+                onValueChange={(value) => setNewNumber((prev) => ({ ...prev, provider: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Z-API">Z-API</SelectItem>
+                  <SelectItem value="Evolution API">Evolution API</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddNumber} disabled={isAdding}>
+              {isAdding ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                "Add Number"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

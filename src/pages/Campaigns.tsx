@@ -3,6 +3,8 @@ import { PageHeader, StatusBadge, DataTable, EmptyState, type Column } from "@/c
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -10,7 +12,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Megaphone, Plus, Search, MoreHorizontal, Play, Pause, Eye } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Megaphone, Plus, Search, MoreHorizontal, Play, Pause, Eye, Loader2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
 
 // Mock data
 interface Campaign {
@@ -31,7 +42,7 @@ interface Campaign {
   createdAt: string;
 }
 
-const mockCampaigns: Campaign[] = [
+const initialCampaigns: Campaign[] = [
   {
     id: "1",
     name: "Summer Promo 2025",
@@ -85,14 +96,77 @@ const mockCampaigns: Campaign[] = [
 ];
 
 export default function Campaigns() {
+  const { toast } = useToast();
+  const [campaigns, setCampaigns] = useState<Campaign[]>(initialCampaigns);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newCampaign, setNewCampaign] = useState({
+    name: "",
+    channel: "whatsapp",
+    message: "",
+    totalRecipients: "1000",
+  });
 
-  const filteredCampaigns = mockCampaigns.filter((campaign) => {
+  const filteredCampaigns = campaigns.filter((campaign) => {
     const matchesSearch = campaign.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || campaign.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const handleCreateCampaign = async () => {
+    if (!newCampaign.name) {
+      toast({
+        title: "Error",
+        description: "Campaign name is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsCreating(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    const campaign: Campaign = {
+      id: String(Date.now()),
+      name: newCampaign.name,
+      channel: newCampaign.channel as "whatsapp" | "voice",
+      status: "draft",
+      sent: 0,
+      total: parseInt(newCampaign.totalRecipients),
+      successRate: 0,
+      createdAt: new Date().toISOString().split("T")[0],
+    };
+
+    setCampaigns((prev) => [campaign, ...prev]);
+    setShowCreateDialog(false);
+    setNewCampaign({ name: "", channel: "whatsapp", message: "", totalRecipients: "1000" });
+    setIsCreating(false);
+
+    toast({
+      title: "Campaign created",
+      description: `"${campaign.name}" has been created as a draft.`,
+    });
+  };
+
+  const handleToggleCampaign = (campaign: Campaign) => {
+    const newStatus = campaign.status === "running" ? "paused" : "running";
+    setCampaigns((prev) =>
+      prev.map((c) => (c.id === campaign.id ? { ...c, status: newStatus } : c))
+    );
+    toast({
+      title: newStatus === "running" ? "Campaign started" : "Campaign paused",
+      description: `"${campaign.name}" is now ${newStatus}.`,
+    });
+  };
+
+  const handleViewDetails = (campaign: Campaign) => {
+    setSelectedCampaign(campaign);
+    setShowDetailDialog(true);
+  };
 
   const columns: Column<Campaign>[] = [
     {
@@ -149,15 +223,15 @@ export default function Campaigns() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => handleViewDetails(campaign)}>
               <Eye className="mr-2 h-4 w-4" /> View Details
             </DropdownMenuItem>
             {campaign.status === "running" ? (
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleCampaign(campaign)}>
                 <Pause className="mr-2 h-4 w-4" /> Pause Campaign
               </DropdownMenuItem>
             ) : campaign.status === "paused" || campaign.status === "draft" ? (
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleCampaign(campaign)}>
                 <Play className="mr-2 h-4 w-4" /> Start Campaign
               </DropdownMenuItem>
             ) : null}
@@ -169,9 +243,9 @@ export default function Campaigns() {
   ];
 
   const stats = {
-    total: mockCampaigns.length,
-    running: mockCampaigns.filter((c) => c.status === "running").length,
-    completed: mockCampaigns.filter((c) => c.status === "completed").length,
+    total: campaigns.length,
+    running: campaigns.filter((c) => c.status === "running").length,
+    completed: campaigns.filter((c) => c.status === "completed").length,
   };
 
   return (
@@ -180,7 +254,7 @@ export default function Campaigns() {
         title="Campaigns"
         description="Create and manage your dispatch campaigns"
         actions={
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
             <Plus className="h-4 w-4" />
             New Campaign
           </Button>
@@ -254,13 +328,142 @@ export default function Campaigns() {
           title="No campaigns found"
           description="Create your first campaign to start dispatching messages"
           action={
-            <Button className="gap-2">
+            <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
               <Plus className="h-4 w-4" />
               Create Campaign
             </Button>
           }
         />
       )}
+
+      {/* Create Campaign Dialog */}
+      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create New Campaign</DialogTitle>
+            <DialogDescription>
+              Set up a new dispatch campaign for WhatsApp or Voice.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Campaign Name</Label>
+              <Input
+                id="name"
+                placeholder="e.g., Summer Promo 2025"
+                value={newCampaign.name}
+                onChange={(e) => setNewCampaign((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="channel">Channel</Label>
+              <Select
+                value={newCampaign.channel}
+                onValueChange={(value) => setNewCampaign((prev) => ({ ...prev, channel: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                  <SelectItem value="voice">Voice/URA</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="recipients">Total Recipients</Label>
+              <Input
+                id="recipients"
+                type="number"
+                placeholder="1000"
+                value={newCampaign.totalRecipients}
+                onChange={(e) => setNewCampaign((prev) => ({ ...prev, totalRecipients: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="message">Message Template</Label>
+              <Textarea
+                id="message"
+                placeholder="Enter your message template..."
+                value={newCampaign.message}
+                onChange={(e) => setNewCampaign((prev) => ({ ...prev, message: e.target.value }))}
+                rows={4}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateCampaign} disabled={isCreating}>
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Create Campaign"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Campaign Detail Dialog */}
+      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{selectedCampaign?.name}</DialogTitle>
+            <DialogDescription>Campaign performance and details</DialogDescription>
+          </DialogHeader>
+          {selectedCampaign && (
+            <div className="space-y-6 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Status</p>
+                  <StatusBadge status={selectedCampaign.status} size="lg" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Channel</p>
+                  <p className="font-medium capitalize">{selectedCampaign.channel}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Success Rate</p>
+                  <p className="font-mono text-lg font-semibold">
+                    {selectedCampaign.successRate > 0 ? `${selectedCampaign.successRate}%` : "—"}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm text-muted-foreground">Created</p>
+                  <p className="font-medium">{selectedCampaign.createdAt}</p>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Progress</p>
+                <Progress value={(selectedCampaign.sent / selectedCampaign.total) * 100} className="h-3" />
+                <p className="text-sm text-muted-foreground">
+                  {selectedCampaign.sent.toLocaleString()} of {selectedCampaign.total.toLocaleString()} dispatched
+                </p>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDetailDialog(false)}>
+              Close
+            </Button>
+            {selectedCampaign && (selectedCampaign.status === "running" || selectedCampaign.status === "paused" || selectedCampaign.status === "draft") && (
+              <Button
+                onClick={() => {
+                  handleToggleCampaign(selectedCampaign);
+                  setShowDetailDialog(false);
+                }}
+              >
+                {selectedCampaign.status === "running" ? "Pause" : "Start"} Campaign
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
