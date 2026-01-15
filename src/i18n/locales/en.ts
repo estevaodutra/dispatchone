@@ -222,11 +222,21 @@ export const en = {
     degraded: "Degraded",
     
     // Fields
-    apiKey: "API Key",
-    apiKeyPlaceholder: "Enter your API key",
     webhookUrl: "Webhook URL",
     instanceId: "Instance ID",
     instanceIdOptional: "Instance ID (optional)",
+    
+    // Function
+    function: "Function",
+    selectFunction: "Select function",
+    functionDispatcher: "Dispatcher",
+    functionDispatcherDesc: "Mass dispatching only",
+    functionAdmin: "Admin",
+    functionAdminDesc: "Group administration, validation and management",
+    functionSpy: "Spy",
+    functionSpyDesc: "Receive and view events",
+    functionFunnel: "Funnel",
+    functionFunnelDesc: "Routine customer service",
     
     // Actions
     configure: "Configure",

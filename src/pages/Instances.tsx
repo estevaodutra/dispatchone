@@ -31,15 +31,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2 } from "lucide-react";
+import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 
 // Mock data
+type InstanceFunction = "dispatcher" | "admin" | "spy" | "funnel";
+
 interface Instance {
   id: string;
   name: string;
   provider: "Z-API" | "Evolution API" | "Meta Business API";
+  function: InstanceFunction;
   status: "connected" | "disconnected" | "qrPending";
   health: number;
   dispatches: number;
@@ -47,7 +50,6 @@ interface Instance {
   connectedNumber?: string;
   features: string[];
   documentation: string;
-  apiKey?: string;
 }
 
 const initialInstances: Instance[] = [
@@ -55,6 +57,7 @@ const initialInstances: Instance[] = [
     id: "1",
     name: "Vendas Principal",
     provider: "Z-API",
+    function: "dispatcher",
     status: "connected",
     health: 98,
     dispatches: 12500,
@@ -62,12 +65,12 @@ const initialInstances: Instance[] = [
     connectedNumber: "+55 11 99999-1234",
     features: ["Text", "Media", "Templates", "Webhooks"],
     documentation: "https://developer.z-api.io",
-    apiKey: "zapi_****************************1234",
   },
   {
     id: "2",
     name: "Suporte",
     provider: "Evolution API",
+    function: "funnel",
     status: "connected",
     health: 95,
     dispatches: 8200,
@@ -75,24 +78,24 @@ const initialInstances: Instance[] = [
     connectedNumber: "+55 11 98888-5678",
     features: ["Text", "Media", "Groups", "Status"],
     documentation: "https://doc.evolution-api.com",
-    apiKey: "evo_****************************5678",
   },
   {
     id: "3",
     name: "Marketing",
     provider: "Z-API",
+    function: "admin",
     status: "qrPending",
     health: 0,
     dispatches: 0,
     lastCheck: "Never",
     features: ["Text", "Media", "Templates"],
     documentation: "https://developer.z-api.io",
-    apiKey: "zapi_****************************9012",
   },
   {
     id: "4",
     name: "Meta Oficial",
     provider: "Meta Business API",
+    function: "spy",
     status: "disconnected",
     health: 0,
     dispatches: 0,
@@ -122,8 +125,26 @@ export default function Instances() {
   const [newInstance, setNewInstance] = useState({
     name: "",
     provider: "Z-API" as Instance["provider"],
-    apiKey: "",
+    function: "dispatcher" as InstanceFunction,
   });
+
+  const getFunctionIcon = (fn: InstanceFunction) => {
+    switch (fn) {
+      case "dispatcher": return <Radio className="h-3.5 w-3.5" />;
+      case "admin": return <Shield className="h-3.5 w-3.5" />;
+      case "spy": return <Eye className="h-3.5 w-3.5" />;
+      case "funnel": return <GitBranch className="h-3.5 w-3.5" />;
+    }
+  };
+
+  const getFunctionLabel = (fn: InstanceFunction) => {
+    switch (fn) {
+      case "dispatcher": return t("instances.functionDispatcher");
+      case "admin": return t("instances.functionAdmin");
+      case "spy": return t("instances.functionSpy");
+      case "funnel": return t("instances.functionFunnel");
+    }
+  };
 
   const handleRefreshStatus = async () => {
     setIsRefreshing(true);
@@ -138,7 +159,7 @@ export default function Instances() {
   const handleConfigure = (instance: Instance) => {
     setSelectedInstance(instance);
     setConfigForm({
-      apiKey: instance.apiKey || "",
+      apiKey: "",
       webhookUrl: "",
       instanceId: "",
     });
@@ -172,7 +193,6 @@ export default function Instances() {
                 ...inst,
                 status: "connected" as const,
                 health: 100,
-                apiKey: configForm.apiKey.slice(0, 4) + "_" + "*".repeat(28) + configForm.apiKey.slice(-4),
                 lastCheck: "Just now",
                 connectedNumber: "+55 11 97777-0000",
               }
@@ -190,10 +210,10 @@ export default function Instances() {
   };
 
   const handleAddInstance = async () => {
-    if (!newInstance.name || !newInstance.apiKey) {
+    if (!newInstance.name) {
       toast({
         title: t("common.error"),
-        description: t("instances.instanceName") + " " + t("common.and") + " " + t("instances.apiKey") + " " + t("common.required").toLowerCase(),
+        description: t("instances.instanceName") + " " + t("common.required").toLowerCase(),
         variant: "destructive",
       });
       return;
@@ -206,19 +226,19 @@ export default function Instances() {
       id: String(Date.now()),
       name: newInstance.name,
       provider: newInstance.provider,
+      function: newInstance.function,
       status: "qrPending",
       health: 0,
       dispatches: 0,
       lastCheck: "Just now",
       features: ["Text", "Media"],
       documentation: newInstance.provider === "Z-API" ? "https://developer.z-api.io" : "https://doc.evolution-api.com",
-      apiKey: newInstance.apiKey.slice(0, 4) + "_" + "*".repeat(28) + newInstance.apiKey.slice(-4),
     };
 
     setInstances((prev) => [...prev, instance]);
     setIsSaving(false);
     setShowAddDialog(false);
-    setNewInstance({ name: "", provider: "Z-API", apiKey: "" });
+    setNewInstance({ name: "", provider: "Z-API", function: "dispatcher" });
 
     toast({
       title: t("instances.instanceAdded"),
@@ -316,9 +336,15 @@ export default function Instances() {
                     </div>
                     <div>
                       <CardTitle className="text-base">{instance.name}</CardTitle>
-                      <Badge variant="secondary" className="mt-1 text-xs">
-                        {instance.provider}
-                      </Badge>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-xs">
+                          {instance.provider}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs gap-1">
+                          {getFunctionIcon(instance.function)}
+                          {getFunctionLabel(instance.function)}
+                        </Badge>
+                      </div>
                     </div>
                   </div>
                   <StatusBadge status={getStatusDisplay(instance.status)} />
@@ -551,14 +577,55 @@ export default function Instances() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="newApiKey">{t("instances.apiKey")}</Label>
-              <Input
-                id="newApiKey"
-                type="password"
-                placeholder={t("instances.apiKeyPlaceholder")}
-                value={newInstance.apiKey}
-                onChange={(e) => setNewInstance((prev) => ({ ...prev, apiKey: e.target.value }))}
-              />
+              <Label>{t("instances.function")}</Label>
+              <Select
+                value={newInstance.function}
+                onValueChange={(value: InstanceFunction) =>
+                  setNewInstance((prev) => ({ ...prev, function: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={t("instances.selectFunction")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dispatcher">
+                    <div className="flex items-center gap-2">
+                      <Radio className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionDispatcher")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionDispatcherDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="admin">
+                    <div className="flex items-center gap-2">
+                      <Shield className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionAdmin")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionAdminDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="spy">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionSpy")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionSpyDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="funnel">
+                    <div className="flex items-center gap-2">
+                      <GitBranch className="h-4 w-4" />
+                      <div>
+                        <span className="font-medium">{t("instances.functionFunnel")}</span>
+                        <span className="text-muted-foreground ml-2 text-xs">{t("instances.functionFunnelDesc")}</span>
+                      </div>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
