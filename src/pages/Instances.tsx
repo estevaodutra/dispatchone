@@ -292,31 +292,34 @@ export default function Instances() {
       return;
     }
 
-    setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    try {
+      // Chamar webhook com o número de telefone preenchido
+      await triggerConnectionWebhook("phone");
 
-    if (selectedInstance) {
-      setInstances((prev) =>
-        prev.map((inst) =>
-          inst.id === selectedInstance.id
-            ? {
-                ...inst,
-                status: "connected" as const,
-                health: 100,
-                lastCheck: "Just now",
-                connectedNumber: phoneForConnection,
-              }
-            : inst
-        )
-      );
+      if (selectedInstance) {
+        setInstances((prev) =>
+          prev.map((inst) =>
+            inst.id === selectedInstance.id
+              ? {
+                  ...inst,
+                  status: "connected" as const,
+                  health: 100,
+                  lastCheck: "Just now",
+                  connectedNumber: phoneForConnection,
+                }
+              : inst
+          )
+        );
+      }
+
+      handleCloseConnectionDialog();
+      toast({
+        title: t("instances.instanceConnected"),
+        description: `${selectedInstance?.name} ${t("instances.instanceConnected").toLowerCase()}.`,
+      });
+    } catch (error) {
+      // Error já tratado no triggerConnectionWebhook
     }
-
-    setIsSaving(false);
-    handleCloseConnectionDialog();
-    toast({
-      title: t("instances.instanceConnected"),
-      description: `${selectedInstance?.name} ${t("instances.instanceConnected").toLowerCase()}.`,
-    });
   };
 
   const handleSaveConfig = async () => {
@@ -781,15 +784,7 @@ export default function Instances() {
                 <Button
                   variant="outline"
                   className="w-full justify-start h-auto p-4"
-                  disabled={isConnecting}
-                  onClick={async () => {
-                    try {
-                      await triggerConnectionWebhook("phone");
-                      setConnectionStep("phone");
-                    } catch {
-                      // Error already handled in triggerConnectionWebhook
-                    }
-                  }}
+                  onClick={() => setConnectionStep("phone")}
                 >
                   {isConnecting ? (
                     <Loader2 className="h-5 w-5 mr-3 animate-spin" />
