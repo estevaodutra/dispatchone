@@ -222,11 +222,21 @@ export const es = {
     degraded: "Degradado",
     
     // Campos
-    apiKey: "Clave API",
-    apiKeyPlaceholder: "Ingrese su clave API",
     webhookUrl: "URL del Webhook",
     instanceId: "ID de Instancia",
     instanceIdOptional: "ID de Instancia (opcional)",
+    
+    // Función
+    function: "Función",
+    selectFunction: "Seleccione la función",
+    functionDispatcher: "Disparador",
+    functionDispatcherDesc: "Solo para envíos masivos",
+    functionAdmin: "Admin",
+    functionAdminDesc: "Administración de grupos, validación y gestión",
+    functionSpy: "Espía",
+    functionSpyDesc: "Recibir y visualizar eventos",
+    functionFunnel: "Embudo",
+    functionFunnelDesc: "Atención rutinaria",
     
     // Acciones
     configure: "Configurar",
