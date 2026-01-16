@@ -552,22 +552,50 @@ response = requests.post(
     description: "Endpoints para gerenciamento de instâncias",
     endpoints: [
       {
-        id: "instance-status",
+        id: "instances-list",
         method: "GET",
-        path: "/instance/status",
-        description: "Retorna o status atual da instância conectada.",
-        attributes: [],
+        path: "/instances",
+        description: "Retorna a lista de todas as instâncias cadastradas na conta com suporte a paginação e filtros.",
+        attributes: [
+          {
+            name: "page",
+            type: "number",
+            required: false,
+            description: "Número da página (padrão: 1)"
+          },
+          {
+            name: "limit",
+            type: "number",
+            required: false,
+            description: "Itens por página (máx: 100, padrão: 20)"
+          },
+          {
+            name: "status",
+            type: "string",
+            required: false,
+            description: "Filtrar por status: 'connected', 'disconnected', 'waitingConnection'"
+          },
+          {
+            name: "provider",
+            type: "string",
+            required: false,
+            description: "Filtrar por provedor: 'z-api', 'evolution', 'meta'"
+          }
+        ],
         examples: {
-          curl: `curl -X GET "https://api.dispatchone.io/v1/instance/status" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
+          curl: `curl -X GET "https://api.dispatchone.io/v1/instances?page=1&limit=20&status=connected" \\
   -H "x-api-token: YOUR_TOKEN"`,
           nodejs: `const axios = require('axios');
 
 const response = await axios.get(
-  'https://api.dispatchone.io/v1/instance/status',
+  'https://api.dispatchone.io/v1/instances',
   {
+    params: {
+      page: 1,
+      limit: 20,
+      status: 'connected'
+    },
     headers: {
-      'x-instance-id': 'YOUR_INSTANCE_ID',
       'x-api-token': 'YOUR_TOKEN'
     }
   }
@@ -575,9 +603,13 @@ const response = await axios.get(
           python: `import requests
 
 response = requests.get(
-    'https://api.dispatchone.io/v1/instance/status',
+    'https://api.dispatchone.io/v1/instances',
+    params={
+        'page': 1,
+        'limit': 20,
+        'status': 'connected'
+    },
     headers={
-        'x-instance-id': 'YOUR_INSTANCE_ID',
         'x-api-token': 'YOUR_TOKEN'
     }
 )`
@@ -587,12 +619,25 @@ response = requests.get(
             code: 200,
             body: {
               success: true,
-              status: "connected",
-              phone: "5511999999999",
-              name: "Minha Instância",
-              battery: 85,
-              platform: "android",
-              connectedAt: "2024-01-10T08:00:00Z"
+              data: [
+                {
+                  id: "inst_abc123",
+                  name: "Atendimento Principal",
+                  provider: "Z-API",
+                  status: "connected",
+                  phone: "5511999999999",
+                  idInstance: "3E2535E6DDA3413414F54AAAADA6D328",
+                  health: 98,
+                  dispatches: 1250,
+                  createdAt: "2024-01-05T10:00:00Z"
+                }
+              ],
+              pagination: {
+                page: 1,
+                limit: 20,
+                total: 5,
+                totalPages: 1
+              }
             }
           },
           error: {
@@ -608,22 +653,48 @@ response = requests.get(
         }
       },
       {
-        id: "instance-qr",
+        id: "instance-find",
         method: "GET",
-        path: "/instance/qr",
-        description: "Gera um novo QR Code para conexão da instância.",
-        attributes: [],
+        path: "/instance/find",
+        description: "Busca uma instância específica por diferentes critérios de identificação. Pelo menos um parâmetro de busca é obrigatório.",
+        attributes: [
+          {
+            name: "id",
+            type: "string",
+            required: false,
+            description: "ID interno da instância no dispatchOne"
+          },
+          {
+            name: "phone",
+            type: "string",
+            required: false,
+            description: "Número de telefone conectado (formato: 5511999999999)"
+          },
+          {
+            name: "idInstance",
+            type: "string",
+            required: false,
+            description: "ID externo da instância no provedor (Z-API, Evolution)"
+          },
+          {
+            name: "tokenInstance",
+            type: "string",
+            required: false,
+            description: "Token externo da instância no provedor"
+          }
+        ],
         examples: {
-          curl: `curl -X GET "https://api.dispatchone.io/v1/instance/qr" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
+          curl: `curl -X GET "https://api.dispatchone.io/v1/instance/find?phone=5511999999999" \\
   -H "x-api-token: YOUR_TOKEN"`,
           nodejs: `const axios = require('axios');
 
 const response = await axios.get(
-  'https://api.dispatchone.io/v1/instance/qr',
+  'https://api.dispatchone.io/v1/instance/find',
   {
+    params: {
+      phone: '5511999999999'
+    },
     headers: {
-      'x-instance-id': 'YOUR_INSTANCE_ID',
       'x-api-token': 'YOUR_TOKEN'
     }
   }
@@ -631,9 +702,11 @@ const response = await axios.get(
           python: `import requests
 
 response = requests.get(
-    'https://api.dispatchone.io/v1/instance/qr',
+    'https://api.dispatchone.io/v1/instance/find',
+    params={
+        'phone': '5511999999999'
+    },
     headers={
-        'x-instance-id': 'YOUR_INSTANCE_ID',
         'x-api-token': 'YOUR_TOKEN'
     }
 )`
@@ -643,50 +716,108 @@ response = requests.get(
             code: 200,
             body: {
               success: true,
-              qrCode: "data:image/png;base64,iVBORw0KGgo...",
-              expiresAt: "2024-01-15T11:00:00Z"
+              instance: {
+                id: "inst_abc123",
+                name: "Atendimento Principal",
+                provider: "Z-API",
+                function: "dispatch",
+                status: "connected",
+                phone: "5511999999999",
+                idInstance: "3E2535E6DDA3413414F54AAAADA6D328",
+                tokenInstance: "8565E8B2253B010E11996B12",
+                health: 98,
+                dispatches: 1250,
+                lastCheck: "2024-01-15T12:00:00Z",
+                connectedAt: "2024-01-10T08:00:00Z",
+                createdAt: "2024-01-05T10:00:00Z"
+              }
             }
           },
           error: {
-            code: 409,
+            code: 404,
             body: {
               success: false,
               error: {
-                code: "ALREADY_CONNECTED",
-                message: "A instância já está conectada."
+                code: "INSTANCE_NOT_FOUND",
+                message: "Nenhuma instância encontrada com os critérios informados."
               }
             }
           }
         }
       },
       {
-        id: "instance-disconnect",
-        method: "POST",
-        path: "/instance/disconnect",
-        description: "Desconecta a instância atual do WhatsApp.",
-        attributes: [],
+        id: "instance-update-status",
+        method: "PUT",
+        path: "/instance/status",
+        description: "Atualiza o status de conexão de uma instância. Utilizado internamente por webhooks de provedores ou para gerenciamento manual.",
+        attributes: [
+          {
+            name: "instanceId",
+            type: "string",
+            required: true,
+            description: "ID da instância a ser atualizada"
+          },
+          {
+            name: "status",
+            type: "string",
+            required: true,
+            description: "Novo status: 'connected', 'disconnected', 'waitingConnection'"
+          },
+          {
+            name: "phone",
+            type: "string",
+            required: false,
+            description: "Número conectado (obrigatório se status='connected')"
+          },
+          {
+            name: "reason",
+            type: "string",
+            required: false,
+            description: "Motivo da mudança de status (ex: 'Desconectado pelo usuário')"
+          },
+          {
+            name: "metadata",
+            type: "object",
+            required: false,
+            description: "Dados adicionais do provedor"
+          }
+        ],
         examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/instance/disconnect" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN"`,
+          curl: `curl -X PUT "https://api.dispatchone.io/v1/instance/status" \\
+  -H "Content-Type: application/json" \\
+  -H "x-api-token: YOUR_TOKEN" \\
+  -d '{
+    "instanceId": "inst_abc123",
+    "status": "disconnected",
+    "reason": "Desconectado pelo usuário"
+  }'`,
           nodejs: `const axios = require('axios');
 
-const response = await axios.post(
-  'https://api.dispatchone.io/v1/instance/disconnect',
-  {},
+const response = await axios.put(
+  'https://api.dispatchone.io/v1/instance/status',
+  {
+    instanceId: 'inst_abc123',
+    status: 'disconnected',
+    reason: 'Desconectado pelo usuário'
+  },
   {
     headers: {
-      'x-instance-id': 'YOUR_INSTANCE_ID',
+      'Content-Type': 'application/json',
       'x-api-token': 'YOUR_TOKEN'
     }
   }
 );`,
           python: `import requests
 
-response = requests.post(
-    'https://api.dispatchone.io/v1/instance/disconnect',
+response = requests.put(
+    'https://api.dispatchone.io/v1/instance/status',
+    json={
+        'instanceId': 'inst_abc123',
+        'status': 'disconnected',
+        'reason': 'Desconectado pelo usuário'
+    },
     headers={
-        'x-instance-id': 'YOUR_INSTANCE_ID',
+        'Content-Type': 'application/json',
         'x-api-token': 'YOUR_TOKEN'
     }
 )`
@@ -696,8 +827,12 @@ response = requests.post(
             code: 200,
             body: {
               success: true,
-              message: "Instância desconectada com sucesso.",
-              disconnectedAt: "2024-01-15T11:05:00Z"
+              instance: {
+                id: "inst_abc123",
+                status: "disconnected",
+                updatedAt: "2024-01-15T12:30:00Z"
+              },
+              previousStatus: "connected"
             }
           },
           error: {
@@ -705,8 +840,8 @@ response = requests.post(
             body: {
               success: false,
               error: {
-                code: "NOT_CONNECTED",
-                message: "A instância não está conectada."
+                code: "INVALID_STATUS",
+                message: "Status inválido. Use: 'connected', 'disconnected' ou 'waitingConnection'."
               }
             }
           }
