@@ -35,6 +35,8 @@ export interface EndpointCategory {
   endpoints: Endpoint[];
 }
 
+const API_BASE_URL = "https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1";
+
 export const apiEndpoints: EndpointCategory[] = [
   {
     id: "messages",
@@ -67,7 +69,7 @@ export const apiEndpoints: EndpointCategory[] = [
           }
         ],
         examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/send-text" \\
+          curl: `curl -X POST "${API_BASE_URL}/send-text" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
@@ -77,7 +79,7 @@ export const apiEndpoints: EndpointCategory[] = [
           nodejs: `const axios = require('axios');
 
 const response = await axios.post(
-  'https://api.dispatchone.io/v1/send-text',
+  '${API_BASE_URL}/send-text',
   {
     phone: '5511999999999',
     message: 'Olá! Esta é uma mensagem de teste.'
@@ -92,7 +94,7 @@ const response = await axios.post(
           python: `import requests
 
 response = requests.post(
-    'https://api.dispatchone.io/v1/send-text',
+    '${API_BASE_URL}/send-text',
     json={
         'phone': '5511999999999',
         'message': 'Olá! Esta é uma mensagem de teste.'
@@ -157,7 +159,7 @@ response = requests.post(
           }
         ],
         examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/send-media" \\
+          curl: `curl -X POST "${API_BASE_URL}/send-media" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
@@ -169,7 +171,7 @@ response = requests.post(
           nodejs: `const axios = require('axios');
 
 const response = await axios.post(
-  'https://api.dispatchone.io/v1/send-media',
+  '${API_BASE_URL}/send-media',
   {
     phone: '5511999999999',
     mediaUrl: 'https://example.com/image.jpg',
@@ -186,7 +188,7 @@ const response = await axios.post(
           python: `import requests
 
 response = requests.post(
-    'https://api.dispatchone.io/v1/send-media',
+    '${API_BASE_URL}/send-media',
     json={
         'phone': '5511999999999',
         'mediaUrl': 'https://example.com/image.jpg',
@@ -254,7 +256,7 @@ response = requests.post(
           }
         ],
         examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/send-document" \\
+          curl: `curl -X POST "${API_BASE_URL}/send-document" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
@@ -266,7 +268,7 @@ response = requests.post(
           nodejs: `const axios = require('axios');
 
 const response = await axios.post(
-  'https://api.dispatchone.io/v1/send-document',
+  '${API_BASE_URL}/send-document',
   {
     phone: '5511999999999',
     documentUrl: 'https://example.com/report.pdf',
@@ -283,7 +285,7 @@ const response = await axios.post(
           python: `import requests
 
 response = requests.post(
-    'https://api.dispatchone.io/v1/send-document',
+    '${API_BASE_URL}/send-document',
     json={
         'phone': '5511999999999',
         'documentUrl': 'https://example.com/report.pdf',
@@ -357,7 +359,7 @@ response = requests.post(
           }
         ],
         examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/send-location" \\
+          curl: `curl -X POST "${API_BASE_URL}/send-location" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
@@ -370,7 +372,7 @@ response = requests.post(
           nodejs: `const axios = require('axios');
 
 const response = await axios.post(
-  'https://api.dispatchone.io/v1/send-location',
+  '${API_BASE_URL}/send-location',
   {
     phone: '5511999999999',
     latitude: -23.5505,
@@ -388,7 +390,7 @@ const response = await axios.post(
           python: `import requests
 
 response = requests.post(
-    'https://api.dispatchone.io/v1/send-location',
+    '${API_BASE_URL}/send-location',
     json={
         'phone': '5511999999999',
         'latitude': -23.5505,
@@ -462,7 +464,7 @@ response = requests.post(
           }
         ],
         examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/send-contact" \\
+          curl: `curl -X POST "${API_BASE_URL}/send-contact" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
@@ -475,7 +477,7 @@ response = requests.post(
           nodejs: `const axios = require('axios');
 
 const response = await axios.post(
-  'https://api.dispatchone.io/v1/send-contact',
+  '${API_BASE_URL}/send-contact',
   {
     phone: '5511999999999',
     contactName: 'João Silva',
@@ -493,7 +495,7 @@ const response = await axios.post(
           python: `import requests
 
 response = requests.post(
-    'https://api.dispatchone.io/v1/send-contact',
+    '${API_BASE_URL}/send-contact',
     json={
         'phone': '5511999999999',
         'contactName': 'João Silva',
@@ -523,7 +525,331 @@ response = requests.post(
               success: false,
               error: {
                 code: "INVALID_CONTACT",
-                message: "Os dados do contato são inválidos."
+                message: "Os dados do contato são inválidos ou incompletos."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "send-list",
+        method: "POST",
+        path: "/send-list",
+        description: "Envia uma mensagem com lista de opções interativas.",
+        attributes: [
+          {
+            name: "phone",
+            type: "string",
+            required: true,
+            description: "Número no formato DDI+DDD+Número (ex: 5511999999999)"
+          },
+          {
+            name: "title",
+            type: "string",
+            required: true,
+            description: "Título da lista (máx: 60 caracteres)"
+          },
+          {
+            name: "description",
+            type: "string",
+            required: true,
+            description: "Descrição da lista (máx: 1024 caracteres)"
+          },
+          {
+            name: "buttonText",
+            type: "string",
+            required: true,
+            description: "Texto do botão para abrir a lista (máx: 20 caracteres)"
+          },
+          {
+            name: "sections",
+            type: "array",
+            required: true,
+            description: "Array de seções, cada uma com título e rows (opções)"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/send-list" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "phone": "5511999999999",
+    "title": "Menu de Opções",
+    "description": "Selecione uma opção abaixo",
+    "buttonText": "Ver opções",
+    "sections": [
+      {
+        "title": "Produtos",
+        "rows": [
+          {"id": "prod_1", "title": "Produto A", "description": "Descrição do produto A"},
+          {"id": "prod_2", "title": "Produto B", "description": "Descrição do produto B"}
+        ]
+      }
+    ]
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/send-list',
+  {
+    phone: '5511999999999',
+    title: 'Menu de Opções',
+    description: 'Selecione uma opção abaixo',
+    buttonText: 'Ver opções',
+    sections: [
+      {
+        title: 'Produtos',
+        rows: [
+          { id: 'prod_1', title: 'Produto A', description: 'Descrição do produto A' },
+          { id: 'prod_2', title: 'Produto B', description: 'Descrição do produto B' }
+        ]
+      }
+    ]
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/send-list',
+    json={
+        'phone': '5511999999999',
+        'title': 'Menu de Opções',
+        'description': 'Selecione uma opção abaixo',
+        'buttonText': 'Ver opções',
+        'sections': [
+            {
+                'title': 'Produtos',
+                'rows': [
+                    {'id': 'prod_1', 'title': 'Produto A', 'description': 'Descrição do produto A'},
+                    {'id': 'prod_2', 'title': 'Produto B', 'description': 'Descrição do produto B'}
+                ]
+            }
+        ]
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              messageId: "BAE5F4A3C2D1E683",
+              phone: "5511999999999",
+              timestamp: "2024-01-15T10:55:00Z"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "INVALID_LIST",
+                message: "A estrutura da lista é inválida."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "send-buttons",
+        method: "POST",
+        path: "/send-buttons",
+        description: "Envia uma mensagem com botões de resposta rápida.",
+        attributes: [
+          {
+            name: "phone",
+            type: "string",
+            required: true,
+            description: "Número no formato DDI+DDD+Número (ex: 5511999999999)"
+          },
+          {
+            name: "title",
+            type: "string",
+            required: true,
+            description: "Título da mensagem (máx: 60 caracteres)"
+          },
+          {
+            name: "description",
+            type: "string",
+            required: false,
+            description: "Descrição adicional (máx: 1024 caracteres)"
+          },
+          {
+            name: "buttons",
+            type: "array",
+            required: true,
+            description: "Array de botões (máx: 3), cada um com id e text"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/send-buttons" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "phone": "5511999999999",
+    "title": "Confirme sua escolha",
+    "description": "Selecione uma das opções abaixo",
+    "buttons": [
+      {"id": "btn_yes", "text": "Sim"},
+      {"id": "btn_no", "text": "Não"},
+      {"id": "btn_maybe", "text": "Talvez"}
+    ]
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/send-buttons',
+  {
+    phone: '5511999999999',
+    title: 'Confirme sua escolha',
+    description: 'Selecione uma das opções abaixo',
+    buttons: [
+      { id: 'btn_yes', text: 'Sim' },
+      { id: 'btn_no', text: 'Não' },
+      { id: 'btn_maybe', text: 'Talvez' }
+    ]
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/send-buttons',
+    json={
+        'phone': '5511999999999',
+        'title': 'Confirme sua escolha',
+        'description': 'Selecione uma das opções abaixo',
+        'buttons': [
+            {'id': 'btn_yes', 'text': 'Sim'},
+            {'id': 'btn_no', 'text': 'Não'},
+            {'id': 'btn_maybe', 'text': 'Talvez'}
+        ]
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              messageId: "BAE5F4A3C2D1E684",
+              phone: "5511999999999",
+              timestamp: "2024-01-15T11:00:00Z"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "INVALID_BUTTONS",
+                message: "A estrutura dos botões é inválida."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "send-reaction",
+        method: "POST",
+        path: "/send-reaction",
+        description: "Envia uma reação (emoji) a uma mensagem existente.",
+        attributes: [
+          {
+            name: "phone",
+            type: "string",
+            required: true,
+            description: "Número no formato DDI+DDD+Número (ex: 5511999999999)"
+          },
+          {
+            name: "messageId",
+            type: "string",
+            required: true,
+            description: "ID da mensagem a ser reagida"
+          },
+          {
+            name: "reaction",
+            type: "string",
+            required: true,
+            description: "Emoji da reação (ex: '👍', '❤️', '😂')"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/send-reaction" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "phone": "5511999999999",
+    "messageId": "BAE5F4A3C2D1E678",
+    "reaction": "👍"
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/send-reaction',
+  {
+    phone: '5511999999999',
+    messageId: 'BAE5F4A3C2D1E678',
+    reaction: '👍'
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/send-reaction',
+    json={
+        'phone': '5511999999999',
+        'messageId': 'BAE5F4A3C2D1E678',
+        'reaction': '👍'
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              messageId: "BAE5F4A3C2D1E685",
+              reactionTo: "BAE5F4A3C2D1E678",
+              timestamp: "2024-01-15T11:05:00Z"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "MESSAGE_NOT_FOUND",
+                message: "A mensagem referenciada não foi encontrada."
               }
             }
           }
@@ -534,52 +860,22 @@ response = requests.post(
   {
     id: "instance",
     name: "Instância",
-    description: "Endpoints para gerenciamento de instâncias",
+    description: "Gerenciamento de conexão WhatsApp",
     endpoints: [
       {
-        id: "instances-list",
+        id: "get-qrcode",
         method: "GET",
-        path: "/instances",
-        description: "Retorna a lista de todas as instâncias cadastradas na conta com suporte a paginação e filtros.",
-        attributes: [
-          {
-            name: "page",
-            type: "number",
-            required: false,
-            description: "Número da página (padrão: 1)"
-          },
-          {
-            name: "limit",
-            type: "number",
-            required: false,
-            description: "Itens por página (máx: 100, padrão: 20)"
-          },
-          {
-            name: "status",
-            type: "string",
-            required: false,
-            description: "Filtrar por status: 'connected', 'disconnected', 'waitingConnection'"
-          },
-          {
-            name: "provider",
-            type: "string",
-            required: false,
-            description: "Filtrar por provedor: 'z-api', 'evolution', 'meta'"
-          }
-        ],
+        path: "/instance/qrcode",
+        description: "Obtém o QR Code para conectar uma nova instância do WhatsApp.",
+        attributes: [],
         examples: {
-          curl: `curl -X GET "https://api.dispatchone.io/v1/instances?page=1&limit=20&status=connected" \\
+          curl: `curl -X GET "${API_BASE_URL}/instance/qrcode" \\
   -H "Authorization: Bearer YOUR_API_TOKEN"`,
           nodejs: `const axios = require('axios');
 
 const response = await axios.get(
-  'https://api.dispatchone.io/v1/instances',
+  '${API_BASE_URL}/instance/qrcode',
   {
-    params: {
-      page: 1,
-      limit: 20,
-      status: 'connected'
-    },
     headers: {
       'Authorization': 'Bearer YOUR_API_TOKEN'
     }
@@ -588,12 +884,7 @@ const response = await axios.get(
           python: `import requests
 
 response = requests.get(
-    'https://api.dispatchone.io/v1/instances',
-    params={
-        'page': 1,
-        'limit': 20,
-        'status': 'connected'
-    },
+    '${API_BASE_URL}/instance/qrcode',
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN'
     }
@@ -604,220 +895,8 @@ response = requests.get(
             code: 200,
             body: {
               success: true,
-              data: [
-                {
-                  id: "inst_abc123",
-                  name: "Atendimento Principal",
-                  provider: "Z-API",
-                  status: "connected",
-                  phone: "5511999999999",
-                  idInstance: "3E2535E6DDA3413414F54AAAADA6D328",
-                  health: 98,
-                  dispatches: 1250,
-                  createdAt: "2024-01-05T10:00:00Z"
-                }
-              ],
-              pagination: {
-                page: 1,
-                limit: 20,
-                total: 5,
-                totalPages: 1
-              }
-            }
-          },
-          error: {
-            code: 401,
-            body: {
-              success: false,
-              error: {
-                code: "UNAUTHORIZED",
-                message: "Token de autenticação inválido."
-              }
-            }
-          }
-        }
-      },
-      {
-        id: "instance-find",
-        method: "GET",
-        path: "/instance/find",
-        description: "Busca uma instância específica por diferentes critérios de identificação. Pelo menos um parâmetro de busca é obrigatório.",
-        attributes: [
-          {
-            name: "id",
-            type: "string",
-            required: false,
-            description: "ID interno da instância no dispatchOne"
-          },
-          {
-            name: "phone",
-            type: "string",
-            required: false,
-            description: "Número de telefone conectado (formato: 5511999999999)"
-          },
-          {
-            name: "idInstance",
-            type: "string",
-            required: false,
-            description: "ID externo da instância no provedor (Z-API, Evolution)"
-          },
-          {
-            name: "tokenInstance",
-            type: "string",
-            required: false,
-            description: "Token externo da instância no provedor"
-          }
-        ],
-        examples: {
-          curl: `curl -X GET "https://api.dispatchone.io/v1/instance/find?phone=5511999999999" \\
-  -H "Authorization: Bearer YOUR_API_TOKEN"`,
-          nodejs: `const axios = require('axios');
-
-const response = await axios.get(
-  'https://api.dispatchone.io/v1/instance/find',
-  {
-    params: {
-      phone: '5511999999999'
-    },
-    headers: {
-      'Authorization': 'Bearer YOUR_API_TOKEN'
-    }
-  }
-);`,
-          python: `import requests
-
-response = requests.get(
-    'https://api.dispatchone.io/v1/instance/find',
-    params={
-        'phone': '5511999999999'
-    },
-    headers={
-        'Authorization': 'Bearer YOUR_API_TOKEN'
-    }
-)`
-        },
-        responses: {
-          success: {
-            code: 200,
-            body: {
-              success: true,
-              instance: {
-                id: "inst_abc123",
-                name: "Atendimento Principal",
-                provider: "Z-API",
-                function: "dispatch",
-                status: "connected",
-                phone: "5511999999999",
-                idInstance: "3E2535E6DDA3413414F54AAAADA6D328",
-                tokenInstance: "8565E8B2253B010E11996B12",
-                health: 98,
-                dispatches: 1250,
-                lastCheck: "2024-01-15T12:00:00Z",
-                connectedAt: "2024-01-10T08:00:00Z",
-                createdAt: "2024-01-05T10:00:00Z"
-              }
-            }
-          },
-          error: {
-            code: 404,
-            body: {
-              success: false,
-              error: {
-                code: "INSTANCE_NOT_FOUND",
-                message: "Nenhuma instância encontrada com os critérios informados."
-              }
-            }
-          }
-        }
-      },
-      {
-        id: "instance-update-status",
-        method: "PUT",
-        path: "/instance/status",
-        description: "Atualiza o status de conexão de uma instância. Utilizado internamente por webhooks de provedores ou para gerenciamento manual.",
-        attributes: [
-          {
-            name: "instanceId",
-            type: "string",
-            required: true,
-            description: "ID da instância a ser atualizada"
-          },
-          {
-            name: "status",
-            type: "string",
-            required: true,
-            description: "Novo status: 'connected', 'disconnected', 'waitingConnection'"
-          },
-          {
-            name: "phone",
-            type: "string",
-            required: false,
-            description: "Número conectado (obrigatório se status='connected')"
-          },
-          {
-            name: "reason",
-            type: "string",
-            required: false,
-            description: "Motivo da mudança de status (ex: 'Desconectado pelo usuário')"
-          },
-          {
-            name: "metadata",
-            type: "object",
-            required: false,
-            description: "Dados adicionais do provedor"
-          }
-        ],
-        examples: {
-          curl: `curl -X PUT "https://api.dispatchone.io/v1/instance/status" \\
-  -H "Content-Type: application/json" \\
-  -H "Authorization: Bearer YOUR_API_TOKEN" \\
-  -d '{
-    "instanceId": "inst_abc123",
-    "status": "disconnected",
-    "reason": "Desconectado pelo usuário"
-  }'`,
-          nodejs: `const axios = require('axios');
-
-const response = await axios.put(
-  'https://api.dispatchone.io/v1/instance/status',
-  {
-    instanceId: 'inst_abc123',
-    status: 'disconnected',
-    reason: 'Desconectado pelo usuário'
-  },
-  {
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer YOUR_API_TOKEN'
-    }
-  }
-);`,
-          python: `import requests
-
-response = requests.put(
-    'https://api.dispatchone.io/v1/instance/status',
-    json={
-        'instanceId': 'inst_abc123',
-        'status': 'disconnected',
-        'reason': 'Desconectado pelo usuário'
-    },
-    headers={
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer YOUR_API_TOKEN'
-    }
-)`
-        },
-        responses: {
-          success: {
-            code: 200,
-            body: {
-              success: true,
-              instance: {
-                id: "inst_abc123",
-                status: "disconnected",
-                updatedAt: "2024-01-15T12:30:00Z"
-              },
-              previousStatus: "connected"
+              qrcode: "data:image/png;base64,iVBORw0KGgo...",
+              expiresIn: 60
             }
           },
           error: {
@@ -825,8 +904,157 @@ response = requests.put(
             body: {
               success: false,
               error: {
-                code: "INVALID_STATUS",
-                message: "Status inválido. Use: 'connected', 'disconnected' ou 'waitingConnection'."
+                code: "INSTANCE_ALREADY_CONNECTED",
+                message: "A instância já está conectada."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "get-status",
+        method: "GET",
+        path: "/instance/status",
+        description: "Verifica o status da conexão da instância do WhatsApp.",
+        attributes: [],
+        examples: {
+          curl: `curl -X GET "${API_BASE_URL}/instance/status" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.get(
+  '${API_BASE_URL}/instance/status',
+  {
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.get(
+    '${API_BASE_URL}/instance/status',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              status: "connected",
+              phone: "5511999999999",
+              name: "Meu WhatsApp",
+              connectedAt: "2024-01-15T08:00:00Z"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "INSTANCE_NOT_FOUND",
+                message: "Instância não encontrada."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "disconnect",
+        method: "POST",
+        path: "/instance/disconnect",
+        description: "Desconecta a instância do WhatsApp.",
+        attributes: [],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/instance/disconnect" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/instance/disconnect',
+  {},
+  {
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/instance/disconnect',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              message: "Instância desconectada com sucesso."
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "INSTANCE_NOT_CONNECTED",
+                message: "A instância não está conectada."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "restart",
+        method: "POST",
+        path: "/instance/restart",
+        description: "Reinicia a instância do WhatsApp.",
+        attributes: [],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/instance/restart" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/instance/restart',
+  {},
+  {
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/instance/restart',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              message: "Instância reiniciada com sucesso."
+            }
+          },
+          error: {
+            code: 500,
+            body: {
+              success: false,
+              error: {
+                code: "RESTART_FAILED",
+                message: "Falha ao reiniciar a instância."
               }
             }
           }
@@ -837,162 +1065,50 @@ response = requests.put(
   {
     id: "webhooks",
     name: "Webhooks",
-    description: "Endpoints para configuração e recebimento de webhooks",
+    description: "Configuração de webhooks para recebimento de eventos",
     endpoints: [
       {
-        id: "webhook-provider",
+        id: "set-webhook",
         method: "POST",
-        path: "/webhook-provider",
-        description: "Endpoint para receber eventos dos provedores de WhatsApp (Z-API, Evolution API, Meta).",
+        path: "/webhook/set",
+        description: "Configura a URL do webhook para receber eventos.",
         attributes: [
           {
-            name: "event_type",
+            name: "url",
             type: "string",
             required: true,
-            description: "Tipo do evento (message, status, connection, etc.)"
-          },
-          {
-            name: "instance_id",
-            type: "string",
-            required: true,
-            description: "ID da instância que gerou o evento"
-          },
-          {
-            name: "provider",
-            type: "string",
-            required: true,
-            description: "Nome do provedor (z-api, evolution, meta)"
-          },
-          {
-            name: "payload",
-            type: "object",
-            required: true,
-            description: "Dados do evento específicos de cada provedor"
-          }
-        ],
-        examples: {
-          curl: `curl -X POST "https://api.dispatchone.io/v1/webhook-provider" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "event_type": "message.received",
-    "instance_id": "inst_abc123",
-    "provider": "z-api",
-    "payload": {
-      "messageId": "msg_xyz789",
-      "from": "5511999999999",
-      "body": "Olá, preciso de ajuda!",
-      "timestamp": "2024-01-15T12:00:00Z"
-    }
-  }'`,
-          nodejs: `const axios = require('axios');
-
-const response = await axios.post(
-  'https://api.dispatchone.io/v1/webhook-provider',
-  {
-    event_type: 'message.received',
-    instance_id: 'inst_abc123',
-    provider: 'z-api',
-    payload: {
-      messageId: 'msg_xyz789',
-      from: '5511999999999',
-      body: 'Olá, preciso de ajuda!',
-      timestamp: '2024-01-15T12:00:00Z'
-    }
-  },
-  {
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  }
-);`,
-          python: `import requests
-
-response = requests.post(
-    'https://api.dispatchone.io/v1/webhook-provider',
-    json={
-        'event_type': 'message.received',
-        'instance_id': 'inst_abc123',
-        'provider': 'z-api',
-        'payload': {
-            'messageId': 'msg_xyz789',
-            'from': '5511999999999',
-            'body': 'Olá, preciso de ajuda!',
-            'timestamp': '2024-01-15T12:00:00Z'
-        }
-    },
-    headers={
-        'Content-Type': 'application/json'
-    }
-)`
-        },
-        responses: {
-          success: {
-            code: 200,
-            body: {
-              success: true,
-              eventId: "evt_abc123xyz",
-              processed: true,
-              timestamp: "2024-01-15T12:00:01Z"
-            }
-          },
-          error: {
-            code: 400,
-            body: {
-              success: false,
-              error: {
-                code: "INVALID_PAYLOAD",
-                message: "O payload do evento é inválido ou está incompleto."
-              }
-            }
-          }
-        }
-      },
-      {
-        id: "webhook-config",
-        method: "PUT",
-        path: "/webhook/config",
-        description: "Configura a URL de webhook para receber eventos da instância.",
-        attributes: [
-          {
-            name: "webhookUrl",
-            type: "string",
-            required: true,
-            description: "URL HTTPS para receber os eventos"
+            description: "URL do webhook (deve ser HTTPS)"
           },
           {
             name: "events",
             type: "array",
             required: false,
-            description: "Lista de eventos a receber (padrão: todos)"
+            description: "Lista de eventos a receber (default: todos)"
           },
           {
-            name: "headers",
-            type: "object",
+            name: "secret",
+            type: "string",
             required: false,
-            description: "Headers customizados para as requisições"
+            description: "Segredo para validação de assinatura do webhook"
           }
         ],
         examples: {
-          curl: `curl -X PUT "https://api.dispatchone.io/v1/webhook/config" \\
+          curl: `curl -X POST "${API_BASE_URL}/webhook/set" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
-    "webhookUrl": "https://meusite.com/webhook",
-    "events": ["message.received", "message.sent", "status.change"],
-    "headers": {
-      "Authorization": "Bearer meu-token-secreto"
-    }
+    "url": "https://meusite.com/webhook",
+    "events": ["message.received", "message.sent", "message.delivered"],
+    "secret": "meu_segredo_webhook"
   }'`,
           nodejs: `const axios = require('axios');
 
-const response = await axios.put(
-  'https://api.dispatchone.io/v1/webhook/config',
+const response = await axios.post(
+  '${API_BASE_URL}/webhook/set',
   {
-    webhookUrl: 'https://meusite.com/webhook',
-    events: ['message.received', 'message.sent', 'status.change'],
-    headers: {
-      Authorization: 'Bearer meu-token-secreto'
-    }
+    url: 'https://meusite.com/webhook',
+    events: ['message.received', 'message.sent', 'message.delivered'],
+    secret: 'meu_segredo_webhook'
   },
   {
     headers: {
@@ -1003,14 +1119,12 @@ const response = await axios.put(
 );`,
           python: `import requests
 
-response = requests.put(
-    'https://api.dispatchone.io/v1/webhook/config',
+response = requests.post(
+    '${API_BASE_URL}/webhook/set',
     json={
-        'webhookUrl': 'https://meusite.com/webhook',
-        'events': ['message.received', 'message.sent', 'status.change'],
-        'headers': {
-            'Authorization': 'Bearer meu-token-secreto'
-        }
+        'url': 'https://meusite.com/webhook',
+        'events': ['message.received', 'message.sent', 'message.delivered'],
+        'secret': 'meu_segredo_webhook'
     },
     headers={
         'Content-Type': 'application/json',
@@ -1023,9 +1137,9 @@ response = requests.put(
             code: 200,
             body: {
               success: true,
-              message: "Webhook configurado com sucesso.",
-              webhookUrl: "https://meusite.com/webhook",
-              events: ["message.received", "message.sent", "status.change"]
+              webhookId: "wh_abc123",
+              url: "https://meusite.com/webhook",
+              events: ["message.received", "message.sent", "message.delivered"]
             }
           },
           error: {
@@ -1034,7 +1148,160 @@ response = requests.put(
               success: false,
               error: {
                 code: "INVALID_WEBHOOK_URL",
-                message: "A URL do webhook deve usar HTTPS."
+                message: "A URL do webhook é inválida ou não é HTTPS."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "get-webhook",
+        method: "GET",
+        path: "/webhook",
+        description: "Obtém a configuração atual do webhook.",
+        attributes: [],
+        examples: {
+          curl: `curl -X GET "${API_BASE_URL}/webhook" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.get(
+  '${API_BASE_URL}/webhook',
+  {
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.get(
+    '${API_BASE_URL}/webhook',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              webhook: {
+                id: "wh_abc123",
+                url: "https://meusite.com/webhook",
+                events: ["message.received", "message.sent"],
+                createdAt: "2024-01-10T10:00:00Z",
+                lastDeliveryAt: "2024-01-15T09:30:00Z"
+              }
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: {
+                code: "WEBHOOK_NOT_CONFIGURED",
+                message: "Nenhum webhook configurado."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "delete-webhook",
+        method: "DELETE",
+        path: "/webhook",
+        description: "Remove a configuração do webhook.",
+        attributes: [],
+        examples: {
+          curl: `curl -X DELETE "${API_BASE_URL}/webhook" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.delete(
+  '${API_BASE_URL}/webhook',
+  {
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.delete(
+    '${API_BASE_URL}/webhook',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              message: "Webhook removido com sucesso."
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: {
+                code: "WEBHOOK_NOT_FOUND",
+                message: "Webhook não encontrado."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "test-webhook",
+        method: "POST",
+        path: "/webhook/test",
+        description: "Envia um evento de teste para o webhook configurado.",
+        attributes: [],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/webhook/test" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/webhook/test',
+  {},
+  {
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/webhook/test',
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              message: "Evento de teste enviado com sucesso.",
+              statusCode: 200,
+              responseTime: 150
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "WEBHOOK_TEST_FAILED",
+                message: "Falha ao enviar evento de teste."
               }
             }
           }
@@ -1045,34 +1312,15 @@ response = requests.put(
 ];
 
 export const eventTypes = [
-  {
-    id: "message.received",
-    name: "message.received",
-    description: "Disparado quando uma nova mensagem é recebida"
-  },
-  {
-    id: "message.sent",
-    name: "message.sent",
-    description: "Disparado quando uma mensagem é enviada com sucesso"
-  },
-  {
-    id: "message.delivered",
-    name: "message.delivered",
-    description: "Disparado quando uma mensagem é entregue ao destinatário"
-  },
-  {
-    id: "message.read",
-    name: "message.read",
-    description: "Disparado quando uma mensagem é lida pelo destinatário"
-  },
-  {
-    id: "status.change",
-    name: "status.change",
-    description: "Disparado quando o status da instância muda"
-  },
-  {
-    id: "connection.update",
-    name: "connection.update",
-    description: "Disparado quando há atualização na conexão"
-  }
+  { id: "message.received", name: "message.received", description: "Mensagem recebida" },
+  { id: "message.sent", name: "message.sent", description: "Mensagem enviada" },
+  { id: "message.delivered", name: "message.delivered", description: "Mensagem entregue" },
+  { id: "message.read", name: "message.read", description: "Mensagem lida" },
+  { id: "message.failed", name: "message.failed", description: "Falha no envio" },
+  { id: "status.online", name: "status.online", description: "Contato online" },
+  { id: "status.offline", name: "status.offline", description: "Contato offline" },
+  { id: "status.typing", name: "status.typing", description: "Contato digitando" },
+  { id: "connection.connected", name: "connection.connected", description: "Instância conectada" },
+  { id: "connection.disconnected", name: "connection.disconnected", description: "Instância desconectada" },
+  { id: "connection.qr_updated", name: "connection.qr_updated", description: "QR Code atualizado" }
 ];

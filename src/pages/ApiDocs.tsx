@@ -23,7 +23,7 @@ const ApiDocs = () => {
   const [activeSection, setActiveSection] = useState("introduction");
   const [copied, setCopied] = useState<string | null>(null);
 
-  const baseUrl = "https://api.dispatchone.io/v1";
+  const baseUrl = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
 
   const copyToClipboard = async (text: string, key: string) => {
     try {
