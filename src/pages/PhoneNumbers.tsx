@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Phone, Plus, Search, MoreHorizontal, RefreshCw, Pause, Play, Loader2, Pencil, Trash2 } from "lucide-react";
+import { Phone, Plus, Search, MoreHorizontal, RefreshCw, Pause, Play, Loader2, Pencil, Trash2, Wifi, WifiOff } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -56,6 +56,7 @@ interface PhoneNumber {
   health: number;
   cycleUsage: { used: number; total: number };
   lastUsed: string;
+  connected: boolean;
 }
 
 const initialNumbers: PhoneNumber[] = [
@@ -68,6 +69,7 @@ const initialNumbers: PhoneNumber[] = [
     health: 98,
     cycleUsage: { used: 45, total: 100 },
     lastUsed: "2 min ago",
+    connected: true,
   },
   {
     id: "2",
@@ -78,6 +80,7 @@ const initialNumbers: PhoneNumber[] = [
     health: 95,
     cycleUsage: { used: 72, total: 100 },
     lastUsed: "5 min ago",
+    connected: true,
   },
   {
     id: "3",
@@ -88,6 +91,7 @@ const initialNumbers: PhoneNumber[] = [
     health: 65,
     cycleUsage: { used: 12, total: 50 },
     lastUsed: "1 hour ago",
+    connected: false,
   },
   {
     id: "4",
@@ -98,6 +102,7 @@ const initialNumbers: PhoneNumber[] = [
     health: 88,
     cycleUsage: { used: 0, total: 100 },
     lastUsed: "2 days ago",
+    connected: true,
   },
   {
     id: "5",
@@ -108,6 +113,7 @@ const initialNumbers: PhoneNumber[] = [
     health: 0,
     cycleUsage: { used: 0, total: 0 },
     lastUsed: "5 days ago",
+    connected: false,
   },
 ];
 
@@ -162,6 +168,7 @@ export default function PhoneNumbers() {
       health: 50,
       cycleUsage: { used: 0, total: 50 },
       lastUsed: "Never",
+      connected: false,
     };
 
     setNumbers((prev) => [phoneNumber, ...prev]);
@@ -270,6 +277,25 @@ export default function PhoneNumbers() {
         <Badge variant="secondary" className="font-normal">
           {num.provider}
         </Badge>
+      ),
+    },
+    {
+      key: "connected",
+      header: "Connected",
+      render: (num) => (
+        <div className="flex items-center gap-2">
+          {num.connected ? (
+            <>
+              <Wifi className="h-4 w-4 text-success" />
+              <span className="text-sm text-success">Yes</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">No</span>
+            </>
+          )}
+        </div>
       ),
     },
     {
