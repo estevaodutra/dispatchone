@@ -28,6 +28,8 @@ interface Instance {
   features: string[];
   documentation: string;
   phoneNumber?: string;
+  idInstance?: string;      // ID da instância no provedor
+  tokenInstance?: string;   // Token de autenticação do provedor
 }
 const initialInstances: Instance[] = [{
   id: "1",
@@ -138,13 +140,16 @@ export default function Instances() {
   const [phoneForConnection, setPhoneForConnection] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [webhookResponse, setWebhookResponse] = useState<{
-    value?: string; // Base64 do QR Code (formato real da API)
+    value?: string; // Base64 do QR Code (formato antigo)
+    qrcode_image?: string; // Base64 do QR Code (formato atualizado)
     qrCode?: string;
     qrCodeUrl?: string;
     sessionId?: string;
     expiresAt?: string;
     message?: string;
     code?: string; // Código de conexão via telefone
+    id_instance?: string; // ID da instância no provedor
+    token_instance?: string; // Token de autenticação
   } | null>(null);
   const [qrTimeLeft, setQrTimeLeft] = useState(20);
   const [isQrExpired, setIsQrExpired] = useState(false);
@@ -182,6 +187,25 @@ export default function Instances() {
         normalizedData = data[0];
       }
       setWebhookResponse(normalizedData);
+
+      // Salvar credenciais se presentes na resposta
+      if (normalizedData.id_instance && normalizedData.token_instance) {
+        setInstances(prev => prev.map(inst => 
+          inst.id === selectedInstance.id 
+            ? { 
+                ...inst, 
+                idInstance: normalizedData.id_instance,
+                tokenInstance: normalizedData.token_instance 
+              } 
+            : inst
+        ));
+        
+        toast({
+          title: "Credenciais recebidas",
+          description: "ID e Token da instância foram salvos."
+        });
+      }
+
       return normalizedData;
     } catch (error) {
       console.error("Error triggering webhook:", error);
@@ -200,7 +224,7 @@ export default function Instances() {
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     
-    const hasQrOrCode = webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl || webhookResponse?.code;
+    const hasQrOrCode = webhookResponse?.qrcode_image || webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl || webhookResponse?.code;
     
     if ((connectionStep === "qr" || connectionStep === "code") && hasQrOrCode && !isConnecting) {
       setQrTimeLeft(20);
@@ -516,6 +540,14 @@ export default function Instances() {
                       <p className="font-mono text-sm font-medium">{instance.connectedNumber}</p>
                     </div>}
 
+                  {/* Instance Credentials */}
+                  {instance.idInstance && (
+                    <div className="p-2 bg-muted/50 rounded text-xs font-mono space-y-1">
+                      <p><span className="text-muted-foreground">Instance ID:</span> {instance.idInstance}</p>
+                      <p><span className="text-muted-foreground">Token:</span> ••••••{instance.tokenInstance?.slice(-6)}</p>
+                    </div>
+                  )}
+
                   {/* Health & Stats */}
                   {instance.status === "connected" && <>
                       <div className="grid grid-cols-2 gap-4">
@@ -693,12 +725,12 @@ export default function Instances() {
                 <div className="relative w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4 overflow-hidden">
                   {isConnecting ? (
                     <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-                  ) : webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl ? (
+                  ) : webhookResponse?.qrcode_image || webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl ? (
                     <>
                       <img 
-                        src={webhookResponse.value || webhookResponse.qrCode || webhookResponse.qrCodeUrl} 
+                        src={webhookResponse.qrcode_image || webhookResponse.value || webhookResponse.qrCode || webhookResponse.qrCodeUrl} 
                         alt="QR Code" 
-                        className={`w-full h-full object-contain ${isQrExpired ? "opacity-20 blur-sm" : ""}`} 
+                        className={`w-full h-full object-contain ${isQrExpired ? "opacity-20 blur-sm" : ""}`}
                       />
                       {isQrExpired && (
                         <div className="absolute inset-0 flex items-center justify-center">
@@ -715,7 +747,7 @@ export default function Instances() {
                 </div>
                 
                 {/* Timer Display */}
-                {(webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl) && !isConnecting && (
+                {(webhookResponse?.qrcode_image || webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl) && !isConnecting && (
                   <TimerDisplay timeLeft={qrTimeLeft} isExpired={isQrExpired} />
                 )}
                 
