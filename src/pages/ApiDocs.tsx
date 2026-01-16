@@ -1,294 +1,261 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/dispatch";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useToast } from "@/hooks/use-toast";
+import { ApiSidebar, EndpointSection } from "@/components/api-docs";
+import { apiEndpoints, eventTypes } from "@/data/api-endpoints";
 import { useLanguage } from "@/i18n";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import { 
   Copy, 
   Check, 
-  Send, 
-  MessageSquare, 
-  Wifi, 
-  WifiOff, 
-  Activity, 
-  User,
-  Code2,
-  ExternalLink
+  Key, 
+  Shield, 
+  Zap,
+  BookOpen,
+  AlertTriangle,
+  Info
 } from "lucide-react";
 
-const BASE_URL = "https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1";
-
-const eventTypes = [
-  { 
-    id: "message_sent", 
-    icon: Send, 
-    color: "text-green-500",
-    example: {
-      event_type: "message_sent",
-      instance_id: "instance-abc123",
-      provider: "Z-API",
-      data: {
-        message_id: "msg_12345",
-        to: "5511999999999",
-        content: "Olá! Como posso ajudar?",
-        timestamp: "2024-01-15T10:30:00Z"
-      }
-    }
-  },
-  { 
-    id: "message_received", 
-    icon: MessageSquare, 
-    color: "text-blue-500",
-    example: {
-      event_type: "message_received",
-      instance_id: "instance-abc123",
-      provider: "Z-API",
-      data: {
-        message_id: "msg_67890",
-        from: "5511888888888",
-        content: "Preciso de suporte",
-        timestamp: "2024-01-15T10:31:00Z"
-      }
-    }
-  },
-  { 
-    id: "connected", 
-    icon: Wifi, 
-    color: "text-emerald-500",
-    example: {
-      event_type: "connected",
-      instance_id: "instance-abc123",
-      provider: "Evolution API",
-      data: {
-        phone_number: "5511999999999",
-        connected_at: "2024-01-15T08:00:00Z"
-      }
-    }
-  },
-  { 
-    id: "disconnected", 
-    icon: WifiOff, 
-    color: "text-red-500",
-    example: {
-      event_type: "disconnected",
-      instance_id: "instance-abc123",
-      provider: "Evolution API",
-      data: {
-        reason: "session_expired",
-        disconnected_at: "2024-01-15T20:00:00Z"
-      }
-    }
-  },
-  { 
-    id: "message_status", 
-    icon: Activity, 
-    color: "text-orange-500",
-    example: {
-      event_type: "message_status",
-      instance_id: "instance-abc123",
-      provider: "Z-API",
-      data: {
-        message_id: "msg_12345",
-        status: "delivered",
-        updated_at: "2024-01-15T10:30:05Z"
-      }
-    }
-  },
-  { 
-    id: "chat_presence", 
-    icon: User, 
-    color: "text-purple-500",
-    example: {
-      event_type: "chat_presence",
-      instance_id: "instance-abc123",
-      provider: "Z-API",
-      data: {
-        contact: "5511888888888",
-        presence: "typing",
-        timestamp: "2024-01-15T10:32:00Z"
-      }
-    }
-  },
-];
-
-export default function ApiDocs() {
+const ApiDocs = () => {
   const { t } = useLanguage();
   const { toast } = useToast();
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState("introduction");
+  const [copied, setCopied] = useState<string | null>(null);
 
-  const copyToClipboard = async (text: string, label: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopiedUrl(label);
-    toast({
-      title: t("apiDocs.copied"),
-      description: text.length > 50 ? text.substring(0, 50) + "..." : text,
-    });
-    setTimeout(() => setCopiedUrl(null), 2000);
+  const baseUrl = "https://api.dispatchone.io/v1";
+
+  const copyToClipboard = async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      toast({
+        title: "Copiado!",
+        description: "Texto copiado para a área de transferência.",
+      });
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      toast({
+        title: "Erro",
+        description: "Não foi possível copiar.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const webhookUrl = `${BASE_URL}/webhook-provider`;
+  useEffect(() => {
+    const handleScroll = () => {
+      const sections = document.querySelectorAll("section[id]");
+      let currentSection = "introduction";
+
+      sections.forEach((section) => {
+        const rect = section.getBoundingClientRect();
+        if (rect.top <= 150) {
+          currentSection = section.id;
+        }
+      });
+
+      setActiveSection(currentSection);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  const errorCodes = [
+    { code: "INVALID_PHONE", description: "O número de telefone fornecido é inválido ou não está registrado no WhatsApp." },
+    { code: "UNAUTHORIZED", description: "Token de autenticação inválido ou expirado." },
+    { code: "INSTANCE_NOT_CONNECTED", description: "A instância não está conectada ao WhatsApp." },
+    { code: "RATE_LIMIT_EXCEEDED", description: "Limite de requisições excedido. Aguarde antes de tentar novamente." },
+    { code: "INVALID_PAYLOAD", description: "O corpo da requisição contém dados inválidos ou incompletos." },
+    { code: "MEDIA_NOT_FOUND", description: "A URL da mídia não é acessível ou o arquivo não existe." },
+    { code: "MESSAGE_TOO_LONG", description: "A mensagem excede o limite máximo de caracteres." },
+    { code: "INTERNAL_ERROR", description: "Erro interno do servidor. Tente novamente mais tarde." },
+  ];
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-background">
       <PageHeader
-        title={t("apiDocs.title")}
-        description={t("apiDocs.description")}
+        title="API Reference"
+        description="Documentação completa da API dispatchOne"
       />
 
-      {/* Base URL */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Code2 className="h-5 w-5 text-primary" />
-            {t("apiDocs.baseUrl")}
-          </CardTitle>
-          <CardDescription>
-            {t("apiDocs.baseUrlDescription")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-2 p-3 bg-muted rounded-lg font-mono text-sm">
-            <code className="flex-1 break-all">{BASE_URL}</code>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => copyToClipboard(BASE_URL, "base")}
-            >
-              {copiedUrl === "base" ? (
-                <Check className="h-4 w-4 text-green-500" />
-              ) : (
-                <Copy className="h-4 w-4" />
-              )}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex gap-8 px-6 py-8 max-w-[1400px] mx-auto">
+        <ApiSidebar 
+          activeSection={activeSection} 
+          onSectionClick={setActiveSection} 
+        />
 
-      {/* Endpoint Principal */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <ExternalLink className="h-5 w-5 text-primary" />
-            {t("apiDocs.endpoints")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Badge variant="default" className="bg-green-600">POST</Badge>
-              <code className="font-mono text-sm">/webhook-provider</code>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {t("apiDocs.webhookDescription")}
-            </p>
-            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg font-mono text-sm">
-              <code className="flex-1 break-all">{webhookUrl}</code>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => copyToClipboard(webhookUrl, "webhook")}
-              >
-                {copiedUrl === "webhook" ? (
-                  <Check className="h-4 w-4 text-green-500" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+        <main className="flex-1 min-w-0 space-y-12">
+          {/* Introduction */}
+          <section id="introduction" className="scroll-mt-20">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  Introdução
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-muted-foreground">
+                  Bem-vindo à documentação da API <strong className="text-foreground">dispatchOne</strong>. 
+                  Esta API permite integrar funcionalidades de WhatsApp diretamente em suas aplicações.
+                </p>
 
-      {/* Tipos de Eventos */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("apiDocs.eventTypes")}</CardTitle>
-          <CardDescription>
-            {t("apiDocs.eventTypesDescription")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-            {eventTypes.map((event) => (
-              <div
-                key={event.id}
-                className="flex flex-col items-center gap-2 p-4 border rounded-lg hover:bg-muted/50 transition-colors"
-              >
-                <event.icon className={`h-6 w-6 ${event.color}`} />
-                <code className="text-xs font-mono text-center">{event.id}</code>
-                <span className="text-xs text-muted-foreground text-center">
-                  {t(`apiDocs.${event.id}`)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Exemplos de Payload */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("apiDocs.payloadExamples")}</CardTitle>
-          <CardDescription>
-            {t("apiDocs.payloadExamplesDescription")}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs defaultValue="message_sent">
-            <TabsList className="flex flex-wrap h-auto gap-1">
-              {eventTypes.map((event) => (
-                <TabsTrigger key={event.id} value={event.id} className="text-xs">
-                  {event.id}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-            {eventTypes.map((event) => (
-              <TabsContent key={event.id} value={event.id}>
-                <div className="relative">
-                  <pre className="p-4 bg-muted rounded-lg overflow-x-auto text-sm">
-                    <code>{JSON.stringify(event.example, null, 2)}</code>
-                  </pre>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute top-2 right-2"
-                    onClick={() => copyToClipboard(JSON.stringify(event.example, null, 2), event.id)}
-                  >
-                    {copiedUrl === event.id ? (
-                      <Check className="h-4 w-4 text-green-500" />
-                    ) : (
-                      <Copy className="h-4 w-4" />
-                    )}
-                  </Button>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+                    <Zap className="h-5 w-5 text-primary mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-sm">Rápido</h4>
+                      <p className="text-xs text-muted-foreground">Latência média &lt; 100ms</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+                    <Shield className="h-5 w-5 text-primary mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-sm">Seguro</h4>
+                      <p className="text-xs text-muted-foreground">HTTPS + autenticação por token</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-4 rounded-lg bg-muted/50">
+                    <Info className="h-5 w-5 text-primary mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-sm">RESTful</h4>
+                      <p className="text-xs text-muted-foreground">JSON request/response</p>
+                    </div>
+                  </div>
                 </div>
-              </TabsContent>
-            ))}
-          </Tabs>
-        </CardContent>
-      </Card>
 
-      {/* Autenticação */}
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("apiDocs.authentication")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            {t("apiDocs.authDescription")}
-          </p>
-          <div className="p-4 bg-muted rounded-lg">
-            <p className="text-sm font-medium mb-2">{t("apiDocs.headerExample")}:</p>
-            <pre className="text-sm font-mono">
-{`Headers:
-  Content-Type: application/json
-  x-api-secret: YOUR_API_SECRET`}
-            </pre>
-          </div>
-        </CardContent>
-      </Card>
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold mb-2">Base URL</h4>
+                  <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg border border-border">
+                    <code className="font-mono text-sm flex-1 text-primary">{baseUrl}</code>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => copyToClipboard(baseUrl, "baseUrl")}>
+                      {copied === "baseUrl" ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* Authentication */}
+          <section id="authentication" className="scroll-mt-20">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Key className="h-5 w-5 text-primary" />
+                  Autenticação
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-muted-foreground">
+                  Todas as requisições à API devem incluir os seguintes headers de autenticação:
+                </p>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-3 px-4 font-semibold">Header</th>
+                        <th className="text-left py-3 px-4 font-semibold">Descrição</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="bg-muted/30">
+                        <td className="py-3 px-4"><code className="font-mono text-sm bg-muted px-2 py-0.5 rounded text-primary">x-instance-id</code></td>
+                        <td className="py-3 px-4 text-muted-foreground">ID único da instância</td>
+                      </tr>
+                      <tr>
+                        <td className="py-3 px-4"><code className="font-mono text-sm bg-muted px-2 py-0.5 rounded text-primary">x-api-token</code></td>
+                        <td className="py-3 px-4 text-muted-foreground">Token de autenticação da instância</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-amber-500 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-sm text-amber-600 dark:text-amber-400">Importante</h4>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        Nunca exponha seu token em código client-side.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* Endpoints */}
+          {apiEndpoints.map((category) => (
+            <div key={category.id} className="space-y-6">
+              <div className="border-b border-border pb-4">
+                <h2 className="text-xl font-bold text-foreground">{category.name}</h2>
+                <p className="text-sm text-muted-foreground mt-1">{category.description}</p>
+              </div>
+              {category.endpoints.map((endpoint) => (
+                <EndpointSection key={endpoint.id} endpoint={endpoint} />
+              ))}
+            </div>
+          ))}
+
+          {/* Errors */}
+          <section id="errors" className="scroll-mt-20">
+            <Card className="border-border">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Códigos de Erro
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-3 px-4 font-semibold">Código</th>
+                        <th className="text-left py-3 px-4 font-semibold">Descrição</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {errorCodes.map((error, index) => (
+                        <tr key={error.code} className={index % 2 === 0 ? "bg-muted/30" : ""}>
+                          <td className="py-3 px-4">
+                            <code className="font-mono text-xs bg-destructive/10 text-destructive px-2 py-0.5 rounded">{error.code}</code>
+                          </td>
+                          <td className="py-3 px-4 text-muted-foreground">{error.description}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+
+          {/* Event Types */}
+          <section id="event-types" className="scroll-mt-20">
+            <Card className="border-border">
+              <CardHeader><CardTitle>Tipos de Eventos</CardTitle></CardHeader>
+              <CardContent>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {eventTypes.map((event) => (
+                    <div key={event.id} className="p-3 border border-border rounded-lg bg-muted/30">
+                      <code className="font-mono text-sm text-primary">{event.name}</code>
+                      <p className="text-xs text-muted-foreground mt-1">{event.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </section>
+        </main>
+      </div>
     </div>
   );
-}
+};
+
+export default ApiDocs;
