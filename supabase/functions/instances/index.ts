@@ -64,37 +64,6 @@ async function validateApiKey(
   }
 }
 
-// Mock instances data
-const mockInstances = [
-  {
-    id: "inst_abc123",
-    name: "WhatsApp Principal",
-    phone: "5511999999999",
-    status: "connected",
-    createdAt: "2024-01-15T08:00:00Z",
-    lastMessageAt: "2024-01-15T11:30:00Z",
-    messagesCount: 1542
-  },
-  {
-    id: "inst_def456",
-    name: "WhatsApp Suporte",
-    phone: "5511988888888",
-    status: "connected",
-    createdAt: "2024-01-10T10:00:00Z",
-    lastMessageAt: "2024-01-15T10:45:00Z",
-    messagesCount: 892
-  },
-  {
-    id: "inst_ghi789",
-    name: "WhatsApp Vendas",
-    phone: "5511977777777",
-    status: "disconnected",
-    createdAt: "2024-01-05T14:00:00Z",
-    lastMessageAt: "2024-01-14T16:20:00Z",
-    messagesCount: 2341
-  }
-];
-
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -154,21 +123,78 @@ Deno.serve(async (req) => {
     const validPage = Math.max(1, page);
     const validLimit = Math.min(100, Math.max(1, limit));
 
-    // Calculate pagination
-    const startIndex = (validPage - 1) * validLimit;
-    const endIndex = startIndex + validLimit;
-    const paginatedInstances = mockInstances.slice(startIndex, endIndex);
+    // Calculate offset for pagination
+    const offset = (validPage - 1) * validLimit;
 
-    console.log(`Listing instances - page: ${validPage}, limit: ${validLimit}`);
+    console.log(`Listing instances - page: ${validPage}, limit: ${validLimit}, offset: ${offset}`);
+
+    // Get total count
+    const { count: totalCount, error: countError } = await supabase
+      .from("instances")
+      .select("*", { count: "exact", head: true });
+
+    if (countError) {
+      console.error("Error counting instances:", countError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "DATABASE_ERROR",
+            message: "Error counting instances"
+          }
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    // Fetch paginated instances from database
+    const { data: instances, error: dbError } = await supabase
+      .from("instances")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .range(offset, offset + validLimit - 1);
+
+    if (dbError) {
+      console.error("Error fetching instances:", dbError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "DATABASE_ERROR",
+            message: "Error fetching instances"
+          }
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    // Map database columns to camelCase response
+    const mappedInstances = (instances || []).map((inst: any) => ({
+      id: inst.id,
+      name: inst.name,
+      phone: inst.phone,
+      status: inst.status,
+      provider: inst.provider,
+      externalInstanceId: inst.external_instance_id,
+      createdAt: inst.created_at,
+      lastMessageAt: inst.last_message_at,
+      messagesCount: inst.messages_count
+    }));
 
     return new Response(
       JSON.stringify({
         success: true,
-        data: paginatedInstances,
+        data: mappedInstances,
         pagination: {
           page: validPage,
           limit: validLimit,
-          total: mockInstances.length
+          total: totalCount || 0
         }
       }),
       {

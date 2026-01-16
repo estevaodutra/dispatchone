@@ -50,6 +50,45 @@ export type Database = {
         }
         Relationships: []
       }
+      instances: {
+        Row: {
+          created_at: string | null
+          external_instance_id: string | null
+          external_instance_token: string | null
+          id: string
+          last_message_at: string | null
+          messages_count: number | null
+          name: string
+          phone: string
+          provider: string
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          external_instance_id?: string | null
+          external_instance_token?: string | null
+          id?: string
+          last_message_at?: string | null
+          messages_count?: number | null
+          name: string
+          phone: string
+          provider: string
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          external_instance_id?: string | null
+          external_instance_token?: string | null
+          id?: string
+          last_message_at?: string | null
+          messages_count?: number | null
+          name?: string
+          phone?: string
+          provider?: string
+          status?: string
+        }
+        Relationships: []
+      }
       provider_events: {
         Row: {
           created_at: string
