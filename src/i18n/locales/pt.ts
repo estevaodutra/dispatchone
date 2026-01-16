@@ -220,7 +220,7 @@ export const pt = {
     // Status
     connected: "Conectado",
     disconnected: "Desconectado",
-    qrPending: "Aguardando QR",
+    waitingConnection: "Aguardando Conexão",
     degraded: "Degradado",
     
     // Campos
