@@ -12,6 +12,7 @@ import {
   ChevronLeft,
   Zap,
   Code2,
+  Activity,
 } from "lucide-react";
 import {
   Sidebar,
@@ -42,6 +43,7 @@ export function AppSidebar() {
 
   const systemNavItems = [
     { title: t("nav.instances"), url: "/instances", icon: MessageSquare },
+    { title: t("nav.apiLogs"), url: "/api-logs", icon: Activity },
     { title: t("nav.alerts"), url: "/alerts", icon: Bell },
     { title: t("nav.billing"), url: "/billing", icon: CreditCard },
     { title: t("nav.settings"), url: "/settings", icon: Settings },

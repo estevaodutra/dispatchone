@@ -948,20 +948,42 @@ response = requests.get(
             name: "instanceId",
             type: "string",
             required: false,
-            description: "ID da instância"
+            description: "ID da instância no Dispatch One"
           },
           {
             name: "phone",
             type: "string",
             required: false,
             description: "Número de telefone da instância"
+          },
+          {
+            name: "externalInstanceId",
+            type: "string",
+            required: false,
+            description: "ID da instância no provedor externo (Z-API, Evolution, etc)"
+          },
+          {
+            name: "externalInstanceToken",
+            type: "string",
+            required: false,
+            description: "Token de autenticação da instância no provedor externo"
           }
         ],
         examples: {
-          curl: `curl -X GET "${API_BASE_URL}/instance/find?instanceId=inst_abc123" \\
+          curl: `# Buscar por instanceId
+curl -X GET "${API_BASE_URL}/instance/find?instanceId=inst_abc123" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+
+# Buscar por externalInstanceId
+curl -X GET "${API_BASE_URL}/instance/find?externalInstanceId=ext_xyz789" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+
+# Buscar por externalInstanceToken
+curl -X GET "${API_BASE_URL}/instance/find?externalInstanceToken=token_abc123" \\
   -H "Authorization: Bearer YOUR_API_TOKEN"`,
           nodejs: `const axios = require('axios');
 
+// Buscar por instanceId
 const response = await axios.get(
   '${API_BASE_URL}/instance/find',
   {
@@ -970,12 +992,33 @@ const response = await axios.get(
       'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
+);
+
+// Ou buscar por externalInstanceId
+const response2 = await axios.get(
+  '${API_BASE_URL}/instance/find',
+  {
+    params: { externalInstanceId: 'ext_xyz789' },
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
 );`,
           python: `import requests
 
+# Buscar por instanceId
 response = requests.get(
     '${API_BASE_URL}/instance/find',
     params={'instanceId': 'inst_abc123'},
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)
+
+# Ou buscar por externalInstanceId
+response2 = requests.get(
+    '${API_BASE_URL}/instance/find',
+    params={'externalInstanceId': 'ext_xyz789'},
     headers={
         'Authorization': 'Bearer YOUR_API_TOKEN'
     }

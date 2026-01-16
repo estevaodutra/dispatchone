@@ -17,6 +17,7 @@ import Alerts from "./pages/Alerts";
 import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import ApiDocs from "./pages/ApiDocs";
+import ApiLogs from "./pages/ApiLogs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
                 <Route path="/numbers" element={<PhoneNumbers />} />
                 <Route path="/logs" element={<DispatchLogs />} />
                 <Route path="/instances" element={<Instances />} />
+                <Route path="/api-logs" element={<ApiLogs />} />
                 <Route path="/alerts" element={<Alerts />} />
                 <Route path="/billing" element={<Billing />} />
                 <Route path="/settings" element={<Settings />} />
