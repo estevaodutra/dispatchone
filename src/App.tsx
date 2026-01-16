@@ -16,6 +16,7 @@ import Instances from "./pages/Instances";
 import Alerts from "./pages/Alerts";
 import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
+import ApiDocs from "./pages/ApiDocs";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
                 <Route path="/alerts" element={<Alerts />} />
                 <Route path="/billing" element={<Billing />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/api-docs" element={<ApiDocs />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </AppLayout>

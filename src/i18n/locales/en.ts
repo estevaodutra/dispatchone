@@ -9,6 +9,7 @@ export const en = {
     alerts: "Alerts",
     billing: "Billing",
     settings: "Settings",
+    apiDocs: "API Documentation",
     collapse: "Collapse",
   },
 
@@ -455,5 +456,29 @@ export const en = {
     daysAgo: "days ago",
     today: "Today",
     yesterday: "Yesterday",
+  },
+
+  // API Documentation
+  apiDocs: {
+    title: "API Documentation",
+    description: "Configure webhooks to integrate with external providers",
+    baseUrl: "Base URL",
+    baseUrlDescription: "Base URL for all API requests",
+    endpoints: "Endpoints",
+    eventTypes: "Event Types",
+    eventTypesDescription: "Supported webhook events",
+    authentication: "Authentication",
+    authDescription: "Include the x-api-secret header in all requests for authentication",
+    headerExample: "Headers Example",
+    payloadExamples: "Payload Examples",
+    payloadExamplesDescription: "Select an event type to see the payload example",
+    webhookDescription: "Main endpoint to receive provider events via n8n",
+    copied: "Copied!",
+    message_sent: "Message Sent",
+    message_received: "Message Received",
+    connected: "Connected",
+    disconnected: "Disconnected",
+    message_status: "Message Status",
+    chat_presence: "Chat Presence",
   },
 };
