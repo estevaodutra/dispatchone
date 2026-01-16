@@ -51,46 +51,6 @@ async function validateApiKey(supabase: any, authHeader: string | null): Promise
   return { valid: true, apiKey };
 }
 
-// Mock instances data - In production, this would come from a database table
-const mockInstances = [
-  {
-    id: "inst_abc123",
-    name: "WhatsApp Principal",
-    phone: "5511999999999",
-    status: "connected",
-    provider: "evolution",
-    externalInstanceId: "ext_xyz789",
-    externalInstanceToken: "token_abc123",
-    createdAt: "2024-01-15T08:00:00Z",
-    lastMessageAt: "2024-01-15T11:30:00Z",
-    messagesCount: 1542
-  },
-  {
-    id: "inst_def456",
-    name: "WhatsApp Suporte",
-    phone: "5511988888888",
-    status: "connected",
-    provider: "z-api",
-    externalInstanceId: "ext_uvw456",
-    externalInstanceToken: "token_def456",
-    createdAt: "2024-01-10T10:00:00Z",
-    lastMessageAt: "2024-01-15T10:00:00Z",
-    messagesCount: 892
-  },
-  {
-    id: "inst_ghi789",
-    name: "WhatsApp Vendas",
-    phone: "5521977777777",
-    status: "disconnected",
-    provider: "evolution",
-    externalInstanceId: "ext_rst123",
-    externalInstanceToken: "token_ghi789",
-    createdAt: "2024-01-05T14:00:00Z",
-    lastMessageAt: "2024-01-14T16:45:00Z",
-    messagesCount: 2341
-  }
-];
-
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -166,17 +126,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Search for the instance
-    let foundInstance = null;
+    // Build query to search for instance in database
+    let query = supabase.from('instances').select('*');
 
     if (instanceId) {
-      foundInstance = mockInstances.find(inst => inst.id === instanceId);
+      query = query.eq('id', instanceId);
     } else if (phone) {
-      foundInstance = mockInstances.find(inst => inst.phone === phone);
+      query = query.eq('phone', phone);
     } else if (externalInstanceId) {
-      foundInstance = mockInstances.find(inst => inst.externalInstanceId === externalInstanceId);
+      query = query.eq('external_instance_id', externalInstanceId);
     } else if (externalInstanceToken) {
-      foundInstance = mockInstances.find(inst => inst.externalInstanceToken === externalInstanceToken);
+      query = query.eq('external_instance_token', externalInstanceToken);
+    }
+
+    const { data: foundInstance, error: dbError } = await query.maybeSingle();
+
+    if (dbError) {
+      console.error('Database error:', dbError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: 'DATABASE_ERROR',
+            message: 'Erro ao buscar instância no banco de dados.'
+          }
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
     if (!foundInstance) {
@@ -198,7 +177,7 @@ Deno.serve(async (req) => {
 
     console.log('Instance found:', foundInstance.id);
 
-    // Return the found instance (excluding sensitive data like externalInstanceToken)
+    // Return the found instance (excluding sensitive data like external_instance_token)
     return new Response(
       JSON.stringify({
         success: true,
@@ -208,10 +187,10 @@ Deno.serve(async (req) => {
           phone: foundInstance.phone,
           status: foundInstance.status,
           provider: foundInstance.provider,
-          externalInstanceId: foundInstance.externalInstanceId,
-          createdAt: foundInstance.createdAt,
-          lastMessageAt: foundInstance.lastMessageAt,
-          messagesCount: foundInstance.messagesCount
+          externalInstanceId: foundInstance.external_instance_id,
+          createdAt: foundInstance.created_at,
+          lastMessageAt: foundInstance.last_message_at,
+          messagesCount: foundInstance.messages_count
         }
       }),
       {
