@@ -863,6 +863,232 @@ response = requests.post(
     description: "Gerenciamento de conexão WhatsApp",
     endpoints: [
       {
+        id: "list-instances",
+        method: "GET",
+        path: "/instances",
+        description: "Lista todas as instâncias do WhatsApp associadas à conta.",
+        attributes: [
+          {
+            name: "page",
+            type: "number",
+            required: false,
+            description: "Página para paginação (default: 1)"
+          },
+          {
+            name: "limit",
+            type: "number",
+            required: false,
+            description: "Limite de resultados por página (default: 10, máx: 100)"
+          }
+        ],
+        examples: {
+          curl: `curl -X GET "${API_BASE_URL}/instances?page=1&limit=10" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.get(
+  '${API_BASE_URL}/instances',
+  {
+    params: { page: 1, limit: 10 },
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.get(
+    '${API_BASE_URL}/instances',
+    params={'page': 1, 'limit': 10},
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              data: [
+                {
+                  id: "inst_abc123",
+                  name: "WhatsApp Principal",
+                  phone: "5511999999999",
+                  status: "connected",
+                  createdAt: "2024-01-15T08:00:00Z"
+                }
+              ],
+              pagination: {
+                page: 1,
+                limit: 10,
+                total: 1
+              }
+            }
+          },
+          error: {
+            code: 401,
+            body: {
+              success: false,
+              error: {
+                code: "UNAUTHORIZED",
+                message: "Token de autenticação inválido ou expirado."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "find-instance",
+        method: "GET",
+        path: "/instance/find",
+        description: "Busca uma instância específica por ID ou número de telefone.",
+        attributes: [
+          {
+            name: "instanceId",
+            type: "string",
+            required: false,
+            description: "ID da instância"
+          },
+          {
+            name: "phone",
+            type: "string",
+            required: false,
+            description: "Número de telefone da instância"
+          }
+        ],
+        examples: {
+          curl: `curl -X GET "${API_BASE_URL}/instance/find?instanceId=inst_abc123" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.get(
+  '${API_BASE_URL}/instance/find',
+  {
+    params: { instanceId: 'inst_abc123' },
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.get(
+    '${API_BASE_URL}/instance/find',
+    params={'instanceId': 'inst_abc123'},
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              instance: {
+                id: "inst_abc123",
+                name: "WhatsApp Principal",
+                phone: "5511999999999",
+                status: "connected",
+                createdAt: "2024-01-15T08:00:00Z",
+                lastMessageAt: "2024-01-15T11:30:00Z",
+                messagesCount: 1542
+              }
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: {
+                code: "INSTANCE_NOT_FOUND",
+                message: "Instância não encontrada."
+              }
+            }
+          }
+        }
+      },
+      {
+        id: "update-instance-status",
+        method: "PUT",
+        path: "/instance/status",
+        description: "Atualiza o status de uma instância (pausar/ativar envios).",
+        attributes: [
+          {
+            name: "instanceId",
+            type: "string",
+            required: true,
+            description: "ID da instância"
+          },
+          {
+            name: "status",
+            type: "string",
+            required: true,
+            description: "Novo status: 'active', 'paused' ou 'maintenance'"
+          }
+        ],
+        examples: {
+          curl: `curl -X PUT "${API_BASE_URL}/instance/status" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "instanceId": "inst_abc123",
+    "status": "paused"
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.put(
+  '${API_BASE_URL}/instance/status',
+  {
+    instanceId: 'inst_abc123',
+    status: 'paused'
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.put(
+    '${API_BASE_URL}/instance/status',
+    json={
+        'instanceId': 'inst_abc123',
+        'status': 'paused'
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              instanceId: "inst_abc123",
+              previousStatus: "active",
+              newStatus: "paused",
+              updatedAt: "2024-01-15T12:00:00Z"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: {
+                code: "INVALID_STATUS",
+                message: "Status inválido. Use: 'active', 'paused' ou 'maintenance'."
+              }
+            }
+          }
+        }
+      },
+      {
         id: "get-qrcode",
         method: "GET",
         path: "/instance/qrcode",
