@@ -65,14 +65,7 @@ async function validateApiKey(
 }
 
 // Valid status values
-const VALID_STATUSES = ["active", "paused", "maintenance"];
-
-// Mock instance data (simulating database)
-const mockInstances: Record<string, { status: string }> = {
-  "inst_abc123": { status: "active" },
-  "inst_def456": { status: "active" },
-  "inst_ghi789": { status: "disconnected" }
-};
+const VALID_STATUSES = ["connected", "disconnected", "waiting connection"];
 
 Deno.serve(async (req) => {
   // Handle CORS preflight
@@ -196,9 +189,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if instance exists
-    const instance = mockInstances[instanceId];
-    if (!instance) {
+    // Fetch instance from database
+    const { data: instance, error: fetchError } = await supabase
+      .from("instances")
+      .select("id, status")
+      .eq("id", instanceId)
+      .single();
+
+    if (fetchError || !instance) {
       return new Response(
         JSON.stringify({
           success: false,
@@ -216,8 +214,28 @@ Deno.serve(async (req) => {
 
     const previousStatus = instance.status;
     
-    // Update status (mock - in production this would update the database)
-    mockInstances[instanceId].status = status;
+    // Update status in database
+    const { error: updateError } = await supabase
+      .from("instances")
+      .update({ status })
+      .eq("id", instanceId);
+
+    if (updateError) {
+      console.error("Error updating instance status:", updateError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "UPDATE_FAILED",
+            message: "Falha ao atualizar status da instância."
+          }
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
 
     console.log(`Instance ${instanceId} status updated: ${previousStatus} -> ${status}`);
 
