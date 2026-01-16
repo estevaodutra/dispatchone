@@ -69,8 +69,7 @@ export const apiEndpoints: EndpointCategory[] = [
         examples: {
           curl: `curl -X POST "https://api.dispatchone.io/v1/send-text" \\
   -H "Content-Type: application/json" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "phone": "5511999999999",
     "message": "Olá! Esta é uma mensagem de teste."
@@ -86,8 +85,7 @@ const response = await axios.post(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-instance-id': 'YOUR_INSTANCE_ID',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -101,8 +99,7 @@ response = requests.post(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-instance-id': 'YOUR_INSTANCE_ID',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -162,8 +159,7 @@ response = requests.post(
         examples: {
           curl: `curl -X POST "https://api.dispatchone.io/v1/send-media" \\
   -H "Content-Type: application/json" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "phone": "5511999999999",
     "mediaUrl": "https://example.com/image.jpg",
@@ -183,8 +179,7 @@ const response = await axios.post(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-instance-id': 'YOUR_INSTANCE_ID',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -200,8 +195,7 @@ response = requests.post(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-instance-id': 'YOUR_INSTANCE_ID',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -262,8 +256,7 @@ response = requests.post(
         examples: {
           curl: `curl -X POST "https://api.dispatchone.io/v1/send-document" \\
   -H "Content-Type: application/json" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "phone": "5511999999999",
     "documentUrl": "https://example.com/report.pdf",
@@ -283,8 +276,7 @@ const response = await axios.post(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-instance-id': 'YOUR_INSTANCE_ID',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -300,8 +292,7 @@ response = requests.post(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-instance-id': 'YOUR_INSTANCE_ID',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -368,8 +359,7 @@ response = requests.post(
         examples: {
           curl: `curl -X POST "https://api.dispatchone.io/v1/send-location" \\
   -H "Content-Type: application/json" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "phone": "5511999999999",
     "latitude": -23.5505,
@@ -391,8 +381,7 @@ const response = await axios.post(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-instance-id': 'YOUR_INSTANCE_ID',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -409,8 +398,7 @@ response = requests.post(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-instance-id': 'YOUR_INSTANCE_ID',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -476,8 +464,7 @@ response = requests.post(
         examples: {
           curl: `curl -X POST "https://api.dispatchone.io/v1/send-contact" \\
   -H "Content-Type: application/json" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "phone": "5511999999999",
     "contactName": "João Silva",
@@ -499,8 +486,7 @@ const response = await axios.post(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-instance-id': 'YOUR_INSTANCE_ID',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -517,8 +503,7 @@ response = requests.post(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-instance-id': 'YOUR_INSTANCE_ID',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -584,7 +569,7 @@ response = requests.post(
         ],
         examples: {
           curl: `curl -X GET "https://api.dispatchone.io/v1/instances?page=1&limit=20&status=connected" \\
-  -H "x-api-token: YOUR_TOKEN"`,
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
           nodejs: `const axios = require('axios');
 
 const response = await axios.get(
@@ -596,7 +581,7 @@ const response = await axios.get(
       status: 'connected'
     },
     headers: {
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -610,7 +595,7 @@ response = requests.get(
         'status': 'connected'
     },
     headers={
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -685,7 +670,7 @@ response = requests.get(
         ],
         examples: {
           curl: `curl -X GET "https://api.dispatchone.io/v1/instance/find?phone=5511999999999" \\
-  -H "x-api-token: YOUR_TOKEN"`,
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
           nodejs: `const axios = require('axios');
 
 const response = await axios.get(
@@ -695,7 +680,7 @@ const response = await axios.get(
       phone: '5511999999999'
     },
     headers: {
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -707,7 +692,7 @@ response = requests.get(
         'phone': '5511999999999'
     },
     headers={
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -785,7 +770,7 @@ response = requests.get(
         examples: {
           curl: `curl -X PUT "https://api.dispatchone.io/v1/instance/status" \\
   -H "Content-Type: application/json" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "instanceId": "inst_abc123",
     "status": "disconnected",
@@ -803,7 +788,7 @@ const response = await axios.put(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -818,7 +803,7 @@ response = requests.put(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },
@@ -990,8 +975,7 @@ response = requests.post(
         examples: {
           curl: `curl -X PUT "https://api.dispatchone.io/v1/webhook/config" \\
   -H "Content-Type: application/json" \\
-  -H "x-instance-id: YOUR_INSTANCE_ID" \\
-  -H "x-api-token: YOUR_TOKEN" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "webhookUrl": "https://meusite.com/webhook",
     "events": ["message.received", "message.sent", "status.change"],
@@ -1013,8 +997,7 @@ const response = await axios.put(
   {
     headers: {
       'Content-Type': 'application/json',
-      'x-instance-id': 'YOUR_INSTANCE_ID',
-      'x-api-token': 'YOUR_TOKEN'
+      'Authorization': 'Bearer YOUR_API_TOKEN'
     }
   }
 );`,
@@ -1031,8 +1014,7 @@ response = requests.put(
     },
     headers={
         'Content-Type': 'application/json',
-        'x-instance-id': 'YOUR_INSTANCE_ID',
-        'x-api-token': 'YOUR_TOKEN'
+        'Authorization': 'Bearer YOUR_API_TOKEN'
     }
 )`
         },

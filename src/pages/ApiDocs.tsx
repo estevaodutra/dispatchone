@@ -150,7 +150,7 @@ const ApiDocs = () => {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-muted-foreground">
-                  Todas as requisições à API devem incluir os seguintes headers de autenticação:
+                  Todas as requisições à API devem incluir o seguinte header de autenticação:
                 </p>
 
                 <div className="overflow-x-auto">
@@ -163,12 +163,8 @@ const ApiDocs = () => {
                     </thead>
                     <tbody>
                       <tr className="bg-muted/30">
-                        <td className="py-3 px-4"><code className="font-mono text-sm bg-muted px-2 py-0.5 rounded text-primary">x-instance-id</code></td>
-                        <td className="py-3 px-4 text-muted-foreground">ID único da instância</td>
-                      </tr>
-                      <tr>
-                        <td className="py-3 px-4"><code className="font-mono text-sm bg-muted px-2 py-0.5 rounded text-primary">x-api-token</code></td>
-                        <td className="py-3 px-4 text-muted-foreground">Token de autenticação da instância</td>
+                        <td className="py-3 px-4"><code className="font-mono text-sm bg-muted px-2 py-0.5 rounded text-primary">Authorization</code></td>
+                        <td className="py-3 px-4 text-muted-foreground">Token de autenticação no formato <code className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">Bearer {'{token}'}</code></td>
                       </tr>
                     </tbody>
                   </table>
