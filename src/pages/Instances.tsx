@@ -146,6 +146,8 @@ export default function Instances() {
     message?: string;
     code?: string; // Código de conexão via telefone
   } | null>(null);
+  const [qrTimeLeft, setQrTimeLeft] = useState(20);
+  const [isQrExpired, setIsQrExpired] = useState(false);
 
   // Flag para evitar sobrescrever localStorage na primeira renderização
   const isFirstRender = useRef(true);
@@ -194,6 +196,33 @@ export default function Instances() {
     }
   };
 
+  // Timer countdown for QR/Code validity
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    
+    const hasQrOrCode = webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl || webhookResponse?.code;
+    
+    if ((connectionStep === "qr" || connectionStep === "code") && hasQrOrCode && !isConnecting) {
+      setQrTimeLeft(20);
+      setIsQrExpired(false);
+      
+      interval = setInterval(() => {
+        setQrTimeLeft((prev) => {
+          if (prev <= 1) {
+            setIsQrExpired(true);
+            if (interval) clearInterval(interval);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [connectionStep, webhookResponse, isConnecting]);
+
   // Persist instances to localStorage (skip first render to avoid overwriting)
   useEffect(() => {
     if (isFirstRender.current) {
@@ -202,6 +231,52 @@ export default function Instances() {
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(instances));
   }, [instances]);
+
+  // Timer Display Component
+  const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: boolean }) => {
+    const percentage = (timeLeft / 20) * 100;
+    const circumference = 2 * Math.PI * 18;
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
+    
+    return (
+      <div className="flex flex-col items-center gap-2 mt-4">
+        <div className="relative w-12 h-12">
+          <svg className="w-12 h-12 transform -rotate-90">
+            <circle
+              cx="24"
+              cy="24"
+              r="18"
+              stroke="currentColor"
+              strokeWidth="3"
+              fill="none"
+              className="text-muted"
+            />
+            <circle
+              cx="24"
+              cy="24"
+              r="18"
+              stroke="currentColor"
+              strokeWidth="3"
+              fill="none"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              className={`transition-all duration-1000 ${
+                isExpired ? "text-destructive" : timeLeft <= 5 ? "text-warning" : "text-primary"
+              }`}
+            />
+          </svg>
+          <span className={`absolute inset-0 flex items-center justify-center text-sm font-bold ${
+            isExpired ? "text-destructive" : timeLeft <= 5 ? "text-warning" : ""
+          }`}>
+            {isExpired ? "!" : timeLeft}
+          </span>
+        </div>
+        <span className={`text-xs ${isExpired ? "text-destructive" : "text-muted-foreground"}`}>
+          {isExpired ? "Expirado" : `${timeLeft}s restantes`}
+        </span>
+      </div>
+    );
+  };
   const getFunctionIcon = (fn: InstanceFunction) => {
     switch (fn) {
       case "dispatcher":
@@ -609,11 +684,42 @@ export default function Instances() {
           {/* Connect Mode - Step 2A: QR Code */}
           {selectedInstance?.status !== "connected" && connectionStep === "qr" && <div className="space-y-4 py-4">
               <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
-                <div className="w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4 overflow-hidden">
-                  {isConnecting ? <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" /> : webhookResponse?.value ? <img src={webhookResponse.value} alt="QR Code" className="w-full h-full object-contain" /> : webhookResponse?.qrCode ? <img src={webhookResponse.qrCode} alt="QR Code" className="w-full h-full object-contain" /> : webhookResponse?.qrCodeUrl ? <img src={webhookResponse.qrCodeUrl} alt="QR Code" className="w-full h-full object-contain" /> : <QrCode className="h-24 w-24 text-muted-foreground" />}
+                <div className="relative w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4 overflow-hidden">
+                  {isConnecting ? (
+                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                  ) : webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl ? (
+                    <>
+                      <img 
+                        src={webhookResponse.value || webhookResponse.qrCode || webhookResponse.qrCodeUrl} 
+                        alt="QR Code" 
+                        className={`w-full h-full object-contain ${isQrExpired ? "opacity-20 blur-sm" : ""}`} 
+                      />
+                      {isQrExpired && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="text-center">
+                            <XCircle className="h-12 w-12 text-destructive mx-auto mb-2" />
+                            <p className="text-sm font-medium text-destructive">QR Code expirado</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <QrCode className="h-24 w-24 text-muted-foreground" />
+                  )}
                 </div>
-                <p className="text-sm text-muted-foreground text-center">
-                  {isConnecting ? "Gerando QR Code..." : webhookResponse?.message || t("instances.waitingForScan")}
+                
+                {/* Timer Display */}
+                {(webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl) && !isConnecting && (
+                  <TimerDisplay timeLeft={qrTimeLeft} isExpired={isQrExpired} />
+                )}
+                
+                <p className="text-sm text-muted-foreground text-center mt-2">
+                  {isConnecting 
+                    ? "Gerando QR Code..." 
+                    : isQrExpired 
+                      ? "Clique em 'Gerar Novo QR' para continuar"
+                      : webhookResponse?.message || t("instances.waitingForScan")
+                  }
                 </p>
               </div>
             </div>}
@@ -621,31 +727,46 @@ export default function Instances() {
           {/* Connect Mode - Step 2B: Code Display */}
           {selectedInstance?.status !== "connected" && connectionStep === "code" && <div className="space-y-4 py-4">
               <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
-                {isConnecting ? <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" /> : webhookResponse?.code ? <>
-                    <div className="text-center mb-4">
+                {isConnecting ? (
+                  <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
+                ) : webhookResponse?.code ? (
+                  <>
+                    <div className={`text-center mb-4 ${isQrExpired ? "opacity-50" : ""}`}>
                       <p className="text-sm text-muted-foreground mb-2">
                         Código de conexão
                       </p>
                       <div className="flex items-center gap-2 bg-background border rounded-lg px-6 py-4">
-                        <span className="text-3xl font-mono font-bold tracking-widest">
+                        <span className={`text-3xl font-mono font-bold tracking-widest ${isQrExpired ? "line-through" : ""}`}>
                           {webhookResponse.code}
                         </span>
                       </div>
                     </div>
-                    <Button variant="outline" onClick={() => {
-                navigator.clipboard.writeText(webhookResponse.code!);
-                toast({
-                  title: "Código copiado!",
-                  description: "O código foi copiado para a área de transferência."
-                });
-              }}>
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copiar código
-                    </Button>
-                  </> : <p className="text-muted-foreground">Aguardando código...</p>}
+                    
+                    {/* Timer Display */}
+                    <TimerDisplay timeLeft={qrTimeLeft} isExpired={isQrExpired} />
+                    
+                    {!isQrExpired && (
+                      <Button variant="outline" className="mt-4" onClick={() => {
+                        navigator.clipboard.writeText(webhookResponse.code!);
+                        toast({
+                          title: "Código copiado!",
+                          description: "O código foi copiado para a área de transferência."
+                        });
+                      }}>
+                        <Copy className="h-4 w-4 mr-2" />
+                        Copiar código
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-muted-foreground">Aguardando código...</p>
+                )}
               </div>
               <p className="text-sm text-muted-foreground text-center">
-                {webhookResponse?.message || "Informe este código no seu WhatsApp para conectar."}
+                {isQrExpired 
+                  ? "Código expirado. Gere um novo código para continuar."
+                  : webhookResponse?.message || "Informe este código no seu WhatsApp para conectar."
+                }
               </p>
             </div>}
 
@@ -660,16 +781,38 @@ export default function Instances() {
                     {t("instances.saving")}
                   </> : t("instances.saveChanges")}
               </Button>}
-            {selectedInstance?.status !== "connected" && connectionStep === "qr" && <Button variant="outline" onClick={async () => {
-            try {
-              await triggerConnectionWebhook("qr");
-            } catch {
-              // Error handled
-            }
-          }} disabled={isConnecting}>
+            {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
+              <Button 
+                variant={isQrExpired ? "default" : "outline"} 
+                onClick={async () => {
+                  try {
+                    await triggerConnectionWebhook("qr");
+                  } catch {
+                    // Error handled
+                  }
+                }} 
+                disabled={isConnecting}
+              >
                 {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t("instances.generateNewQR")}
-              </Button>}
+              </Button>
+            )}
+            {selectedInstance?.status !== "connected" && connectionStep === "code" && (
+              <Button 
+                variant={isQrExpired ? "default" : "outline"} 
+                onClick={async () => {
+                  try {
+                    await triggerConnectionWebhook("phone");
+                  } catch {
+                    // Error handled
+                  }
+                }} 
+                disabled={isConnecting}
+              >
+                {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Gerar Novo Código
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
