@@ -8,3 +8,9 @@ verify_jwt = false
 
 [functions.instance-find]
 verify_jwt = false
+
+[functions.instances]
+verify_jwt = false
+
+[functions.instance-status]
+verify_jwt = false

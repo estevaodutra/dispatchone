@@ -1055,7 +1055,7 @@ response2 = requests.get(
       {
         id: "update-instance-status",
         method: "PUT",
-        path: "/instance/status",
+        path: "/instance-status",
         description: "Atualiza o status de uma instância (pausar/ativar envios).",
         attributes: [
           {
@@ -1072,7 +1072,7 @@ response2 = requests.get(
           }
         ],
         examples: {
-          curl: `curl -X PUT "${API_BASE_URL}/instance/status" \\
+          curl: `curl -X PUT "${API_BASE_URL}/instance-status" \\
   -H "Content-Type: application/json" \\
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
@@ -1082,7 +1082,7 @@ response2 = requests.get(
           nodejs: `const axios = require('axios');
 
 const response = await axios.put(
-  '${API_BASE_URL}/instance/status',
+  '${API_BASE_URL}/instance-status',
   {
     instanceId: 'inst_abc123',
     status: 'paused'
@@ -1097,7 +1097,7 @@ const response = await axios.put(
           python: `import requests
 
 response = requests.put(
-    '${API_BASE_URL}/instance/status',
+    '${API_BASE_URL}/instance-status',
     json={
         'instanceId': 'inst_abc123',
         'status': 'paused'
