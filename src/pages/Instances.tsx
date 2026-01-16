@@ -6,38 +6,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, ExternalLink, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft, Copy } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MessageSquare, Settings, RefreshCw, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 
 // Mock data
 type InstanceFunction = "dispatcher" | "admin" | "spy" | "funnel";
-
 interface Instance {
   id: string;
   name: string;
@@ -52,74 +29,65 @@ interface Instance {
   documentation: string;
   phoneNumber?: string;
 }
-
-const initialInstances: Instance[] = [
-  {
-    id: "1",
-    name: "Vendas Principal",
-    provider: "Z-API",
-    function: "dispatcher",
-    status: "connected",
-    health: 98,
-    dispatches: 12500,
-    lastCheck: "2 min ago",
-    connectedNumber: "+55 11 99999-1234",
-    features: ["Text", "Media", "Templates", "Webhooks"],
-    documentation: "https://developer.z-api.io",
-  },
-  {
-    id: "2",
-    name: "Suporte",
-    provider: "Evolution API",
-    function: "funnel",
-    status: "connected",
-    health: 95,
-    dispatches: 8200,
-    lastCheck: "1 min ago",
-    connectedNumber: "+55 11 98888-5678",
-    features: ["Text", "Media", "Groups", "Status"],
-    documentation: "https://doc.evolution-api.com",
-  },
-  {
-    id: "3",
-    name: "Marketing",
-    provider: "Z-API",
-    function: "admin",
-    status: "qrPending",
-    health: 0,
-    dispatches: 0,
-    lastCheck: "Never",
-    features: ["Text", "Media", "Templates"],
-    documentation: "https://developer.z-api.io",
-  },
-  {
-    id: "4",
-    name: "Meta Oficial",
-    provider: "Meta Business API",
-    function: "spy",
-    status: "disconnected",
-    health: 0,
-    dispatches: 0,
-    lastCheck: "Never",
-    features: ["Official API", "Templates", "Analytics"],
-    documentation: "https://developers.facebook.com/docs/whatsapp",
-  },
-];
+const initialInstances: Instance[] = [{
+  id: "1",
+  name: "Vendas Principal",
+  provider: "Z-API",
+  function: "dispatcher",
+  status: "connected",
+  health: 98,
+  dispatches: 12500,
+  lastCheck: "2 min ago",
+  connectedNumber: "+55 11 99999-1234",
+  features: ["Text", "Media", "Templates", "Webhooks"],
+  documentation: "https://developer.z-api.io"
+}, {
+  id: "2",
+  name: "Suporte",
+  provider: "Evolution API",
+  function: "funnel",
+  status: "connected",
+  health: 95,
+  dispatches: 8200,
+  lastCheck: "1 min ago",
+  connectedNumber: "+55 11 98888-5678",
+  features: ["Text", "Media", "Groups", "Status"],
+  documentation: "https://doc.evolution-api.com"
+}, {
+  id: "3",
+  name: "Marketing",
+  provider: "Z-API",
+  function: "admin",
+  status: "qrPending",
+  health: 0,
+  dispatches: 0,
+  lastCheck: "Never",
+  features: ["Text", "Media", "Templates"],
+  documentation: "https://developer.z-api.io"
+}, {
+  id: "4",
+  name: "Meta Oficial",
+  provider: "Meta Business API",
+  function: "spy",
+  status: "disconnected",
+  health: 0,
+  dispatches: 0,
+  lastCheck: "Never",
+  features: ["Official API", "Templates", "Analytics"],
+  documentation: "https://developers.facebook.com/docs/whatsapp"
+}];
 
 // Função para formatar número de telefone brasileiro
 const formatPhoneNumber = (value: string): string => {
   const numbers = value.replace(/\D/g, "");
   const limited = numbers.slice(0, 13);
-  
   if (limited.length === 0) return "";
   if (limited.length <= 2) return `+${limited}`;
   if (limited.length <= 4) return `+${limited.slice(0, 2)} (${limited.slice(2)}`;
   if (limited.length <= 9) return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4)}`;
   return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4, 9)}-${limited.slice(9)}`;
 };
-
 const STORAGE_KEY = "whatsapp-instances";
-
 const getInitialInstances = (): Instance[] => {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
@@ -131,10 +99,13 @@ const getInitialInstances = (): Instance[] => {
   }
   return initialInstances;
 };
-
 export default function Instances() {
-  const { toast } = useToast();
-  const { t } = useLanguage();
+  const {
+    toast
+  } = useToast();
+  const {
+    t
+  } = useLanguage();
   const [instances, setInstances] = useState<Instance[]>(getInitialInstances);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -147,13 +118,13 @@ export default function Instances() {
   const [configForm, setConfigForm] = useState({
     apiKey: "",
     webhookUrl: "",
-    instanceId: "",
+    instanceId: ""
   });
   const [newInstance, setNewInstance] = useState({
     name: "",
     provider: "Z-API" as Instance["provider"],
     function: "dispatcher" as InstanceFunction,
-    phoneNumber: "",
+    phoneNumber: ""
   });
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [editInstance, setEditInstance] = useState<{
@@ -167,31 +138,27 @@ export default function Instances() {
   const [phoneForConnection, setPhoneForConnection] = useState("");
   const [isConnecting, setIsConnecting] = useState(false);
   const [webhookResponse, setWebhookResponse] = useState<{
-    value?: string;      // Base64 do QR Code (formato real da API)
+    value?: string; // Base64 do QR Code (formato real da API)
     qrCode?: string;
     qrCodeUrl?: string;
     sessionId?: string;
     expiresAt?: string;
     message?: string;
-    code?: string;       // Código de conexão via telefone
+    code?: string; // Código de conexão via telefone
   } | null>(null);
-  
+
   // Flag para evitar sobrescrever localStorage na primeira renderização
   const isFirstRender = useRef(true);
-
   const triggerConnectionWebhook = async (method: "qr" | "phone") => {
     if (!selectedInstance) return;
-
     const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_generate_qrcode";
-
     setIsConnecting(true);
     setWebhookResponse(null);
-    
     try {
       const response = await fetch(webhookUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           instanceId: selectedInstance.id,
@@ -201,21 +168,17 @@ export default function Instances() {
           connectionMethod: method,
           timestamp: new Date().toISOString(),
           origin: window.location.origin,
-          phoneNumber: method === "phone" && selectedInstance.phoneNumber 
-            ? selectedInstance.phoneNumber.replace(/\D/g, '') 
-            : undefined,
-        }),
+          phoneNumber: method === "phone" && selectedInstance.phoneNumber ? selectedInstance.phoneNumber.replace(/\D/g, '') : undefined
+        })
       });
-
       const data = await response.json();
       console.log("Webhook response:", data);
-      
+
       // Normalizar resposta - pode ser array ou objeto
       let normalizedData = data;
       if (Array.isArray(data) && data.length > 0) {
         normalizedData = data[0];
       }
-      
       setWebhookResponse(normalizedData);
       return normalizedData;
     } catch (error) {
@@ -223,7 +186,7 @@ export default function Instances() {
       toast({
         title: t("common.error"),
         description: "Falha ao conectar com o servidor. Tente novamente.",
-        variant: "destructive",
+        variant: "destructive"
       });
       throw error;
     } finally {
@@ -239,110 +202,98 @@ export default function Instances() {
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(instances));
   }, [instances]);
-
   const getFunctionIcon = (fn: InstanceFunction) => {
     switch (fn) {
-      case "dispatcher": return <Radio className="h-3.5 w-3.5" />;
-      case "admin": return <Shield className="h-3.5 w-3.5" />;
-      case "spy": return <Eye className="h-3.5 w-3.5" />;
-      case "funnel": return <GitBranch className="h-3.5 w-3.5" />;
+      case "dispatcher":
+        return <Radio className="h-3.5 w-3.5" />;
+      case "admin":
+        return <Shield className="h-3.5 w-3.5" />;
+      case "spy":
+        return <Eye className="h-3.5 w-3.5" />;
+      case "funnel":
+        return <GitBranch className="h-3.5 w-3.5" />;
     }
   };
-
   const getFunctionLabel = (fn: InstanceFunction) => {
     switch (fn) {
-      case "dispatcher": return t("instances.functionDispatcher");
-      case "admin": return t("instances.functionAdmin");
-      case "spy": return t("instances.functionSpy");
-      case "funnel": return t("instances.functionFunnel");
+      case "dispatcher":
+        return t("instances.functionDispatcher");
+      case "admin":
+        return t("instances.functionAdmin");
+      case "spy":
+        return t("instances.functionSpy");
+      case "funnel":
+        return t("instances.functionFunnel");
     }
   };
-
   const handleRefreshStatus = async () => {
     setIsRefreshing(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await new Promise(resolve => setTimeout(resolve, 1500));
     setIsRefreshing(false);
     toast({
       title: t("instances.statusRefreshed"),
-      description: t("instances.statusRefreshed"),
+      description: t("instances.statusRefreshed")
     });
   };
-
   const handleConfigure = (instance: Instance) => {
     setSelectedInstance(instance);
     setConfigForm({
       apiKey: "",
       webhookUrl: "",
-      instanceId: "",
+      instanceId: ""
     });
     setShowConfigDialog(true);
   };
-
   const handleConnect = (instance: Instance) => {
     setSelectedInstance(instance);
     setConnectionStep("select");
     setPhoneForConnection("");
     setShowConfigDialog(true);
   };
-
   const handleCloseConnectionDialog = () => {
     setShowConfigDialog(false);
     setConnectionStep("select");
     setPhoneForConnection("");
     setWebhookResponse(null);
   };
-
-
   const handleSaveConfig = async () => {
     if (!configForm.apiKey) {
       toast({
         title: t("common.error"),
         description: t("instances.apiKey") + " " + t("common.required").toLowerCase(),
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
+    await new Promise(resolve => setTimeout(resolve, 1500));
     if (selectedInstance) {
-      setInstances((prev) =>
-        prev.map((inst) =>
-          inst.id === selectedInstance.id
-            ? {
-                ...inst,
-                status: "connected" as const,
-                health: 100,
-                lastCheck: "Just now",
-                connectedNumber: "+55 11 97777-0000",
-              }
-            : inst
-        )
-      );
+      setInstances(prev => prev.map(inst => inst.id === selectedInstance.id ? {
+        ...inst,
+        status: "connected" as const,
+        health: 100,
+        lastCheck: "Just now",
+        connectedNumber: "+55 11 97777-0000"
+      } : inst));
     }
-
     setIsSaving(false);
     setShowConfigDialog(false);
     toast({
       title: selectedInstance?.status === "connected" ? t("instances.configSaved") : t("instances.instanceConnected"),
-      description: `${selectedInstance?.name} ${selectedInstance?.status === "connected" ? t("instances.configSaved").toLowerCase() : t("instances.instanceConnected").toLowerCase()}.`,
+      description: `${selectedInstance?.name} ${selectedInstance?.status === "connected" ? t("instances.configSaved").toLowerCase() : t("instances.instanceConnected").toLowerCase()}.`
     });
   };
-
   const handleAddInstance = async () => {
     if (!newInstance.name) {
       toast({
         title: t("common.error"),
         description: t("instances.instanceName") + " " + t("common.required").toLowerCase(),
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
+    await new Promise(resolve => setTimeout(resolve, 1000));
     const instance: Instance = {
       id: String(Date.now()),
       name: newInstance.name,
@@ -354,81 +305,72 @@ export default function Instances() {
       lastCheck: "Just now",
       features: ["Text", "Media"],
       documentation: newInstance.provider === "Z-API" ? "https://developer.z-api.io" : "https://doc.evolution-api.com",
-      phoneNumber: newInstance.provider === "Z-API" ? newInstance.phoneNumber : undefined,
+      phoneNumber: newInstance.provider === "Z-API" ? newInstance.phoneNumber : undefined
     };
-
-    setInstances((prev) => [...prev, instance]);
+    setInstances(prev => [...prev, instance]);
     setIsSaving(false);
     setShowAddDialog(false);
-    setNewInstance({ name: "", provider: "Z-API", function: "dispatcher", phoneNumber: "" });
-
+    setNewInstance({
+      name: "",
+      provider: "Z-API",
+      function: "dispatcher",
+      phoneNumber: ""
+    });
     toast({
       title: t("instances.instanceAdded"),
-      description: `${instance.name} - ${t("instances.scanQR")}`,
+      description: `${instance.name} - ${t("instances.scanQR")}`
     });
   };
-
   const handleDeleteInstance = () => {
     if (instanceToDelete) {
-      setInstances((prev) => prev.filter((inst) => inst.id !== instanceToDelete.id));
+      setInstances(prev => prev.filter(inst => inst.id !== instanceToDelete.id));
       setShowDeleteDialog(false);
       toast({
         title: t("instances.instanceDeleted"),
-        description: `${instanceToDelete.name} ${t("instances.instanceDeletedDescription")}`,
+        description: `${instanceToDelete.name} ${t("instances.instanceDeletedDescription")}`
       });
       setInstanceToDelete(null);
     }
   };
-
   const handleEditClick = (instance: Instance) => {
     setEditInstance({
       id: instance.id,
       name: instance.name,
       provider: instance.provider,
       function: instance.function,
-      phoneNumber: (instance as any).phoneNumber || "",
+      phoneNumber: (instance as any).phoneNumber || ""
     });
     setShowEditDialog(true);
   };
-
   const handleSaveEdit = async () => {
     if (!editInstance?.name) {
       toast({
         title: t("common.error"),
         description: t("instances.instanceName") + " " + t("common.required").toLowerCase(),
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
-
     setIsSaving(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    setInstances((prev) =>
-      prev.map((inst) =>
-        inst.id === editInstance.id
-          ? {
-              ...inst,
-              name: editInstance.name,
-              provider: editInstance.provider,
-              function: editInstance.function,
-              ...(editInstance.provider === "Z-API" ? { phoneNumber: editInstance.phoneNumber } : {}),
-            }
-          : inst
-      )
-    );
-
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setInstances(prev => prev.map(inst => inst.id === editInstance.id ? {
+      ...inst,
+      name: editInstance.name,
+      provider: editInstance.provider,
+      function: editInstance.function,
+      ...(editInstance.provider === "Z-API" ? {
+        phoneNumber: editInstance.phoneNumber
+      } : {})
+    } : inst));
     setIsSaving(false);
     setShowEditDialog(false);
     toast({
       title: t("instances.instanceUpdated"),
-      description: `${editInstance.name} ${t("instances.instanceUpdatedDescription")}`,
+      description: `${editInstance.name} ${t("instances.instanceUpdatedDescription")}`
     });
     setEditInstance(null);
   };
-
-  const disconnectedInstances = instances.filter((inst) => inst.status === "disconnected");
-
+  const disconnectedInstances = instances.filter(inst => inst.status === "disconnected");
   const getStatusDisplay = (status: Instance["status"]) => {
     switch (status) {
       case "connected":
@@ -441,24 +383,11 @@ export default function Instances() {
         return "pending";
     }
   };
-
-  return (
-    <div className="space-y-8 animate-fade-in">
-      <PageHeader
-        title={t("instances.title")}
-        description={t("instances.description")}
-        actions={
-          <Button
-            variant="outline"
-            className="gap-2"
-            onClick={handleRefreshStatus}
-            disabled={isRefreshing}
-          >
+  return <div className="space-y-8 animate-fade-in">
+      <PageHeader title={t("instances.title")} description={t("instances.description")} actions={<Button variant="outline" className="gap-2" onClick={handleRefreshStatus} disabled={isRefreshing}>
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             {isRefreshing ? t("instances.refreshing") : t("instances.refreshStatus")}
-          </Button>
-        }
-      />
+          </Button>} />
 
       <Tabs defaultValue="whatsapp" className="space-y-6">
         <TabsList>
@@ -474,34 +403,15 @@ export default function Instances() {
 
         <TabsContent value="whatsapp" className="space-y-6">
           {/* Alert for disconnected instances */}
-          {disconnectedInstances.length > 0 && showDisconnectedAlert && (
-            <AlertBanner
-              variant="warning"
-              title={t("instances.instanceDisconnected")}
-              description={`${disconnectedInstances[0].name} ${t("instances.instanceDisconnectedDescription")}`}
-              dismissible
-              onDismiss={() => setShowDisconnectedAlert(false)}
-            />
-          )}
+          {disconnectedInstances.length > 0 && showDisconnectedAlert && <AlertBanner variant="warning" title={t("instances.instanceDisconnected")} description={`${disconnectedInstances[0].name} ${t("instances.instanceDisconnectedDescription")}`} dismissible onDismiss={() => setShowDisconnectedAlert(false)} />}
 
           {/* Instance Cards */}
           <div className="grid gap-6 md:grid-cols-2">
-            {instances.map((instance) => (
-              <Card key={instance.id} className="shadow-elevation-sm hover:shadow-elevation-md transition-shadow">
+            {instances.map(instance => <Card key={instance.id} className="shadow-elevation-sm hover:shadow-elevation-md transition-shadow">
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
                   <div className="flex items-center gap-3">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-lg ${
-                        instance.status === "connected" ? "bg-success/15" : instance.status === "qrPending" ? "bg-warning/15" : "bg-muted"
-                      }`}
-                    >
-                      {instance.status === "connected" ? (
-                        <CheckCircle className="h-5 w-5 text-success" />
-                      ) : instance.status === "qrPending" ? (
-                        <MessageSquare className="h-5 w-5 text-warning" />
-                      ) : (
-                        <XCircle className="h-5 w-5 text-muted-foreground" />
-                      )}
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${instance.status === "connected" ? "bg-success/15" : instance.status === "qrPending" ? "bg-warning/15" : "bg-muted"}`}>
+                      {instance.status === "connected" ? <CheckCircle className="h-5 w-5 text-success" /> : instance.status === "qrPending" ? <MessageSquare className="h-5 w-5 text-warning" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
                     </div>
                     <div>
                       <CardTitle className="text-base">{instance.name}</CardTitle>
@@ -520,16 +430,13 @@ export default function Instances() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Connected Number */}
-                  {instance.connectedNumber && (
-                    <div>
+                  {instance.connectedNumber && <div>
                       <p className="text-xs text-muted-foreground mb-1">{t("instances.connectedNumber")}</p>
                       <p className="font-mono text-sm font-medium">{instance.connectedNumber}</p>
-                    </div>
-                  )}
+                    </div>}
 
                   {/* Health & Stats */}
-                  {instance.status === "connected" && (
-                    <>
+                  {instance.status === "connected" && <>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
                           <p className="text-xs text-muted-foreground mb-1">{t("instances.health")}</p>
@@ -546,83 +453,47 @@ export default function Instances() {
                       <div className="text-xs text-muted-foreground">
                         {t("instances.lastCheck")}: {instance.lastCheck}
                       </div>
-                    </>
-                  )}
+                    </>}
 
                   {/* QR Pending Message */}
-                  {instance.status === "qrPending" && (
-                    <div className="rounded-lg bg-warning/10 p-3 text-center">
+                  {instance.status === "qrPending" && <div className="rounded-lg bg-warning/10 p-3 text-center">
                       <p className="text-sm text-warning font-medium">{t("instances.scanQR")}</p>
-                    </div>
-                  )}
+                    </div>}
 
                   {/* Features */}
                   <div>
                     <p className="text-xs text-muted-foreground mb-2">{t("instances.features")}</p>
                     <div className="flex flex-wrap gap-1">
-                      {instance.features.map((feature) => (
-                        <Badge key={feature} variant="outline" className="text-xs font-normal">
+                      {instance.features.map(feature => <Badge key={feature} variant="outline" className="text-xs font-normal">
                           {feature}
-                        </Badge>
-                      ))}
+                        </Badge>)}
                     </div>
                   </div>
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 pt-2">
-                    {instance.status === "qrPending" ? (
-                      <Button
-                        variant="default"
-                        size="sm"
-                        className="flex-1 gap-2"
-                        onClick={() => handleConfigure(instance)}
-                      >
+                    {instance.status === "qrPending" ? <Button variant="default" size="sm" className="flex-1 gap-2" onClick={() => handleConfigure(instance)}>
                         <MessageSquare className="h-4 w-4" />
                         {t("instances.viewQR")}
-                      </Button>
-                    ) : (
-                      <Button
-                        variant={instance.status === "connected" ? "outline" : "default"}
-                        size="sm"
-                        className="flex-1 gap-2"
-                        onClick={() =>
-                          instance.status === "connected"
-                            ? handleConfigure(instance)
-                            : handleConnect(instance)
-                        }
-                      >
+                      </Button> : <Button variant={instance.status === "connected" ? "outline" : "default"} size="sm" className="flex-1 gap-2" onClick={() => instance.status === "connected" ? handleConfigure(instance) : handleConnect(instance)}>
                         <Settings className="h-4 w-4" />
                         {instance.status === "connected" ? t("instances.configure") : t("instances.connect")}
-                      </Button>
-                    )}
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleEditClick(instance)}
-                      title={t("instances.edit")}
-                    >
+                      </Button>}
+                    <Button variant="ghost" size="sm" onClick={() => handleEditClick(instance)} title={t("instances.edit")}>
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="sm" asChild>
-                      <a href={instance.documentation} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
+                      
                     </Button>
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => {
-                        setInstanceToDelete(instance);
-                        setShowDeleteDialog(true);
-                      }}
-                    >
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => {
+                  setInstanceToDelete(instance);
+                  setShowDeleteDialog(true);
+                }}>
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
-              </Card>
-            ))}
+              </Card>)}
           </div>
 
           {/* Add Instance */}
@@ -658,93 +529,55 @@ export default function Instances() {
       <Dialog open={showConfigDialog} onOpenChange={handleCloseConnectionDialog}>
         <DialogContent>
           <DialogHeader>
-            {connectionStep !== "select" && selectedInstance?.status !== "connected" && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="absolute left-4 top-4 p-0 h-auto"
-                onClick={() => setConnectionStep("select")}
-              >
+            {connectionStep !== "select" && selectedInstance?.status !== "connected" && <Button variant="ghost" size="sm" className="absolute left-4 top-4 p-0 h-auto" onClick={() => setConnectionStep("select")}>
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 {t("common.back")}
-              </Button>
-            )}
+              </Button>}
             <DialogTitle>
-              {selectedInstance?.status === "connected" 
-                ? `${t("instances.configureInstance")} - ${selectedInstance?.name}`
-                : connectionStep === "select"
-                  ? `${t("instances.connectInstance")} - ${selectedInstance?.name}`
-                  : connectionStep === "qr"
-                    ? t("instances.connectWithQR")
-                    : t("instances.connectWithPhone")}
+              {selectedInstance?.status === "connected" ? `${t("instances.configureInstance")} - ${selectedInstance?.name}` : connectionStep === "select" ? `${t("instances.connectInstance")} - ${selectedInstance?.name}` : connectionStep === "qr" ? t("instances.connectWithQR") : t("instances.connectWithPhone")}
             </DialogTitle>
             <DialogDescription>
-              {selectedInstance?.status === "connected"
-                ? t("instances.updateConfiguration")
-                : connectionStep === "select"
-                  ? t("instances.howToConnect")
-                  : connectionStep === "qr"
-                    ? t("instances.connectWithQRDesc")
-                    : t("instances.connectWithPhoneDesc")}
+              {selectedInstance?.status === "connected" ? t("instances.updateConfiguration") : connectionStep === "select" ? t("instances.howToConnect") : connectionStep === "qr" ? t("instances.connectWithQRDesc") : t("instances.connectWithPhoneDesc")}
             </DialogDescription>
           </DialogHeader>
 
           {/* Configure Mode - Show technical fields */}
-          {selectedInstance?.status === "connected" && (
-            <div className="space-y-4 py-4">
+          {selectedInstance?.status === "connected" && <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label htmlFor="apiKey">{t("instances.apiKey")}</Label>
-                <Input
-                  id="apiKey"
-                  type="password"
-                  placeholder={t("instances.apiKeyPlaceholder")}
-                  value={configForm.apiKey}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, apiKey: e.target.value }))}
-                />
+                <Input id="apiKey" type="password" placeholder={t("instances.apiKeyPlaceholder")} value={configForm.apiKey} onChange={e => setConfigForm(prev => ({
+              ...prev,
+              apiKey: e.target.value
+            }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="instanceId">{t("instances.instanceIdOptional")}</Label>
-                <Input
-                  id="instanceId"
-                  placeholder={t("instances.instanceId")}
-                  value={configForm.instanceId}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, instanceId: e.target.value }))}
-                />
+                <Input id="instanceId" placeholder={t("instances.instanceId")} value={configForm.instanceId} onChange={e => setConfigForm(prev => ({
+              ...prev,
+              instanceId: e.target.value
+            }))} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="webhookUrl">{t("instances.webhookUrl")} ({t("common.optional")})</Label>
-                <Input
-                  id="webhookUrl"
-                  placeholder="https://your-domain.com/webhook"
-                  value={configForm.webhookUrl}
-                  onChange={(e) => setConfigForm((prev) => ({ ...prev, webhookUrl: e.target.value }))}
-                />
+                <Input id="webhookUrl" placeholder="https://your-domain.com/webhook" value={configForm.webhookUrl} onChange={e => setConfigForm(prev => ({
+              ...prev,
+              webhookUrl: e.target.value
+            }))} />
               </div>
-            </div>
-          )}
+            </div>}
 
           {/* Connect Mode - Step 1: Select Method */}
-          {selectedInstance?.status !== "connected" && connectionStep === "select" && (
-            <div className="space-y-4 py-4">
+          {selectedInstance?.status !== "connected" && connectionStep === "select" && <div className="space-y-4 py-4">
               <div className="space-y-3">
-                <Button
-                  variant="outline"
-                  className="w-full justify-start h-auto p-4"
-                  disabled={isConnecting}
-                  onClick={async () => {
-                    try {
-                      await triggerConnectionWebhook("qr");
-                      setConnectionStep("qr");
-                    } catch {
-                      // Error already handled in triggerConnectionWebhook
-                    }
-                  }}
-                >
-                  {isConnecting ? (
-                    <Loader2 className="h-5 w-5 mr-3 animate-spin" />
-                  ) : (
-                    <QrCode className="h-5 w-5 mr-3" />
-                  )}
+                <Button variant="outline" className="w-full justify-start h-auto p-4" disabled={isConnecting} onClick={async () => {
+              try {
+                await triggerConnectionWebhook("qr");
+                setConnectionStep("qr");
+              } catch {
+                // Error already handled in triggerConnectionWebhook
+              }
+            }}>
+                  {isConnecting ? <Loader2 className="h-5 w-5 mr-3 animate-spin" /> : <QrCode className="h-5 w-5 mr-3" />}
                   <div className="text-left">
                     <p className="font-medium">{t("instances.connectWithQR")}</p>
                     <p className="text-xs text-muted-foreground">
@@ -752,87 +585,43 @@ export default function Instances() {
                     </p>
                   </div>
                 </Button>
-                <Button
-                  variant="outline"
-                  className="w-full justify-start h-auto p-4"
-                  disabled={!selectedInstance?.phoneNumber || isConnecting}
-                  onClick={async () => {
-                    try {
-                      const response = await triggerConnectionWebhook("phone");
-                      if (response?.code) {
-                        setConnectionStep("code");
-                      }
-                    } catch {
-                      // Error handled in triggerConnectionWebhook
-                    }
-                  }}
-                >
-                  {isConnecting ? (
-                    <Loader2 className="h-5 w-5 mr-3 animate-spin" />
-                  ) : (
-                    <Phone className="h-5 w-5 mr-3" />
-                  )}
+                <Button variant="outline" className="w-full justify-start h-auto p-4" disabled={!selectedInstance?.phoneNumber || isConnecting} onClick={async () => {
+              try {
+                const response = await triggerConnectionWebhook("phone");
+                if (response?.code) {
+                  setConnectionStep("code");
+                }
+              } catch {
+                // Error handled in triggerConnectionWebhook
+              }
+            }}>
+                  {isConnecting ? <Loader2 className="h-5 w-5 mr-3 animate-spin" /> : <Phone className="h-5 w-5 mr-3" />}
                   <div className="text-left">
                     <p className="font-medium">{t("instances.connectWithPhone")}</p>
                     <p className="text-xs text-muted-foreground">
-                      {selectedInstance?.phoneNumber 
-                        ? `Conectar com ${selectedInstance.phoneNumber}`
-                        : "Nenhum número cadastrado"
-                      }
+                      {selectedInstance?.phoneNumber ? `Conectar com ${selectedInstance.phoneNumber}` : "Nenhum número cadastrado"}
                     </p>
                   </div>
                 </Button>
               </div>
-            </div>
-          )}
+            </div>}
 
           {/* Connect Mode - Step 2A: QR Code */}
-          {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
-            <div className="space-y-4 py-4">
+          {selectedInstance?.status !== "connected" && connectionStep === "qr" && <div className="space-y-4 py-4">
               <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
                 <div className="w-48 h-48 bg-background border rounded-lg flex items-center justify-center mb-4 overflow-hidden">
-                  {isConnecting ? (
-                    <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-                  ) : webhookResponse?.value ? (
-                    <img 
-                      src={webhookResponse.value} 
-                      alt="QR Code" 
-                      className="w-full h-full object-contain"
-                    />
-                  ) : webhookResponse?.qrCode ? (
-                    <img 
-                      src={webhookResponse.qrCode} 
-                      alt="QR Code" 
-                      className="w-full h-full object-contain"
-                    />
-                  ) : webhookResponse?.qrCodeUrl ? (
-                    <img 
-                      src={webhookResponse.qrCodeUrl} 
-                      alt="QR Code" 
-                      className="w-full h-full object-contain"
-                    />
-                  ) : (
-                    <QrCode className="h-24 w-24 text-muted-foreground" />
-                  )}
+                  {isConnecting ? <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" /> : webhookResponse?.value ? <img src={webhookResponse.value} alt="QR Code" className="w-full h-full object-contain" /> : webhookResponse?.qrCode ? <img src={webhookResponse.qrCode} alt="QR Code" className="w-full h-full object-contain" /> : webhookResponse?.qrCodeUrl ? <img src={webhookResponse.qrCodeUrl} alt="QR Code" className="w-full h-full object-contain" /> : <QrCode className="h-24 w-24 text-muted-foreground" />}
                 </div>
                 <p className="text-sm text-muted-foreground text-center">
-                  {isConnecting 
-                    ? "Gerando QR Code..." 
-                    : webhookResponse?.message || t("instances.waitingForScan")
-                  }
+                  {isConnecting ? "Gerando QR Code..." : webhookResponse?.message || t("instances.waitingForScan")}
                 </p>
               </div>
-            </div>
-          )}
+            </div>}
 
           {/* Connect Mode - Step 2B: Code Display */}
-          {selectedInstance?.status !== "connected" && connectionStep === "code" && (
-            <div className="space-y-4 py-4">
+          {selectedInstance?.status !== "connected" && connectionStep === "code" && <div className="space-y-4 py-4">
               <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-muted/30">
-                {isConnecting ? (
-                  <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" />
-                ) : webhookResponse?.code ? (
-                  <>
+                {isConnecting ? <Loader2 className="h-12 w-12 animate-spin text-muted-foreground" /> : webhookResponse?.code ? <>
                     <div className="text-center mb-4">
                       <p className="text-sm text-muted-foreground mb-2">
                         Código de conexão
@@ -843,63 +632,44 @@ export default function Instances() {
                         </span>
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(webhookResponse.code!);
-                        toast({
-                          title: "Código copiado!",
-                          description: "O código foi copiado para a área de transferência.",
-                        });
-                      }}
-                    >
+                    <Button variant="outline" onClick={() => {
+                navigator.clipboard.writeText(webhookResponse.code!);
+                toast({
+                  title: "Código copiado!",
+                  description: "O código foi copiado para a área de transferência."
+                });
+              }}>
                       <Copy className="h-4 w-4 mr-2" />
                       Copiar código
                     </Button>
-                  </>
-                ) : (
-                  <p className="text-muted-foreground">Aguardando código...</p>
-                )}
+                  </> : <p className="text-muted-foreground">Aguardando código...</p>}
               </div>
               <p className="text-sm text-muted-foreground text-center">
                 {webhookResponse?.message || "Informe este código no seu WhatsApp para conectar."}
               </p>
-            </div>
-          )}
+            </div>}
 
 
           <DialogFooter>
             <Button variant="outline" onClick={handleCloseConnectionDialog}>
               {t("common.cancel")}
             </Button>
-            {selectedInstance?.status === "connected" && (
-              <Button onClick={handleSaveConfig} disabled={isSaving}>
-                {isSaving ? (
-                  <>
+            {selectedInstance?.status === "connected" && <Button onClick={handleSaveConfig} disabled={isSaving}>
+                {isSaving ? <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     {t("instances.saving")}
-                  </>
-                ) : (
-                  t("instances.saveChanges")
-                )}
-              </Button>
-            )}
-            {selectedInstance?.status !== "connected" && connectionStep === "qr" && (
-              <Button 
-                variant="outline" 
-                onClick={async () => {
-                  try {
-                    await triggerConnectionWebhook("qr");
-                  } catch {
-                    // Error handled
-                  }
-                }}
-                disabled={isConnecting}
-              >
+                  </> : t("instances.saveChanges")}
+              </Button>}
+            {selectedInstance?.status !== "connected" && connectionStep === "qr" && <Button variant="outline" onClick={async () => {
+            try {
+              await triggerConnectionWebhook("qr");
+            } catch {
+              // Error handled
+            }
+          }} disabled={isConnecting}>
                 {isConnecting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {t("instances.generateNewQR")}
-              </Button>
-            )}
+              </Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -916,19 +686,17 @@ export default function Instances() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="instanceName">{t("instances.instanceName")}</Label>
-              <Input
-                id="instanceName"
-                placeholder={t("instances.instanceNamePlaceholder")}
-                value={newInstance.name}
-                onChange={(e) => setNewInstance((prev) => ({ ...prev, name: e.target.value }))}
-              />
+              <Input id="instanceName" placeholder={t("instances.instanceNamePlaceholder")} value={newInstance.name} onChange={e => setNewInstance(prev => ({
+              ...prev,
+              name: e.target.value
+            }))} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="provider">{t("instances.provider")}</Label>
-              <Select
-                value={newInstance.provider}
-                onValueChange={(value) => setNewInstance((prev) => ({ ...prev, provider: value as Instance["provider"] }))}
-              >
+              <Select value={newInstance.provider} onValueChange={value => setNewInstance(prev => ({
+              ...prev,
+              provider: value as Instance["provider"]
+            }))}>
                 <SelectTrigger>
                   <SelectValue placeholder={t("instances.selectProvider")} />
                 </SelectTrigger>
@@ -939,33 +707,27 @@ export default function Instances() {
                 </SelectContent>
               </Select>
             </div>
-            {newInstance.provider === "Z-API" && (
-              <div className="space-y-2">
+            {newInstance.provider === "Z-API" && <div className="space-y-2">
                 <Label htmlFor="newPhoneNumber">
                   {t("instances.phoneNumber")}
                   <span className="text-muted-foreground ml-1 text-xs">
                     ({t("instances.optional")})
                   </span>
                 </Label>
-                <Input
-                  id="newPhoneNumber"
-                  placeholder="+55 (11) 99999-9999"
-                  value={newInstance.phoneNumber}
-                  onChange={(e) => setNewInstance((prev) => ({ ...prev, phoneNumber: formatPhoneNumber(e.target.value) }))}
-                />
+                <Input id="newPhoneNumber" placeholder="+55 (11) 99999-9999" value={newInstance.phoneNumber} onChange={e => setNewInstance(prev => ({
+              ...prev,
+              phoneNumber: formatPhoneNumber(e.target.value)
+            }))} />
                 <p className="text-xs text-muted-foreground">
                   {t("instances.phoneNumberHint")}
                 </p>
-              </div>
-            )}
+              </div>}
             <div className="space-y-2">
               <Label>{t("instances.function")}</Label>
-              <Select
-                value={newInstance.function}
-                onValueChange={(value: InstanceFunction) =>
-                  setNewInstance((prev) => ({ ...prev, function: value }))
-                }
-              >
+              <Select value={newInstance.function} onValueChange={(value: InstanceFunction) => setNewInstance(prev => ({
+              ...prev,
+              function: value
+            }))}>
                 <SelectTrigger>
                   <SelectValue placeholder={t("instances.selectFunction")} />
                 </SelectTrigger>
@@ -1015,17 +777,13 @@ export default function Instances() {
               {t("common.cancel")}
             </Button>
             <Button onClick={handleAddInstance} disabled={isSaving}>
-              {isSaving ? (
-                <>
+              {isSaving ? <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {t("instances.adding")}
-                </>
-              ) : (
-                <>
+                </> : <>
                   <Plus className="mr-2 h-4 w-4" />
                   {t("instances.addInstance")}
-                </>
-              )}
+                </>}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1043,19 +801,17 @@ export default function Instances() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label htmlFor="editInstanceName">{t("instances.instanceName")}</Label>
-              <Input
-                id="editInstanceName"
-                placeholder={t("instances.instanceNamePlaceholder")}
-                value={editInstance?.name || ""}
-                onChange={(e) => setEditInstance((prev) => prev ? { ...prev, name: e.target.value } : null)}
-              />
+              <Input id="editInstanceName" placeholder={t("instances.instanceNamePlaceholder")} value={editInstance?.name || ""} onChange={e => setEditInstance(prev => prev ? {
+              ...prev,
+              name: e.target.value
+            } : null)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="editProvider">{t("instances.provider")}</Label>
-              <Select
-                value={editInstance?.provider || "Z-API"}
-                onValueChange={(value) => setEditInstance((prev) => prev ? { ...prev, provider: value as Instance["provider"] } : null)}
-              >
+              <Select value={editInstance?.provider || "Z-API"} onValueChange={value => setEditInstance(prev => prev ? {
+              ...prev,
+              provider: value as Instance["provider"]
+            } : null)}>
                 <SelectTrigger>
                   <SelectValue placeholder={t("instances.selectProvider")} />
                 </SelectTrigger>
@@ -1066,28 +822,22 @@ export default function Instances() {
                 </SelectContent>
               </Select>
             </div>
-            {editInstance?.provider === "Z-API" && (
-              <div className="space-y-2">
+            {editInstance?.provider === "Z-API" && <div className="space-y-2">
                 <Label htmlFor="editPhoneNumber">
                   {t("instances.phoneNumber")} ({t("instances.optional")})
                 </Label>
-                <Input
-                  id="editPhoneNumber"
-                  placeholder="+55 (11) 99999-9999"
-                  value={editInstance?.phoneNumber || ""}
-                  onChange={(e) => setEditInstance((prev) => prev ? { ...prev, phoneNumber: formatPhoneNumber(e.target.value) } : null)}
-                />
+                <Input id="editPhoneNumber" placeholder="+55 (11) 99999-9999" value={editInstance?.phoneNumber || ""} onChange={e => setEditInstance(prev => prev ? {
+              ...prev,
+              phoneNumber: formatPhoneNumber(e.target.value)
+            } : null)} />
                 <p className="text-xs text-muted-foreground">{t("instances.phoneNumberHint")}</p>
-              </div>
-            )}
+              </div>}
             <div className="space-y-2">
               <Label>{t("instances.function")}</Label>
-              <Select
-                value={editInstance?.function || "dispatcher"}
-                onValueChange={(value: InstanceFunction) =>
-                  setEditInstance((prev) => prev ? { ...prev, function: value } : null)
-                }
-              >
+              <Select value={editInstance?.function || "dispatcher"} onValueChange={(value: InstanceFunction) => setEditInstance(prev => prev ? {
+              ...prev,
+              function: value
+            } : null)}>
                 <SelectTrigger>
                   <SelectValue placeholder={t("instances.selectFunction")} />
                 </SelectTrigger>
@@ -1137,14 +887,10 @@ export default function Instances() {
               {t("common.cancel")}
             </Button>
             <Button onClick={handleSaveEdit} disabled={isSaving}>
-              {isSaving ? (
-                <>
+              {isSaving ? <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   {t("instances.saving")}
-                </>
-              ) : (
-                t("instances.saveChanges")
-              )}
+                </> : t("instances.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1157,26 +903,20 @@ export default function Instances() {
             <AlertDialogTitle>{t("instances.deleteConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("instances.deleteConfirmDescription")}
-              {instanceToDelete && (
-                <span className="block mt-2 font-medium text-foreground">
+              {instanceToDelete && <span className="block mt-2 font-medium text-foreground">
                   {instanceToDelete.name} ({instanceToDelete.provider})
-                </span>
-              )}
+                </span>}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setInstanceToDelete(null)}>
               {t("common.cancel")}
             </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleDeleteInstance}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
+            <AlertDialogAction onClick={handleDeleteInstance} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
               {t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
+    </div>;
 }
