@@ -220,7 +220,7 @@ export const en = {
     // Status
     connected: "Connected",
     disconnected: "Disconnected",
-    qrPending: "QR Pending",
+    waitingConnection: "Waiting Connection",
     degraded: "Degraded",
     
     // Fields

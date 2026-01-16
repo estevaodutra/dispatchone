@@ -20,7 +20,7 @@ interface Instance {
   name: string;
   provider: "Z-API" | "Evolution API" | "Meta Business API";
   function: InstanceFunction;
-  status: "connected" | "disconnected" | "qrPending";
+  status: "connected" | "disconnected" | "waitingConnection";
   health: number;
   dispatches: number;
   lastCheck: string;
@@ -58,7 +58,7 @@ const initialInstances: Instance[] = [{
   name: "Marketing",
   provider: "Z-API",
   function: "admin",
-  status: "qrPending",
+  status: "disconnected",
   health: 0,
   dispatches: 0,
   lastCheck: "Never",
@@ -320,7 +320,13 @@ export default function Instances() {
     setShowConfigDialog(true);
   };
   const handleConnect = (instance: Instance) => {
-    setSelectedInstance(instance);
+    // Update status to waitingConnection when user clicks Connect
+    setInstances(prev => prev.map(inst => 
+      inst.id === instance.id 
+        ? { ...inst, status: "waitingConnection" as const } 
+        : inst
+    ));
+    setSelectedInstance({ ...instance, status: "waitingConnection" });
     setConnectionStep("select");
     setPhoneForConnection("");
     setShowConfigDialog(true);
@@ -374,7 +380,7 @@ export default function Instances() {
       name: newInstance.name,
       provider: newInstance.provider,
       function: newInstance.function,
-      status: "qrPending",
+      status: "disconnected",
       health: 0,
       dispatches: 0,
       lastCheck: "Just now",
@@ -452,8 +458,8 @@ export default function Instances() {
         return "connected";
       case "disconnected":
         return "disconnected";
-      case "qrPending":
-        return "pending";
+      case "waitingConnection":
+        return "waitingConnection";
       default:
         return "pending";
     }
@@ -485,8 +491,8 @@ export default function Instances() {
             {instances.map(instance => <Card key={instance.id} className="shadow-elevation-sm hover:shadow-elevation-md transition-shadow">
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
                   <div className="flex items-center gap-3">
-                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${instance.status === "connected" ? "bg-success/15" : instance.status === "qrPending" ? "bg-warning/15" : "bg-muted"}`}>
-                      {instance.status === "connected" ? <CheckCircle className="h-5 w-5 text-success" /> : instance.status === "qrPending" ? <MessageSquare className="h-5 w-5 text-warning" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-lg ${instance.status === "connected" ? "bg-success/15" : instance.status === "waitingConnection" ? "bg-warning/15" : "bg-muted"}`}>
+                      {instance.status === "connected" ? <CheckCircle className="h-5 w-5 text-success" /> : instance.status === "waitingConnection" ? <MessageSquare className="h-5 w-5 text-warning animate-pulse" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
                     </div>
                     <div>
                       <CardTitle className="text-base">{instance.name}</CardTitle>
@@ -530,9 +536,9 @@ export default function Instances() {
                       </div>
                     </>}
 
-                  {/* QR Pending Message */}
-                  {instance.status === "qrPending" && <div className="rounded-lg bg-warning/10 p-3 text-center">
-                      <p className="text-sm text-warning font-medium">{t("instances.scanQR")}</p>
+                  {/* Waiting Connection Message */}
+                  {instance.status === "waitingConnection" && <div className="rounded-lg bg-warning/10 p-3 text-center">
+                      <p className="text-sm text-warning font-medium">{t("instances.waitingConnection")}</p>
                     </div>}
 
                   {/* Features */}
@@ -547,7 +553,7 @@ export default function Instances() {
 
                   {/* Actions */}
                   <div className="flex items-center gap-2 pt-2">
-                    {instance.status === "qrPending" ? <Button variant="default" size="sm" className="flex-1 gap-2" onClick={() => handleConfigure(instance)}>
+                    {instance.status === "waitingConnection" ? <Button variant="default" size="sm" className="flex-1 gap-2" onClick={() => handleConnect(instance)}>
                         <QrCode className="h-4 w-4" />
                         {t("instances.viewQR")}
                       </Button> : <Button variant={instance.status === "connected" ? "outline" : "default"} size="sm" className="flex-1 gap-2" onClick={() => instance.status === "connected" ? handleConfigure(instance) : handleConnect(instance)}>

@@ -25,6 +25,7 @@ const statusBadgeVariants = cva(
         connected: "bg-success/15 text-success",
         disconnected: "bg-error/15 text-error",
         degraded: "bg-warning/15 text-warning",
+        waitingConnection: "bg-warning/15 text-warning",
       },
       size: {
         sm: "px-2 py-0.5 text-xs",
@@ -60,6 +61,7 @@ const statusDotColors: Record<string, string> = {
   connected: "bg-success",
   disconnected: "bg-error",
   degraded: "bg-warning animate-pulse-subtle",
+  waitingConnection: "bg-warning animate-pulse-subtle",
 };
 
 const statusLabels: Record<string, string> = {
@@ -78,6 +80,7 @@ const statusLabels: Record<string, string> = {
   connected: "Connected",
   disconnected: "Disconnected",
   degraded: "Degraded",
+  waitingConnection: "Waiting Connection",
 };
 
 export function StatusBadge({ status, size, className, showDot = true }: StatusBadgeProps) {
