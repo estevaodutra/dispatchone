@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PageHeader, StatusBadge, HealthBar, AlertBanner } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -175,6 +175,9 @@ export default function Instances() {
     message?: string;
     code?: string;       // Código de conexão via telefone
   } | null>(null);
+  
+  // Flag para evitar sobrescrever localStorage na primeira renderização
+  const isFirstRender = useRef(true);
 
   const triggerConnectionWebhook = async (method: "qr" | "phone") => {
     if (!selectedInstance) return;
@@ -228,8 +231,12 @@ export default function Instances() {
     }
   };
 
-  // Persist instances to localStorage
+  // Persist instances to localStorage (skip first render to avoid overwriting)
   useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(instances));
   }, [instances]);
 
