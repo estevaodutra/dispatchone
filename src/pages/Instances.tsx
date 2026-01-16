@@ -473,7 +473,7 @@ export default function Instances() {
                   {/* Actions */}
                   <div className="flex items-center gap-2 pt-2">
                     {instance.status === "qrPending" ? <Button variant="default" size="sm" className="flex-1 gap-2" onClick={() => handleConfigure(instance)}>
-                        <MessageSquare className="h-4 w-4" />
+                        <QrCode className="h-4 w-4" />
                         {t("instances.viewQR")}
                       </Button> : <Button variant={instance.status === "connected" ? "outline" : "default"} size="sm" className="flex-1 gap-2" onClick={() => instance.status === "connected" ? handleConfigure(instance) : handleConnect(instance)}>
                         <Settings className="h-4 w-4" />
