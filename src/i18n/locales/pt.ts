@@ -9,6 +9,7 @@ export const pt = {
     alerts: "Alertas",
     billing: "Faturamento",
     settings: "Configurações",
+    apiDocs: "Documentação API",
     collapse: "Recolher",
   },
 
@@ -455,5 +456,29 @@ export const pt = {
     daysAgo: "dias atrás",
     today: "Hoje",
     yesterday: "Ontem",
+  },
+
+  // API Documentation
+  apiDocs: {
+    title: "Documentação da API",
+    description: "Configure os webhooks para integrar com provedores externos",
+    baseUrl: "URL Base",
+    baseUrlDescription: "URL base para todas as requisições à API",
+    endpoints: "Endpoints",
+    eventTypes: "Tipos de Eventos",
+    eventTypesDescription: "Eventos suportados pelo webhook",
+    authentication: "Autenticação",
+    authDescription: "Inclua o header x-api-secret em todas as requisições para autenticação",
+    headerExample: "Exemplo de Headers",
+    payloadExamples: "Exemplos de Payload",
+    payloadExamplesDescription: "Selecione um tipo de evento para ver o exemplo de payload",
+    webhookDescription: "Endpoint principal para receber eventos dos provedores via n8n",
+    copied: "Copiado!",
+    message_sent: "Mensagem Enviada",
+    message_received: "Mensagem Recebida",
+    connected: "Conectado",
+    disconnected: "Desconectado",
+    message_status: "Status da Mensagem",
+    chat_presence: "Presença do Chat",
   },
 };
