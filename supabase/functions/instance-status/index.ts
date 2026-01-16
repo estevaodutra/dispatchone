@@ -1,0 +1,253 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
+// Hash token using SHA-256
+async function hashToken(token: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(token);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// Validate API key from Authorization header
+async function validateApiKey(
+  supabase: any,
+  authHeader: string | null
+): Promise<{ valid: boolean; error?: string; apiKey?: any }> {
+  if (!authHeader) {
+    return { valid: false, error: "Authorization header missing" };
+  }
+
+  const token = authHeader.replace("Bearer ", "").trim();
+
+  if (!token) {
+    return { valid: false, error: "Token not provided" };
+  }
+
+  // Validate token format
+  if (!token.startsWith("pk_live_") && !token.startsWith("pk_test_")) {
+    return { valid: false, error: "Invalid token format" };
+  }
+
+  try {
+    const keyHash = await hashToken(token);
+
+    const { data: apiKey, error } = await supabase
+      .from("api_keys")
+      .select("*")
+      .eq("key_hash", keyHash)
+      .single();
+
+    if (error || !apiKey) {
+      return { valid: false, error: "API key not found" };
+    }
+
+    if (apiKey.revoked_at) {
+      return { valid: false, error: "API key has been revoked" };
+    }
+
+    // Update last_used_at
+    await supabase
+      .from("api_keys")
+      .update({ last_used_at: new Date().toISOString() })
+      .eq("id", apiKey.id);
+
+    return { valid: true, apiKey };
+  } catch (err) {
+    console.error("Error validating API key:", err);
+    return { valid: false, error: "Error validating API key" };
+  }
+}
+
+// Valid status values
+const VALID_STATUSES = ["active", "paused", "maintenance"];
+
+// Mock instance data (simulating database)
+const mockInstances: Record<string, { status: string }> = {
+  "inst_abc123": { status: "active" },
+  "inst_def456": { status: "active" },
+  "inst_ghi789": { status: "disconnected" }
+};
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  // Only allow PUT requests
+  if (req.method !== "PUT") {
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: "METHOD_NOT_ALLOWED",
+          message: "Only PUT requests are allowed"
+        }
+      }),
+      {
+        status: 405,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
+    );
+  }
+
+  try {
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // Validate API key
+    const authHeader = req.headers.get("Authorization");
+    const validation = await validateApiKey(supabase, authHeader);
+
+    if (!validation.valid) {
+      console.log("API key validation failed:", validation.error);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "UNAUTHORIZED",
+            message: validation.error
+          }
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    // Parse request body
+    let body;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "INVALID_JSON",
+            message: "Request body must be valid JSON"
+          }
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    const { instanceId, status } = body;
+
+    // Validate required parameters
+    if (!instanceId) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "MISSING_PARAMETER",
+            message: "instanceId is required"
+          }
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    if (!status) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "MISSING_PARAMETER",
+            message: "status is required"
+          }
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    // Validate status value
+    if (!VALID_STATUSES.includes(status)) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "INVALID_STATUS",
+            message: `Status inválido. Use: ${VALID_STATUSES.map(s => `'${s}'`).join(", ")}.`
+          }
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    // Check if instance exists
+    const instance = mockInstances[instanceId];
+    if (!instance) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: "INSTANCE_NOT_FOUND",
+            message: "Instância não encontrada."
+          }
+        }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    const previousStatus = instance.status;
+    
+    // Update status (mock - in production this would update the database)
+    mockInstances[instanceId].status = status;
+
+    console.log(`Instance ${instanceId} status updated: ${previousStatus} -> ${status}`);
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        instanceId,
+        previousStatus,
+        newStatus: status,
+        updatedAt: new Date().toISOString()
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
+    );
+  } catch (error) {
+    console.error("Error in instance-status function:", error);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: "INTERNAL_ERROR",
+          message: "An internal error occurred"
+        }
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" }
+      }
+    );
+  }
+});
