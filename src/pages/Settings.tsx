@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -21,10 +22,25 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Save, Globe, Bell, Shield, Palette, Loader2, Check } from "lucide-react";
+import { 
+  Save, Globe, Bell, Shield, Palette, Loader2, Check, Copy, Plus, 
+  Trash2, Eye, EyeOff, AlertTriangle, Key 
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { useLanguage } from "@/i18n";
+import { supabase } from "@/integrations/supabase/client";
+
+interface ApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  last_four: string;
+  environment: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
 
 export default function Settings() {
   const { toast } = useToast();
@@ -34,6 +50,18 @@ export default function Settings() {
   const [isSaving, setIsSaving] = useState(false);
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
   const [show2FADialog, setShow2FADialog] = useState(false);
+  const [showNewKeyDialog, setShowNewKeyDialog] = useState(false);
+  const [showNewKeyResultDialog, setShowNewKeyResultDialog] = useState(false);
+  
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+  const [isGeneratingKey, setIsGeneratingKey] = useState(false);
+  const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyEnvironment, setNewKeyEnvironment] = useState<"production" | "test">("production");
+  const [generatedKey, setGeneratedKey] = useState("");
+  const [showGeneratedKey, setShowGeneratedKey] = useState(false);
+  const [revokingKeyId, setRevokingKeyId] = useState<string | null>(null);
   
   // Form state
   const [settings, setSettings] = useState({
@@ -46,6 +74,113 @@ export default function Settings() {
     sessionTimeout: "60",
     compactMode: false,
   });
+
+  // Fetch API keys
+  const fetchApiKeys = async () => {
+    setIsLoadingKeys(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-api-key', {
+        method: 'GET',
+      });
+
+      if (error) throw error;
+      setApiKeys(data.keys || []);
+    } catch (error) {
+      console.error('Error fetching API keys:', error);
+      toast({
+        title: t("common.error"),
+        description: t("settings.errorLoadingKeys"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingKeys(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showApiKeyDialog) {
+      fetchApiKeys();
+    }
+  }, [showApiKeyDialog]);
+
+  const handleGenerateKey = async () => {
+    if (!newKeyName.trim()) {
+      toast({
+        title: t("common.error"),
+        description: t("settings.keyNameRequired"),
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsGeneratingKey(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-api-key', {
+        method: 'POST',
+        body: { 
+          name: newKeyName.trim(), 
+          environment: newKeyEnvironment 
+        },
+      });
+
+      if (error) throw error;
+
+      setGeneratedKey(data.key);
+      setShowNewKeyDialog(false);
+      setShowNewKeyResultDialog(true);
+      setNewKeyName("");
+      fetchApiKeys();
+      
+      toast({
+        title: t("common.success"),
+        description: t("settings.keyGenerated"),
+      });
+    } catch (error) {
+      console.error('Error generating API key:', error);
+      toast({
+        title: t("common.error"),
+        description: t("settings.errorGeneratingKey"),
+        variant: "destructive",
+      });
+    } finally {
+      setIsGeneratingKey(false);
+    }
+  };
+
+  const handleRevokeKey = async (keyId: string) => {
+    setRevokingKeyId(keyId);
+    try {
+      const { error } = await supabase.functions.invoke('generate-api-key', {
+        method: 'DELETE',
+        body: { id: keyId },
+      });
+
+      if (error) throw error;
+
+      fetchApiKeys();
+      toast({
+        title: t("common.success"),
+        description: t("settings.keyRevoked"),
+      });
+    } catch (error) {
+      console.error('Error revoking API key:', error);
+      toast({
+        title: t("common.error"),
+        description: t("settings.errorRevokingKey"),
+        variant: "destructive",
+      });
+    } finally {
+      setRevokingKeyId(null);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast({
+      title: t("apiDocs.copied"),
+      description: t("settings.keyCopied"),
+    });
+  };
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
@@ -79,6 +214,18 @@ export default function Settings() {
 
   const handleLanguageChange = (value: string) => {
     setLanguage(value as "en" | "pt" | "es");
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString(language === 'pt' ? 'pt-BR' : 'en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const getMaskedKey = (prefix: string, lastFour: string) => {
+    return `${prefix}${'•'.repeat(28)}${lastFour}`;
   };
 
   return (
@@ -298,60 +445,203 @@ export default function Settings() {
         </DialogContent>
       </Dialog>
 
-      {/* API Keys Dialog */}
+      {/* API Keys List Dialog */}
       <Dialog open={showApiKeyDialog} onOpenChange={setShowApiKeyDialog}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{t("settings.manageAPIKeys")}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Key className="h-5 w-5" />
+              {t("settings.manageAPIKeys")}
+            </DialogTitle>
             <DialogDescription>
-              {t("settings.existingKeys")}
+              {t("settings.apiKeysListDescription")}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Production Key</p>
-                  <p className="text-sm text-muted-foreground font-mono">pk_live_****************************1234</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => {
-                  toast({
-                    title: "API Key copied",
-                    description: "The API key has been copied to your clipboard.",
-                  });
-                }}>
-                  Copy
-                </Button>
+          
+          <div className="space-y-4 py-4 max-h-[400px] overflow-y-auto">
+            {isLoadingKeys ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            </div>
-            <div className="rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-medium">Test Key</p>
-                  <p className="text-sm text-muted-foreground font-mono">pk_test_****************************5678</p>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => {
-                  toast({
-                    title: "API Key copied",
-                    description: "The API key has been copied to your clipboard.",
-                  });
-                }}>
-                  Copy
-                </Button>
+            ) : apiKeys.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                <Key className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                <p>{t("settings.noKeysYet")}</p>
+                <p className="text-sm">{t("settings.createFirstKey")}</p>
               </div>
-            </div>
+            ) : (
+              apiKeys.map((key) => (
+                <div 
+                  key={key.id} 
+                  className={`rounded-lg border p-4 ${key.revoked_at ? 'opacity-60 bg-muted/50' : ''}`}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <p className="font-medium truncate">{key.name}</p>
+                        <Badge variant={key.environment === 'production' ? 'default' : 'secondary'}>
+                          {key.environment === 'production' ? 'Production' : 'Test'}
+                        </Badge>
+                        {key.revoked_at && (
+                          <Badge variant="destructive">{t("settings.revoked")}</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground font-mono">
+                        {getMaskedKey(key.key_prefix, key.last_four)}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {t("settings.created")}: {formatDate(key.created_at)}
+                        {key.last_used_at && ` • ${t("settings.lastUsed")}: ${formatDate(key.last_used_at)}`}
+                      </p>
+                    </div>
+                    {!key.revoked_at && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => handleRevokeKey(key.id)}
+                        disabled={revokingKeyId === key.id}
+                      >
+                        {revokingKeyId === key.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowApiKeyDialog(false)}>
               {t("common.close")}
             </Button>
-            <Button onClick={() => {
-              toast({
-                title: t("settings.keyGenerated"),
-                description: t("settings.keyGenerated"),
-              });
-            }}>
+            <Button onClick={() => setShowNewKeyDialog(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
               {t("settings.generateNewKey")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Generate New Key Dialog */}
+      <Dialog open={showNewKeyDialog} onOpenChange={setShowNewKeyDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("settings.generateNewKey")}</DialogTitle>
+            <DialogDescription>
+              {t("settings.newKeyDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="key-name">{t("settings.keyName")}</Label>
+              <Input
+                id="key-name"
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                placeholder={t("settings.keyNamePlaceholder")}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>{t("settings.environment")}</Label>
+              <Select 
+                value={newKeyEnvironment} 
+                onValueChange={(v) => setNewKeyEnvironment(v as "production" | "test")}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="production">Production</SelectItem>
+                  <SelectItem value="test">Test</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewKeyDialog(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleGenerateKey} disabled={isGeneratingKey} className="gap-2">
+              {isGeneratingKey ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Key className="h-4 w-4" />
+              )}
+              {isGeneratingKey ? t("settings.generating") : t("settings.generate")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Key Result Dialog */}
+      <Dialog open={showNewKeyResultDialog} onOpenChange={setShowNewKeyResultDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <Check className="h-5 w-5" />
+              {t("settings.keyCreatedTitle")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("settings.keyCreatedDescription")}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="rounded-lg border border-amber-500/50 bg-amber-500/10 p-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium text-amber-600 dark:text-amber-400">
+                    {t("settings.saveKeyWarning")}
+                  </p>
+                  <p className="text-muted-foreground mt-1">
+                    {t("settings.saveKeyWarningDescription")}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>{t("settings.yourApiKey")}</Label>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 relative">
+                  <Input
+                    readOnly
+                    value={showGeneratedKey ? generatedKey : '•'.repeat(generatedKey.length)}
+                    className="font-mono pr-10"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0"
+                    onClick={() => setShowGeneratedKey(!showGeneratedKey)}
+                  >
+                    {showGeneratedKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <Button variant="outline" size="icon" onClick={() => copyToClipboard(generatedKey)}>
+                  <Copy className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              onClick={() => {
+                setShowNewKeyResultDialog(false);
+                setGeneratedKey("");
+                setShowGeneratedKey(false);
+              }}
+            >
+              {t("settings.iSavedMyKey")}
             </Button>
           </DialogFooter>
         </DialogContent>
