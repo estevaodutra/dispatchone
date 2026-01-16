@@ -26,7 +26,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Phone, Plus, Search, MoreHorizontal, RefreshCw, Pause, Play, Loader2 } from "lucide-react";
+import { Phone, Plus, Search, MoreHorizontal, RefreshCw, Pause, Play, Loader2, Pencil, Trash2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -35,6 +35,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 // Mock data
 interface PhoneNumber {
@@ -108,8 +118,16 @@ export default function PhoneNumbers() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [selectedNumber, setSelectedNumber] = useState<PhoneNumber | null>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [newNumber, setNewNumber] = useState({
+    number: "",
+    type: "whatsapp_business",
+    provider: "Z-API",
+  });
+  const [editData, setEditData] = useState({
     number: "",
     type: "whatsapp_business",
     provider: "Z-API",
@@ -180,6 +198,58 @@ export default function PhoneNumbers() {
     });
   };
 
+  const handleEdit = (num: PhoneNumber) => {
+    setSelectedNumber(num);
+    setEditData({
+      number: num.number,
+      type: num.type,
+      provider: num.provider,
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedNumber) return;
+
+    setNumbers((prev) =>
+      prev.map((n) =>
+        n.id === selectedNumber.id
+          ? {
+              ...n,
+              number: editData.number,
+              type: editData.type as "whatsapp_business" | "whatsapp_normal",
+              provider: editData.provider,
+            }
+          : n
+      )
+    );
+
+    setShowEditDialog(false);
+    setSelectedNumber(null);
+    toast({
+      title: "Number updated",
+      description: `${editData.number} has been updated successfully.`,
+    });
+  };
+
+  const handleDelete = (num: PhoneNumber) => {
+    setSelectedNumber(num);
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!selectedNumber) return;
+
+    setNumbers((prev) => prev.filter((n) => n.id !== selectedNumber.id));
+    setShowDeleteDialog(false);
+
+    toast({
+      title: "Number deleted",
+      description: `${selectedNumber.number} has been removed.`,
+    });
+    setSelectedNumber(null);
+  };
+
   const columns: Column<PhoneNumber>[] = [
     {
       key: "number",
@@ -242,7 +312,10 @@ export default function PhoneNumbers() {
               <MoreHorizontal className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="bg-popover">
+            <DropdownMenuItem onClick={() => handleEdit(num)}>
+              <Pencil className="mr-2 h-4 w-4" /> Edit
+            </DropdownMenuItem>
             {num.status === "active" ? (
               <DropdownMenuItem onClick={() => handleToggleStatus(num)}>
                 <Pause className="mr-2 h-4 w-4" /> Pause
@@ -254,6 +327,12 @@ export default function PhoneNumbers() {
             ) : null}
             <DropdownMenuItem onClick={() => handleResetCycle(num)}>
               <RefreshCw className="mr-2 h-4 w-4" /> Reset Cycle
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => handleDelete(num)}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="mr-2 h-4 w-4" /> Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -441,6 +520,85 @@ export default function PhoneNumbers() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Number Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Phone Number</DialogTitle>
+            <DialogDescription>
+              Update the phone number information.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-phone">Phone Number</Label>
+              <Input
+                id="edit-phone"
+                value={editData.number}
+                onChange={(e) => setEditData((prev) => ({ ...prev, number: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-type">Number Type</Label>
+              <Select
+                value={editData.type}
+                onValueChange={(value) => setEditData((prev) => ({ ...prev, type: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="whatsapp_business">WhatsApp Business</SelectItem>
+                  <SelectItem value="whatsapp_normal">WhatsApp Normal</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-provider">Provider</Label>
+              <Select
+                value={editData.provider}
+                onValueChange={(value) => setEditData((prev) => ({ ...prev, provider: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Z-API">Z-API</SelectItem>
+                  <SelectItem value="Evolution API">Evolution API</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Phone Number</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedNumber?.number}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
