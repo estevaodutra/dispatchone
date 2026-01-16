@@ -1056,7 +1056,7 @@ response2 = requests.get(
         id: "update-instance-status",
         method: "PUT",
         path: "/instance-status",
-        description: "Atualiza o status de uma instância (pausar/ativar envios).",
+        description: "Atualiza o status de uma instância (conectar/desconectar).",
         attributes: [
           {
             name: "instanceId",
@@ -1068,7 +1068,7 @@ response2 = requests.get(
             name: "status",
             type: "string",
             required: true,
-            description: "Novo status: 'active', 'paused' ou 'maintenance'"
+            description: "Novo status: 'connected', 'disconnected' ou 'waiting connection'"
           }
         ],
         examples: {
@@ -1077,7 +1077,7 @@ response2 = requests.get(
   -H "Authorization: Bearer YOUR_API_TOKEN" \\
   -d '{
     "instanceId": "inst_abc123",
-    "status": "paused"
+    "status": "disconnected"
   }'`,
           nodejs: `const axios = require('axios');
 
@@ -1085,7 +1085,7 @@ const response = await axios.put(
   '${API_BASE_URL}/instance-status',
   {
     instanceId: 'inst_abc123',
-    status: 'paused'
+    status: 'disconnected'
   },
   {
     headers: {
@@ -1100,7 +1100,7 @@ response = requests.put(
     '${API_BASE_URL}/instance-status',
     json={
         'instanceId': 'inst_abc123',
-        'status': 'paused'
+        'status': 'disconnected'
     },
     headers={
         'Content-Type': 'application/json',
@@ -1114,8 +1114,8 @@ response = requests.put(
             body: {
               success: true,
               instanceId: "inst_abc123",
-              previousStatus: "active",
-              newStatus: "paused",
+              previousStatus: "connected",
+              newStatus: "disconnected",
               updatedAt: "2024-01-15T12:00:00Z"
             }
           },
@@ -1125,7 +1125,7 @@ response = requests.put(
               success: false,
               error: {
                 code: "INVALID_STATUS",
-                message: "Status inválido. Use: 'active', 'paused' ou 'maintenance'."
+                message: "Status inválido. Use: 'connected', 'disconnected' ou 'waiting connection'."
               }
             }
           }
