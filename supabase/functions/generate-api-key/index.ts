@@ -29,10 +29,35 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
+    // Create admin client for database operations
+    const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
+
+    // Get user from JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('No authorization header provided');
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+
+    if (userError || !user) {
+      console.error('Invalid token or user not found:', userError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const userId = user.id;
+    console.log(`Authenticated user: ${userId}`);
 
     if (req.method === 'POST') {
       const { name, environment = 'production' } = await req.json();
@@ -53,10 +78,10 @@ serve(async (req) => {
       // Hash the full key for storage
       const keyHash = await hashToken(fullKey);
 
-      console.log(`Generating API key for: ${name}, environment: ${environment}`);
+      console.log(`Generating API key for: ${name}, environment: ${environment}, user: ${userId}`);
 
-      // Store in database
-      const { data, error } = await supabase
+      // Store in database with user_id
+      const { data, error } = await supabaseAdmin
         .from('api_keys')
         .insert({
           name,
@@ -64,6 +89,7 @@ serve(async (req) => {
           key_hash: keyHash,
           last_four: lastFour,
           environment,
+          user_id: userId,
         })
         .select()
         .single();
@@ -94,10 +120,11 @@ serve(async (req) => {
     }
 
     if (req.method === 'GET') {
-      // List all API keys (without the actual key values)
-      const { data, error } = await supabase
+      // List only user's API keys (without the actual key values)
+      const { data, error } = await supabaseAdmin
         .from('api_keys')
         .select('id, name, key_prefix, last_four, environment, created_at, last_used_at, revoked_at')
+        .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -124,11 +151,15 @@ serve(async (req) => {
         );
       }
 
-      // Soft delete by setting revoked_at
-      const { error } = await supabase
+      console.log(`Revoking API key: ${id} for user: ${userId}`);
+
+      // Soft delete by setting revoked_at - only for user's own keys
+      const { data, error } = await supabaseAdmin
         .from('api_keys')
         .update({ revoked_at: new Date().toISOString() })
-        .eq('id', id);
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select();
 
       if (error) {
         console.error('Error revoking API key:', error);
@@ -138,7 +169,15 @@ serve(async (req) => {
         );
       }
 
-      console.log(`API key revoked: ${id}`);
+      if (!data || data.length === 0) {
+        console.error('API key not found or not owned by user:', id);
+        return new Response(
+          JSON.stringify({ error: 'API key not found or access denied' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      console.log(`API key revoked successfully: ${id}`);
 
       return new Response(
         JSON.stringify({ success: true, message: 'API key revoked successfully' }),
