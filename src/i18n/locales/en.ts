@@ -115,6 +115,10 @@ export const en = {
   campaigns: {
     title: "Campaigns",
     description: "Manage and monitor your dispatch campaigns",
+    tabs: {
+      dispatch: "Dispatch",
+      groups: "Groups",
+    },
     newCampaign: "New Campaign",
     createCampaign: "Create Campaign",
     campaignName: "Campaign Name",

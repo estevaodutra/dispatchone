@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLanguage } from "@/i18n";
 import { useGroupCampaigns, GroupCampaign } from "@/hooks/useGroupCampaigns";
-import { PageHeader } from "@/components/dispatch/PageHeader";
 import { GroupCampaignList, GroupCampaignDetails, CreateGroupDialog } from "@/components/group-campaigns";
 import { toast } from "sonner";
 
@@ -74,10 +73,6 @@ export default function GroupCampaigns() {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={t("groupCampaigns.title")}
-        description={t("groupCampaigns.description")}
-      />
 
       {selectedCampaign ? (
         <GroupCampaignDetails
