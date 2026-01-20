@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { List, Users, Plus } from "lucide-react";
+import { List, Users, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useInstances } from "@/hooks/useInstances";
+import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { toast } from "sonner";
 
@@ -31,6 +32,15 @@ interface GroupsListTabProps {
 export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const { t } = useLanguage();
   const { instances, isLoading: instancesLoading } = useInstances();
+  const { 
+    linkedGroups, 
+    isLoading: linkedLoading, 
+    addGroups, 
+    removeGroup, 
+    isAdding, 
+    isRemoving 
+  } = useCampaignGroups(campaignId);
+  
   const [selectedInstance, setSelectedInstance] = useState<string>("");
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
@@ -38,6 +48,11 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const [hasFetched, setHasFetched] = useState(false);
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
+
+  // Filter out already linked groups from the available list
+  const availableGroups = groups.filter(
+    group => !linkedGroups.some(lg => lg.groupJid === group.phone)
+  );
 
   const toggleGroupSelection = (phone: string) => {
     setSelectedGroups(prev => 
@@ -48,10 +63,10 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedGroups.length === groups.length) {
+    if (selectedGroups.length === availableGroups.length) {
       setSelectedGroups([]);
     } else {
-      setSelectedGroups(groups.map(g => g.phone));
+      setSelectedGroups(availableGroups.map(g => g.phone));
     }
   };
 
@@ -114,133 +129,204 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const handleAddToCampaign = async () => {
     if (selectedGroups.length === 0 || !campaignId) return;
     
-    // TODO: Implement saving to database
-    const selectedGroupsData = groups.filter(g => 
-      selectedGroups.includes(g.phone)
-    );
+    const groupsToAdd = groups
+      .filter(g => selectedGroups.includes(g.phone))
+      .map(g => ({
+        jid: g.phone,
+        name: g.name,
+        instanceId: selectedInstance,
+      }));
     
-    toast.success(`${selectedGroups.length} grupo(s) adicionado(s) à campanha!`);
-    
-    // Clear selection
-    setSelectedGroups([]);
+    try {
+      await addGroups(groupsToAdd);
+      setSelectedGroups([]);
+    } catch (error) {
+      // Error already handled by the hook
+    }
+  };
+
+  const handleRemoveGroup = async (groupId: string) => {
+    try {
+      await removeGroup(groupId);
+    } catch (error) {
+      // Error already handled by the hook
+    }
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          {t("groupCampaigns.groups.title")}
-        </CardTitle>
-        <CardDescription>
-          {t("groupCampaigns.groups.description")}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex flex-col sm:flex-row gap-4">
-          <Select 
-            value={selectedInstance} 
-            onValueChange={setSelectedInstance}
-            disabled={instancesLoading}
-          >
-            <SelectTrigger className="w-full sm:w-[300px]">
-              <SelectValue placeholder={t("groupCampaigns.groups.selectInstance")} />
-            </SelectTrigger>
-            <SelectContent>
-              {connectedInstances.map((instance) => (
-                <SelectItem key={instance.id} value={instance.id}>
-                  {instance.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          
-          <Button 
-            onClick={handleListGroups} 
-            disabled={!selectedInstance || isLoading}
-          >
-            <List className="mr-2 h-4 w-4" />
-            {t("groupCampaigns.groups.listGroups")}
-          </Button>
-        </div>
-
-        {isLoading ? (
-          <div className="space-y-2">
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-            <Skeleton className="h-16 w-full" />
-          </div>
-        ) : hasFetched && groups.length === 0 ? (
-          <div className="text-center py-8 text-muted-foreground">
-            <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>{t("groupCampaigns.groups.noGroups")}</p>
-          </div>
-        ) : groups.length > 0 ? (
-          <div className="space-y-4">
-            {/* Header with "Select all" and action button */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Checkbox
-                  id="select-all"
-                  checked={selectedGroups.length === groups.length && groups.length > 0}
-                  onCheckedChange={toggleSelectAll}
-                />
-                <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
-                  Selecionar todos
-                </label>
-              </div>
-              
-              <Button 
-                disabled={selectedGroups.length === 0}
-                onClick={handleAddToCampaign}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Adicionar à Campanha ({selectedGroups.length})
-              </Button>
+    <div className="space-y-6">
+      {/* Section 1: Linked Groups */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Grupos Vinculados
+          </CardTitle>
+          <CardDescription>
+            Grupos já adicionados a esta campanha
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {linkedLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
             </div>
-
-            {/* Groups list */}
+          ) : linkedGroups.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Nenhum grupo vinculado ainda</p>
+            </div>
+          ) : (
             <div className="rounded-md border divide-y">
-              {groups.map((group) => (
+              {linkedGroups.map((group) => (
                 <div 
-                  key={group.phone}
-                  className="flex items-center space-x-4 p-4 hover:bg-muted/50 transition-colors cursor-pointer"
-                  onClick={() => toggleGroupSelection(group.phone)}
+                  key={group.id}
+                  className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
                 >
-                  <Checkbox
-                    id={group.phone}
-                    checked={selectedGroups.includes(group.phone)}
-                    onCheckedChange={() => toggleGroupSelection(group.phone)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{group.name}</p>
+                    <p className="font-medium truncate">{group.groupName}</p>
                     <p className="text-sm text-muted-foreground truncate">
-                      {group.phone}
+                      {group.groupJid}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {group.archived === "true" && (
-                      <Badge variant="secondary">Arquivado</Badge>
-                    )}
-                    {group.pinned === "true" && (
-                      <Badge variant="outline">Fixado</Badge>
-                    )}
-                    {group.messagesUnread !== "0" && (
-                      <Badge variant="default">{group.messagesUnread} não lidas</Badge>
-                    )}
-                  </div>
+                  <Button 
+                    variant="ghost" 
+                    size="icon"
+                    onClick={() => handleRemoveGroup(group.id)}
+                    disabled={isRemoving}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
                 </div>
               ))}
             </div>
+          )}
+        </CardContent>
+      </Card>
 
-            {/* Selection counter */}
-            <p className="text-sm text-muted-foreground">
-              {selectedGroups.length} de {groups.length} grupo(s) selecionado(s)
-            </p>
+      {/* Section 2: Add New Groups */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plus className="h-5 w-5" />
+            Adicionar Novos Grupos
+          </CardTitle>
+          <CardDescription>
+            {t("groupCampaigns.groups.description")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Select 
+              value={selectedInstance} 
+              onValueChange={setSelectedInstance}
+              disabled={instancesLoading}
+            >
+              <SelectTrigger className="w-full sm:w-[300px]">
+                <SelectValue placeholder={t("groupCampaigns.groups.selectInstance")} />
+              </SelectTrigger>
+              <SelectContent>
+                {connectedInstances.map((instance) => (
+                  <SelectItem key={instance.id} value={instance.id}>
+                    {instance.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <Button 
+              onClick={handleListGroups} 
+              disabled={!selectedInstance || isLoading}
+            >
+              <List className="mr-2 h-4 w-4" />
+              {t("groupCampaigns.groups.listGroups")}
+            </Button>
           </div>
-        ) : null}
-      </CardContent>
-    </Card>
+
+          {isLoading ? (
+            <div className="space-y-2">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+          ) : hasFetched && availableGroups.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>
+                {groups.length > 0 
+                  ? "Todos os grupos já foram adicionados à campanha"
+                  : t("groupCampaigns.groups.noGroups")
+                }
+              </p>
+            </div>
+          ) : availableGroups.length > 0 ? (
+            <div className="space-y-4">
+              {/* Header with "Select all" and action button */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="select-all"
+                    checked={selectedGroups.length === availableGroups.length && availableGroups.length > 0}
+                    onCheckedChange={toggleSelectAll}
+                  />
+                  <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+                    Selecionar todos
+                  </label>
+                </div>
+                
+                <Button 
+                  disabled={selectedGroups.length === 0 || isAdding}
+                  onClick={handleAddToCampaign}
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar à Campanha ({selectedGroups.length})
+                </Button>
+              </div>
+
+              {/* Groups list */}
+              <div className="rounded-md border divide-y">
+                {availableGroups.map((group) => (
+                  <div 
+                    key={group.phone}
+                    className="flex items-center space-x-4 p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                    onClick={() => toggleGroupSelection(group.phone)}
+                  >
+                    <Checkbox
+                      id={group.phone}
+                      checked={selectedGroups.includes(group.phone)}
+                      onCheckedChange={() => toggleGroupSelection(group.phone)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{group.name}</p>
+                      <p className="text-sm text-muted-foreground truncate">
+                        {group.phone}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {group.archived === "true" && (
+                        <Badge variant="secondary">Arquivado</Badge>
+                      )}
+                      {group.pinned === "true" && (
+                        <Badge variant="outline">Fixado</Badge>
+                      )}
+                      {group.messagesUnread !== "0" && (
+                        <Badge variant="default">{group.messagesUnread} não lidas</Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Selection counter */}
+              <p className="text-sm text-muted-foreground">
+                {selectedGroups.length} de {availableGroups.length} grupo(s) selecionado(s)
+              </p>
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
   );
 }
