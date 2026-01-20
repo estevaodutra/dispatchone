@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -20,36 +21,38 @@ import ApiDocs from "./pages/ApiDocs";
 import ApiLogs from "./pages/ApiLogs";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+const App = () => {
+  const [queryClient] = useState(() => new QueryClient());
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-      <LanguageProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <AppLayout>
-              <Routes>
-                <Route path="/" element={<Dashboard />} />
-                <Route path="/campaigns" element={<Campaigns />} />
-                <Route path="/numbers" element={<PhoneNumbers />} />
-                <Route path="/logs" element={<DispatchLogs />} />
-                <Route path="/instances" element={<Instances />} />
-                <Route path="/api-logs" element={<ApiLogs />} />
-                <Route path="/alerts" element={<Alerts />} />
-                <Route path="/billing" element={<Billing />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/api-docs" element={<ApiDocs />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </AppLayout>
-          </BrowserRouter>
-        </TooltipProvider>
-      </LanguageProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
-);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
+        <LanguageProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <AppLayout>
+                <Routes>
+                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/campaigns" element={<Campaigns />} />
+                  <Route path="/numbers" element={<PhoneNumbers />} />
+                  <Route path="/logs" element={<DispatchLogs />} />
+                  <Route path="/instances" element={<Instances />} />
+                  <Route path="/api-logs" element={<ApiLogs />} />
+                  <Route path="/alerts" element={<Alerts />} />
+                  <Route path="/billing" element={<Billing />} />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/api-docs" element={<ApiDocs />} />
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </AppLayout>
+            </BrowserRouter>
+          </TooltipProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
+};
 
 export default App;
