@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 import {
   PageHeader,
   StatusBadge,
@@ -54,7 +55,8 @@ export default function PhoneNumbers() {
   const { toast } = useToast();
   const { 
     phoneNumbers, 
-    isLoading, 
+    isLoading,
+    refetch,
     createPhoneNumber, 
     updatePhoneNumber, 
     deletePhoneNumber,
@@ -63,6 +65,8 @@ export default function PhoneNumbers() {
     isUpdating,
     isDeleting,
   } = usePhoneNumbers();
+  
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -381,10 +385,38 @@ export default function PhoneNumbers() {
         title="Phone Numbers"
         description="Manage your phone number registry and rotation cycles"
         actions={
-          <Button className="gap-2" onClick={() => setShowAddDialog(true)}>
-            <Plus className="h-4 w-4" />
-            Add Number
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              className="gap-2" 
+              onClick={async () => {
+                setIsSyncing(true);
+                try {
+                  await refetch();
+                  toast({
+                    title: "Synchronized",
+                    description: "Phone numbers data has been refreshed.",
+                  });
+                } catch (error) {
+                  toast({
+                    title: "Sync failed",
+                    description: "Could not refresh phone numbers.",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setIsSyncing(false);
+                }
+              }}
+              disabled={isSyncing}
+            >
+              <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+              Sync
+            </Button>
+            <Button className="gap-2" onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4" />
+              Add Number
+            </Button>
+          </div>
         }
       />
 
