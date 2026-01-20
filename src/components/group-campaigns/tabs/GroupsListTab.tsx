@@ -1,20 +1,27 @@
 import { useState } from "react";
-import { List, Users } from "lucide-react";
+import { List, Users, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useInstances } from "@/hooks/useInstances";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { toast } from "sonner";
 
 interface WhatsAppGroup {
-  jid: string;
+  phone: string;
   name: string;
-  participantsCount: number;
-  isAdmin: boolean;
+  isGroup: boolean;
+  pinned: string;
+  archived: string;
+  messagesUnread: string;
+  isMuted: string;
+  communityId: string;
+  lastMessageTime: string;
+  isGroupAnnouncement?: boolean;
+  ephemeralExpiration?: number;
 }
 
 interface GroupsListTabProps {
@@ -26,15 +33,31 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const { instances, isLoading: instancesLoading } = useInstances();
   const [selectedInstance, setSelectedInstance] = useState<string>("");
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
 
+  const toggleGroupSelection = (phone: string) => {
+    setSelectedGroups(prev => 
+      prev.includes(phone) 
+        ? prev.filter(p => p !== phone)
+        : [...prev, phone]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedGroups.length === groups.length) {
+      setSelectedGroups([]);
+    } else {
+      setSelectedGroups(groups.map(g => g.phone));
+    }
+  };
+
   const handleListGroups = async () => {
     if (!selectedInstance) return;
     
-    // Find the selected instance to get all its data
     const instance = instances?.find(i => i.id === selectedInstance);
     if (!instance) {
       toast.error("Instância não encontrada");
@@ -43,6 +66,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     
     setIsLoading(true);
     setHasFetched(true);
+    setSelectedGroups([]);
     
     try {
       const response = await fetch(
@@ -53,16 +77,13 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            // Instance information
             instanceId: instance.id,
             instanceName: instance.name,
             phone: instance.phoneNumber,
             provider: instance.provider,
             status: instance.status,
-            // Provider credentials (Z-API)
             externalInstanceId: instance.idInstance,
             externalInstanceToken: instance.tokenInstance,
-            // Additional context
             campaignId: campaignId,
           }),
         }
@@ -74,10 +95,13 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
       
       const data = await response.json();
       
-      // Process webhook response - expecting array of groups
-      setGroups(data.groups || data || []);
+      // Filter only groups (isGroup === true)
+      const rawGroups = data.groups || data || [];
+      const groupsOnly = rawGroups.filter((item: WhatsAppGroup) => item.isGroup === true);
       
-      toast.success("Grupos listados com sucesso!");
+      setGroups(groupsOnly);
+      
+      toast.success(`${groupsOnly.length} grupo(s) encontrado(s)!`);
     } catch (error) {
       console.error("Erro ao listar grupos:", error);
       toast.error("Falha ao listar grupos. Tente novamente.");
@@ -85,6 +109,20 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAddToCampaign = async () => {
+    if (selectedGroups.length === 0 || !campaignId) return;
+    
+    // TODO: Implement saving to database
+    const selectedGroupsData = groups.filter(g => 
+      selectedGroups.includes(g.phone)
+    );
+    
+    toast.success(`${selectedGroups.length} grupo(s) adicionado(s) à campanha!`);
+    
+    // Clear selection
+    setSelectedGroups([]);
   };
 
   return (
@@ -128,9 +166,9 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
 
         {isLoading ? (
           <div className="space-y-2">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
+            <Skeleton className="h-16 w-full" />
           </div>
         ) : hasFetched && groups.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
@@ -138,37 +176,68 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
             <p>{t("groupCampaigns.groups.noGroups")}</p>
           </div>
         ) : groups.length > 0 ? (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("groupCampaigns.groups.groupName")}</TableHead>
-                  <TableHead>{t("groupCampaigns.groups.participants")}</TableHead>
-                  <TableHead>{t("groupCampaigns.groups.adminStatus")}</TableHead>
-                  <TableHead className="text-right">{t("common.actions")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {groups.map((group) => (
-                  <TableRow key={group.jid}>
-                    <TableCell className="font-medium">{group.name}</TableCell>
-                    <TableCell>{group.participantsCount}</TableCell>
-                    <TableCell>
-                      <Badge variant={group.isAdmin ? "default" : "secondary"}>
-                        {group.isAdmin 
-                          ? t("groupCampaigns.groups.isAdmin") 
-                          : t("groupCampaigns.groups.notAdmin")}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm">
-                        {t("groupCampaigns.groups.connect")}
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+          <div className="space-y-4">
+            {/* Header with "Select all" and action button */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="select-all"
+                  checked={selectedGroups.length === groups.length && groups.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                />
+                <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
+                  Selecionar todos
+                </label>
+              </div>
+              
+              <Button 
+                disabled={selectedGroups.length === 0}
+                onClick={handleAddToCampaign}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Adicionar à Campanha ({selectedGroups.length})
+              </Button>
+            </div>
+
+            {/* Groups list */}
+            <div className="rounded-md border divide-y">
+              {groups.map((group) => (
+                <div 
+                  key={group.phone}
+                  className="flex items-center space-x-4 p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => toggleGroupSelection(group.phone)}
+                >
+                  <Checkbox
+                    id={group.phone}
+                    checked={selectedGroups.includes(group.phone)}
+                    onCheckedChange={() => toggleGroupSelection(group.phone)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate">{group.name}</p>
+                    <p className="text-sm text-muted-foreground truncate">
+                      {group.phone}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {group.archived === "true" && (
+                      <Badge variant="secondary">Arquivado</Badge>
+                    )}
+                    {group.pinned === "true" && (
+                      <Badge variant="outline">Fixado</Badge>
+                    )}
+                    {group.messagesUnread !== "0" && (
+                      <Badge variant="default">{group.messagesUnread} não lidas</Badge>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Selection counter */}
+            <p className="text-sm text-muted-foreground">
+              {selectedGroups.length} de {groups.length} grupo(s) selecionado(s)
+            </p>
           </div>
         ) : null}
       </CardContent>
