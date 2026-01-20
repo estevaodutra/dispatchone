@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface DispatchLog {
   id: string;
@@ -22,6 +23,7 @@ interface DbDispatchLog {
   status: string;
   channel: string;
   error_message: string | null;
+  user_id: string | null;
 }
 
 function transformDbToFrontend(dbLog: DbDispatchLog): DispatchLog {
@@ -39,6 +41,8 @@ function transformDbToFrontend(dbLog: DbDispatchLog): DispatchLog {
 }
 
 export function useDispatchLogs() {
+  const { user } = useAuth();
+
   const { data: logs = [], isLoading, refetch } = useQuery({
     queryKey: ["dispatch-logs"],
     queryFn: async () => {
@@ -52,6 +56,7 @@ export function useDispatchLogs() {
 
       return (data as DbDispatchLog[]).map(transformDbToFrontend);
     },
+    enabled: !!user,
   });
 
   return { logs, isLoading, refetch };

@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Database instance type (matches Supabase schema)
 interface DbInstance {
@@ -14,6 +15,7 @@ interface DbInstance {
   messages_count: number | null;
   external_instance_id: string | null;
   external_instance_token: string | null;
+  user_id: string | null;
 }
 
 // Frontend instance type
@@ -132,6 +134,7 @@ const transformDbToFrontend = (dbInstance: DbInstance): Instance => {
 export function useInstances() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   // Fetch all instances
   const {
@@ -154,6 +157,7 @@ export function useInstances() {
 
       return (data || []).map(transformDbToFrontend);
     },
+    enabled: !!user,
   });
 
   // Create instance mutation
@@ -163,6 +167,8 @@ export function useInstances() {
       provider: string;
       phone: string;
     }) => {
+      if (!user) throw new Error("Not authenticated");
+
       const { data, error } = await supabase
         .from("instances")
         .insert({
@@ -170,6 +176,7 @@ export function useInstances() {
           provider: newInstance.provider,
           phone: newInstance.phone,
           status: "disconnected",
+          user_id: user.id,
         })
         .select()
         .single();

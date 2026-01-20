@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Alert {
   id: string;
@@ -22,6 +23,7 @@ interface DbAlert {
   entity: string | null;
   created_at: string;
   read: boolean | null;
+  user_id: string | null;
 }
 
 function transformDbToFrontend(dbAlert: DbAlert): Alert {
@@ -39,6 +41,7 @@ function transformDbToFrontend(dbAlert: DbAlert): Alert {
 export function useAlerts() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data: alerts = [], isLoading } = useQuery({
     queryKey: ["alerts"],
@@ -52,6 +55,7 @@ export function useAlerts() {
 
       return (data as DbAlert[]).map(transformDbToFrontend);
     },
+    enabled: !!user,
   });
 
   const { mutateAsync: markAsRead } = useMutation({
