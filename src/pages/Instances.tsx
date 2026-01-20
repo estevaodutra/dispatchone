@@ -12,72 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MessageSquare, Settings, RefreshCw, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
-
-// Mock data
-type InstanceFunction = "dispatcher" | "admin" | "spy" | "funnel";
-interface Instance {
-  id: string;
-  name: string;
-  provider: "Z-API" | "Evolution API" | "Meta Business API";
-  function: InstanceFunction;
-  status: "connected" | "disconnected" | "waitingConnection";
-  health: number;
-  dispatches: number;
-  lastCheck: string;
-  connectedNumber?: string;
-  features: string[];
-  documentation: string;
-  phoneNumber?: string;
-  idInstance?: string;      // ID da instância no provedor
-  tokenInstance?: string;   // Token de autenticação do provedor
-}
-const initialInstances: Instance[] = [{
-  id: "1",
-  name: "Vendas Principal",
-  provider: "Z-API",
-  function: "dispatcher",
-  status: "connected",
-  health: 98,
-  dispatches: 12500,
-  lastCheck: "2 min ago",
-  connectedNumber: "+55 11 99999-1234",
-  features: ["Text", "Media", "Templates", "Webhooks"],
-  documentation: "https://developer.z-api.io"
-}, {
-  id: "2",
-  name: "Suporte",
-  provider: "Evolution API",
-  function: "funnel",
-  status: "connected",
-  health: 95,
-  dispatches: 8200,
-  lastCheck: "1 min ago",
-  connectedNumber: "+55 11 98888-5678",
-  features: ["Text", "Media", "Groups", "Status"],
-  documentation: "https://doc.evolution-api.com"
-}, {
-  id: "3",
-  name: "Marketing",
-  provider: "Z-API",
-  function: "admin",
-  status: "disconnected",
-  health: 0,
-  dispatches: 0,
-  lastCheck: "Never",
-  features: ["Text", "Media", "Templates"],
-  documentation: "https://developer.z-api.io"
-}, {
-  id: "4",
-  name: "Meta Oficial",
-  provider: "Meta Business API",
-  function: "spy",
-  status: "disconnected",
-  health: 0,
-  dispatches: 0,
-  lastCheck: "Never",
-  features: ["Official API", "Templates", "Analytics"],
-  documentation: "https://developers.facebook.com/docs/whatsapp"
-}];
+import { useInstances, Instance, InstanceFunction, mapFrontendStatusToDb } from "@/hooks/useInstances";
+import { Skeleton } from "@/components/ui/skeleton";
 
 // Função para formatar número de telefone brasileiro
 const formatPhoneNumber = (value: string): string => {
@@ -89,26 +25,20 @@ const formatPhoneNumber = (value: string): string => {
   if (limited.length <= 9) return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4)}`;
   return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4, 9)}-${limited.slice(9)}`;
 };
-const STORAGE_KEY = "whatsapp-instances";
-const getInitialInstances = (): Instance[] => {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-    try {
-      return JSON.parse(saved);
-    } catch {
-      return initialInstances;
-    }
-  }
-  return initialInstances;
-};
 export default function Instances() {
-  const {
-    toast
-  } = useToast();
-  const {
-    t
-  } = useLanguage();
-  const [instances, setInstances] = useState<Instance[]>(getInitialInstances);
+  const { toast } = useToast();
+  const { t } = useLanguage();
+  const { 
+    instances, 
+    isLoading, 
+    refetch, 
+    createInstance, 
+    updateInstance, 
+    deleteInstance,
+    isCreating,
+    isUpdating,
+    isDeleting 
+  } = useInstances();
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -154,8 +84,6 @@ export default function Instances() {
   const [qrTimeLeft, setQrTimeLeft] = useState(20);
   const [isQrExpired, setIsQrExpired] = useState(false);
 
-  // Flag para evitar sobrescrever localStorage na primeira renderização
-  const isFirstRender = useRef(true);
   const triggerConnectionWebhook = async (method: "qr" | "phone") => {
     if (!selectedInstance) return;
     const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_generate_qrcode";
@@ -190,15 +118,13 @@ export default function Instances() {
 
       // Salvar credenciais se presentes na resposta
       if (normalizedData.id_instance && normalizedData.token_instance) {
-        setInstances(prev => prev.map(inst => 
-          inst.id === selectedInstance.id 
-            ? { 
-                ...inst, 
-                idInstance: normalizedData.id_instance,
-                tokenInstance: normalizedData.token_instance 
-              } 
-            : inst
-        ));
+        await updateInstance({
+          id: selectedInstance.id,
+          updates: {
+            external_instance_id: normalizedData.id_instance,
+            external_instance_token: normalizedData.token_instance,
+          }
+        });
         
         toast({
           title: "Credenciais recebidas",
@@ -247,14 +173,7 @@ export default function Instances() {
     };
   }, [connectionStep, webhookResponse, isConnecting]);
 
-  // Persist instances to localStorage (skip first render to avoid overwriting)
-  useEffect(() => {
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      return;
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(instances));
-  }, [instances]);
+  // No longer need localStorage - data persists in database
 
   // Timer Display Component
   const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: boolean }) => {
@@ -327,7 +246,7 @@ export default function Instances() {
   };
   const handleRefreshStatus = async () => {
     setIsRefreshing(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await refetch();
     setIsRefreshing(false);
     toast({
       title: t("instances.statusRefreshed"),
@@ -343,13 +262,12 @@ export default function Instances() {
     });
     setShowConfigDialog(true);
   };
-  const handleConnect = (instance: Instance) => {
+  const handleConnect = async (instance: Instance) => {
     // Update status to waitingConnection when user clicks Connect
-    setInstances(prev => prev.map(inst => 
-      inst.id === instance.id 
-        ? { ...inst, status: "waitingConnection" as const } 
-        : inst
-    ));
+    await updateInstance({
+      id: instance.id,
+      updates: { status: "waiting connection" }
+    });
     setSelectedInstance({ ...instance, status: "waitingConnection" });
     setConnectionStep("select");
     setPhoneForConnection("");
@@ -371,15 +289,11 @@ export default function Instances() {
       return;
     }
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1500));
     if (selectedInstance) {
-      setInstances(prev => prev.map(inst => inst.id === selectedInstance.id ? {
-        ...inst,
-        status: "connected" as const,
-        health: 100,
-        lastCheck: "Just now",
-        connectedNumber: "+55 11 97777-0000"
-      } : inst));
+      await updateInstance({
+        id: selectedInstance.id,
+        updates: { status: "connected" }
+      });
     }
     setIsSaving(false);
     setShowConfigDialog(false);
@@ -398,43 +312,43 @@ export default function Instances() {
       return;
     }
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    const instance: Instance = {
-      id: String(Date.now()),
-      name: newInstance.name,
-      provider: newInstance.provider,
-      function: newInstance.function,
-      status: "disconnected",
-      health: 0,
-      dispatches: 0,
-      lastCheck: "Just now",
-      features: ["Text", "Media"],
-      documentation: newInstance.provider === "Z-API" ? "https://developer.z-api.io" : "https://doc.evolution-api.com",
-      phoneNumber: newInstance.provider === "Z-API" ? newInstance.phoneNumber : undefined
-    };
-    setInstances(prev => [...prev, instance]);
-    setIsSaving(false);
-    setShowAddDialog(false);
-    setNewInstance({
-      name: "",
-      provider: "Z-API",
-      function: "dispatcher",
-      phoneNumber: ""
-    });
-    toast({
-      title: t("instances.instanceAdded"),
-      description: `${instance.name} - ${t("instances.scanQR")}`
-    });
-  };
-  const handleDeleteInstance = () => {
-    if (instanceToDelete) {
-      setInstances(prev => prev.filter(inst => inst.id !== instanceToDelete.id));
-      setShowDeleteDialog(false);
-      toast({
-        title: t("instances.instanceDeleted"),
-        description: `${instanceToDelete.name} ${t("instances.instanceDeletedDescription")}`
+    try {
+      await createInstance({
+        name: newInstance.name,
+        provider: newInstance.provider,
+        phone: newInstance.phoneNumber?.replace(/\D/g, "") || "",
       });
-      setInstanceToDelete(null);
+      setShowAddDialog(false);
+      setNewInstance({
+        name: "",
+        provider: "Z-API",
+        function: "dispatcher",
+        phoneNumber: ""
+      });
+      toast({
+        title: t("instances.instanceAdded"),
+        description: `${newInstance.name} - ${t("instances.scanQR")}`
+      });
+    } catch (error) {
+      // Error handled in hook
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  const handleDeleteInstance = async () => {
+    if (instanceToDelete) {
+      try {
+        await deleteInstance(instanceToDelete.id);
+        setShowDeleteDialog(false);
+        toast({
+          title: t("instances.instanceDeleted"),
+          description: `${instanceToDelete.name} ${t("instances.instanceDeletedDescription")}`
+        });
+      } catch (error) {
+        // Error handled in hook
+      } finally {
+        setInstanceToDelete(null);
+      }
     }
   };
   const handleEditClick = (instance: Instance) => {
@@ -457,23 +371,26 @@ export default function Instances() {
       return;
     }
     setIsSaving(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setInstances(prev => prev.map(inst => inst.id === editInstance.id ? {
-      ...inst,
-      name: editInstance.name,
-      provider: editInstance.provider,
-      function: editInstance.function,
-      ...(editInstance.provider === "Z-API" ? {
-        phoneNumber: editInstance.phoneNumber
-      } : {})
-    } : inst));
-    setIsSaving(false);
-    setShowEditDialog(false);
-    toast({
-      title: t("instances.instanceUpdated"),
-      description: `${editInstance.name} ${t("instances.instanceUpdatedDescription")}`
-    });
-    setEditInstance(null);
+    try {
+      await updateInstance({
+        id: editInstance.id,
+        updates: {
+          name: editInstance.name,
+          provider: editInstance.provider,
+          phone: editInstance.phoneNumber?.replace(/\D/g, "") || "",
+        }
+      });
+      setShowEditDialog(false);
+      toast({
+        title: t("instances.instanceUpdated"),
+        description: `${editInstance.name} ${t("instances.instanceUpdatedDescription")}`
+      });
+      setEditInstance(null);
+    } catch (error) {
+      // Error handled in hook
+    } finally {
+      setIsSaving(false);
+    }
   };
   const disconnectedInstances = instances.filter(inst => inst.status === "disconnected");
   const getStatusDisplay = (status: Instance["status"]) => {
@@ -510,8 +427,32 @@ export default function Instances() {
           {/* Alert for disconnected instances */}
           {disconnectedInstances.length > 0 && showDisconnectedAlert && <AlertBanner variant="warning" title={t("instances.instanceDisconnected")} description={`${disconnectedInstances[0].name} ${t("instances.instanceDisconnectedDescription")}`} dismissible onDismiss={() => setShowDisconnectedAlert(false)} />}
 
+          {/* Loading State */}
+          {isLoading && (
+            <div className="grid gap-6 md:grid-cols-2">
+              {[1, 2].map(i => (
+                <Card key={i} className="shadow-elevation-sm">
+                  <CardHeader className="flex flex-row items-start justify-between pb-2">
+                    <div className="flex items-center gap-3">
+                      <Skeleton className="h-10 w-10 rounded-lg" />
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-32" />
+                        <Skeleton className="h-4 w-24" />
+                      </div>
+                    </div>
+                    <Skeleton className="h-6 w-20" />
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-8 w-full" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+
           {/* Instance Cards */}
-          <div className="grid gap-6 md:grid-cols-2">
+          {!isLoading && <div className="grid gap-6 md:grid-cols-2">
             {instances.map(instance => <Card key={instance.id} className="shadow-elevation-sm hover:shadow-elevation-md transition-shadow">
                 <CardHeader className="flex flex-row items-start justify-between pb-2">
                   <div className="flex items-center gap-3">
@@ -607,8 +548,7 @@ export default function Instances() {
                   </div>
                 </CardContent>
               </Card>)}
-          </div>
-
+          </div>}
           {/* Add Instance */}
           <Card className="border-dashed shadow-elevation-sm">
             <CardContent className="flex flex-col items-center justify-center py-8">
