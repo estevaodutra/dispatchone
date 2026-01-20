@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface ApiLog {
   id: string;
@@ -27,6 +28,7 @@ interface DbApiLog {
   request_body: object | null;
   response_body: object | null;
   error_message: string | null;
+  user_id: string | null;
 }
 
 function transformDbToFrontend(dbLog: DbApiLog): ApiLog {
@@ -46,6 +48,8 @@ function transformDbToFrontend(dbLog: DbApiLog): ApiLog {
 }
 
 export function useApiLogs() {
+  const { user } = useAuth();
+
   const { data: logs = [], isLoading, refetch } = useQuery({
     queryKey: ["api-logs"],
     queryFn: async () => {
@@ -59,6 +63,7 @@ export function useApiLogs() {
 
       return (data as DbApiLog[]).map(transformDbToFrontend);
     },
+    enabled: !!user,
   });
 
   return { logs, isLoading, refetch };

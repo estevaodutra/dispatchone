@@ -6,6 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { LanguageProvider } from "@/i18n";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout";
 
 // Pages
@@ -19,6 +21,7 @@ import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import ApiDocs from "./pages/ApiDocs";
 import ApiLogs from "./pages/ApiLogs";
+import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
 const App = () => {
@@ -28,27 +31,121 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
         <LanguageProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <AppLayout>
+          <AuthProvider>
+            <TooltipProvider>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
                 <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/campaigns" element={<Campaigns />} />
-                  <Route path="/numbers" element={<PhoneNumbers />} />
-                  <Route path="/logs" element={<DispatchLogs />} />
-                  <Route path="/instances" element={<Instances />} />
-                  <Route path="/api-logs" element={<ApiLogs />} />
-                  <Route path="/alerts" element={<Alerts />} />
-                  <Route path="/billing" element={<Billing />} />
-                  <Route path="/settings" element={<Settings />} />
-                  <Route path="/api-docs" element={<ApiDocs />} />
+                  {/* Public route */}
+                  <Route path="/auth" element={<Auth />} />
+                  
+                  {/* Protected routes */}
+                  <Route
+                    path="/"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Dashboard />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/campaigns"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Campaigns />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/numbers"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <PhoneNumbers />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/logs"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <DispatchLogs />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/instances"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Instances />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/api-logs"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <ApiLogs />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/alerts"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Alerts />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/billing"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Billing />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/settings"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Settings />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/api-docs"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <ApiDocs />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
-              </AppLayout>
-            </BrowserRouter>
-          </TooltipProvider>
+              </BrowserRouter>
+            </TooltipProvider>
+          </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>
     </QueryClientProvider>

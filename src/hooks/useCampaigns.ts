@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Campaign {
   id: string;
@@ -22,6 +23,7 @@ interface DbCampaign {
   total: number | null;
   success_rate: number | null;
   created_at: string | null;
+  user_id: string | null;
 }
 
 function transformDbToFrontend(dbCampaign: DbCampaign): Campaign {
@@ -42,6 +44,7 @@ function transformDbToFrontend(dbCampaign: DbCampaign): Campaign {
 export function useCampaigns() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const { data: campaigns = [], isLoading } = useQuery({
     queryKey: ["campaigns"],
@@ -55,10 +58,13 @@ export function useCampaigns() {
 
       return (data as DbCampaign[]).map(transformDbToFrontend);
     },
+    enabled: !!user,
   });
 
   const { mutateAsync: createCampaign, isPending: isCreating } = useMutation({
     mutationFn: async (campaign: { name: string; channel: string; total: number }) => {
+      if (!user) throw new Error("Not authenticated");
+
       const { data, error } = await supabase
         .from("campaigns")
         .insert({
@@ -68,6 +74,7 @@ export function useCampaigns() {
           status: "draft",
           sent: 0,
           success_rate: 0,
+          user_id: user.id,
         })
         .select()
         .single();
