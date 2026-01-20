@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInstances } from "@/hooks/useInstances";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { toast } from "sonner";
 
 interface WhatsAppGroup {
   jid: string;
@@ -33,16 +34,57 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const handleListGroups = async () => {
     if (!selectedInstance) return;
     
+    // Find the selected instance to get all its data
+    const instance = instances?.find(i => i.id === selectedInstance);
+    if (!instance) {
+      toast.error("Instância não encontrada");
+      return;
+    }
+    
     setIsLoading(true);
     setHasFetched(true);
     
-    // TODO: Implement Edge Function to fetch groups from WhatsApp API
-    // For now, simulate loading
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Mock data for demonstration
-    setGroups([]);
-    setIsLoading(false);
+    try {
+      const response = await fetch(
+        "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_get_groups",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            // Instance information
+            instanceId: instance.id,
+            instanceName: instance.name,
+            phone: instance.phoneNumber,
+            provider: instance.provider,
+            status: instance.status,
+            // Provider credentials (Z-API)
+            externalInstanceId: instance.idInstance,
+            externalInstanceToken: instance.tokenInstance,
+            // Additional context
+            campaignId: campaignId,
+          }),
+        }
+      );
+      
+      if (!response.ok) {
+        throw new Error("Falha ao buscar grupos");
+      }
+      
+      const data = await response.json();
+      
+      // Process webhook response - expecting array of groups
+      setGroups(data.groups || data || []);
+      
+      toast.success("Grupos listados com sucesso!");
+    } catch (error) {
+      console.error("Erro ao listar grupos:", error);
+      toast.error("Falha ao listar grupos. Tente novamente.");
+      setGroups([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
