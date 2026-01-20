@@ -139,6 +139,36 @@ export type Database = {
           },
         ]
       }
+      campaign_groups: {
+        Row: {
+          added_at: string | null
+          campaign_id: string
+          group_jid: string
+          group_name: string
+          id: string
+          instance_id: string | null
+          user_id: string
+        }
+        Insert: {
+          added_at?: string | null
+          campaign_id: string
+          group_jid: string
+          group_name: string
+          id?: string
+          instance_id?: string | null
+          user_id: string
+        }
+        Update: {
+          added_at?: string | null
+          campaign_id?: string
+          group_jid?: string
+          group_name?: string
+          id?: string
+          instance_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       campaigns: {
         Row: {
           channel: string
