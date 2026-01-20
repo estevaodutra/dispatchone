@@ -239,6 +239,78 @@ Deno.serve(async (req) => {
 
     console.log(`Instance ${instanceId} status updated: ${previousStatus} -> ${status}`);
 
+    // Auto-register phone number when instance becomes connected
+    if (status === "connected" && previousStatus !== "connected") {
+      try {
+        // Fetch full instance data including phone and user_id
+        const { data: fullInstance, error: fetchFullError } = await supabase
+          .from("instances")
+          .select("phone, provider, user_id")
+          .eq("id", instanceId)
+          .single();
+
+        if (!fetchFullError && fullInstance?.phone && fullInstance?.user_id) {
+          // Check if phone number already exists for this user
+          const { data: existingNumber } = await supabase
+            .from("phone_numbers")
+            .select("id")
+            .eq("number", fullInstance.phone)
+            .eq("user_id", fullInstance.user_id)
+            .maybeSingle();
+
+          if (existingNumber) {
+            // Update existing record to connected
+            await supabase
+              .from("phone_numbers")
+              .update({
+                connected: true,
+                status: "active",
+                instance_id: instanceId,
+                health: 100,
+              })
+              .eq("id", existingNumber.id);
+            console.log(`Phone number ${fullInstance.phone} updated to connected`);
+          } else {
+            // Create new phone number record
+            const { error: insertError } = await supabase
+              .from("phone_numbers")
+              .insert({
+                user_id: fullInstance.user_id,
+                instance_id: instanceId,
+                number: fullInstance.phone,
+                type: "whatsapp_normal",
+                provider: fullInstance.provider,
+                status: "active",
+                connected: true,
+                health: 100,
+              });
+
+            if (insertError) {
+              console.error("Error auto-registering phone number:", insertError);
+            } else {
+              console.log(`Phone number ${fullInstance.phone} auto-registered`);
+            }
+          }
+        }
+      } catch (phoneErr) {
+        console.error("Error in phone number auto-registration:", phoneErr);
+        // Don't fail the main request if phone registration fails
+      }
+    }
+
+    // Update phone number to disconnected when instance disconnects
+    if (status === "disconnected" && previousStatus === "connected") {
+      try {
+        await supabase
+          .from("phone_numbers")
+          .update({ connected: false, status: "paused" })
+          .eq("instance_id", instanceId);
+        console.log(`Phone numbers for instance ${instanceId} marked as disconnected`);
+      } catch (phoneErr) {
+        console.error("Error updating phone number status:", phoneErr);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
