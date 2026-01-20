@@ -236,6 +236,65 @@ export function usePhoneNumbers() {
     }
   };
 
+  // Sync phone numbers from connected instances
+  const syncFromInstances = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("User not authenticated");
+
+    // Fetch connected instances with phone numbers
+    const { data: instances, error: instancesError } = await supabase
+      .from("instances")
+      .select("id, phone, provider")
+      .eq("user_id", user.id)
+      .eq("status", "connected")
+      .not("phone", "is", null);
+
+    if (instancesError) throw instancesError;
+    if (!instances || instances.length === 0) {
+      return { synced: 0 };
+    }
+
+    let syncedCount = 0;
+    for (const instance of instances) {
+      if (!instance.phone) continue;
+
+      // Check if already exists
+      const { data: existing } = await supabase
+        .from("phone_numbers")
+        .select("id")
+        .eq("number", instance.phone)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!existing) {
+        // Create new record
+        await supabase.from("phone_numbers").insert({
+          user_id: user.id,
+          instance_id: instance.id,
+          number: instance.phone,
+          type: "whatsapp_normal",
+          provider: instance.provider,
+          status: "active",
+          connected: true,
+          health: 100,
+        });
+        syncedCount++;
+      } else {
+        // Update existing record
+        await supabase.from("phone_numbers")
+          .update({
+            connected: true,
+            status: "active",
+            instance_id: instance.id,
+          })
+          .eq("id", existing.id);
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["phone_numbers"] });
+    return { synced: syncedCount };
+  };
+
   return {
     phoneNumbers,
     isLoading,
@@ -246,6 +305,7 @@ export function usePhoneNumbers() {
     deletePhoneNumber: deletePhoneNumberMutation.mutateAsync,
     resetCycle: resetCycleMutation.mutateAsync,
     ensurePhoneNumberExists,
+    syncFromInstances,
     isCreating: createPhoneNumberMutation.isPending,
     isUpdating: updatePhoneNumberMutation.isPending,
     isDeleting: deletePhoneNumberMutation.isPending,
