@@ -13,6 +13,7 @@ import { AppLayout } from "@/components/layout";
 // Pages
 import Dashboard from "./pages/Dashboard";
 import Campaigns from "./pages/Campaigns";
+import GroupCampaigns from "./pages/GroupCampaigns";
 import PhoneNumbers from "./pages/PhoneNumbers";
 import DispatchLogs from "./pages/DispatchLogs";
 import Instances from "./pages/Instances";
@@ -57,6 +58,16 @@ const App = () => {
                       <ProtectedRoute>
                         <AppLayout>
                           <Campaigns />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/group-campaigns"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <GroupCampaigns />
                         </AppLayout>
                       </ProtectedRoute>
                     }

@@ -3,6 +3,7 @@ export const pt = {
   nav: {
     dashboard: "Painel",
     campaigns: "Campanhas",
+    groupCampaigns: "Campanhas de Grupos",
     phoneNumbers: "Números",
     dispatchLogs: "Logs de Envio",
     instances: "Instâncias",
@@ -531,5 +532,56 @@ export const pt = {
     method: "Método",
     responseTime: "Tempo de Resposta",
     apiKey: "Chave API",
+  },
+
+  // Campanhas de Grupos
+  groupCampaigns: {
+    title: "Campanhas de Grupos",
+    description: "Gerencie campanhas de grupos WhatsApp com automação",
+    newCampaign: "Nova Campanha",
+    searchPlaceholder: "Buscar campanhas...",
+    noCampaigns: "Nenhuma campanha encontrada",
+    createFirst: "Crie sua primeira campanha de grupo para começar.",
+    createCampaign: "Criar Campanha",
+    deleteCampaign: "Excluir campanha?",
+    deleteWarning: "Esta ação não pode ser desfeita. Todos os dados da campanha, incluindo membros, mensagens e configurações serão permanentemente removidos.",
+    campaignCreated: "Campanha criada com sucesso",
+    campaignActivated: "Campanha ativada",
+    campaignPaused: "Campanha pausada",
+    campaignDeleted: "Campanha excluída com sucesso",
+    
+    // Tabs
+    tabs: {
+      config: "Configuração",
+      members: "Membros",
+      messages: "Mensagens",
+      moderation: "Moderação",
+      analytics: "Analytics",
+    },
+    
+    // Config
+    config: {
+      basicInfo: "Informações Básicas",
+      groupInfo: "Informações do Grupo",
+      permissions: "Permissões do Grupo",
+      campaignName: "Nome da Campanha",
+      instance: "Instância WhatsApp",
+      groupName: "Nome do Grupo",
+      groupDescription: "Descrição do Grupo",
+      groupPhoto: "Foto do Grupo",
+      inviteLink: "Link de Convite",
+      messagePermission: "Quem pode enviar mensagens",
+      editPermission: "Quem pode editar informações",
+      everyone: "Todos",
+      adminsOnly: "Apenas admins",
+    },
+    
+    // Status
+    status: {
+      draft: "Rascunho",
+      active: "Ativo",
+      paused: "Pausado",
+      archived: "Arquivado",
+    },
   },
 };

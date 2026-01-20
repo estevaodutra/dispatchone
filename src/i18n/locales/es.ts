@@ -3,6 +3,7 @@ export const es = {
   nav: {
     dashboard: "Panel",
     campaigns: "Campañas",
+    groupCampaigns: "Campañas de Grupos",
     phoneNumbers: "Números",
     dispatchLogs: "Registros de Envío",
     instances: "Instancias",
@@ -531,5 +532,56 @@ export const es = {
     method: "Método",
     responseTime: "Tiempo de Respuesta",
     apiKey: "Clave API",
+  },
+
+  // Campañas de Grupos
+  groupCampaigns: {
+    title: "Campañas de Grupos",
+    description: "Gestiona campañas de grupos WhatsApp con automatización",
+    newCampaign: "Nueva Campaña",
+    searchPlaceholder: "Buscar campañas...",
+    noCampaigns: "No se encontraron campañas",
+    createFirst: "Crea tu primera campaña de grupo para comenzar.",
+    createCampaign: "Crear Campaña",
+    deleteCampaign: "¿Eliminar campaña?",
+    deleteWarning: "Esta acción no se puede deshacer. Todos los datos de la campaña, incluyendo miembros, mensajes y configuraciones serán eliminados permanentemente.",
+    campaignCreated: "Campaña creada exitosamente",
+    campaignActivated: "Campaña activada",
+    campaignPaused: "Campaña pausada",
+    campaignDeleted: "Campaña eliminada exitosamente",
+    
+    // Tabs
+    tabs: {
+      config: "Configuración",
+      members: "Miembros",
+      messages: "Mensajes",
+      moderation: "Moderación",
+      analytics: "Analytics",
+    },
+    
+    // Config
+    config: {
+      basicInfo: "Información Básica",
+      groupInfo: "Información del Grupo",
+      permissions: "Permisos del Grupo",
+      campaignName: "Nombre de la Campaña",
+      instance: "Instancia WhatsApp",
+      groupName: "Nombre del Grupo",
+      groupDescription: "Descripción del Grupo",
+      groupPhoto: "Foto del Grupo",
+      inviteLink: "Enlace de Invitación",
+      messagePermission: "Quién puede enviar mensajes",
+      editPermission: "Quién puede editar información",
+      everyone: "Todos",
+      adminsOnly: "Solo admins",
+    },
+    
+    // Status
+    status: {
+      draft: "Borrador",
+      active: "Activo",
+      paused: "Pausado",
+      archived: "Archivado",
+    },
   },
 };
