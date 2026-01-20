@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useLanguage } from "@/i18n";
 import { useGroupCampaigns, GroupCampaign } from "@/hooks/useGroupCampaigns";
-import { GroupCampaignList, GroupCampaignDetails, CreateGroupDialog, GroupsListTab } from "@/components/group-campaigns";
+import { GroupCampaignList, GroupCampaignDetails, CreateGroupDialog } from "@/components/group-campaigns";
 import { toast } from "sonner";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function GroupCampaigns() {
   const { t } = useLanguage();
@@ -74,35 +73,22 @@ export default function GroupCampaigns() {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="campaigns" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="campaigns">{t("groupCampaigns.tabs.campaigns")}</TabsTrigger>
-          <TabsTrigger value="groups">{t("groupCampaigns.tabs.groups")}</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="campaigns" className="space-y-6">
-          {selectedCampaign ? (
-            <GroupCampaignDetails
-              campaign={selectedCampaign}
-              onBack={() => setSelectedCampaign(null)}
-              onUpdate={handleUpdate}
-            />
-          ) : (
-            <GroupCampaignList
-              campaigns={campaigns || []}
-              isLoading={isLoading}
-              onSelect={setSelectedCampaign}
-              onDelete={handleDelete}
-              onStatusChange={handleStatusChange}
-              onCreateNew={() => setShowCreateDialog(true)}
-            />
-          )}
-        </TabsContent>
-
-        <TabsContent value="groups">
-          <GroupsListTab />
-        </TabsContent>
-      </Tabs>
+      {selectedCampaign ? (
+        <GroupCampaignDetails
+          campaign={selectedCampaign}
+          onBack={() => setSelectedCampaign(null)}
+          onUpdate={handleUpdate}
+        />
+      ) : (
+        <GroupCampaignList
+          campaigns={campaigns || []}
+          isLoading={isLoading}
+          onSelect={setSelectedCampaign}
+          onDelete={handleDelete}
+          onStatusChange={handleStatusChange}
+          onCreateNew={() => setShowCreateDialog(true)}
+        />
+      )}
 
       <CreateGroupDialog
         open={showCreateDialog}

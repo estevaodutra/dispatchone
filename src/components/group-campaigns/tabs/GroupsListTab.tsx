@@ -16,7 +16,11 @@ interface WhatsAppGroup {
   isAdmin: boolean;
 }
 
-export function GroupsListTab() {
+interface GroupsListTabProps {
+  campaignId?: string;
+}
+
+export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const { t } = useLanguage();
   const { instances, isLoading: instancesLoading } = useInstances();
   const [selectedInstance, setSelectedInstance] = useState<string>("");

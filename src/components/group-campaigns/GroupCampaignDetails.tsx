@@ -2,12 +2,13 @@ import { useState } from "react";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, Users, MessageSquare, Shield, BarChart3 } from "lucide-react";
+import { ArrowLeft, Settings, Users, MessageSquare, Shield, BarChart3, List } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { MembersTab } from "./tabs/MembersTab";
 import { MessagesTab } from "./tabs/MessagesTab";
 import { ModerationTab } from "./tabs/ModerationTab";
 import { AnalyticsTab } from "./tabs/AnalyticsTab";
+import { GroupsListTab } from "./tabs/GroupsListTab";
 
 interface GroupCampaignDetailsProps {
   campaign: GroupCampaign;
@@ -39,10 +40,14 @@ export function GroupCampaignDetails({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="config" className="gap-2">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Configuração</span>
+          </TabsTrigger>
+          <TabsTrigger value="groups" className="gap-2">
+            <List className="h-4 w-4" />
+            <span className="hidden sm:inline">Grupos</span>
           </TabsTrigger>
           <TabsTrigger value="members" className="gap-2">
             <Users className="h-4 w-4" />
@@ -64,6 +69,10 @@ export function GroupCampaignDetails({
 
         <TabsContent value="config" className="mt-6">
           <ConfigTab campaign={campaign} onUpdate={onUpdate} />
+        </TabsContent>
+
+        <TabsContent value="groups" className="mt-6">
+          <GroupsListTab campaignId={campaign.id} />
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
