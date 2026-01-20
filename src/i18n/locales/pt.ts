@@ -556,11 +556,28 @@ export const pt = {
     
     // Tabs
     tabs: {
+      campaigns: "Campanhas",
+      groups: "Grupos",
       config: "Configuração",
       members: "Membros",
       messages: "Mensagens",
       moderation: "Moderação",
       analytics: "Analytics",
+    },
+    
+    // Groups List
+    groups: {
+      title: "Grupos WhatsApp",
+      description: "Liste os grupos disponíveis na instância",
+      listGroups: "Listar Grupos",
+      selectInstance: "Selecione uma instância",
+      noGroups: "Nenhum grupo encontrado",
+      connect: "Conectar à Campanha",
+      groupName: "Nome do Grupo",
+      participants: "Participantes",
+      adminStatus: "Status Admin",
+      isAdmin: "Admin",
+      notAdmin: "Não é Admin",
     },
     
     // Config
