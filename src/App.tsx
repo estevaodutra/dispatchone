@@ -9,6 +9,7 @@ import { LanguageProvider } from "@/i18n";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout";
+import { CampaignsLayout } from "@/components/layout/CampaignsLayout";
 
 // Pages
 import Dashboard from "./pages/Dashboard";
@@ -57,21 +58,14 @@ const App = () => {
                     element={
                       <ProtectedRoute>
                         <AppLayout>
-                          <Campaigns />
+                          <CampaignsLayout />
                         </AppLayout>
                       </ProtectedRoute>
                     }
-                  />
-                  <Route
-                    path="/group-campaigns"
-                    element={
-                      <ProtectedRoute>
-                        <AppLayout>
-                          <GroupCampaigns />
-                        </AppLayout>
-                      </ProtectedRoute>
-                    }
-                  />
+                  >
+                    <Route index element={<Campaigns />} />
+                    <Route path="groups" element={<GroupCampaigns />} />
+                  </Route>
                   <Route
                     path="/numbers"
                     element={

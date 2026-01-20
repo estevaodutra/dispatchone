@@ -182,17 +182,13 @@ export default function Campaigns() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <PageHeader
-        title="Campanhas"
-        description="Crie e gerencie suas campanhas de despacho"
-        actions={
-          <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4" />
-            Nova Campanha
-          </Button>
-        }
-      />
+    <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
+          <Plus className="h-4 w-4" />
+          Nova Campanha
+        </Button>
+      </div>
 
       {/* Stats Cards */}
       <div className="grid gap-4 md:grid-cols-3">

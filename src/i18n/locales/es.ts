@@ -115,6 +115,10 @@ export const es = {
   campaigns: {
     title: "Campañas",
     description: "Gestione y monitoree sus campañas de envío",
+    tabs: {
+      dispatch: "Despacho",
+      groups: "Grupos",
+    },
     newCampaign: "Nueva Campaña",
     createCampaign: "Crear Campaña",
     campaignName: "Nombre de Campaña",
