@@ -57,6 +57,7 @@ export default function PhoneNumbers() {
     phoneNumbers, 
     isLoading,
     refetch,
+    syncFromInstances,
     createPhoneNumber, 
     updatePhoneNumber, 
     deletePhoneNumber,
@@ -392,10 +393,13 @@ export default function PhoneNumbers() {
               onClick={async () => {
                 setIsSyncing(true);
                 try {
+                  const result = await syncFromInstances();
                   await refetch();
                   toast({
                     title: "Synchronized",
-                    description: "Phone numbers data has been refreshed.",
+                    description: result.synced > 0 
+                      ? `${result.synced} number(s) imported from connected instances.`
+                      : "Phone numbers data has been refreshed.",
                   });
                 } catch (error) {
                   toast({
