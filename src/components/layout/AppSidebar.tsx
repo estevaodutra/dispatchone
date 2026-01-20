@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Megaphone,
+  Users,
   Phone,
   FileText,
   MessageSquare,
@@ -37,6 +38,7 @@ export function AppSidebar() {
   const mainNavItems = [
     { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
     { title: t("nav.campaigns"), url: "/campaigns", icon: Megaphone },
+    { title: t("nav.groupCampaigns"), url: "/group-campaigns", icon: Users },
     { title: t("nav.phoneNumbers"), url: "/numbers", icon: Phone },
     { title: t("nav.dispatchLogs"), url: "/logs", icon: FileText },
   ];

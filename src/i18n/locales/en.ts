@@ -3,6 +3,7 @@ export const en = {
   nav: {
     dashboard: "Dashboard",
     campaigns: "Campaigns",
+    groupCampaigns: "Group Campaigns",
     phoneNumbers: "Phone Numbers",
     dispatchLogs: "Dispatch Logs",
     instances: "Instances",
@@ -531,5 +532,56 @@ export const en = {
     method: "Method",
     responseTime: "Response Time",
     apiKey: "API Key",
+  },
+
+  // Group Campaigns
+  groupCampaigns: {
+    title: "Group Campaigns",
+    description: "Manage WhatsApp group campaigns with automation",
+    newCampaign: "New Campaign",
+    searchPlaceholder: "Search campaigns...",
+    noCampaigns: "No campaigns found",
+    createFirst: "Create your first group campaign to get started.",
+    createCampaign: "Create Campaign",
+    deleteCampaign: "Delete campaign?",
+    deleteWarning: "This action cannot be undone. All campaign data including members, messages and settings will be permanently removed.",
+    campaignCreated: "Campaign created successfully",
+    campaignActivated: "Campaign activated",
+    campaignPaused: "Campaign paused",
+    campaignDeleted: "Campaign deleted successfully",
+    
+    // Tabs
+    tabs: {
+      config: "Configuration",
+      members: "Members",
+      messages: "Messages",
+      moderation: "Moderation",
+      analytics: "Analytics",
+    },
+    
+    // Config
+    config: {
+      basicInfo: "Basic Information",
+      groupInfo: "Group Information",
+      permissions: "Group Permissions",
+      campaignName: "Campaign Name",
+      instance: "WhatsApp Instance",
+      groupName: "Group Name",
+      groupDescription: "Group Description",
+      groupPhoto: "Group Photo",
+      inviteLink: "Invite Link",
+      messagePermission: "Who can send messages",
+      editPermission: "Who can edit info",
+      everyone: "Everyone",
+      adminsOnly: "Admins only",
+    },
+    
+    // Status
+    status: {
+      draft: "Draft",
+      active: "Active",
+      paused: "Paused",
+      archived: "Archived",
+    },
   },
 };
