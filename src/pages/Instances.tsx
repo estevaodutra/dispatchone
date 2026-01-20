@@ -25,6 +25,52 @@ const formatPhoneNumber = (value: string): string => {
   if (limited.length <= 9) return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4)}`;
   return `+${limited.slice(0, 2)} (${limited.slice(2, 4)}) ${limited.slice(4, 9)}-${limited.slice(9)}`;
 };
+
+// Timer Display Component - defined OUTSIDE the main component to avoid React hooks issues
+const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: boolean }) => {
+  const percentage = (timeLeft / 20) * 100;
+  const circumference = 2 * Math.PI * 18;
+  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  
+  return (
+    <div className="flex flex-col items-center gap-2 mt-4">
+      <div className="relative w-12 h-12">
+        <svg className="w-12 h-12 transform -rotate-90">
+          <circle
+            cx="24"
+            cy="24"
+            r="18"
+            stroke="currentColor"
+            strokeWidth="3"
+            fill="none"
+            className="text-muted"
+          />
+          <circle
+            cx="24"
+            cy="24"
+            r="18"
+            stroke="currentColor"
+            strokeWidth="3"
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            className={`transition-all duration-1000 ${
+              isExpired ? "text-destructive" : timeLeft <= 5 ? "text-warning" : "text-primary"
+            }`}
+          />
+        </svg>
+        <span className={`absolute inset-0 flex items-center justify-center text-sm font-bold ${
+          isExpired ? "text-destructive" : timeLeft <= 5 ? "text-warning" : ""
+        }`}>
+          {isExpired ? "!" : timeLeft}
+        </span>
+      </div>
+      <span className={`text-xs ${isExpired ? "text-destructive" : "text-muted-foreground"}`}>
+        {isExpired ? "Expirado" : `${timeLeft}s restantes`}
+      </span>
+    </div>
+  );
+};
 export default function Instances() {
   const { toast } = useToast();
   const { t } = useLanguage();
@@ -146,80 +192,36 @@ export default function Instances() {
     }
   };
 
-  // Timer countdown for QR/Code validity
+  // Timer countdown for QR/Code validity - fixed to avoid state updates during render
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    
     const hasQrOrCode = webhookResponse?.qrcode_image || webhookResponse?.value || webhookResponse?.qrCode || webhookResponse?.qrCodeUrl || webhookResponse?.code;
     
     if ((connectionStep === "qr" || connectionStep === "code") && hasQrOrCode && !isConnecting) {
       setQrTimeLeft(20);
       setIsQrExpired(false);
       
-      interval = setInterval(() => {
+      const interval = setInterval(() => {
         setQrTimeLeft((prev) => {
           if (prev <= 1) {
-            setIsQrExpired(true);
-            if (interval) clearInterval(interval);
+            clearInterval(interval);
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
+      
+      return () => clearInterval(interval);
     }
-    
-    return () => {
-      if (interval) clearInterval(interval);
-    };
   }, [connectionStep, webhookResponse, isConnecting]);
 
-  // No longer need localStorage - data persists in database
+  // Separate effect to handle expiration state
+  useEffect(() => {
+    if (qrTimeLeft === 0 && !isQrExpired) {
+      setIsQrExpired(true);
+    }
+  }, [qrTimeLeft, isQrExpired]);
 
-  // Timer Display Component
-  const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: boolean }) => {
-    const percentage = (timeLeft / 20) * 100;
-    const circumference = 2 * Math.PI * 18;
-    const strokeDashoffset = circumference - (percentage / 100) * circumference;
-    
-    return (
-      <div className="flex flex-col items-center gap-2 mt-4">
-        <div className="relative w-12 h-12">
-          <svg className="w-12 h-12 transform -rotate-90">
-            <circle
-              cx="24"
-              cy="24"
-              r="18"
-              stroke="currentColor"
-              strokeWidth="3"
-              fill="none"
-              className="text-muted"
-            />
-            <circle
-              cx="24"
-              cy="24"
-              r="18"
-              stroke="currentColor"
-              strokeWidth="3"
-              fill="none"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              className={`transition-all duration-1000 ${
-                isExpired ? "text-destructive" : timeLeft <= 5 ? "text-warning" : "text-primary"
-              }`}
-            />
-          </svg>
-          <span className={`absolute inset-0 flex items-center justify-center text-sm font-bold ${
-            isExpired ? "text-destructive" : timeLeft <= 5 ? "text-warning" : ""
-          }`}>
-            {isExpired ? "!" : timeLeft}
-          </span>
-        </div>
-        <span className={`text-xs ${isExpired ? "text-destructive" : "text-muted-foreground"}`}>
-          {isExpired ? "Expirado" : `${timeLeft}s restantes`}
-        </span>
-      </div>
-    );
-  };
+  // No longer need localStorage - data persists in database
   const getFunctionIcon = (fn: InstanceFunction) => {
     switch (fn) {
       case "dispatcher":
