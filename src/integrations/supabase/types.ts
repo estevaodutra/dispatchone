@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      alerts: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          entity: string | null
+          id: string
+          read: boolean | null
+          severity: string
+          title: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          entity?: string | null
+          id?: string
+          read?: boolean | null
+          severity?: string
+          title: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          entity?: string | null
+          id?: string
+          read?: boolean | null
+          severity?: string
+          title?: string
+        }
+        Relationships: []
+      }
       api_keys: {
         Row: {
           created_at: string
@@ -49,6 +79,130 @@ export type Database = {
           revoked_at?: string | null
         }
         Relationships: []
+      }
+      api_logs: {
+        Row: {
+          api_key_id: string | null
+          created_at: string | null
+          endpoint: string
+          error_message: string | null
+          id: string
+          ip_address: string | null
+          method: string
+          request_body: Json | null
+          response_body: Json | null
+          response_time_ms: number | null
+          status_code: number
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string | null
+          endpoint: string
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          method: string
+          request_body?: Json | null
+          response_body?: Json | null
+          response_time_ms?: number | null
+          status_code: number
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string | null
+          endpoint?: string
+          error_message?: string | null
+          id?: string
+          ip_address?: string | null
+          method?: string
+          request_body?: Json | null
+          response_body?: Json | null
+          response_time_ms?: number | null
+          status_code?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "api_logs_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "api_keys"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      campaigns: {
+        Row: {
+          channel: string
+          created_at: string | null
+          id: string
+          name: string
+          sent: number | null
+          status: string | null
+          success_rate: number | null
+          total: number | null
+        }
+        Insert: {
+          channel?: string
+          created_at?: string | null
+          id?: string
+          name: string
+          sent?: number | null
+          status?: string | null
+          success_rate?: number | null
+          total?: number | null
+        }
+        Update: {
+          channel?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+          sent?: number | null
+          status?: string | null
+          success_rate?: number | null
+          total?: number | null
+        }
+        Relationships: []
+      }
+      dispatch_logs: {
+        Row: {
+          campaign_id: string | null
+          channel: string
+          created_at: string | null
+          error_message: string | null
+          id: string
+          instance_id: string | null
+          recipient: string
+          status: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          channel?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          instance_id?: string | null
+          recipient: string
+          status?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          channel?: string
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          instance_id?: string | null
+          recipient?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_logs_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       instances: {
         Row: {
