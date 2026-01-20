@@ -219,6 +219,371 @@ export type Database = {
           },
         ]
       }
+      group_campaigns: {
+        Row: {
+          config: Json | null
+          created_at: string | null
+          edit_permission: string | null
+          group_description: string | null
+          group_jid: string | null
+          group_name: string | null
+          group_photo_url: string | null
+          id: string
+          instance_id: string | null
+          invite_link: string | null
+          message_permission: string | null
+          name: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string | null
+          edit_permission?: string | null
+          group_description?: string | null
+          group_jid?: string | null
+          group_name?: string | null
+          group_photo_url?: string | null
+          id?: string
+          instance_id?: string | null
+          invite_link?: string | null
+          message_permission?: string | null
+          name: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string | null
+          edit_permission?: string | null
+          group_description?: string | null
+          group_jid?: string | null
+          group_name?: string | null
+          group_photo_url?: string | null
+          id?: string
+          instance_id?: string | null
+          invite_link?: string | null
+          message_permission?: string | null
+          name?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_campaigns_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_member_history: {
+        Row: {
+          action: string
+          created_at: string | null
+          group_campaign_id: string
+          id: string
+          member_phone: string
+          reason: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          group_campaign_id: string
+          id?: string
+          member_phone: string
+          reason?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          group_campaign_id?: string
+          id?: string
+          member_phone?: string
+          reason?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_member_history_group_campaign_id_fkey"
+            columns: ["group_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          group_campaign_id: string
+          id: string
+          is_admin: boolean | null
+          joined_at: string | null
+          last_message_at: string | null
+          last_strike_at: string | null
+          left_at: string | null
+          message_count: number | null
+          name: string | null
+          phone: string
+          profile_photo: string | null
+          status: string | null
+          strikes: number | null
+          user_id: string
+        }
+        Insert: {
+          group_campaign_id: string
+          id?: string
+          is_admin?: boolean | null
+          joined_at?: string | null
+          last_message_at?: string | null
+          last_strike_at?: string | null
+          left_at?: string | null
+          message_count?: number | null
+          name?: string | null
+          phone: string
+          profile_photo?: string | null
+          status?: string | null
+          strikes?: number | null
+          user_id: string
+        }
+        Update: {
+          group_campaign_id?: string
+          id?: string
+          is_admin?: boolean | null
+          joined_at?: string | null
+          last_message_at?: string | null
+          last_strike_at?: string | null
+          left_at?: string | null
+          message_count?: number | null
+          name?: string | null
+          phone?: string
+          profile_photo?: string | null
+          status?: string | null
+          strikes?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_campaign_id_fkey"
+            columns: ["group_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_message_logs: {
+        Row: {
+          group_campaign_id: string
+          id: string
+          message_id: string | null
+          recipient_phone: string | null
+          sent_at: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          group_campaign_id: string
+          id?: string
+          message_id?: string | null
+          recipient_phone?: string | null
+          sent_at?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          group_campaign_id?: string
+          id?: string
+          message_id?: string | null
+          recipient_phone?: string | null
+          sent_at?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_message_logs_group_campaign_id_fkey"
+            columns: ["group_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_message_logs_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "group_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_messages: {
+        Row: {
+          active: boolean | null
+          content: string
+          created_at: string | null
+          delay_seconds: number | null
+          group_campaign_id: string
+          id: string
+          mention_member: boolean | null
+          schedule: Json | null
+          send_private: boolean | null
+          sequence_order: number | null
+          trigger_keyword: string | null
+          type: string
+          user_id: string
+          variables: Json | null
+        }
+        Insert: {
+          active?: boolean | null
+          content: string
+          created_at?: string | null
+          delay_seconds?: number | null
+          group_campaign_id: string
+          id?: string
+          mention_member?: boolean | null
+          schedule?: Json | null
+          send_private?: boolean | null
+          sequence_order?: number | null
+          trigger_keyword?: string | null
+          type: string
+          user_id: string
+          variables?: Json | null
+        }
+        Update: {
+          active?: boolean | null
+          content?: string
+          created_at?: string | null
+          delay_seconds?: number | null
+          group_campaign_id?: string
+          id?: string
+          mention_member?: boolean | null
+          schedule?: Json | null
+          send_private?: boolean | null
+          sequence_order?: number | null
+          trigger_keyword?: string | null
+          type?: string
+          user_id?: string
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_messages_group_campaign_id_fkey"
+            columns: ["group_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_moderation_logs: {
+        Row: {
+          action: string
+          created_at: string | null
+          group_campaign_id: string
+          id: string
+          member_id: string | null
+          member_phone: string | null
+          message_content: string | null
+          reason: string | null
+          rule_id: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          group_campaign_id: string
+          id?: string
+          member_id?: string | null
+          member_phone?: string | null
+          message_content?: string | null
+          reason?: string | null
+          rule_id?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          group_campaign_id?: string
+          id?: string
+          member_id?: string | null
+          member_phone?: string | null
+          message_content?: string | null
+          reason?: string | null
+          rule_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_moderation_logs_group_campaign_id_fkey"
+            columns: ["group_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_moderation_logs_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "group_members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_moderation_logs_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "group_moderation_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_moderation_rules: {
+        Row: {
+          action: string
+          active: boolean | null
+          config: Json
+          created_at: string | null
+          group_campaign_id: string
+          id: string
+          rule_type: string
+          user_id: string
+        }
+        Insert: {
+          action: string
+          active?: boolean | null
+          config?: Json
+          created_at?: string | null
+          group_campaign_id: string
+          id?: string
+          rule_type: string
+          user_id: string
+        }
+        Update: {
+          action?: string
+          active?: boolean | null
+          config?: Json
+          created_at?: string | null
+          group_campaign_id?: string
+          id?: string
+          rule_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_moderation_rules_group_campaign_id_fkey"
+            columns: ["group_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       instances: {
         Row: {
           created_at: string | null
