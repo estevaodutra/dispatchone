@@ -261,6 +261,62 @@ export type Database = {
         }
         Relationships: []
       }
+      phone_numbers: {
+        Row: {
+          connected: boolean
+          created_at: string | null
+          cycle_total: number
+          cycle_used: number
+          health: number
+          id: string
+          instance_id: string | null
+          last_used_at: string | null
+          number: string
+          provider: string
+          status: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          connected?: boolean
+          created_at?: string | null
+          cycle_total?: number
+          cycle_used?: number
+          health?: number
+          id?: string
+          instance_id?: string | null
+          last_used_at?: string | null
+          number: string
+          provider: string
+          status?: string
+          type?: string
+          user_id: string
+        }
+        Update: {
+          connected?: boolean
+          created_at?: string | null
+          cycle_total?: number
+          cycle_used?: number
+          health?: number
+          id?: string
+          instance_id?: string | null
+          last_used_at?: string | null
+          number?: string
+          provider?: string
+          status?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_numbers_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           company_name: string | null

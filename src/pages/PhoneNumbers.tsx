@@ -45,81 +45,25 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-
-// Mock data
-interface PhoneNumber {
-  id: string;
-  number: string;
-  type: "whatsapp_business" | "whatsapp_normal";
-  provider: string;
-  status: "active" | "paused" | "banned" | "warming";
-  health: number;
-  cycleUsage: { used: number; total: number };
-  lastUsed: string;
-  connected: boolean;
-}
-
-const initialNumbers: PhoneNumber[] = [
-  {
-    id: "1",
-    number: "+55 11 98765-4321",
-    type: "whatsapp_business",
-    provider: "Z-API",
-    status: "active",
-    health: 98,
-    cycleUsage: { used: 45, total: 100 },
-    lastUsed: "2 min ago",
-    connected: true,
-  },
-  {
-    id: "2",
-    number: "+55 11 91234-5678",
-    type: "whatsapp_business",
-    provider: "Evolution API",
-    status: "active",
-    health: 95,
-    cycleUsage: { used: 72, total: 100 },
-    lastUsed: "5 min ago",
-    connected: true,
-  },
-  {
-    id: "3",
-    number: "+55 21 99876-5432",
-    type: "whatsapp_normal",
-    provider: "Z-API",
-    status: "warming",
-    health: 65,
-    cycleUsage: { used: 12, total: 50 },
-    lastUsed: "1 hour ago",
-    connected: false,
-  },
-  {
-    id: "4",
-    number: "+55 31 98765-1234",
-    type: "whatsapp_business",
-    provider: "Evolution API",
-    status: "paused",
-    health: 88,
-    cycleUsage: { used: 0, total: 100 },
-    lastUsed: "2 days ago",
-    connected: true,
-  },
-  {
-    id: "5",
-    number: "+55 41 91234-8765",
-    type: "whatsapp_normal",
-    provider: "Z-API",
-    status: "banned",
-    health: 0,
-    cycleUsage: { used: 0, total: 0 },
-    lastUsed: "5 days ago",
-    connected: false,
-  },
-];
+import { usePhoneNumbers, type PhoneNumber, type PhoneNumberType } from "@/hooks/usePhoneNumbers";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatDistanceToNow } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 export default function PhoneNumbers() {
   const { toast } = useToast();
-  const [numbers, setNumbers] = useState<PhoneNumber[]>(initialNumbers);
+  const { 
+    phoneNumbers, 
+    isLoading, 
+    createPhoneNumber, 
+    updatePhoneNumber, 
+    deletePhoneNumber,
+    resetCycle,
+    isCreating,
+    isUpdating,
+    isDeleting,
+  } = usePhoneNumbers();
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [providerFilter, setProviderFilter] = useState<string>("all");
@@ -127,19 +71,18 @@ export default function PhoneNumbers() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedNumber, setSelectedNumber] = useState<PhoneNumber | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
   const [newNumber, setNewNumber] = useState({
     number: "",
-    type: "whatsapp_business",
+    type: "whatsapp_business" as PhoneNumberType,
     provider: "Z-API",
   });
   const [editData, setEditData] = useState({
     number: "",
-    type: "whatsapp_business",
+    type: "whatsapp_business" as PhoneNumberType,
     provider: "Z-API",
   });
 
-  const filteredNumbers = numbers.filter((num) => {
+  const filteredNumbers = phoneNumbers.filter((num) => {
     const matchesSearch = num.number.includes(searchQuery);
     const matchesStatus = statusFilter === "all" || num.status === statusFilter;
     const matchesProvider = providerFilter === "all" || num.provider === providerFilter;
@@ -156,53 +99,66 @@ export default function PhoneNumbers() {
       return;
     }
 
-    setIsAdding(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    try {
+      await createPhoneNumber({
+        number: newNumber.number,
+        type: newNumber.type,
+        provider: newNumber.provider,
+        status: "warming",
+        connected: false,
+        health: 50,
+      });
 
-    const phoneNumber: PhoneNumber = {
-      id: String(Date.now()),
-      number: newNumber.number,
-      type: newNumber.type as "whatsapp_business" | "whatsapp_normal",
-      provider: newNumber.provider,
-      status: "warming",
-      health: 50,
-      cycleUsage: { used: 0, total: 50 },
-      lastUsed: "Never",
-      connected: false,
-    };
+      setShowAddDialog(false);
+      setNewNumber({ number: "", type: "whatsapp_business", provider: "Z-API" });
 
-    setNumbers((prev) => [phoneNumber, ...prev]);
-    setShowAddDialog(false);
-    setNewNumber({ number: "", type: "whatsapp_business", provider: "Z-API" });
-    setIsAdding(false);
-
-    toast({
-      title: "Number added",
-      description: `${phoneNumber.number} has been added and is warming up.`,
-    });
+      toast({
+        title: "Number added",
+        description: `${newNumber.number} has been added and is warming up.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to add phone number.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleToggleStatus = (num: PhoneNumber) => {
+  const handleToggleStatus = async (num: PhoneNumber) => {
     const newStatus = num.status === "active" ? "paused" : "active";
-    setNumbers((prev) =>
-      prev.map((n) => (n.id === num.id ? { ...n, status: newStatus } : n))
-    );
-    toast({
-      title: newStatus === "active" ? "Number activated" : "Number paused",
-      description: `${num.number} is now ${newStatus}.`,
-    });
+    try {
+      await updatePhoneNumber({
+        id: num.id,
+        updates: { status: newStatus },
+      });
+      toast({
+        title: newStatus === "active" ? "Number activated" : "Number paused",
+        description: `${num.number} is now ${newStatus}.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update status.",
+        variant: "destructive",
+      });
+    }
   };
 
-  const handleResetCycle = (num: PhoneNumber) => {
-    setNumbers((prev) =>
-      prev.map((n) =>
-        n.id === num.id ? { ...n, cycleUsage: { ...n.cycleUsage, used: 0 } } : n
-      )
-    );
-    toast({
-      title: "Cycle reset",
-      description: `Cycle counter for ${num.number} has been reset.`,
-    });
+  const handleResetCycle = async (num: PhoneNumber) => {
+    try {
+      await resetCycle(num.id);
+      toast({
+        title: "Cycle reset",
+        description: `Cycle counter for ${num.number} has been reset.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to reset cycle.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEdit = (num: PhoneNumber) => {
@@ -215,28 +171,32 @@ export default function PhoneNumbers() {
     setShowEditDialog(true);
   };
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!selectedNumber) return;
 
-    setNumbers((prev) =>
-      prev.map((n) =>
-        n.id === selectedNumber.id
-          ? {
-              ...n,
-              number: editData.number,
-              type: editData.type as "whatsapp_business" | "whatsapp_normal",
-              provider: editData.provider,
-            }
-          : n
-      )
-    );
+    try {
+      await updatePhoneNumber({
+        id: selectedNumber.id,
+        updates: {
+          number: editData.number,
+          type: editData.type,
+          provider: editData.provider,
+        },
+      });
 
-    setShowEditDialog(false);
-    setSelectedNumber(null);
-    toast({
-      title: "Number updated",
-      description: `${editData.number} has been updated successfully.`,
-    });
+      setShowEditDialog(false);
+      setSelectedNumber(null);
+      toast({
+        title: "Number updated",
+        description: `${editData.number} has been updated successfully.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to update phone number.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDelete = (num: PhoneNumber) => {
@@ -244,17 +204,34 @@ export default function PhoneNumbers() {
     setShowDeleteDialog(true);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!selectedNumber) return;
 
-    setNumbers((prev) => prev.filter((n) => n.id !== selectedNumber.id));
-    setShowDeleteDialog(false);
+    try {
+      await deletePhoneNumber(selectedNumber.id);
+      setShowDeleteDialog(false);
 
-    toast({
-      title: "Number deleted",
-      description: `${selectedNumber.number} has been removed.`,
-    });
-    setSelectedNumber(null);
+      toast({
+        title: "Number deleted",
+        description: `${selectedNumber.number} has been removed.`,
+      });
+      setSelectedNumber(null);
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete phone number.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const formatLastUsed = (lastUsedAt: string | null) => {
+    if (!lastUsedAt) return "Never";
+    try {
+      return formatDistanceToNow(new Date(lastUsedAt), { addSuffix: true, locale: ptBR });
+    } catch {
+      return "Never";
+    }
   };
 
   const columns: Column<PhoneNumber>[] = [
@@ -317,8 +294,8 @@ export default function PhoneNumbers() {
       header: "Cycle Usage",
       render: (num) => (
         <div className="font-mono text-sm">
-          {num.cycleUsage.total > 0
-            ? `${num.cycleUsage.used} / ${num.cycleUsage.total}`
+          {num.cycleTotal > 0
+            ? `${num.cycleUsed} / ${num.cycleTotal}`
             : "—"}
         </div>
       ),
@@ -326,7 +303,7 @@ export default function PhoneNumbers() {
     {
       key: "lastUsed",
       header: "Last Used",
-      render: (num) => <span className="text-sm text-muted-foreground">{num.lastUsed}</span>,
+      render: (num) => <span className="text-sm text-muted-foreground">{formatLastUsed(num.lastUsedAt)}</span>,
     },
     {
       key: "actions",
@@ -368,11 +345,35 @@ export default function PhoneNumbers() {
   ];
 
   const stats = {
-    total: numbers.length,
-    active: numbers.filter((n) => n.status === "active").length,
-    warming: numbers.filter((n) => n.status === "warming").length,
-    banned: numbers.filter((n) => n.status === "banned").length,
+    total: phoneNumbers.length,
+    active: phoneNumbers.filter((n) => n.status === "active").length,
+    warming: phoneNumbers.filter((n) => n.status === "warming").length,
+    banned: phoneNumbers.filter((n) => n.status === "banned").length,
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <PageHeader
+          title="Phone Numbers"
+          description="Manage your phone number registry and rotation cycles"
+        />
+        <div className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="shadow-elevation-sm">
+              <CardHeader className="pb-2">
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-12" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -469,7 +470,10 @@ export default function PhoneNumbers() {
         <EmptyState
           icon={Phone}
           title="No numbers found"
-          description="Add phone numbers to start dispatching messages"
+          description={phoneNumbers.length === 0 
+            ? "Numbers are automatically registered when instances connect. You can also add them manually."
+            : "No numbers match your current filters"
+          }
           action={
             <Button className="gap-2" onClick={() => setShowAddDialog(true)}>
               <Plus className="h-4 w-4" />
@@ -499,13 +503,15 @@ export default function PhoneNumbers() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="type">Number Type</Label>
+              <Label htmlFor="type">Type</Label>
               <Select
                 value={newNumber.type}
-                onValueChange={(value) => setNewNumber((prev) => ({ ...prev, type: value }))}
+                onValueChange={(value: PhoneNumberType) =>
+                  setNewNumber((prev) => ({ ...prev, type: value }))
+                }
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="whatsapp_business">WhatsApp Business</SelectItem>
@@ -520,7 +526,7 @@ export default function PhoneNumbers() {
                 onValueChange={(value) => setNewNumber((prev) => ({ ...prev, provider: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Z-API">Z-API</SelectItem>
@@ -533,15 +539,9 @@ export default function PhoneNumbers() {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleAddNumber} disabled={isAdding}>
-              {isAdding ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                "Add Number"
-              )}
+            <Button onClick={handleAddNumber} disabled={isCreating}>
+              {isCreating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Add Number
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -553,7 +553,7 @@ export default function PhoneNumbers() {
           <DialogHeader>
             <DialogTitle>Edit Phone Number</DialogTitle>
             <DialogDescription>
-              Update the phone number information.
+              Update phone number details.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -561,18 +561,21 @@ export default function PhoneNumbers() {
               <Label htmlFor="edit-phone">Phone Number</Label>
               <Input
                 id="edit-phone"
+                placeholder="+55 11 99999-9999"
                 value={editData.number}
                 onChange={(e) => setEditData((prev) => ({ ...prev, number: e.target.value }))}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-type">Number Type</Label>
+              <Label htmlFor="edit-type">Type</Label>
               <Select
                 value={editData.type}
-                onValueChange={(value) => setEditData((prev) => ({ ...prev, type: value }))}
+                onValueChange={(value: PhoneNumberType) =>
+                  setEditData((prev) => ({ ...prev, type: value }))
+                }
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="whatsapp_business">WhatsApp Business</SelectItem>
@@ -587,7 +590,7 @@ export default function PhoneNumbers() {
                 onValueChange={(value) => setEditData((prev) => ({ ...prev, provider: value }))}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select provider" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Z-API">Z-API</SelectItem>
@@ -600,12 +603,15 @@ export default function PhoneNumbers() {
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSaveEdit}>Save Changes</Button>
+            <Button onClick={handleSaveEdit} disabled={isUpdating}>
+              {isUpdating && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -619,7 +625,9 @@ export default function PhoneNumbers() {
             <AlertDialogAction
               onClick={handleConfirmDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={isDeleting}
             >
+              {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
