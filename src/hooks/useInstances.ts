@@ -117,7 +117,7 @@ const transformDbToFrontend = (dbInstance: DbInstance): Instance => {
     provider: dbInstance.provider as Instance["provider"],
     function: "dispatcher", // Default function since it's not stored in DB
     status,
-    health: status === "connected" ? 95 + Math.floor(Math.random() * 5) : 0,
+    health: status === "connected" ? 100 : status === "waitingConnection" ? 50 : 0,
     dispatches: dbInstance.messages_count || 0,
     lastCheck: getRelativeTime(dbInstance.last_message_at || dbInstance.created_at),
     connectedNumber: dbInstance.phone ? `+${dbInstance.phone.replace(/\D/g, "")}` : undefined,

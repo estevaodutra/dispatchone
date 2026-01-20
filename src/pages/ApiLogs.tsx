@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { PageHeader, StatusBadge, DataTable, EmptyState, type Column } from "@/components/dispatch";
+import { PageHeader, DataTable, EmptyState, type Column } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,126 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Activity, Search, Download, RefreshCw, Loader2, Clock, Info } from "lucide-react";
+import { Activity, Search, Download, RefreshCw, Loader2, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 import { ScrollArea } from "@/components/ui/scroll-area";
-
-interface ApiLog {
-  id: string;
-  timestamp: string;
-  method: "GET" | "POST" | "PUT" | "DELETE";
-  endpoint: string;
-  statusCode: number;
-  responseTime: number;
-  ipAddress: string;
-  apiKeyName: string;
-  requestBody?: object;
-  responseBody?: object;
-  errorMessage?: string;
-}
-
-const mockApiLogs: ApiLog[] = [
-  {
-    id: "1",
-    timestamp: "2025-01-16 14:32:15",
-    method: "POST",
-    endpoint: "/send-text",
-    statusCode: 200,
-    responseTime: 245,
-    ipAddress: "192.168.1.100",
-    apiKeyName: "Production Key",
-    requestBody: { phone: "5511999999999", message: "Hello World" },
-    responseBody: { success: true, messageId: "BAE5F4A3C2D1E678" },
-  },
-  {
-    id: "2",
-    timestamp: "2025-01-16 14:32:10",
-    method: "GET",
-    endpoint: "/instance/find",
-    statusCode: 200,
-    responseTime: 89,
-    ipAddress: "192.168.1.100",
-    apiKeyName: "Production Key",
-    requestBody: undefined,
-    responseBody: { success: true, instance: { id: "inst_abc123", status: "connected" } },
-  },
-  {
-    id: "3",
-    timestamp: "2025-01-16 14:31:55",
-    method: "POST",
-    endpoint: "/send-media",
-    statusCode: 400,
-    responseTime: 156,
-    ipAddress: "10.0.0.50",
-    apiKeyName: "Development Key",
-    requestBody: { phone: "5511999999999", mediaUrl: "invalid-url" },
-    responseBody: { success: false, error: { code: "INVALID_MEDIA_URL" } },
-    errorMessage: "A URL da mídia fornecida é inválida",
-  },
-  {
-    id: "4",
-    timestamp: "2025-01-16 14:31:40",
-    method: "DELETE",
-    endpoint: "/instance/delete",
-    statusCode: 401,
-    responseTime: 12,
-    ipAddress: "203.0.113.45",
-    apiKeyName: "Unknown",
-    requestBody: { instanceId: "inst_xyz789" },
-    responseBody: { success: false, error: { code: "UNAUTHORIZED" } },
-    errorMessage: "Token de autenticação inválido ou expirado",
-  },
-  {
-    id: "5",
-    timestamp: "2025-01-16 14:31:20",
-    method: "PUT",
-    endpoint: "/instance/update",
-    statusCode: 200,
-    responseTime: 178,
-    ipAddress: "192.168.1.100",
-    apiKeyName: "Production Key",
-    requestBody: { instanceId: "inst_abc123", name: "New Name" },
-    responseBody: { success: true },
-  },
-  {
-    id: "6",
-    timestamp: "2025-01-16 14:30:55",
-    method: "POST",
-    endpoint: "/webhook/configure",
-    statusCode: 500,
-    responseTime: 5024,
-    ipAddress: "192.168.1.100",
-    apiKeyName: "Production Key",
-    requestBody: { url: "https://example.com/webhook" },
-    responseBody: { success: false, error: { code: "INTERNAL_ERROR" } },
-    errorMessage: "Erro interno do servidor ao configurar webhook",
-  },
-  {
-    id: "7",
-    timestamp: "2025-01-16 14:30:30",
-    method: "GET",
-    endpoint: "/instances",
-    statusCode: 200,
-    responseTime: 134,
-    ipAddress: "10.0.0.50",
-    apiKeyName: "Development Key",
-  },
-  {
-    id: "8",
-    timestamp: "2025-01-16 14:30:15",
-    method: "POST",
-    endpoint: "/send-text",
-    statusCode: 429,
-    responseTime: 8,
-    ipAddress: "192.168.1.100",
-    apiKeyName: "Production Key",
-    requestBody: { phone: "5511999999999", message: "Rate limited" },
-    responseBody: { success: false, error: { code: "RATE_LIMIT_EXCEEDED" } },
-    errorMessage: "Limite de requisições excedido. Aguarde 60 segundos.",
-  },
-];
+import { useApiLogs, type ApiLog } from "@/hooks/useApiLogs";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const methodColors: Record<string, string> = {
   GET: "bg-blue-500/10 text-blue-600 border-blue-500/30",
@@ -154,7 +41,7 @@ const getStatusColor = (code: number): string => {
 export default function ApiLogs() {
   const { toast } = useToast();
   const { t } = useLanguage();
-  const [logs] = useState<ApiLog[]>(mockApiLogs);
+  const { logs, isLoading, refetch } = useApiLogs();
   const [searchQuery, setSearchQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -218,7 +105,7 @@ export default function ApiLogs() {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await refetch();
     setIsRefreshing(false);
     toast({
       title: t("apiLogs.logsRefreshed"),
@@ -291,10 +178,22 @@ export default function ApiLogs() {
   const stats = {
     total: logs.length,
     success: logs.filter((l) => l.statusCode >= 200 && l.statusCode < 300).length,
-    avgResponseTime: Math.round(logs.reduce((acc, l) => acc + l.responseTime, 0) / logs.length),
+    avgResponseTime: logs.length > 0 ? Math.round(logs.reduce((acc, l) => acc + l.responseTime, 0) / logs.length) : 0,
   };
 
-  const successRate = Math.round((stats.success / stats.total) * 100);
+  const successRate = stats.total > 0 ? Math.round((stats.success / stats.total) * 100) : 0;
+
+  if (isLoading) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <PageHeader title={t("apiLogs.title")} description={t("apiLogs.description")} />
+        <div className="space-y-4">
+          <Skeleton className="h-10 w-full max-w-md" />
+          <Skeleton className="h-64" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -306,7 +205,7 @@ export default function ApiLogs() {
             <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
               <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             </Button>
-            <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting}>
+            <Button variant="outline" className="gap-2" onClick={handleExport} disabled={isExporting || logs.length === 0}>
               {isExporting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -324,70 +223,74 @@ export default function ApiLogs() {
         <span className="text-muted-foreground">{t("apiLogs.retentionInfo")}</span>
       </div>
 
-      {/* Quick Stats */}
-      <div className="flex gap-6 text-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground">{t("apiLogs.totalCalls")}:</span>
-          <span className="font-mono font-semibold">{stats.total}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-success" />
-          <span className="text-muted-foreground">{t("apiLogs.successRate")}:</span>
-          <span className="font-mono font-semibold">{successRate}%</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-primary" />
-          <span className="text-muted-foreground">{t("apiLogs.avgResponseTime")}:</span>
-          <span className="font-mono font-semibold">{stats.avgResponseTime}ms</span>
-        </div>
-      </div>
+      {logs.length > 0 && (
+        <>
+          {/* Quick Stats */}
+          <div className="flex gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground">{t("apiLogs.totalCalls")}:</span>
+              <span className="font-mono font-semibold">{stats.total}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-success" />
+              <span className="text-muted-foreground">{t("apiLogs.successRate")}:</span>
+              <span className="font-mono font-semibold">{successRate}%</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-primary" />
+              <span className="text-muted-foreground">{t("apiLogs.avgResponseTime")}:</span>
+              <span className="font-mono font-semibold">{stats.avgResponseTime}ms</span>
+            </div>
+          </div>
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("apiLogs.searchPlaceholder")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Select value={methodFilter} onValueChange={setMethodFilter}>
-          <SelectTrigger className="w-[140px]">
-            <SelectValue placeholder={t("apiLogs.allMethods")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("apiLogs.allMethods")}</SelectItem>
-            <SelectItem value="GET">GET</SelectItem>
-            <SelectItem value="POST">POST</SelectItem>
-            <SelectItem value="PUT">PUT</SelectItem>
-            <SelectItem value="DELETE">DELETE</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue placeholder={t("apiLogs.allStatuses")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("apiLogs.allStatuses")}</SelectItem>
-            <SelectItem value="success">2xx (Success)</SelectItem>
-            <SelectItem value="client_error">4xx (Client Error)</SelectItem>
-            <SelectItem value="server_error">5xx (Server Error)</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={periodFilter} onValueChange={setPeriodFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="1h">{t("apiLogs.lastHour")}</SelectItem>
-            <SelectItem value="6h">{t("apiLogs.last6Hours")}</SelectItem>
-            <SelectItem value="12h">{t("apiLogs.last12Hours")}</SelectItem>
-            <SelectItem value="24h">{t("apiLogs.last24Hours")}</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+          {/* Filters */}
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder={t("apiLogs.searchPlaceholder")}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Select value={methodFilter} onValueChange={setMethodFilter}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder={t("apiLogs.allMethods")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("apiLogs.allMethods")}</SelectItem>
+                <SelectItem value="GET">GET</SelectItem>
+                <SelectItem value="POST">POST</SelectItem>
+                <SelectItem value="PUT">PUT</SelectItem>
+                <SelectItem value="DELETE">DELETE</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder={t("apiLogs.allStatuses")} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("apiLogs.allStatuses")}</SelectItem>
+                <SelectItem value="success">2xx (Success)</SelectItem>
+                <SelectItem value="client_error">4xx (Client Error)</SelectItem>
+                <SelectItem value="server_error">5xx (Server Error)</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={periodFilter} onValueChange={setPeriodFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1h">{t("apiLogs.lastHour")}</SelectItem>
+                <SelectItem value="6h">{t("apiLogs.last6Hours")}</SelectItem>
+                <SelectItem value="12h">{t("apiLogs.last12Hours")}</SelectItem>
+                <SelectItem value="24h">{t("apiLogs.last24Hours")}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      )}
 
       {/* Data Table */}
       {filteredLogs.length > 0 ? (
