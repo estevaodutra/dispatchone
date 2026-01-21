@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
   DialogContent,
@@ -55,8 +56,17 @@ import {
   RefreshCw,
   Play,
   AlertCircle,
+  Image,
+  Video,
+  FileAudio,
+  FileText,
+  Paperclip,
+  Link,
+  Upload,
+  Library,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
 
 type ScheduleMode = "manual" | "interval";
 
@@ -220,7 +230,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     intervalStart: "08:00",
     intervalEnd: "19:00",
     intervalMinutes: 60,
+    mediaUrl: "",
+    mediaType: "" as "" | "image" | "video" | "audio" | "document" | "sticker",
+    mediaCaption: "",
   });
+
+  type MediaType = "image" | "video" | "audio" | "document" | "sticker";
 
   const resetForm = () => {
     setFormData({
@@ -237,6 +252,9 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       intervalStart: "08:00",
       intervalEnd: "19:00",
       intervalMinutes: 60,
+      mediaUrl: "",
+      mediaType: "",
+      mediaCaption: "",
     });
     setNewTime("");
   };
@@ -290,6 +308,9 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       mentionMember: formData.mentionMember,
       delaySeconds: formData.delaySeconds,
       sequenceId: formData.sequenceId || undefined,
+      mediaUrl: formData.mediaUrl || undefined,
+      mediaType: formData.mediaType || undefined,
+      mediaCaption: formData.mediaCaption || undefined,
     });
     resetForm();
     setShowCreateDialog(false);
@@ -321,6 +342,9 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
         mentionMember: formData.mentionMember,
         delaySeconds: formData.delaySeconds,
         sequenceId: formData.sequenceId || null,
+        mediaUrl: formData.mediaUrl || null,
+        mediaType: formData.mediaType || null,
+        mediaCaption: formData.mediaCaption || null,
       },
     });
     setEditingMessage(null);
@@ -350,6 +374,9 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       intervalStart: scheduleData?.intervalConfig?.start || "08:00",
       intervalEnd: scheduleData?.intervalConfig?.end || "19:00",
       intervalMinutes: scheduleData?.intervalConfig?.minutes || 60,
+      mediaUrl: message.mediaUrl || "",
+      mediaType: (message.mediaType as MediaType) || "",
+      mediaCaption: message.mediaCaption || "",
     });
     setNewTime("");
   };
@@ -970,6 +997,97 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   onChange={(e) => setFormData({ ...formData, content: e.target.value })}
                   rows={4}
                 />
+              </div>
+            )}
+
+            {/* Media Section - Only show if no sequence linked */}
+            {!formData.sequenceId && (
+              <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Paperclip className="h-4 w-4 text-muted-foreground" />
+                  <Label className="font-medium">Mídia (opcional)</Label>
+                </div>
+                
+                {/* Media Type Selection */}
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Tipo de Mídia</Label>
+                  <Select
+                    value={formData.mediaType || "none"}
+                    onValueChange={(v) => setFormData({ 
+                      ...formData, 
+                      mediaType: v === "none" ? "" : v as MediaType,
+                      mediaUrl: v === "none" ? "" : formData.mediaUrl,
+                      mediaCaption: v === "none" ? "" : formData.mediaCaption,
+                    })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Sem mídia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <div className="flex items-center gap-2">
+                          <X className="h-4 w-4 text-muted-foreground" />
+                          Sem mídia
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="image">
+                        <div className="flex items-center gap-2">
+                          <Image className="h-4 w-4 text-green-500" />
+                          Imagem
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="video">
+                        <div className="flex items-center gap-2">
+                          <Video className="h-4 w-4 text-blue-500" />
+                          Vídeo
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="audio">
+                        <div className="flex items-center gap-2">
+                          <FileAudio className="h-4 w-4 text-purple-500" />
+                          Áudio
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="document">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4 text-orange-500" />
+                          Documento
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="sticker">
+                        <div className="flex items-center gap-2">
+                          <Image className="h-4 w-4 text-pink-500" />
+                          Sticker
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Media Uploader - Only show if type is selected */}
+                {formData.mediaType && (
+                  <div className="space-y-4">
+                    <MediaUploader
+                      mediaType={formData.mediaType as MediaType}
+                      currentUrl={formData.mediaUrl}
+                      onUpload={(url, filename) => setFormData({ ...formData, mediaUrl: url })}
+                      onUrlChange={(url) => setFormData({ ...formData, mediaUrl: url })}
+                      placeholder="https://exemplo.com/arquivo"
+                    />
+
+                    {/* Caption - Only for image/video */}
+                    {(formData.mediaType === "image" || formData.mediaType === "video") && (
+                      <div className="space-y-2">
+                        <Label className="text-sm text-muted-foreground">Legenda (opcional)</Label>
+                        <Input
+                          placeholder="Legenda para a mídia..."
+                          value={formData.mediaCaption}
+                          onChange={(e) => setFormData({ ...formData, mediaCaption: e.target.value })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
