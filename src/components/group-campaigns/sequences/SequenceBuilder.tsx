@@ -257,8 +257,23 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
   const handleSave = async () => {
     try {
       await onUpdate({ id: sequence.id, updates: { name: sequenceName } });
-      await saveNodes(localNodes);
-      await saveConnections(localConnections);
+      
+      // Save nodes and get ID mapping (local -> database)
+      const idMapping = await saveNodes(localNodes.map(node => ({
+        localId: node.id,
+        nodeType: node.nodeType,
+        positionX: node.positionX,
+        positionY: node.positionY,
+        nodeOrder: node.nodeOrder,
+        config: node.config,
+      })));
+      
+      // Save connections using the ID mapping
+      await saveConnections({ 
+        connectionsToSave: localConnections, 
+        idMapping 
+      });
+      
       toast.success("Sequência salva com sucesso!");
     } catch (error) {
       toast.error("Erro ao salvar sequência");
