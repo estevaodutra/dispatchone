@@ -158,21 +158,36 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
   const { sequences } = useSequences(campaignId);
   const { instances } = useInstances();
   const { campaigns } = useGroupCampaigns();
-  const { linkedGroups } = useCampaignGroups(campaignId);
+  const { linkedGroups, isLoading: isLoadingGroups } = useCampaignGroups(campaignId);
+  
+  // Debug logs
+  console.log("MessagesTab - campaignId:", campaignId);
+  console.log("MessagesTab - linkedGroups:", linkedGroups);
   
   const currentCampaign = campaigns.find(c => c.id === campaignId);
   const linkedInstance = instances.find(i => i.id === currentCampaign?.instanceId);
   
   const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
 
+  const hasNoGroups = !isLoadingGroups && linkedGroups.length === 0;
+
   const handleTestMessage = async (message: GroupMessage) => {
     if (!currentCampaign) {
+      console.warn("handleTestMessage: currentCampaign não encontrado");
       return;
     }
     
     if (!linkedInstance) {
+      console.warn("handleTestMessage: linkedInstance não encontrado");
       return;
     }
+
+    if (linkedGroups.length === 0) {
+      console.warn("handleTestMessage: nenhum grupo vinculado");
+      return;
+    }
+
+    console.log("handleTestMessage: enviando para grupos:", linkedGroups);
 
     setSendingMessageId(message.id);
     try {
@@ -448,7 +463,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                         size="icon" 
                         className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950" 
                         onClick={onTest}
-                        disabled={!linkedInstance || isMessageSending}
+                        disabled={!linkedInstance || isMessageSending || isLoadingGroups || hasNoGroups}
                       >
                         {isMessageSending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
@@ -464,6 +479,13 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                         <AlertCircle className="h-3 w-3" />
                         Vincule uma instância à campanha
                       </div>
+                    ) : hasNoGroups ? (
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-3 w-3" />
+                        Vincule grupos na aba "Grupos"
+                      </div>
+                    ) : isLoadingGroups ? (
+                      "Carregando grupos..."
                     ) : (
                       "Testar envio"
                     )}
