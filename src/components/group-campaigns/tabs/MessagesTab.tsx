@@ -41,6 +41,8 @@ import {
   Edit,
   GitBranch,
   Info,
+  Calendar,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +89,16 @@ const MESSAGE_TYPES = [
   },
 ];
 
+const WEEK_DAYS = [
+  { value: 0, label: "D", fullLabel: "Dom" },
+  { value: 1, label: "S", fullLabel: "Seg" },
+  { value: 2, label: "T", fullLabel: "Ter" },
+  { value: 3, label: "Q", fullLabel: "Qua" },
+  { value: 4, label: "Q", fullLabel: "Qui" },
+  { value: 5, label: "S", fullLabel: "Sex" },
+  { value: 6, label: "S", fullLabel: "Sáb" },
+];
+
 export function MessagesTab({ campaignId }: MessagesTabProps) {
   const {
     welcomeMessages,
@@ -104,6 +116,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingMessage, setEditingMessage] = useState<GroupMessage | null>(null);
+  const [newTime, setNewTime] = useState("");
   const [formData, setFormData] = useState({
     type: "welcome" as MessageType,
     content: "",
@@ -112,6 +125,8 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     mentionMember: false,
     delaySeconds: 0,
     sequenceId: "",
+    scheduleDays: [] as number[],
+    scheduleTimes: [] as string[],
   });
 
   const resetForm = () => {
@@ -123,7 +138,36 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       mentionMember: false,
       delaySeconds: 0,
       sequenceId: "",
+      scheduleDays: [],
+      scheduleTimes: [],
     });
+    setNewTime("");
+  };
+
+  const toggleDay = (day: number) => {
+    setFormData(prev => ({
+      ...prev,
+      scheduleDays: prev.scheduleDays.includes(day)
+        ? prev.scheduleDays.filter(d => d !== day)
+        : [...prev.scheduleDays, day].sort((a, b) => a - b)
+    }));
+  };
+
+  const addTime = () => {
+    if (newTime && !formData.scheduleTimes.includes(newTime)) {
+      setFormData(prev => ({
+        ...prev,
+        scheduleTimes: [...prev.scheduleTimes, newTime].sort()
+      }));
+      setNewTime("");
+    }
+  };
+
+  const removeTime = (time: string) => {
+    setFormData(prev => ({
+      ...prev,
+      scheduleTimes: prev.scheduleTimes.filter(t => t !== time)
+    }));
   };
 
   const handleCreate = async () => {
@@ -131,6 +175,10 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       type: formData.type,
       content: formData.sequenceId ? "" : formData.content,
       triggerKeyword: formData.type === "keyword_response" ? formData.triggerKeyword : undefined,
+      schedule: formData.type === "scheduled" ? {
+        days: formData.scheduleDays,
+        times: formData.scheduleTimes,
+      } : undefined,
       sendPrivate: formData.sendPrivate,
       mentionMember: formData.mentionMember,
       delaySeconds: formData.delaySeconds,
@@ -147,6 +195,10 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       updates: {
         content: formData.sequenceId ? "" : formData.content,
         triggerKeyword: formData.type === "keyword_response" ? formData.triggerKeyword : null,
+        schedule: formData.type === "scheduled" ? {
+          days: formData.scheduleDays,
+          times: formData.scheduleTimes,
+        } : null,
         sendPrivate: formData.sendPrivate,
         mentionMember: formData.mentionMember,
         delaySeconds: formData.delaySeconds,
@@ -167,7 +219,10 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       mentionMember: message.mentionMember,
       delaySeconds: message.delaySeconds,
       sequenceId: message.sequenceId || "",
+      scheduleDays: (message.schedule?.days as number[]) || [],
+      scheduleTimes: (message.schedule?.times as string[]) || [],
     });
+    setNewTime("");
   };
 
   const getSequenceName = (sequenceId: string | null) => {
@@ -175,57 +230,83 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     return sequences.find(s => s.id === sequenceId)?.name || "Sequência";
   };
 
-  const MessageCard = ({ message, onEdit, onDelete }: { message: GroupMessage; onEdit: () => void; onDelete: () => void }) => (
-    <Card className="mb-2">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1">
-            {message.sequenceId ? (
-              <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                <GitBranch className="h-4 w-4" />
-                <span className="text-sm font-medium">
-                  Dispara: {getSequenceName(message.sequenceId)}
-                </span>
+  const MessageCard = ({ message, onEdit, onDelete }: { message: GroupMessage; onEdit: () => void; onDelete: () => void }) => {
+    const scheduleDays = (message.schedule?.days as number[]) || [];
+    const scheduleTimes = (message.schedule?.times as string[]) || [];
+    
+    return (
+      <Card className="mb-2">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
+              {message.sequenceId ? (
+                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                  <GitBranch className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    Dispara: {getSequenceName(message.sequenceId)}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+              )}
+              
+              {/* Schedule info for scheduled messages */}
+              {message.type === "scheduled" && (scheduleDays.length > 0 || scheduleTimes.length > 0) && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <Calendar className="h-3.5 w-3.5 text-orange-500" />
+                  {scheduleDays.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {scheduleDays.map(d => WEEK_DAYS[d]?.fullLabel).join(", ")}
+                    </span>
+                  )}
+                  {scheduleTimes.length > 0 && (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground">
+                        {scheduleTimes.join(", ")}
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
+              
+              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                {message.triggerKeyword && (
+                  <Badge variant="outline">
+                    <Hash className="mr-1 h-3 w-3" />
+                    {message.triggerKeyword}
+                  </Badge>
+                )}
+                {message.sendPrivate && (
+                  <Badge variant="secondary">Privado</Badge>
+                )}
+                {message.mentionMember && (
+                  <Badge variant="secondary">Menciona</Badge>
+                )}
+                {message.delaySeconds > 0 && (
+                  <Badge variant="secondary">
+                    <Clock className="mr-1 h-3 w-3" />
+                    {message.delaySeconds}s
+                  </Badge>
+                )}
+                <Badge variant={message.active ? "default" : "secondary"}>
+                  {message.active ? "Ativo" : "Inativo"}
+                </Badge>
               </div>
-            ) : (
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-            )}
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              {message.triggerKeyword && (
-                <Badge variant="outline">
-                  <Hash className="mr-1 h-3 w-3" />
-                  {message.triggerKeyword}
-                </Badge>
-              )}
-              {message.sendPrivate && (
-                <Badge variant="secondary">Privado</Badge>
-              )}
-              {message.mentionMember && (
-                <Badge variant="secondary">Menciona</Badge>
-              )}
-              {message.delaySeconds > 0 && (
-                <Badge variant="secondary">
-                  <Clock className="mr-1 h-3 w-3" />
-                  {message.delaySeconds}s
-                </Badge>
-              )}
-              <Badge variant={message.active ? "default" : "secondary"}>
-                {message.active ? "Ativo" : "Inativo"}
-              </Badge>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
+                <Edit className="h-4 w-4" />
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+        </CardContent>
+      </Card>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -235,7 +316,9 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     );
   }
 
-  const isFormValid = formData.sequenceId || formData.content.trim();
+  const isScheduleValid = formData.type !== "scheduled" || 
+    (formData.scheduleDays.length > 0 && formData.scheduleTimes.length > 0);
+  const isFormValid = (formData.sequenceId || formData.content.trim()) && isScheduleValid;
 
   return (
     <div className="space-y-6">
@@ -456,6 +539,81 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   value={formData.triggerKeyword}
                   onChange={(e) => setFormData({ ...formData, triggerKeyword: e.target.value })}
                 />
+              </div>
+            )}
+
+            {/* Scheduling section for scheduled type */}
+            {formData.type === "scheduled" && (
+              <div className="space-y-4 p-4 rounded-lg border bg-muted/30">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-orange-500" />
+                  <Label className="font-medium">Agendamento</Label>
+                </div>
+
+                {/* Day selection */}
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Dias da Semana</Label>
+                  <div className="flex gap-2">
+                    {WEEK_DAYS.map((day) => {
+                      const isSelected = formData.scheduleDays.includes(day.value);
+                      return (
+                        <button
+                          key={day.value}
+                          type="button"
+                          onClick={() => toggleDay(day.value)}
+                          className={cn(
+                            "flex flex-col items-center justify-center w-10 h-12 rounded-lg border-2 transition-all text-xs font-medium",
+                            isSelected
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border hover:border-primary/50 hover:bg-muted"
+                          )}
+                        >
+                          <span>{day.label}</span>
+                          <span className="text-[10px] opacity-70">{day.fullLabel}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {formData.scheduleDays.length === 0 && (
+                    <p className="text-xs text-destructive">Selecione ao menos um dia</p>
+                  )}
+                </div>
+
+                {/* Time selection */}
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Horários de Envio</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="time"
+                      value={newTime}
+                      onChange={(e) => setNewTime(e.target.value)}
+                      className="w-32"
+                    />
+                    <Button type="button" variant="outline" size="sm" onClick={addTime} disabled={!newTime}>
+                      <Plus className="h-4 w-4 mr-1" />
+                      Adicionar
+                    </Button>
+                  </div>
+                  {formData.scheduleTimes.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {formData.scheduleTimes.map((time) => (
+                        <Badge key={time} variant="secondary" className="gap-1">
+                          <Clock className="h-3 w-3" />
+                          {time}
+                          <button
+                            type="button"
+                            onClick={() => removeTime(time)}
+                            className="ml-1 hover:text-destructive"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-destructive">Adicione ao menos um horário</p>
+                  )}
+                </div>
               </div>
             )}
 
