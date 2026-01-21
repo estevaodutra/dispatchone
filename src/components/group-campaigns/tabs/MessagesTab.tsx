@@ -197,6 +197,11 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       return;
     }
 
+    // Debug: Log message media fields before sending
+    console.log("🟢 handleTestMessage - message.mediaUrl:", message.mediaUrl);
+    console.log("🟢 handleTestMessage - message.mediaType:", message.mediaType);
+    console.log("🟢 handleTestMessage - message.mediaCaption:", message.mediaCaption);
+    console.log("🟢 handleTestMessage - Full message object:", JSON.stringify(message, null, 2));
     console.log("handleTestMessage: enviando para grupos:", linkedGroups);
 
     setSendingMessageId(message.id);
@@ -290,7 +295,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       ? generateTimesFromInterval(formData.intervalStart, formData.intervalEnd, formData.intervalMinutes)
       : formData.scheduleTimes;
 
-    await createMessage({
+    // Debug: Log media fields before creating
+    console.log("🔵 handleCreate - formData.mediaUrl:", formData.mediaUrl);
+    console.log("🔵 handleCreate - formData.mediaType:", formData.mediaType);
+    console.log("🔵 handleCreate - formData.mediaCaption:", formData.mediaCaption);
+
+    const messagePayload = {
       type: formData.type,
       content: formData.sequenceId ? "" : formData.content,
       triggerKeyword: formData.type === "keyword_response" ? formData.triggerKeyword : undefined,
@@ -311,7 +321,11 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       mediaUrl: formData.mediaUrl || undefined,
       mediaType: formData.mediaType || undefined,
       mediaCaption: formData.mediaCaption || undefined,
-    });
+    };
+
+    console.log("🔵 handleCreate - Full payload:", JSON.stringify(messagePayload, null, 2));
+
+    await createMessage(messagePayload);
     resetForm();
     setShowCreateDialog(false);
   };
@@ -323,7 +337,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       ? generateTimesFromInterval(formData.intervalStart, formData.intervalEnd, formData.intervalMinutes)
       : formData.scheduleTimes;
 
-    await updateMessage({
+    // Debug: Log media fields before updating
+    console.log("🟠 handleUpdate - formData.mediaUrl:", formData.mediaUrl);
+    console.log("🟠 handleUpdate - formData.mediaType:", formData.mediaType);
+    console.log("🟠 handleUpdate - formData.mediaCaption:", formData.mediaCaption);
+
+    const updatePayload = {
       id: editingMessage.id,
       updates: {
         content: formData.sequenceId ? "" : formData.content,
@@ -346,7 +365,11 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
         mediaType: formData.mediaType || null,
         mediaCaption: formData.mediaCaption || null,
       },
-    });
+    };
+
+    console.log("🟠 handleUpdate - Full payload:", JSON.stringify(updatePayload, null, 2));
+
+    await updateMessage(updatePayload);
     setEditingMessage(null);
     resetForm();
   };
