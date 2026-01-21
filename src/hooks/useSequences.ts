@@ -258,13 +258,13 @@ export function useSequenceNodes(sequenceId: string | undefined) {
 
   const saveNodesMutation = useMutation({
     mutationFn: async (nodesToSave: Array<{
-      id?: string;
+      localId: string;
       nodeType: string;
       positionX: number;
       positionY: number;
       nodeOrder: number;
       config: Record<string, unknown>;
-    }>) => {
+    }>): Promise<Record<string, string>> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !sequenceId) throw new Error("Not authenticated");
 
@@ -274,12 +274,11 @@ export function useSequenceNodes(sequenceId: string | undefined) {
         .delete()
         .eq("sequence_id", sequenceId);
 
-      // Insert new nodes
+      // Insert new nodes and get generated IDs
       if (nodesToSave.length > 0) {
-        const { error } = await supabase
+        const { data: insertedNodes, error } = await supabase
           .from("sequence_nodes")
           .insert(nodesToSave.map((node, index) => ({
-            id: node.id || undefined,
             sequence_id: sequenceId!,
             user_id: user.id,
             node_type: node.nodeType,
@@ -287,10 +286,23 @@ export function useSequenceNodes(sequenceId: string | undefined) {
             position_y: node.positionY,
             node_order: node.nodeOrder ?? index,
             config: node.config as Json,
-          })));
+          })))
+          .select("id");
 
         if (error) throw error;
+
+        // Create mapping: localId -> dbId (by insertion order)
+        const idMapping: Record<string, string> = {};
+        nodesToSave.forEach((node, index) => {
+          if (insertedNodes && insertedNodes[index]) {
+            idMapping[node.localId] = insertedNodes[index].id;
+          }
+        });
+
+        return idMapping;
       }
+
+      return {};
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sequence_nodes", sequenceId] });
@@ -301,11 +313,17 @@ export function useSequenceNodes(sequenceId: string | undefined) {
   });
 
   const saveConnectionsMutation = useMutation({
-    mutationFn: async (connectionsToSave: Array<{
-      sourceNodeId: string;
-      targetNodeId: string;
-      conditionPath?: string;
-    }>) => {
+    mutationFn: async ({ 
+      connectionsToSave, 
+      idMapping 
+    }: {
+      connectionsToSave: Array<{
+        sourceNodeId: string;
+        targetNodeId: string;
+        conditionPath?: string;
+      }>;
+      idMapping: Record<string, string>;
+    }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user || !sequenceId) throw new Error("Not authenticated");
 
@@ -315,15 +333,15 @@ export function useSequenceNodes(sequenceId: string | undefined) {
         .delete()
         .eq("sequence_id", sequenceId);
 
-      // Insert new connections
+      // Insert new connections with mapped IDs
       if (connectionsToSave.length > 0) {
         const { error } = await supabase
           .from("sequence_connections")
           .insert(connectionsToSave.map(conn => ({
             sequence_id: sequenceId,
             user_id: user.id,
-            source_node_id: conn.sourceNodeId,
-            target_node_id: conn.targetNodeId,
+            source_node_id: idMapping[conn.sourceNodeId] || conn.sourceNodeId,
+            target_node_id: idMapping[conn.targetNodeId] || conn.targetNodeId,
             condition_path: conn.conditionPath || null,
           })));
 
