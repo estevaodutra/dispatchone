@@ -464,6 +464,7 @@ export type Database = {
           mention_member: boolean | null
           schedule: Json | null
           send_private: boolean | null
+          sequence_id: string | null
           sequence_order: number | null
           trigger_keyword: string | null
           type: string
@@ -480,6 +481,7 @@ export type Database = {
           mention_member?: boolean | null
           schedule?: Json | null
           send_private?: boolean | null
+          sequence_id?: string | null
           sequence_order?: number | null
           trigger_keyword?: string | null
           type: string
@@ -496,6 +498,7 @@ export type Database = {
           mention_member?: boolean | null
           schedule?: Json | null
           send_private?: boolean | null
+          sequence_id?: string | null
           sequence_order?: number | null
           trigger_keyword?: string | null
           type?: string
@@ -508,6 +511,13 @@ export type Database = {
             columns: ["group_campaign_id"]
             isOneToOne: false
             referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_messages_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "message_sequences"
             referencedColumns: ["id"]
           },
         ]

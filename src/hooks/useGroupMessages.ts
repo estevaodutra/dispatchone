@@ -23,6 +23,7 @@ export interface GroupMessage {
   delaySeconds: number;
   active: boolean;
   createdAt: string;
+  sequenceId: string | null;
 }
 
 interface DbGroupMessage {
@@ -40,6 +41,7 @@ interface DbGroupMessage {
   delay_seconds: number | null;
   active: boolean | null;
   created_at: string | null;
+  sequence_id: string | null;
 }
 
 const transformDbToFrontend = (db: DbGroupMessage): GroupMessage => ({
@@ -56,6 +58,7 @@ const transformDbToFrontend = (db: DbGroupMessage): GroupMessage => ({
   delaySeconds: db.delay_seconds || 0,
   active: db.active ?? true,
   createdAt: db.created_at || new Date().toISOString(),
+  sequenceId: db.sequence_id,
 });
 
 export function useGroupMessages(groupCampaignId: string | null) {
@@ -90,6 +93,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
       mentionMember?: boolean;
       sequenceOrder?: number;
       delaySeconds?: number;
+      sequenceId?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
@@ -108,6 +112,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
           mention_member: message.mentionMember || false,
           sequence_order: message.sequenceOrder || 0,
           delay_seconds: message.delaySeconds || 0,
+          sequence_id: message.sequenceId || null,
         })
         .select()
         .single();
@@ -137,6 +142,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
         sequenceOrder: number;
         delaySeconds: number;
         active: boolean;
+        sequenceId: string | null;
       }>;
     }) => {
       const dbUpdates: Record<string, unknown> = {};
@@ -149,6 +155,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
       if (updates.sequenceOrder !== undefined) dbUpdates.sequence_order = updates.sequenceOrder;
       if (updates.delaySeconds !== undefined) dbUpdates.delay_seconds = updates.delaySeconds;
       if (updates.active !== undefined) dbUpdates.active = updates.active;
+      if (updates.sequenceId !== undefined) dbUpdates.sequence_id = updates.sequenceId;
 
       const { error } = await supabase
         .from("group_messages")
