@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { useGroupMessages, GroupMessage, MessageType } from "@/hooks/useGroupMessages";
 import { useSequences } from "@/hooks/useSequences";
 import { useInstances } from "@/hooks/useInstances";
@@ -200,18 +201,40 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     // Debug: Log message media fields before sending
     console.log("🟢 handleTestMessage - message.mediaUrl:", message.mediaUrl);
     console.log("🟢 handleTestMessage - message.mediaType:", message.mediaType);
-    console.log("🟢 handleTestMessage - message.mediaCaption:", message.mediaCaption);
-    console.log("🟢 handleTestMessage - Full message object:", JSON.stringify(message, null, 2));
-    console.log("handleTestMessage: enviando para grupos:", linkedGroups);
+    console.log("🟢 handleTestMessage - message.sequenceId:", message.sequenceId);
 
     setSendingMessageId(message.id);
     try {
+      // If message has a linked sequence, fetch the sequence nodes
+      let sequenceNodes = undefined;
+      if (message.sequenceId) {
+        console.log("🟢 Fetching sequence nodes for sequenceId:", message.sequenceId);
+        const { data: nodesData, error: nodesError } = await supabase
+          .from("sequence_nodes")
+          .select("*")
+          .eq("sequence_id", message.sequenceId)
+          .order("node_order", { ascending: true });
+
+        if (nodesError) {
+          console.error("🔴 Error fetching sequence nodes:", nodesError);
+        } else if (nodesData && nodesData.length > 0) {
+          sequenceNodes = nodesData.map(node => ({
+            id: node.id,
+            nodeType: node.node_type,
+            nodeOrder: node.node_order || 0,
+            config: node.config || {},
+          }));
+          console.log("🟢 Sequence nodes found:", JSON.stringify(sequenceNodes, null, 2));
+        }
+      }
+
       await sendMessage({
         message,
         campaign: currentCampaign,
         instance: linkedInstance,
         groups: linkedGroups,
         trigger: { name: "Usuário Teste", phone: "5500000000000" },
+        sequenceNodes,
       });
     } finally {
       setSendingMessageId(null);

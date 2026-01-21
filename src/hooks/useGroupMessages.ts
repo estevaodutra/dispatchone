@@ -226,6 +226,12 @@ export function useGroupMessages(groupCampaignId: string | null) {
       instance: Instance;
       groups: CampaignGroup[];
       trigger?: { phone?: string; name?: string };
+      sequenceNodes?: Array<{
+        id: string;
+        nodeType: string;
+        nodeOrder: number;
+        config: Record<string, unknown>;
+      }>;
     }) => {
       const payload = {
         instance: {
@@ -266,6 +272,13 @@ export function useGroupMessages(groupCampaignId: string | null) {
           mediaType: params.message.mediaType || null,
           mediaCaption: params.message.mediaCaption || null,
         },
+        // Include sequence nodes when available (for sequence-linked messages)
+        sequence_nodes: params.sequenceNodes?.map(node => ({
+          id: node.id,
+          nodeType: node.nodeType,
+          nodeOrder: node.nodeOrder,
+          config: node.config,
+        })) || null,
         trigger: params.trigger,
         triggeredAt: new Date().toISOString(),
       };
