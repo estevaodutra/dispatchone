@@ -89,6 +89,17 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                 </p>
               </div>
               <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label htmlFor="viewOnce">Visualização Única</Label>
+                  <p className="text-xs text-muted-foreground">Mensagem desaparece após ser lida</p>
+                </div>
+                <Switch
+                  id="viewOnce"
+                  checked={(node.config.viewOnce as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("viewOnce", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
                 <Label htmlFor="sendPrivate">Enviar no privado</Label>
                 <Switch
                   id="sendPrivate"
@@ -107,8 +118,8 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
             </>
           )}
 
-          {/* IMAGE / VIDEO */}
-          {(node.nodeType === "image" || node.nodeType === "video") && (
+          {/* IMAGE */}
+          {node.nodeType === "image" && (
             <>
               <div className="space-y-2">
                 <Label>URL da Mídia</Label>
@@ -117,9 +128,7 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                   value={(node.config.url as string) || ""}
                   onChange={(e) => updateConfig("url", e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  {node.nodeType === "image" ? "JPEG, PNG - até 5MB" : "MP4 - até 16MB"}
-                </p>
+                <p className="text-xs text-muted-foreground">JPEG, PNG - até 5MB</p>
               </div>
               <div className="space-y-2">
                 <Label>Legenda (opcional)</Label>
@@ -128,6 +137,67 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                   value={(node.config.caption as string) || ""}
                   onChange={(e) => updateConfig("caption", e.target.value)}
                   rows={2}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Visualização Única</Label>
+                  <p className="text-xs text-muted-foreground">Mídia desaparece após ser vista</p>
+                </div>
+                <Switch
+                  checked={(node.config.viewOnce as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("viewOnce", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label>Enviar no privado</Label>
+                <Switch
+                  checked={(node.config.sendPrivate as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("sendPrivate", checked)}
+                />
+              </div>
+            </>
+          )}
+
+          {/* VIDEO */}
+          {node.nodeType === "video" && (
+            <>
+              <div className="space-y-2">
+                <Label>URL da Mídia</Label>
+                <Input
+                  placeholder="https://exemplo.com/video.mp4"
+                  value={(node.config.url as string) || ""}
+                  onChange={(e) => updateConfig("url", e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">MP4 - até 16MB</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Legenda (opcional)</Label>
+                <Textarea
+                  placeholder="Descrição da mídia..."
+                  value={(node.config.caption as string) || ""}
+                  onChange={(e) => updateConfig("caption", e.target.value)}
+                  rows={2}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Recado (Video Note)</Label>
+                  <p className="text-xs text-muted-foreground">Envia como bolinha circular flutuante</p>
+                </div>
+                <Switch
+                  checked={(node.config.isVideoNote as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("isVideoNote", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Visualização Única</Label>
+                  <p className="text-xs text-muted-foreground">Mídia desaparece após ser vista</p>
+                </div>
+                <Switch
+                  checked={(node.config.viewOnce as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("viewOnce", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -159,6 +229,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                 <Switch
                   checked={(node.config.isVoiceMessage as boolean) ?? true}
                   onCheckedChange={(checked) => updateConfig("isVoiceMessage", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Visualização Única</Label>
+                  <p className="text-xs text-muted-foreground">Áudio desaparece após ser ouvido</p>
+                </div>
+                <Switch
+                  checked={(node.config.viewOnce as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("viewOnce", checked)}
                 />
               </div>
               <div className="flex items-center justify-between">
@@ -203,6 +283,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                 />
               </div>
               <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Visualização Única</Label>
+                  <p className="text-xs text-muted-foreground">Documento desaparece após ser visto</p>
+                </div>
+                <Switch
+                  checked={(node.config.viewOnce as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("viewOnce", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
                 <Label>Enviar no privado</Label>
                 <Switch
                   checked={(node.config.sendPrivate as boolean) || false}
@@ -225,6 +315,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                 <p className="text-xs text-muted-foreground">
                   WebP 512x512px - até 100KB
                 </p>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Visualização Única</Label>
+                  <p className="text-xs text-muted-foreground">Sticker desaparece após ser visto</p>
+                </div>
+                <Switch
+                  checked={(node.config.viewOnce as boolean) || false}
+                  onCheckedChange={(checked) => updateConfig("viewOnce", checked)}
+                />
               </div>
               <div className="flex items-center justify-between">
                 <Label>Enviar no privado</Label>

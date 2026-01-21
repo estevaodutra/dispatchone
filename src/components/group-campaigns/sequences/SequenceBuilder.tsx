@@ -145,19 +145,19 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
     switch (nodeType) {
       // Messages
       case "message":
-        return { content: "", sendPrivate: false, mentionMember: false };
+        return { content: "", sendPrivate: false, mentionMember: false, viewOnce: false };
       
       // Media
       case "image":
-        return { url: "", caption: "", sendPrivate: false };
+        return { url: "", caption: "", sendPrivate: false, viewOnce: false };
       case "video":
-        return { url: "", caption: "", sendPrivate: false };
+        return { url: "", caption: "", sendPrivate: false, isVideoNote: false, viewOnce: false };
       case "audio":
-        return { url: "", isVoiceMessage: true, sendPrivate: false };
+        return { url: "", isVoiceMessage: true, sendPrivate: false, viewOnce: false };
       case "document":
-        return { url: "", filename: "", caption: "", sendPrivate: false };
+        return { url: "", filename: "", caption: "", sendPrivate: false, viewOnce: false };
       case "sticker":
-        return { url: "", sendPrivate: false };
+        return { url: "", sendPrivate: false, viewOnce: false };
       
       // Interactive
       case "poll":
