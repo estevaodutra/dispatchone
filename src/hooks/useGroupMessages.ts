@@ -34,6 +34,9 @@ export interface GroupMessage {
   active: boolean;
   createdAt: string;
   sequenceId: string | null;
+  mediaUrl: string | null;
+  mediaType: string | null;
+  mediaCaption: string | null;
 }
 
 interface DbGroupMessage {
@@ -52,6 +55,9 @@ interface DbGroupMessage {
   active: boolean | null;
   created_at: string | null;
   sequence_id: string | null;
+  media_url: string | null;
+  media_type: string | null;
+  media_caption: string | null;
 }
 
 const transformDbToFrontend = (db: DbGroupMessage): GroupMessage => ({
@@ -69,6 +75,9 @@ const transformDbToFrontend = (db: DbGroupMessage): GroupMessage => ({
   active: db.active ?? true,
   createdAt: db.created_at || new Date().toISOString(),
   sequenceId: db.sequence_id,
+  mediaUrl: db.media_url,
+  mediaType: db.media_type,
+  mediaCaption: db.media_caption,
 });
 
 export function useGroupMessages(groupCampaignId: string | null) {
@@ -104,6 +113,9 @@ export function useGroupMessages(groupCampaignId: string | null) {
       sequenceOrder?: number;
       delaySeconds?: number;
       sequenceId?: string;
+      mediaUrl?: string;
+      mediaType?: string;
+      mediaCaption?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
@@ -123,6 +135,9 @@ export function useGroupMessages(groupCampaignId: string | null) {
           sequence_order: message.sequenceOrder || 0,
           delay_seconds: message.delaySeconds || 0,
           sequence_id: message.sequenceId || null,
+          media_url: message.mediaUrl || null,
+          media_type: message.mediaType || null,
+          media_caption: message.mediaCaption || null,
         })
         .select()
         .single();
@@ -153,6 +168,9 @@ export function useGroupMessages(groupCampaignId: string | null) {
         delaySeconds: number;
         active: boolean;
         sequenceId: string | null;
+        mediaUrl: string | null;
+        mediaType: string | null;
+        mediaCaption: string | null;
       }>;
     }) => {
       const dbUpdates: Record<string, unknown> = {};
@@ -166,6 +184,9 @@ export function useGroupMessages(groupCampaignId: string | null) {
       if (updates.delaySeconds !== undefined) dbUpdates.delay_seconds = updates.delaySeconds;
       if (updates.active !== undefined) dbUpdates.active = updates.active;
       if (updates.sequenceId !== undefined) dbUpdates.sequence_id = updates.sequenceId;
+      if (updates.mediaUrl !== undefined) dbUpdates.media_url = updates.mediaUrl;
+      if (updates.mediaType !== undefined) dbUpdates.media_type = updates.mediaType;
+      if (updates.mediaCaption !== undefined) dbUpdates.media_caption = updates.mediaCaption;
 
       const { error } = await supabase
         .from("group_messages")
@@ -241,6 +262,9 @@ export function useGroupMessages(groupCampaignId: string | null) {
         message_content: {
           text: params.message.content,
           variables: params.message.variables || {},
+          mediaUrl: params.message.mediaUrl || null,
+          mediaType: params.message.mediaType || null,
+          mediaCaption: params.message.mediaCaption || null,
         },
         trigger: params.trigger,
         triggeredAt: new Date().toISOString(),
