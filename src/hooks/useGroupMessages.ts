@@ -4,7 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { Instance } from "@/hooks/useInstances";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
-
+import { CampaignGroup } from "@/hooks/useCampaignGroups";
 const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
 export type MessageType = "welcome" | "farewell" | "scheduled" | "keyword_response";
@@ -203,6 +203,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
       message: GroupMessage;
       campaign: GroupCampaign;
       instance: Instance;
+      groups: CampaignGroup[];
       trigger?: { phone?: string; name?: string };
     }) => {
       const payload = {
@@ -217,9 +218,15 @@ export function useGroupMessages(groupCampaignId: string | null) {
         campaign: {
           id: params.campaign.id,
           name: params.campaign.name,
-          groupJid: params.campaign.groupJid,
-          groupName: params.campaign.groupName,
+          status: params.campaign.status,
         },
+        groups: params.groups.map(g => ({
+          id: g.id,
+          groupJid: g.groupJid,
+          groupName: g.groupName,
+          instanceId: g.instanceId,
+          addedAt: g.addedAt,
+        })),
         message: {
           id: params.message.id,
           type: params.message.type,
