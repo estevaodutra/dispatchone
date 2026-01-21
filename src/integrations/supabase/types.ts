@@ -461,6 +461,9 @@ export type Database = {
           delay_seconds: number | null
           group_campaign_id: string
           id: string
+          media_caption: string | null
+          media_type: string | null
+          media_url: string | null
           mention_member: boolean | null
           schedule: Json | null
           send_private: boolean | null
@@ -478,6 +481,9 @@ export type Database = {
           delay_seconds?: number | null
           group_campaign_id: string
           id?: string
+          media_caption?: string | null
+          media_type?: string | null
+          media_url?: string | null
           mention_member?: boolean | null
           schedule?: Json | null
           send_private?: boolean | null
@@ -495,6 +501,9 @@ export type Database = {
           delay_seconds?: number | null
           group_campaign_id?: string
           id?: string
+          media_caption?: string | null
+          media_type?: string | null
+          media_url?: string | null
           mention_member?: boolean | null
           schedule?: Json | null
           send_private?: boolean | null
