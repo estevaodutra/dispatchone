@@ -2,6 +2,7 @@ import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
+import { useMediaLibrary } from "@/hooks/useMediaLibrary";
 
 interface UploadResult {
   url: string;
@@ -50,6 +51,7 @@ const TYPE_LIMITS: Record<MediaType, { maxMB: number; types: string[]; label: st
 export function useMediaUpload(mediaType: MediaType) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { addToLibrary } = useMediaLibrary();
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState(0);
 
@@ -112,6 +114,21 @@ export function useMediaUpload(mediaType: MediaType) {
         .getPublicUrl(filePath);
 
       setProgress(100);
+
+      // Registrar na biblioteca de mídia
+      try {
+        await addToLibrary({
+          filename: file.name,
+          storagePath: filePath,
+          publicUrl,
+          mediaType,
+          mimeType: file.type,
+          fileSize: file.size,
+        });
+      } catch (libError) {
+        console.error("Erro ao registrar na biblioteca:", libError);
+      }
+
       toast({ title: "Upload concluído", description: file.name });
 
       return {

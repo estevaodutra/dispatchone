@@ -904,6 +904,42 @@ export type Database = {
           },
         ]
       }
+      user_media_library: {
+        Row: {
+          created_at: string | null
+          file_size: number | null
+          filename: string
+          id: string
+          media_type: string
+          mime_type: string | null
+          public_url: string
+          storage_path: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          file_size?: number | null
+          filename: string
+          id?: string
+          media_type: string
+          mime_type?: string | null
+          public_url: string
+          storage_path: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          file_size?: number | null
+          filename?: string
+          id?: string
+          media_type?: string
+          mime_type?: string | null
+          public_url?: string
+          storage_path?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string | null
