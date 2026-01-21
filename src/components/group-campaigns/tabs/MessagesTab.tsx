@@ -3,6 +3,7 @@ import { useGroupMessages, GroupMessage, MessageType } from "@/hooks/useGroupMes
 import { useSequences } from "@/hooks/useSequences";
 import { useInstances } from "@/hooks/useInstances";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -157,6 +158,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
   const { sequences } = useSequences(campaignId);
   const { instances } = useInstances();
   const { campaigns } = useGroupCampaigns();
+  const { linkedGroups } = useCampaignGroups(campaignId);
   
   const currentCampaign = campaigns.find(c => c.id === campaignId);
   const linkedInstance = instances.find(i => i.id === currentCampaign?.instanceId);
@@ -178,6 +180,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
         message,
         campaign: currentCampaign,
         instance: linkedInstance,
+        groups: linkedGroups,
         trigger: { name: "Usuário Teste", phone: "5500000000000" },
       });
     } finally {
