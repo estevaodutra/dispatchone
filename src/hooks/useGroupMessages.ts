@@ -227,16 +227,20 @@ export function useGroupMessages(groupCampaignId: string | null) {
           instanceId: g.instanceId,
           addedAt: g.addedAt,
         })),
-        message: {
+        message_set: {
           id: params.message.id,
           type: params.message.type,
-          content: params.message.content,
           triggerKeyword: params.message.triggerKeyword,
           schedule: params.message.schedule,
           sendPrivate: params.message.sendPrivate,
           mentionMember: params.message.mentionMember,
           delaySeconds: params.message.delaySeconds,
           sequenceId: params.message.sequenceId,
+          active: params.message.active,
+        },
+        message_content: {
+          text: params.message.content,
+          variables: params.message.variables || {},
         },
         trigger: params.trigger,
         triggeredAt: new Date().toISOString(),
