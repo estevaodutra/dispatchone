@@ -12,6 +12,7 @@ import {
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar
 } from "lucide-react";
+import { MediaUploader } from "./MediaUploader";
 
 interface LocalNode {
   id: string;
@@ -122,13 +123,14 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
           {node.nodeType === "image" && (
             <>
               <div className="space-y-2">
-                <Label>URL da Mídia</Label>
-                <Input
-                  placeholder="https://exemplo.com/arquivo.jpg"
-                  value={(node.config.url as string) || ""}
-                  onChange={(e) => updateConfig("url", e.target.value)}
+                <Label>Mídia</Label>
+                <MediaUploader
+                  mediaType="image"
+                  currentUrl={(node.config.url as string) || ""}
+                  onUpload={(url) => updateConfig("url", url)}
+                  onUrlChange={(url) => updateConfig("url", url)}
+                  placeholder="https://exemplo.com/imagem.jpg"
                 />
-                <p className="text-xs text-muted-foreground">JPEG, PNG - até 5MB</p>
               </div>
               <div className="space-y-2">
                 <Label>Legenda (opcional)</Label>
@@ -163,13 +165,14 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
           {node.nodeType === "video" && (
             <>
               <div className="space-y-2">
-                <Label>URL da Mídia</Label>
-                <Input
+                <Label>Mídia</Label>
+                <MediaUploader
+                  mediaType="video"
+                  currentUrl={(node.config.url as string) || ""}
+                  onUpload={(url) => updateConfig("url", url)}
+                  onUrlChange={(url) => updateConfig("url", url)}
                   placeholder="https://exemplo.com/video.mp4"
-                  value={(node.config.url as string) || ""}
-                  onChange={(e) => updateConfig("url", e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">MP4 - até 16MB</p>
               </div>
               <div className="space-y-2">
                 <Label>Legenda (opcional)</Label>
@@ -214,15 +217,14 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
           {node.nodeType === "audio" && (
             <>
               <div className="space-y-2">
-                <Label>URL do Áudio</Label>
-                <Input
+                <Label>Áudio</Label>
+                <MediaUploader
+                  mediaType="audio"
+                  currentUrl={(node.config.url as string) || ""}
+                  onUpload={(url) => updateConfig("url", url)}
+                  onUrlChange={(url) => updateConfig("url", url)}
                   placeholder="https://exemplo.com/audio.ogg"
-                  value={(node.config.url as string) || ""}
-                  onChange={(e) => updateConfig("url", e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  OGG (Opus), MP3, AAC - até 16MB
-                </p>
               </div>
               <div className="flex items-center justify-between">
                 <Label>Mensagem de voz (PTT)</Label>
@@ -255,15 +257,17 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
           {node.nodeType === "document" && (
             <>
               <div className="space-y-2">
-                <Label>URL do Documento</Label>
-                <Input
+                <Label>Documento</Label>
+                <MediaUploader
+                  mediaType="document"
+                  currentUrl={(node.config.url as string) || ""}
+                  onUpload={(url, filename) => {
+                    updateConfig("url", url);
+                    if (filename) updateConfig("filename", filename);
+                  }}
+                  onUrlChange={(url) => updateConfig("url", url)}
                   placeholder="https://exemplo.com/documento.pdf"
-                  value={(node.config.url as string) || ""}
-                  onChange={(e) => updateConfig("url", e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground">
-                  PDF, DOC, XLS, PPT, etc - até 100MB
-                </p>
               </div>
               <div className="space-y-2">
                 <Label>Nome do Arquivo</Label>
@@ -306,14 +310,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
           {node.nodeType === "sticker" && (
             <>
               <div className="space-y-2">
-                <Label>URL do Sticker</Label>
-                <Input
+                <Label>Sticker</Label>
+                <MediaUploader
+                  mediaType="sticker"
+                  currentUrl={(node.config.url as string) || ""}
+                  onUpload={(url) => updateConfig("url", url)}
+                  onUrlChange={(url) => updateConfig("url", url)}
                   placeholder="https://exemplo.com/sticker.webp"
-                  value={(node.config.url as string) || ""}
-                  onChange={(e) => updateConfig("url", e.target.value)}
                 />
                 <p className="text-xs text-muted-foreground">
-                  WebP 512x512px - até 100KB
+                  WebP 512x512px recomendado
                 </p>
               </div>
               <div className="flex items-center justify-between">
