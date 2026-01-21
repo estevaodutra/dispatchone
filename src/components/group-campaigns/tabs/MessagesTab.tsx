@@ -466,14 +466,14 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                 Vincular Sequência (opcional)
               </Label>
               <Select
-                value={formData.sequenceId}
-                onValueChange={(v) => setFormData({ ...formData, sequenceId: v })}
+                value={formData.sequenceId || "none"}
+                onValueChange={(v) => setFormData({ ...formData, sequenceId: v === "none" ? "" : v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Nenhuma - usar conteúdo abaixo" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhuma</SelectItem>
+                  <SelectItem value="none">Nenhuma</SelectItem>
                   {sequences.map((seq) => (
                     <SelectItem key={seq.id} value={seq.id}>
                       <div className="flex items-center gap-2">
