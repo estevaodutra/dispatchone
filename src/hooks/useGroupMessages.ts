@@ -16,6 +16,12 @@ export interface GroupMessage {
     days?: number[];
     times?: string[];
     delaySeconds?: number;
+    mode?: "manual" | "interval";
+    intervalConfig?: {
+      start: string;
+      end: string;
+      minutes: number;
+    };
   } | null;
   sendPrivate: boolean;
   mentionMember: boolean;

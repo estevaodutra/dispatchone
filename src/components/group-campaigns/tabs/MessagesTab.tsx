@@ -43,8 +43,38 @@ import {
   Info,
   Calendar,
   X,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type ScheduleMode = "manual" | "interval";
+
+const INTERVAL_OPTIONS = [
+  { value: 15, label: "15 minutos" },
+  { value: 30, label: "30 minutos" },
+  { value: 60, label: "1 hora" },
+  { value: 120, label: "2 horas" },
+  { value: 180, label: "3 horas" },
+  { value: 240, label: "4 horas" },
+];
+
+const generateTimesFromInterval = (start: string, end: string, intervalMinutes: number): string[] => {
+  const times: string[] = [];
+  const [startHour, startMin] = start.split(":").map(Number);
+  const [endHour, endMin] = end.split(":").map(Number);
+  
+  let currentMinutes = startHour * 60 + startMin;
+  const endMinutes = endHour * 60 + endMin;
+  
+  while (currentMinutes <= endMinutes) {
+    const hours = Math.floor(currentMinutes / 60);
+    const mins = currentMinutes % 60;
+    times.push(`${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`);
+    currentMinutes += intervalMinutes;
+  }
+  
+  return times;
+};
 
 interface MessagesTabProps {
   campaignId: string;
@@ -127,6 +157,10 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     sequenceId: "",
     scheduleDays: [] as number[],
     scheduleTimes: [] as string[],
+    scheduleMode: "manual" as ScheduleMode,
+    intervalStart: "08:00",
+    intervalEnd: "19:00",
+    intervalMinutes: 60,
   });
 
   const resetForm = () => {
@@ -140,6 +174,10 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       sequenceId: "",
       scheduleDays: [],
       scheduleTimes: [],
+      scheduleMode: "manual",
+      intervalStart: "08:00",
+      intervalEnd: "19:00",
+      intervalMinutes: 60,
     });
     setNewTime("");
   };
@@ -171,13 +209,23 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
   };
 
   const handleCreate = async () => {
+    const scheduleTimes = formData.scheduleMode === "interval"
+      ? generateTimesFromInterval(formData.intervalStart, formData.intervalEnd, formData.intervalMinutes)
+      : formData.scheduleTimes;
+
     await createMessage({
       type: formData.type,
       content: formData.sequenceId ? "" : formData.content,
       triggerKeyword: formData.type === "keyword_response" ? formData.triggerKeyword : undefined,
       schedule: formData.type === "scheduled" ? {
         days: formData.scheduleDays,
-        times: formData.scheduleTimes,
+        times: scheduleTimes,
+        mode: formData.scheduleMode,
+        intervalConfig: formData.scheduleMode === "interval" ? {
+          start: formData.intervalStart,
+          end: formData.intervalEnd,
+          minutes: formData.intervalMinutes,
+        } : undefined,
       } : undefined,
       sendPrivate: formData.sendPrivate,
       mentionMember: formData.mentionMember,
@@ -190,6 +238,11 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
 
   const handleUpdate = async () => {
     if (!editingMessage) return;
+    
+    const scheduleTimes = formData.scheduleMode === "interval"
+      ? generateTimesFromInterval(formData.intervalStart, formData.intervalEnd, formData.intervalMinutes)
+      : formData.scheduleTimes;
+
     await updateMessage({
       id: editingMessage.id,
       updates: {
@@ -197,7 +250,13 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
         triggerKeyword: formData.type === "keyword_response" ? formData.triggerKeyword : null,
         schedule: formData.type === "scheduled" ? {
           days: formData.scheduleDays,
-          times: formData.scheduleTimes,
+          times: scheduleTimes,
+          mode: formData.scheduleMode,
+          intervalConfig: formData.scheduleMode === "interval" ? {
+            start: formData.intervalStart,
+            end: formData.intervalEnd,
+            minutes: formData.intervalMinutes,
+          } : undefined,
         } : null,
         sendPrivate: formData.sendPrivate,
         mentionMember: formData.mentionMember,
@@ -211,6 +270,13 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
 
   const openEditDialog = (message: GroupMessage) => {
     setEditingMessage(message);
+    const scheduleData = message.schedule as {
+      days?: number[];
+      times?: string[];
+      mode?: ScheduleMode;
+      intervalConfig?: { start: string; end: string; minutes: number };
+    } | null;
+    
     setFormData({
       type: message.type,
       content: message.content,
@@ -219,8 +285,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
       mentionMember: message.mentionMember,
       delaySeconds: message.delaySeconds,
       sequenceId: message.sequenceId || "",
-      scheduleDays: (message.schedule?.days as number[]) || [],
-      scheduleTimes: (message.schedule?.times as string[]) || [],
+      scheduleDays: scheduleData?.days || [],
+      scheduleTimes: scheduleData?.times || [],
+      scheduleMode: scheduleData?.mode || "manual",
+      intervalStart: scheduleData?.intervalConfig?.start || "08:00",
+      intervalEnd: scheduleData?.intervalConfig?.end || "19:00",
+      intervalMinutes: scheduleData?.intervalConfig?.minutes || 60,
     });
     setNewTime("");
   };
@@ -231,8 +301,23 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
   };
 
   const MessageCard = ({ message, onEdit, onDelete }: { message: GroupMessage; onEdit: () => void; onDelete: () => void }) => {
-    const scheduleDays = (message.schedule?.days as number[]) || [];
-    const scheduleTimes = (message.schedule?.times as string[]) || [];
+    const scheduleData = message.schedule as {
+      days?: number[];
+      times?: string[];
+      mode?: ScheduleMode;
+      intervalConfig?: { start: string; end: string; minutes: number };
+    } | null;
+    
+    const scheduleDays = scheduleData?.days || [];
+    const scheduleTimes = scheduleData?.times || [];
+    const scheduleMode = scheduleData?.mode || "manual";
+    const intervalConfig = scheduleData?.intervalConfig;
+    
+    const formatInterval = () => {
+      if (!intervalConfig) return null;
+      const intervalLabel = INTERVAL_OPTIONS.find(o => o.value === intervalConfig.minutes)?.label || `${intervalConfig.minutes}min`;
+      return `${intervalConfig.start} - ${intervalConfig.end} (a cada ${intervalLabel})`;
+    };
     
     return (
       <Card className="mb-2">
@@ -259,11 +344,20 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                       {scheduleDays.map(d => WEEK_DAYS[d]?.fullLabel).join(", ")}
                     </span>
                   )}
-                  {scheduleTimes.length > 0 && (
+                  {scheduleMode === "interval" && intervalConfig ? (
                     <>
                       <span className="text-muted-foreground">·</span>
                       <span className="text-xs text-muted-foreground">
-                        {scheduleTimes.join(", ")}
+                        {formatInterval()}
+                      </span>
+                    </>
+                  ) : scheduleTimes.length > 0 && (
+                    <>
+                      <span className="text-muted-foreground">·</span>
+                      <span className="text-xs text-muted-foreground">
+                        {scheduleTimes.length > 5 
+                          ? `${scheduleTimes.slice(0, 3).join(", ")} +${scheduleTimes.length - 3} horários`
+                          : scheduleTimes.join(", ")}
                       </span>
                     </>
                   )}
@@ -316,8 +410,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     );
   }
 
+  const previewTimes = formData.scheduleMode === "interval"
+    ? generateTimesFromInterval(formData.intervalStart, formData.intervalEnd, formData.intervalMinutes)
+    : formData.scheduleTimes;
+
   const isScheduleValid = formData.type !== "scheduled" || 
-    (formData.scheduleDays.length > 0 && formData.scheduleTimes.length > 0);
+    (formData.scheduleDays.length > 0 && (formData.scheduleMode === "interval" || formData.scheduleTimes.length > 0));
   const isFormValid = (formData.sequenceId || formData.content.trim()) && isScheduleValid;
 
   return (
@@ -579,41 +677,142 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   )}
                 </div>
 
-                {/* Time selection */}
+                {/* Schedule Mode Selection */}
                 <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Horários de Envio</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="time"
-                      value={newTime}
-                      onChange={(e) => setNewTime(e.target.value)}
-                      className="w-32"
-                    />
-                    <Button type="button" variant="outline" size="sm" onClick={addTime} disabled={!newTime}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Adicionar
-                    </Button>
+                  <Label className="text-sm text-muted-foreground">Modo de Horário</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, scheduleMode: "manual" })}
+                      className={cn(
+                        "flex flex-col items-center p-3 rounded-lg border-2 transition-all text-center",
+                        formData.scheduleMode === "manual"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50 hover:bg-muted/50"
+                      )}
+                    >
+                      <Clock className="h-5 w-5 mb-1 text-muted-foreground" />
+                      <span className="text-sm font-medium">Manual</span>
+                      <span className="text-xs text-muted-foreground">Adicionar um a um</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, scheduleMode: "interval" })}
+                      className={cn(
+                        "flex flex-col items-center p-3 rounded-lg border-2 transition-all text-center",
+                        formData.scheduleMode === "interval"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50 hover:bg-muted/50"
+                      )}
+                    >
+                      <RefreshCw className="h-5 w-5 mb-1 text-muted-foreground" />
+                      <span className="text-sm font-medium">Intervalo</span>
+                      <span className="text-xs text-muted-foreground">Gerar automático</span>
+                    </button>
                   </div>
-                  {formData.scheduleTimes.length > 0 ? (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {formData.scheduleTimes.map((time) => (
-                        <Badge key={time} variant="secondary" className="gap-1">
-                          <Clock className="h-3 w-3" />
-                          {time}
-                          <button
-                            type="button"
-                            onClick={() => removeTime(time)}
-                            className="ml-1 hover:text-destructive"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-destructive">Adicione ao menos um horário</p>
-                  )}
                 </div>
+
+                {/* Manual Time Selection */}
+                {formData.scheduleMode === "manual" && (
+                  <div className="space-y-2">
+                    <Label className="text-sm text-muted-foreground">Horários de Envio</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="time"
+                        value={newTime}
+                        onChange={(e) => setNewTime(e.target.value)}
+                        className="w-32"
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={addTime} disabled={!newTime}>
+                        <Plus className="h-4 w-4 mr-1" />
+                        Adicionar
+                      </Button>
+                    </div>
+                    {formData.scheduleTimes.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {formData.scheduleTimes.map((time) => (
+                          <Badge key={time} variant="secondary" className="gap-1">
+                            <Clock className="h-3 w-3" />
+                            {time}
+                            <button
+                              type="button"
+                              onClick={() => removeTime(time)}
+                              className="ml-1 hover:text-destructive"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-destructive">Adicione ao menos um horário</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Interval Configuration */}
+                {formData.scheduleMode === "interval" && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Horário Inicial</Label>
+                        <Input
+                          type="time"
+                          value={formData.intervalStart}
+                          onChange={(e) => setFormData({ ...formData, intervalStart: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Horário Final</Label>
+                        <Input
+                          type="time"
+                          value={formData.intervalEnd}
+                          onChange={(e) => setFormData({ ...formData, intervalEnd: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Repetir a cada</Label>
+                        <Select
+                          value={formData.intervalMinutes.toString()}
+                          onValueChange={(v) => setFormData({ ...formData, intervalMinutes: parseInt(v) })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {INTERVAL_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value.toString()}>
+                                {opt.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Preview Generated Times */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs text-muted-foreground">
+                          Horários Gerados ({previewTimes.length})
+                        </Label>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 p-3 rounded-lg bg-background border max-h-24 overflow-y-auto">
+                        {previewTimes.length > 0 ? (
+                          previewTimes.map((time) => (
+                            <Badge key={time} variant="outline" className="text-xs">
+                              {time}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            Configure o intervalo para gerar horários
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
