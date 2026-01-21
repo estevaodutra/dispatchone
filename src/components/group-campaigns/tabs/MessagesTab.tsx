@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useGroupMessages, GroupMessage, MessageType } from "@/hooks/useGroupMessages";
 import { useSequences } from "@/hooks/useSequences";
+import { useInstances } from "@/hooks/useInstances";
+import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +33,12 @@ import {
 } from "@/components/ui/accordion";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Plus,
   Trash2,
   MessageSquare,
@@ -44,6 +52,8 @@ import {
   Calendar,
   X,
   RefreshCw,
+  Play,
+  AlertCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -139,10 +149,41 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     createMessage,
     updateMessage,
     deleteMessage,
+    sendMessage,
     isCreating,
+    isSending,
   } = useGroupMessages(campaignId);
 
   const { sequences } = useSequences(campaignId);
+  const { instances } = useInstances();
+  const { campaigns } = useGroupCampaigns();
+  
+  const currentCampaign = campaigns.find(c => c.id === campaignId);
+  const linkedInstance = instances.find(i => i.id === currentCampaign?.instanceId);
+  
+  const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
+
+  const handleTestMessage = async (message: GroupMessage) => {
+    if (!currentCampaign) {
+      return;
+    }
+    
+    if (!linkedInstance) {
+      return;
+    }
+
+    setSendingMessageId(message.id);
+    try {
+      await sendMessage({
+        message,
+        campaign: currentCampaign,
+        instance: linkedInstance,
+        trigger: { name: "Usuário Teste", phone: "5500000000000" },
+      });
+    } finally {
+      setSendingMessageId(null);
+    }
+  };
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingMessage, setEditingMessage] = useState<GroupMessage | null>(null);
@@ -300,7 +341,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     return sequences.find(s => s.id === sequenceId)?.name || "Sequência";
   };
 
-  const MessageCard = ({ message, onEdit, onDelete }: { message: GroupMessage; onEdit: () => void; onDelete: () => void }) => {
+  const MessageCard = ({ message, onEdit, onDelete, onTest }: { 
+    message: GroupMessage; 
+    onEdit: () => void; 
+    onDelete: () => void;
+    onTest: () => void;
+  }) => {
     const scheduleData = message.schedule as {
       days?: number[];
       times?: string[];
@@ -312,6 +358,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     const scheduleTimes = scheduleData?.times || [];
     const scheduleMode = scheduleData?.mode || "manual";
     const intervalConfig = scheduleData?.intervalConfig;
+    const isMessageSending = sendingMessageId === message.id;
     
     const formatInterval = () => {
       if (!intervalConfig) return null;
@@ -389,6 +436,37 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
               </div>
             </div>
             <div className="flex items-center gap-1">
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950" 
+                        onClick={onTest}
+                        disabled={!linkedInstance || isMessageSending}
+                      >
+                        {isMessageSending ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {!linkedInstance ? (
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-3 w-3" />
+                        Vincule uma instância à campanha
+                      </div>
+                    ) : (
+                      "Testar envio"
+                    )}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
                 <Edit className="h-4 w-4" />
               </Button>
@@ -472,6 +550,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   message={msg}
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
+                  onTest={() => handleTestMessage(msg)}
                 />
               ))
             )}
@@ -498,6 +577,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   message={msg}
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
+                  onTest={() => handleTestMessage(msg)}
                 />
               ))
             )}
@@ -524,6 +604,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   message={msg}
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
+                  onTest={() => handleTestMessage(msg)}
                 />
               ))
             )}
@@ -550,6 +631,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   message={msg}
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
+                  onTest={() => handleTestMessage(msg)}
                 />
               ))
             )}

@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { Instance } from "@/hooks/useInstances";
+import { GroupCampaign } from "@/hooks/useGroupCampaigns";
+
+const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
 export type MessageType = "welcome" | "farewell" | "scheduled" | "keyword_response";
 
@@ -193,6 +197,65 @@ export function useGroupMessages(groupCampaignId: string | null) {
     },
   });
 
+  // Send message to webhook
+  const sendMessageMutation = useMutation({
+    mutationFn: async (params: {
+      message: GroupMessage;
+      campaign: GroupCampaign;
+      instance: Instance;
+      trigger?: { phone?: string; name?: string };
+    }) => {
+      const payload = {
+        instance: {
+          id: params.instance.id,
+          name: params.instance.name,
+          phone: params.instance.phoneNumber,
+          provider: params.instance.provider,
+          externalInstanceId: params.instance.idInstance,
+          externalInstanceToken: params.instance.tokenInstance,
+        },
+        campaign: {
+          id: params.campaign.id,
+          name: params.campaign.name,
+          groupJid: params.campaign.groupJid,
+          groupName: params.campaign.groupName,
+        },
+        message: {
+          id: params.message.id,
+          type: params.message.type,
+          content: params.message.content,
+          triggerKeyword: params.message.triggerKeyword,
+          schedule: params.message.schedule,
+          sendPrivate: params.message.sendPrivate,
+          mentionMember: params.message.mentionMember,
+          delaySeconds: params.message.delaySeconds,
+          sequenceId: params.message.sequenceId,
+        },
+        trigger: params.trigger,
+        triggeredAt: new Date().toISOString(),
+      };
+
+      const response = await fetch(SEND_MESSAGE_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Falha ao enviar mensagem: ${errorText}`);
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Enviado", description: "Mensagem enviada para o webhook com sucesso!" });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao enviar", description: error.message, variant: "destructive" });
+    },
+  });
+
   // Group messages by type
   const welcomeMessages = messages.filter((m) => m.type === "welcome");
   const farewellMessages = messages.filter((m) => m.type === "farewell");
@@ -211,8 +274,10 @@ export function useGroupMessages(groupCampaignId: string | null) {
     createMessage: createMessageMutation.mutateAsync,
     updateMessage: updateMessageMutation.mutateAsync,
     deleteMessage: deleteMessageMutation.mutateAsync,
+    sendMessage: sendMessageMutation.mutateAsync,
     isCreating: createMessageMutation.isPending,
     isUpdating: updateMessageMutation.isPending,
     isDeleting: deleteMessageMutation.isPending,
+    isSending: sendMessageMutation.isPending,
   };
 }
