@@ -656,6 +656,45 @@ export type Database = {
         }
         Relationships: []
       }
+      message_sequences: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          description: string | null
+          group_campaign_id: string
+          id: string
+          name: string
+          trigger_config: Json | null
+          trigger_type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          group_campaign_id: string
+          id?: string
+          name: string
+          trigger_config?: Json | null
+          trigger_type?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          description?: string | null
+          group_campaign_id?: string
+          id?: string
+          name?: string
+          trigger_config?: Json | null
+          trigger_type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       phone_numbers: {
         Row: {
           connected: boolean
@@ -768,6 +807,102 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      sequence_connections: {
+        Row: {
+          condition_path: string | null
+          created_at: string | null
+          id: string
+          sequence_id: string
+          source_node_id: string
+          target_node_id: string
+          user_id: string
+        }
+        Insert: {
+          condition_path?: string | null
+          created_at?: string | null
+          id?: string
+          sequence_id: string
+          source_node_id: string
+          target_node_id: string
+          user_id: string
+        }
+        Update: {
+          condition_path?: string | null
+          created_at?: string | null
+          id?: string
+          sequence_id?: string
+          source_node_id?: string
+          target_node_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_connections_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "message_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_connections_source_node_id_fkey"
+            columns: ["source_node_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_nodes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_connections_target_node_id_fkey"
+            columns: ["target_node_id"]
+            isOneToOne: false
+            referencedRelation: "sequence_nodes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sequence_nodes: {
+        Row: {
+          config: Json
+          created_at: string | null
+          id: string
+          node_order: number | null
+          node_type: string
+          position_x: number | null
+          position_y: number | null
+          sequence_id: string
+          user_id: string
+        }
+        Insert: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          node_order?: number | null
+          node_type: string
+          position_x?: number | null
+          position_y?: number | null
+          sequence_id: string
+          user_id: string
+        }
+        Update: {
+          config?: Json
+          created_at?: string | null
+          id?: string
+          node_order?: number | null
+          node_type?: string
+          position_x?: number | null
+          position_y?: number | null
+          sequence_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_nodes_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "message_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
