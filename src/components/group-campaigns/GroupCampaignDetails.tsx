@@ -2,13 +2,14 @@ import { useState } from "react";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, Users, MessageSquare, Shield, BarChart3, List } from "lucide-react";
+import { ArrowLeft, Settings, Users, MessageSquare, Shield, BarChart3, List, Workflow } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { MembersTab } from "./tabs/MembersTab";
 import { MessagesTab } from "./tabs/MessagesTab";
 import { ModerationTab } from "./tabs/ModerationTab";
 import { AnalyticsTab } from "./tabs/AnalyticsTab";
 import { GroupsListTab } from "./tabs/GroupsListTab";
+import { SequencesTab } from "./tabs/SequencesTab";
 
 interface GroupCampaignDetailsProps {
   campaign: GroupCampaign;
@@ -40,7 +41,7 @@ export function GroupCampaignDetails({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="config" className="gap-2">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Configuração</span>
@@ -56,6 +57,10 @@ export function GroupCampaignDetails({
           <TabsTrigger value="messages" className="gap-2">
             <MessageSquare className="h-4 w-4" />
             <span className="hidden sm:inline">Mensagens</span>
+          </TabsTrigger>
+          <TabsTrigger value="sequences" className="gap-2">
+            <Workflow className="h-4 w-4" />
+            <span className="hidden sm:inline">Sequências</span>
           </TabsTrigger>
           <TabsTrigger value="moderation" className="gap-2">
             <Shield className="h-4 w-4" />
@@ -81,6 +86,10 @@ export function GroupCampaignDetails({
 
         <TabsContent value="messages" className="mt-6">
           <MessagesTab campaignId={campaign.id} />
+        </TabsContent>
+
+        <TabsContent value="sequences" className="mt-6">
+          <SequencesTab campaignId={campaign.id} />
         </TabsContent>
 
         <TabsContent value="moderation" className="mt-6">
