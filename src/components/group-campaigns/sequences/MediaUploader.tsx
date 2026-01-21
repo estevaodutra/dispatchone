@@ -1,10 +1,12 @@
 import React, { useRef, useState } from "react";
-import { Upload, Link2, Loader2, CheckCircle, ExternalLink, X, FileText, Trash2 } from "lucide-react";
+import { Upload, Link2, Loader2, CheckCircle, ExternalLink, X, FileText, Trash2, FolderOpen } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useMediaUpload } from "@/hooks/useMediaUpload";
+import { MediaLibraryPicker } from "./MediaLibraryPicker";
+import { MediaItem } from "@/hooks/useMediaLibrary";
 
 type MediaType = "image" | "video" | "audio" | "document" | "sticker";
 
@@ -103,7 +105,7 @@ export function MediaUploader({
   placeholder = "https://exemplo.com/arquivo"
 }: MediaUploaderProps) {
   const { upload, isUploading, progress, acceptedTypes, maxSizeMB, typesLabel } = useMediaUpload(mediaType);
-  const [mode, setMode] = useState<"url" | "upload">(currentUrl ? "url" : "url");
+  const [mode, setMode] = useState<"url" | "upload" | "library">(currentUrl ? "url" : "library");
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -144,6 +146,10 @@ export function MediaUploader({
     setIsDragging(false);
   };
 
+  const handleLibrarySelect = (item: MediaItem) => {
+    onUpload(item.publicUrl, item.filename);
+  };
+
   const clearUrl = () => {
     onUrlChange("");
   };
@@ -152,17 +158,25 @@ export function MediaUploader({
 
   return (
     <div className="space-y-3">
-      <Tabs value={mode} onValueChange={(v) => setMode(v as "url" | "upload")}>
-        <TabsList className="grid w-full grid-cols-2 h-8">
-          <TabsTrigger value="url" className="text-xs">
-            <Link2 className="h-3 w-3 mr-1.5" />
-            URL
+      <Tabs value={mode} onValueChange={(v) => setMode(v as "url" | "upload" | "library")}>
+        <TabsList className="grid w-full grid-cols-3 h-8">
+          <TabsTrigger value="library" className="text-xs">
+            <FolderOpen className="h-3 w-3 mr-1.5" />
+            Biblioteca
           </TabsTrigger>
           <TabsTrigger value="upload" className="text-xs">
             <Upload className="h-3 w-3 mr-1.5" />
             Upload
           </TabsTrigger>
+          <TabsTrigger value="url" className="text-xs">
+            <Link2 className="h-3 w-3 mr-1.5" />
+            URL
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="library" className="mt-2">
+          <MediaLibraryPicker mediaType={mediaType} onSelect={handleLibrarySelect} />
+        </TabsContent>
 
         <TabsContent value="url" className="mt-2">
           <div className="relative">
@@ -234,7 +248,7 @@ export function MediaUploader({
           <MediaPreview mediaType={mediaType} url={currentUrl} />
           
           <div className="flex items-center gap-2 p-2 bg-muted/50 rounded text-xs">
-            <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
+            <CheckCircle className="h-3 w-3 text-primary shrink-0" />
             <span className="truncate flex-1 text-muted-foreground">
               {getFilenameFromUrl(currentUrl)}
             </span>
