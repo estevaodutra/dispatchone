@@ -21,7 +21,7 @@ const formatNodeConfig = (
   const formatted = { ...config };
 
   // Campos de texto que precisam de formatação
-  const textFields = ["text", "content", "message", "caption", "title", "description"];
+  const textFields = ["text", "content", "message", "caption", "title", "description", "footer"];
 
   textFields.forEach((field) => {
     if (typeof formatted[field] === "string") {
