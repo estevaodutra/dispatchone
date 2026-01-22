@@ -31,6 +31,7 @@ import {
   Play,
   Pause,
   MessageSquare,
+  FileEdit,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -160,7 +161,16 @@ export function GroupCampaignList({
                         <Settings className="mr-2 h-4 w-4" />
                         Configurar
                       </DropdownMenuItem>
-                      {campaign.status === "active" ? (
+                      {campaign.status !== "active" && (
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          onStatusChange(campaign.id, "active");
+                        }}>
+                          <Play className="mr-2 h-4 w-4" />
+                          Publicar
+                        </DropdownMenuItem>
+                      )}
+                      {campaign.status === "active" && (
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
                           onStatusChange(campaign.id, "paused");
@@ -168,13 +178,14 @@ export function GroupCampaignList({
                           <Pause className="mr-2 h-4 w-4" />
                           Pausar
                         </DropdownMenuItem>
-                      ) : (
+                      )}
+                      {campaign.status !== "draft" && (
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
-                          onStatusChange(campaign.id, "active");
+                          onStatusChange(campaign.id, "draft");
                         }}>
-                          <Play className="mr-2 h-4 w-4" />
-                          Ativar
+                          <FileEdit className="mr-2 h-4 w-4" />
+                          Voltar para Rascunho
                         </DropdownMenuItem>
                       )}
                       <DropdownMenuItem
@@ -195,7 +206,7 @@ export function GroupCampaignList({
                 <div className="flex items-center justify-between">
                   <Badge className={statusColors[campaign.status]}>
                     {campaign.status === "draft" && "Rascunho"}
-                    {campaign.status === "active" && "Ativo"}
+                    {campaign.status === "active" && "Publicado"}
                     {campaign.status === "paused" && "Pausado"}
                     {campaign.status === "archived" && "Arquivado"}
                   </Badge>
