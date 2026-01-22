@@ -14,6 +14,7 @@ import {
   Zap,
   Code2,
   Activity,
+  SendHorizontal,
 } from "lucide-react";
 import {
   Sidebar,
@@ -45,6 +46,7 @@ export function AppSidebar() {
   const systemNavItems = [
     { title: t("nav.instances"), url: "/instances", icon: MessageSquare },
     { title: t("nav.apiLogs"), url: "/api-logs", icon: Activity },
+    { title: "Logs de Envio", url: "/sequence-logs", icon: SendHorizontal },
     { title: t("nav.alerts"), url: "/alerts", icon: Bell },
     { title: t("nav.billing"), url: "/billing", icon: CreditCard },
     { title: t("nav.settings"), url: "/settings", icon: Settings },

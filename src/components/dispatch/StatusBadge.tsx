@@ -14,6 +14,7 @@ const statusBadgeVariants = cva(
         // Dispatch statuses
         pending: "bg-muted text-muted-foreground",
         sent: "bg-success/15 text-success",
+        sending: "bg-info/15 text-info",
         failed: "bg-error/15 text-error",
         retrying: "bg-warning/15 text-warning",
         // Campaign statuses
@@ -52,6 +53,7 @@ const statusDotColors: Record<string, string> = {
   warming: "bg-warning animate-pulse-subtle",
   pending: "bg-muted-foreground",
   sent: "bg-success",
+  sending: "bg-info animate-pulse-subtle",
   failed: "bg-error",
   retrying: "bg-warning animate-pulse-subtle",
   draft: "bg-muted-foreground",
@@ -71,6 +73,7 @@ const statusLabels: Record<string, string> = {
   warming: "Warming",
   pending: "Pending",
   sent: "Sent",
+  sending: "Sending",
   failed: "Failed",
   retrying: "Retrying",
   draft: "Draft",

@@ -476,27 +476,99 @@ export function useGroupMessages(groupCampaignId: string | null) {
             trigger,
           };
           
-          // Send to webhook
-          const response = await fetch(SEND_MESSAGE_WEBHOOK, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: abortSignal,
-          });
+          // Get current user for logging
+          const { data: { user: currentUser } } = await supabase.auth.getUser();
+          const startTime = Date.now();
           
-          if (!response.ok) {
-            const errorText = await response.text();
-            onProgress?.({
-              currentNode: nodeIndex + 1,
-              totalNodes,
-              currentGroup: groupIndex + 1,
-              totalGroups,
-              groupName: group.groupName,
-              nodeType: node.nodeType,
-              status: "error",
-              errorMessage: errorText,
+          // Create log entry before sending (using raw insert for new columns)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const { data: logEntry } = await (supabase
+            .from("group_message_logs") as any)
+            .insert({
+              user_id: currentUser?.id,
+              group_campaign_id: campaign.id,
+              sequence_id: message.sequenceId,
+              message_id: message.id,
+              node_type: node.nodeType,
+              node_order: node.nodeOrder,
+              group_jid: group.groupJid,
+              group_name: group.groupName,
+              instance_id: instance.id,
+              instance_name: instance.name,
+              campaign_name: campaign.name,
+              status: "sending",
+              payload: payload,
+            })
+            .select()
+            .single();
+          
+          try {
+            // Send to webhook
+            const response = await fetch(SEND_MESSAGE_WEBHOOK, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: abortSignal,
             });
-            throw new Error(`Falha ao enviar node ${nodeIndex + 1} para ${group.groupName}: ${errorText}`);
+            
+            const responseTimeMs = Date.now() - startTime;
+            
+            if (!response.ok) {
+              const errorText = await response.text();
+              
+              // Update log to failed
+              if (logEntry?.id) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (supabase
+                  .from("group_message_logs") as any)
+                  .update({ 
+                    status: "failed", 
+                    error_message: errorText,
+                    response_time_ms: responseTimeMs,
+                  })
+                  .eq("id", logEntry.id);
+              }
+              
+              onProgress?.({
+                currentNode: nodeIndex + 1,
+                totalNodes,
+                currentGroup: groupIndex + 1,
+                totalGroups,
+                groupName: group.groupName,
+                nodeType: node.nodeType,
+                status: "error",
+                errorMessage: errorText,
+              });
+              throw new Error(`Falha ao enviar node ${nodeIndex + 1} para ${group.groupName}: ${errorText}`);
+            }
+            
+            // Update log to sent
+            if (logEntry?.id) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (supabase
+                .from("group_message_logs") as any)
+                .update({ 
+                  status: "sent",
+                  response_time_ms: responseTimeMs,
+                })
+                .eq("id", logEntry.id);
+            }
+          } catch (error) {
+            const responseTimeMs = Date.now() - startTime;
+            
+            // Update log to failed if not already updated
+            if (logEntry?.id && error instanceof Error && !error.message.includes("Falha ao enviar node")) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (supabase
+                .from("group_message_logs") as any)
+                .update({ 
+                  status: "failed", 
+                  error_message: error.message,
+                  response_time_ms: responseTimeMs,
+                })
+                .eq("id", logEntry.id);
+            }
+            throw error;
           }
           
           nodesProcessed++;
