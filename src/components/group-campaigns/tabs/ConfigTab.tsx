@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { useInstances } from "@/hooks/useInstances";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +36,19 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
     messagePermission: campaign.messagePermission,
     editPermission: campaign.editPermission,
   });
+
+  // Sync formData when campaign prop changes
+  useEffect(() => {
+    setFormData({
+      name: campaign.name,
+      instanceId: campaign.instanceId || "",
+      groupName: campaign.groupName || "",
+      groupDescription: campaign.groupDescription || "",
+      messagePermission: campaign.messagePermission,
+      editPermission: campaign.editPermission,
+    });
+  }, [campaign.id, campaign.instanceId, campaign.name, campaign.groupName, 
+      campaign.groupDescription, campaign.messagePermission, campaign.editPermission]);
 
   const handleSave = async () => {
     setIsUpdating(true);
