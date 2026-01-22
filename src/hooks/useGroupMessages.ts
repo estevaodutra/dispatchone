@@ -388,63 +388,65 @@ export function useGroupMessages(groupCampaignId: string | null) {
       
       let nodesProcessed = 0;
       let failedNodes = 0;
-      const groupResults: GroupResult[] = [];
       
-      // For each group
-      for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-        const group = groups[groupIndex];
-        let groupNodesSuccess = 0;
-        let groupNodesFailed = 0;
+      // Track stats per group for final results
+      const groupStats = new Map<string, { success: number; failed: number }>();
+      groups.forEach(g => groupStats.set(g.groupJid, { success: 0, failed: 0 }));
+      
+      // NODE-FIRST: For each node, send to ALL groups before moving to next node
+      for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
+        const node = sortedNodes[nodeIndex];
         
         // Check if aborted
         if (abortSignal?.aborted) {
           throw new Error("Envio cancelado pelo usuário");
         }
         
-        // For each node in the sequence
-        for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
-          const node = sortedNodes[nodeIndex];
+        // If it's a DELAY node, wait ONCE (not per group) and then continue
+        if (node.nodeType === "delay") {
+          const delayMs = calculateDelayMs(node.config);
+          
+          if (delayMs > 0) {
+            // Report waiting status
+            onProgress?.({
+              currentNode: nodeIndex + 1,
+              totalNodes,
+              currentGroup: 0,
+              totalGroups,
+              groupName: "Aguardando delay...",
+              nodeType: node.nodeType,
+              status: "waiting",
+              groupsCompleted: 0,
+              nodesProcessedTotal: nodesProcessed,
+              nodesFailed: failedNodes,
+              groupResults: [],
+            });
+            
+            // Wait for the delay (with abort support)
+            await new Promise<void>((resolve, reject) => {
+              const timeoutId = setTimeout(resolve, delayMs);
+              
+              if (abortSignal) {
+                abortSignal.addEventListener("abort", () => {
+                  clearTimeout(timeoutId);
+                  reject(new Error("Envio cancelado pelo usuário"));
+                });
+              }
+            });
+          }
+          
+          nodesProcessed++;
+          console.log(`⏱️ Delay node ${nodeIndex + 1}/${totalNodes} concluído`);
+          continue; // Don't send delay to webhook, move to next node
+        }
+        
+        // For each group - send this node to all groups
+        for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+          const group = groups[groupIndex];
           
           // Check if aborted
           if (abortSignal?.aborted) {
             throw new Error("Envio cancelado pelo usuário");
-          }
-          
-          // If it's a DELAY node, wait locally and don't send to webhook
-          if (node.nodeType === "delay") {
-            const delayMs = calculateDelayMs(node.config);
-            
-            if (delayMs > 0) {
-              // Report waiting status
-              onProgress?.({
-                currentNode: nodeIndex + 1,
-                totalNodes,
-                currentGroup: groupIndex + 1,
-                totalGroups,
-                groupName: group.groupName,
-                nodeType: node.nodeType,
-                status: "waiting",
-                groupsCompleted: groupIndex,
-                nodesProcessedTotal: nodesProcessed,
-                nodesFailed: failedNodes,
-                groupResults: [...groupResults],
-              });
-              
-              // Wait for the delay (with abort support)
-              await new Promise<void>((resolve, reject) => {
-                const timeoutId = setTimeout(resolve, delayMs);
-                
-                if (abortSignal) {
-                  abortSignal.addEventListener("abort", () => {
-                    clearTimeout(timeoutId);
-                    reject(new Error("Envio cancelado pelo usuário"));
-                  });
-                }
-              });
-            }
-            
-            nodesProcessed++;
-            continue; // Don't send delay to webhook
           }
           
           // Report sending status
@@ -459,7 +461,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
             groupsCompleted: groupIndex,
             nodesProcessedTotal: nodesProcessed,
             nodesFailed: failedNodes,
-            groupResults: [...groupResults],
+            groupResults: [],
           });
           
           // Build individual payload for this node + group
@@ -568,11 +570,12 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 groupsCompleted: groupIndex,
                 nodesProcessedTotal: nodesProcessed + 1,
                 nodesFailed: failedNodes + 1,
-                groupResults: [...groupResults],
+                groupResults: [],
               });
               
               // Increment failed counter and CONTINUE (don't throw)
-              groupNodesFailed++;
+              const stats = groupStats.get(group.groupJid)!;
+              stats.failed++;
               failedNodes++;
               nodesProcessed++;
               console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} falhou para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
@@ -592,7 +595,8 @@ export function useGroupMessages(groupCampaignId: string | null) {
             }
             
             // Success - increment counter and log
-            groupNodesSuccess++;
+            const stats = groupStats.get(group.groupJid)!;
+            stats.success++;
             nodesProcessed++;
             console.log(`✅ Node ${nodeIndex + 1}/${totalNodes} enviado para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
           } catch (error) {
@@ -612,7 +616,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 .eq("id", logEntry.id);
             }
             
-            // Report error but CONTINUE to next node (don't throw)
+            // Report error but CONTINUE to next group (don't throw)
             onProgress?.({
               currentNode: nodeIndex + 1,
               totalNodes,
@@ -625,11 +629,12 @@ export function useGroupMessages(groupCampaignId: string | null) {
               groupsCompleted: groupIndex,
               nodesProcessedTotal: nodesProcessed + 1,
               nodesFailed: failedNodes + 1,
-              groupResults: [...groupResults],
+              groupResults: [],
             });
             
             // Increment failed counter
-            groupNodesFailed++;
+            const stats = groupStats.get(group.groupJid)!;
+            stats.failed++;
             failedNodes++;
             nodesProcessed++;
             console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} erro para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName} - ${errorMessage}`);
@@ -638,19 +643,24 @@ export function useGroupMessages(groupCampaignId: string | null) {
             if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
               throw error;
             }
-            // Continue to next node
+            // Continue to next group
           }
-        } // End of node loop
+        } // End of group loop for this node
         
-        // After processing all nodes for this group, add to groupResults
-        groupResults.push({
-          groupName: group.groupName,
-          groupJid: group.groupJid,
-          nodesSuccess: groupNodesSuccess,
-          nodesFailed: groupNodesFailed,
+        console.log(`📦 Node ${nodeIndex + 1}/${totalNodes} enviado para todos os ${totalGroups} grupos`);
+      } // End of node loop
+      
+      // Build final groupResults from stats
+      const groupResults: GroupResult[] = groups.map(g => {
+        const stats = groupStats.get(g.groupJid)!;
+        return {
+          groupName: g.groupName,
+          groupJid: g.groupJid,
+          nodesSuccess: stats.success,
+          nodesFailed: stats.failed,
           completed: true,
-        });
-      } // End of group loop
+        };
+      });
       
       // Report completion
       onProgress?.({
