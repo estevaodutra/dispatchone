@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useGroupMessages, GroupMessage, MessageType } from "@/hooks/useGroupMessages";
+import { useGroupMessages, GroupMessage, MessageType, SendProgress } from "@/hooks/useGroupMessages";
 import { useSequences } from "@/hooks/useSequences";
 import { useInstances } from "@/hooks/useInstances";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
@@ -41,6 +41,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { Progress } from "@/components/ui/progress";
 import {
   Plus,
   Trash2,
@@ -65,6 +66,7 @@ import {
   Link,
   Upload,
   Library,
+  Square,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
@@ -179,6 +181,8 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
   const linkedInstance = instances.find(i => i.id === currentCampaign?.instanceId);
   
   const [sendingMessageId, setSendingMessageId] = useState<string | null>(null);
+  const [sendProgress, setSendProgress] = useState<SendProgress | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const hasNoGroups = !isLoadingGroups && linkedGroups.length === 0;
 
@@ -203,7 +207,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     console.log("🟢 handleTestMessage - message.mediaType:", message.mediaType);
     console.log("🟢 handleTestMessage - message.sequenceId:", message.sequenceId);
 
+    // Create abort controller for cancellation
+    abortControllerRef.current = new AbortController();
+
     setSendingMessageId(message.id);
+    setSendProgress(null);
+    
     try {
       // If message has a linked sequence, fetch the sequence nodes
       let sequenceNodes = undefined;
@@ -235,9 +244,21 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
         groups: linkedGroups,
         trigger: { name: "Usuário Teste", phone: "5500000000000" },
         sequenceNodes,
+        onProgress: (progress) => {
+          setSendProgress(progress);
+        },
+        abortSignal: abortControllerRef.current.signal,
       });
     } finally {
       setSendingMessageId(null);
+      setSendProgress(null);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleCancelSend = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -432,11 +453,12 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     return sequences.find(s => s.id === sequenceId)?.name || "Sequência";
   };
 
-  const MessageCard = ({ message, onEdit, onDelete, onTest }: { 
+  const MessageCard = ({ message, onEdit, onDelete, onTest, onCancel }: { 
     message: GroupMessage; 
     onEdit: () => void; 
     onDelete: () => void;
     onTest: () => void;
+    onCancel: () => void;
   }) => {
     const scheduleData = message.schedule as {
       days?: number[];
@@ -450,11 +472,39 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     const scheduleMode = scheduleData?.mode || "manual";
     const intervalConfig = scheduleData?.intervalConfig;
     const isMessageSending = sendingMessageId === message.id;
+    const currentProgress = isMessageSending ? sendProgress : null;
     
     const formatInterval = () => {
       if (!intervalConfig) return null;
       const intervalLabel = INTERVAL_OPTIONS.find(o => o.value === intervalConfig.minutes)?.label || `${intervalConfig.minutes}min`;
       return `${intervalConfig.start} - ${intervalConfig.end} (a cada ${intervalLabel})`;
+    };
+
+    const getProgressText = () => {
+      if (!currentProgress) return null;
+      const { currentNode, totalNodes, currentGroup, totalGroups, groupName, status, nodeType } = currentProgress;
+      
+      if (status === "waiting") {
+        return `⏳ Aguardando delay... (Grupo ${currentGroup}/${totalGroups}: ${groupName})`;
+      }
+      if (status === "sending") {
+        return `📤 Enviando ${nodeType} ${currentNode}/${totalNodes} → ${groupName} (${currentGroup}/${totalGroups})`;
+      }
+      if (status === "completed") {
+        return `✅ Concluído! ${totalNodes} nodes para ${totalGroups} grupo(s)`;
+      }
+      if (status === "error") {
+        return `❌ Erro: ${currentProgress.errorMessage}`;
+      }
+      return null;
+    };
+
+    const getProgressPercent = () => {
+      if (!currentProgress) return 0;
+      const { currentNode, totalNodes, currentGroup, totalGroups } = currentProgress;
+      const totalSteps = totalNodes * totalGroups;
+      const completedSteps = (currentGroup - 1) * totalNodes + currentNode;
+      return Math.round((completedSteps / totalSteps) * 100);
     };
     
     return (
@@ -463,7 +513,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1">
               {message.sequenceId ? (
-                <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                <div className="flex items-center gap-2 text-primary">
                   <GitBranch className="h-4 w-4" />
                   <span className="text-sm font-medium">
                     Dispara: {getSequenceName(message.sequenceId)}
@@ -473,10 +523,25 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                 <p className="text-sm whitespace-pre-wrap">{message.content}</p>
               )}
               
+              {/* Progress indicator when sending */}
+              {isMessageSending && currentProgress && (
+                <div className="mt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <Progress value={getProgressPercent()} className="flex-1 h-2" />
+                    <span className="text-xs text-muted-foreground font-medium">
+                      {getProgressPercent()}%
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {getProgressText()}
+                  </p>
+                </div>
+              )}
+              
               {/* Schedule info for scheduled messages */}
-              {message.type === "scheduled" && (scheduleDays.length > 0 || scheduleTimes.length > 0) && (
+              {message.type === "scheduled" && (scheduleDays.length > 0 || scheduleTimes.length > 0) && !isMessageSending && (
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <Calendar className="h-3.5 w-3.5 text-orange-500" />
+                  <Calendar className="h-3.5 w-3.5 text-primary" />
                   {scheduleDays.length > 0 && (
                     <span className="text-xs text-muted-foreground">
                       {scheduleDays.map(d => WEEK_DAYS[d]?.fullLabel).join(", ")}
@@ -502,75 +567,93 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                 </div>
               )}
               
-              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {message.triggerKeyword && (
-                  <Badge variant="outline">
-                    <Hash className="mr-1 h-3 w-3" />
-                    {message.triggerKeyword}
+              {!isMessageSending && (
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {message.triggerKeyword && (
+                    <Badge variant="outline">
+                      <Hash className="mr-1 h-3 w-3" />
+                      {message.triggerKeyword}
+                    </Badge>
+                  )}
+                  {message.sendPrivate && (
+                    <Badge variant="secondary">Privado</Badge>
+                  )}
+                  {message.mentionMember && (
+                    <Badge variant="secondary">Menciona</Badge>
+                  )}
+                  {message.delaySeconds > 0 && (
+                    <Badge variant="secondary">
+                      <Clock className="mr-1 h-3 w-3" />
+                      {message.delaySeconds}s
+                    </Badge>
+                  )}
+                  <Badge variant={message.active ? "default" : "secondary"}>
+                    {message.active ? "Ativo" : "Inativo"}
                   </Badge>
-                )}
-                {message.sendPrivate && (
-                  <Badge variant="secondary">Privado</Badge>
-                )}
-                {message.mentionMember && (
-                  <Badge variant="secondary">Menciona</Badge>
-                )}
-                {message.delaySeconds > 0 && (
-                  <Badge variant="secondary">
-                    <Clock className="mr-1 h-3 w-3" />
-                    {message.delaySeconds}s
-                  </Badge>
-                )}
-                <Badge variant={message.active ? "default" : "secondary"}>
-                  {message.active ? "Ativo" : "Inativo"}
-                </Badge>
-              </div>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-1">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
+              {isMessageSending ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
                       <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-8 w-8 text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-950" 
-                        onClick={onTest}
-                        disabled={!linkedInstance || isMessageSending || isLoadingGroups || hasNoGroups}
+                        className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" 
+                        onClick={onCancel}
                       >
-                        {isMessageSending ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="h-4 w-4" />
-                        )}
+                        <Square className="h-4 w-4" />
                       </Button>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {!linkedInstance ? (
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="h-3 w-3" />
-                        Vincule uma instância à campanha
-                      </div>
-                    ) : hasNoGroups ? (
-                      <div className="flex items-center gap-2">
-                        <AlertCircle className="h-3 w-3" />
-                        Vincule grupos na aba "Grupos"
-                      </div>
-                    ) : isLoadingGroups ? (
-                      "Carregando grupos..."
-                    ) : (
-                      "Testar envio"
-                    )}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
-                <Edit className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}>
-                <Trash2 className="h-4 w-4" />
-              </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Cancelar envio</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10" 
+                            onClick={onTest}
+                            disabled={!linkedInstance || isLoadingGroups || hasNoGroups}
+                          >
+                            <Play className="h-4 w-4" />
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {!linkedInstance ? (
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="h-3 w-3" />
+                            Vincule uma instância à campanha
+                          </div>
+                        ) : hasNoGroups ? (
+                          <div className="flex items-center gap-2">
+                            <AlertCircle className="h-3 w-3" />
+                            Vincule grupos na aba "Grupos"
+                          </div>
+                        ) : isLoadingGroups ? (
+                          "Carregando grupos..."
+                        ) : (
+                          "Testar envio"
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onEdit}>
+                    <Edit className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={onDelete}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </CardContent>
@@ -649,6 +732,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
                   onTest={() => handleTestMessage(msg)}
+                  onCancel={handleCancelSend}
                 />
               ))
             )}
@@ -676,6 +760,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
                   onTest={() => handleTestMessage(msg)}
+                  onCancel={handleCancelSend}
                 />
               ))
             )}
@@ -703,6 +788,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
                   onTest={() => handleTestMessage(msg)}
+                  onCancel={handleCancelSend}
                 />
               ))
             )}
@@ -730,6 +816,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
                   onEdit={() => openEditDialog(msg)}
                   onDelete={() => deleteMessage(msg.id)}
                   onTest={() => handleTestMessage(msg)}
+                  onCancel={handleCancelSend}
                 />
               ))
             )}
