@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { MessageSequence, useSequenceNodes } from "@/hooks/useSequences";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
-  ArrowLeft, Save, Play, Pause, Trash2, GripVertical, ChevronDown,
+  ArrowLeft, Save, Play, Pause, Trash2, GripVertical, ChevronDown, ChevronUp,
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar
@@ -23,8 +23,6 @@ interface SequenceBuilderProps {
 interface LocalNode {
   id: string;
   nodeType: string;
-  positionX: number;
-  positionY: number;
   nodeOrder: number;
   config: Record<string, unknown>;
 }
@@ -82,25 +80,20 @@ const NODE_CATEGORIES = [
 const ALL_NODE_TYPES = NODE_CATEGORIES.flatMap(cat => cat.nodes);
 
 export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderProps) {
-  const canvasRef = useRef<HTMLDivElement>(null);
   const [localNodes, setLocalNodes] = useState<LocalNode[]>([]);
   const [localConnections, setLocalConnections] = useState<LocalConnection[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
-  const [connectingFrom, setConnectingFrom] = useState<string | null>(null);
   const [sequenceName, setSequenceName] = useState(sequence.name);
   const [openCategories, setOpenCategories] = useState<string[]>(["messages", "media", "interactive", "flow"]);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  const { nodes, connections, isLoading, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
+  const { nodes, connections, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
 
   useEffect(() => {
     if (nodes.length > 0 || connections.length > 0) {
       setLocalNodes(nodes.map(n => ({
         id: n.id,
         nodeType: n.nodeType,
-        positionX: n.positionX,
-        positionY: n.positionY,
         nodeOrder: n.nodeOrder,
         config: n.config,
       })));
@@ -116,38 +109,71 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
 
   const handleDragStart = (e: React.DragEvent, nodeType: string) => {
     e.dataTransfer.setData("nodeType", nodeType);
+    e.dataTransfer.setData("source", "palette");
     e.dataTransfer.effectAllowed = "copy";
   };
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleNodeDragStart = (e: React.DragEvent, nodeId: string) => {
+    e.dataTransfer.setData("nodeId", nodeId);
+    e.dataTransfer.setData("source", "list");
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    const nodeType = e.dataTransfer.getData("nodeType");
-    if (!nodeType || !canvasRef.current) return;
+    setDragOverIndex(index);
+  };
 
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - 80;
-    const y = e.clientY - rect.top - 30;
+  const handleDragLeave = () => {
+    setDragOverIndex(null);
+  };
 
-    const newNode: LocalNode = {
-      id: generateNodeId(),
-      nodeType,
-      positionX: Math.max(0, x),
-      positionY: Math.max(0, y),
-      nodeOrder: localNodes.length,
-      config: getDefaultConfig(nodeType),
-    };
+  const handleDrop = useCallback((e: React.DragEvent, targetIndex?: number) => {
+    e.preventDefault();
+    setDragOverIndex(null);
+    
+    const source = e.dataTransfer.getData("source");
+    
+    if (source === "palette") {
+      // Adding new node from palette
+      const nodeType = e.dataTransfer.getData("nodeType");
+      if (!nodeType) return;
 
-    setLocalNodes(prev => [...prev, newNode]);
-    setSelectedNodeId(newNode.id);
+      const insertIndex = targetIndex ?? localNodes.length;
+      const newNode: LocalNode = {
+        id: generateNodeId(),
+        nodeType,
+        nodeOrder: insertIndex,
+        config: getDefaultConfig(nodeType),
+      };
+
+      setLocalNodes(prev => {
+        const updated = [...prev];
+        updated.splice(insertIndex, 0, newNode);
+        return updated.map((node, idx) => ({ ...node, nodeOrder: idx }));
+      });
+      setSelectedNodeId(newNode.id);
+    } else if (source === "list") {
+      // Reordering existing node
+      const nodeId = e.dataTransfer.getData("nodeId");
+      if (!nodeId || targetIndex === undefined) return;
+
+      setLocalNodes(prev => {
+        const sorted = [...prev].sort((a, b) => a.nodeOrder - b.nodeOrder);
+        const draggedIndex = sorted.findIndex(n => n.id === nodeId);
+        if (draggedIndex === -1 || draggedIndex === targetIndex) return prev;
+        
+        const [removed] = sorted.splice(draggedIndex, 1);
+        sorted.splice(targetIndex > draggedIndex ? targetIndex - 1 : targetIndex, 0, removed);
+        return sorted.map((node, idx) => ({ ...node, nodeOrder: idx }));
+      });
+    }
   }, [localNodes.length]);
 
   const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     switch (nodeType) {
-      // Messages
       case "message":
         return { content: "", sendPrivate: false, mentionMember: false, viewOnce: false };
-      
-      // Media
       case "image":
         return { url: "", caption: "", sendPrivate: false, viewOnce: false };
       case "video":
@@ -158,8 +184,6 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
         return { url: "", filename: "", caption: "", sendPrivate: false, viewOnce: false };
       case "sticker":
         return { url: "", sendPrivate: false, viewOnce: false };
-      
-      // Interactive
       case "poll":
         return { question: "", options: ["", "", ""], multiSelect: false };
       case "buttons":
@@ -176,8 +200,6 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
         return { fullName: "", phone: "", email: "", organization: "" };
       case "event":
         return { name: "", description: "", startDate: "", endDate: "", location: "" };
-      
-      // Flow
       case "delay":
         return { seconds: 0, minutes: 5, hours: 0, days: 0 };
       case "condition":
@@ -186,64 +208,29 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
         return { message: "", notifyAdmins: true };
       case "webhook":
         return { url: "", method: "POST", body: "" };
-      
       default:
         return {};
     }
   };
 
-  const handleNodeDragStart = (e: React.MouseEvent, nodeId: string) => {
-    e.stopPropagation();
-    setIsDragging(true);
-    setDraggedNodeId(nodeId);
-  };
-
-  const handleCanvasMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isDragging || !draggedNodeId || !canvasRef.current) return;
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left - 80;
-    const y = e.clientY - rect.top - 30;
-
-    setLocalNodes(prev => prev.map(node =>
-      node.id === draggedNodeId
-        ? { ...node, positionX: Math.max(0, x), positionY: Math.max(0, y) }
-        : node
-    ));
-  }, [isDragging, draggedNodeId]);
-
-  const handleCanvasMouseUp = () => {
-    setIsDragging(false);
-    setDraggedNodeId(null);
-  };
-
-  const handleNodeClick = (nodeId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (connectingFrom) {
-      if (connectingFrom !== nodeId) {
-        const existingConnection = localConnections.find(
-          c => c.sourceNodeId === connectingFrom && c.targetNodeId === nodeId
-        );
-        if (!existingConnection) {
-          setLocalConnections(prev => [...prev, {
-            sourceNodeId: connectingFrom,
-            targetNodeId: nodeId,
-          }]);
-        }
-      }
-      setConnectingFrom(null);
-    } else {
-      setSelectedNodeId(nodeId);
-    }
-  };
-
-  const handleStartConnection = (nodeId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setConnectingFrom(nodeId);
+  const handleMoveNode = (nodeId: string, direction: -1 | 1) => {
+    setLocalNodes(prev => {
+      const sorted = [...prev].sort((a, b) => a.nodeOrder - b.nodeOrder);
+      const index = sorted.findIndex(n => n.id === nodeId);
+      const newIndex = index + direction;
+      
+      if (newIndex < 0 || newIndex >= sorted.length) return prev;
+      
+      [sorted[index], sorted[newIndex]] = [sorted[newIndex], sorted[index]];
+      return sorted.map((node, idx) => ({ ...node, nodeOrder: idx }));
+    });
   };
 
   const handleDeleteNode = (nodeId: string) => {
-    setLocalNodes(prev => prev.filter(n => n.id !== nodeId));
+    setLocalNodes(prev => {
+      const filtered = prev.filter(n => n.id !== nodeId);
+      return filtered.map((node, idx) => ({ ...node, nodeOrder: idx }));
+    });
     setLocalConnections(prev => prev.filter(c => c.sourceNodeId !== nodeId && c.targetNodeId !== nodeId));
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
   };
@@ -258,17 +245,15 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
     try {
       await onUpdate({ id: sequence.id, updates: { name: sequenceName } });
       
-      // Save nodes and get ID mapping (local -> database)
       const idMapping = await saveNodes(localNodes.map(node => ({
         localId: node.id,
         nodeType: node.nodeType,
-        positionX: node.positionX,
-        positionY: node.positionY,
+        positionX: 0,
+        positionY: node.nodeOrder * 100,
         nodeOrder: node.nodeOrder,
         config: node.config,
       })));
       
-      // Save connections using the ID mapping
       await saveConnections({ 
         connectionsToSave: localConnections, 
         idMapping 
@@ -335,37 +320,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
     }
   };
 
-  const renderConnections = () => {
-    return localConnections.map((conn, index) => {
-      const sourceNode = localNodes.find(n => n.id === conn.sourceNodeId);
-      const targetNode = localNodes.find(n => n.id === conn.targetNodeId);
-      if (!sourceNode || !targetNode) return null;
-
-      const startX = sourceNode.positionX + 80;
-      const startY = sourceNode.positionY + 60;
-      const endX = targetNode.positionX + 80;
-      const endY = targetNode.positionY;
-
-      const midY = (startY + endY) / 2;
-
-      return (
-        <svg
-          key={index}
-          className="absolute inset-0 pointer-events-none"
-          style={{ overflow: "visible" }}
-        >
-          <path
-            d={`M ${startX} ${startY} C ${startX} ${midY}, ${endX} ${midY}, ${endX} ${endY}`}
-            fill="none"
-            stroke="hsl(var(--primary))"
-            strokeWidth="2"
-            strokeDasharray="none"
-          />
-          <circle cx={endX} cy={endY} r="4" fill="hsl(var(--primary))" />
-        </svg>
-      );
-    });
-  };
+  const sortedNodes = [...localNodes].sort((a, b) => a.nodeOrder - b.nodeOrder);
 
   return (
     <div className="space-y-4">
@@ -397,7 +352,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
       </div>
 
       <div className="flex gap-4 h-[calc(100vh-280px)] min-h-[500px]">
-        {/* Node Palette with Categories */}
+        {/* Node Palette */}
         <Card className="w-52 shrink-0 overflow-y-auto">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">Componentes</CardTitle>
@@ -433,75 +388,127 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
           </CardContent>
         </Card>
 
-        {/* Canvas */}
-        <Card className="flex-1 overflow-hidden">
-          <div
-            ref={canvasRef}
-            className="relative w-full h-full bg-muted/30 overflow-auto"
-            style={{ backgroundImage: "radial-gradient(circle, hsl(var(--border)) 1px, transparent 1px)", backgroundSize: "20px 20px" }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-            onMouseMove={handleCanvasMouseMove}
-            onMouseUp={handleCanvasMouseUp}
-            onMouseLeave={handleCanvasMouseUp}
-            onClick={() => { setSelectedNodeId(null); setConnectingFrom(null); }}
+        {/* Canvas - List View */}
+        <Card className="flex-1 overflow-hidden flex flex-col">
+          <CardHeader className="pb-3 border-b shrink-0">
+            <CardTitle className="text-sm">Canvas</CardTitle>
+          </CardHeader>
+          <CardContent 
+            className="flex-1 p-4 overflow-y-auto"
+            onDragOver={(e) => {
+              e.preventDefault();
+              if (localNodes.length === 0) setDragOverIndex(0);
+            }}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, localNodes.length)}
           >
-            {renderConnections()}
-            
-            {localNodes.map(node => {
-              const nodeInfo = getNodeInfo(node.nodeType);
-              const NodeIcon = nodeInfo.icon;
-              const isSelected = selectedNodeId === node.id;
-              const isConnecting = connectingFrom === node.id;
+            {sortedNodes.length === 0 ? (
+              <div 
+                className={`flex flex-col items-center justify-center h-full text-center p-8 border-2 border-dashed rounded-lg transition-colors ${
+                  dragOverIndex === 0 ? "border-primary bg-primary/5" : "border-muted"
+                }`}
+              >
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                  <List className="h-8 w-8 text-muted-foreground" />
+                </div>
+                <p className="text-lg font-medium mb-2">Arraste componentes aqui</p>
+                <p className="text-sm text-muted-foreground">
+                  Arraste itens da paleta à esquerda para começar
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {sortedNodes.map((node, index) => {
+                  const nodeInfo = getNodeInfo(node.nodeType);
+                  const NodeIcon = nodeInfo.icon;
+                  const isSelected = selectedNodeId === node.id;
+                  const isFirst = index === 0;
+                  const isLast = index === sortedNodes.length - 1;
 
-              return (
-                <div
-                  key={node.id}
-                  className={`absolute w-40 rounded-lg border-2 bg-card shadow-sm cursor-pointer transition-all ${
-                    isSelected ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/50"
-                  } ${isConnecting ? "ring-2 ring-green-500" : ""}`}
-                  style={{ left: node.positionX, top: node.positionY }}
-                  onClick={(e) => handleNodeClick(node.id, e)}
-                >
-                  <div
-                    className="flex items-center gap-2 p-2 border-b cursor-grab"
-                    onMouseDown={(e) => handleNodeDragStart(e, node.id)}
-                  >
-                    <GripVertical className="h-3 w-3 text-muted-foreground" />
-                    <div className={`p-1 rounded ${nodeInfo.color}`}>
-                      <NodeIcon className="h-3 w-3 text-white" />
+                  return (
+                    <div key={node.id}>
+                      {/* Drop zone indicator */}
+                      <div
+                        className={`h-1 rounded-full transition-all mx-4 ${
+                          dragOverIndex === index ? "bg-primary my-2" : "bg-transparent"
+                        }`}
+                        onDragOver={(e) => handleDragOver(e, index)}
+                        onDragLeave={handleDragLeave}
+                        onDrop={(e) => handleDrop(e, index)}
+                      />
+                      
+                      {/* Node item */}
+                      <div
+                        draggable
+                        onDragStart={(e) => handleNodeDragStart(e, node.id)}
+                        onClick={() => setSelectedNodeId(node.id)}
+                        className={`
+                          flex items-center gap-3 p-3 rounded-lg border bg-card cursor-pointer transition-all
+                          ${isSelected ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/50"}
+                        `}
+                      >
+                        {/* Grip */}
+                        <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab shrink-0" />
+                        
+                        {/* Icon */}
+                        <div className={`p-2 rounded ${nodeInfo.color} shrink-0`}>
+                          <NodeIcon className="h-4 w-4 text-white" />
+                        </div>
+                        
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{nodeInfo.label}</p>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {getNodePreview(node)}
+                          </p>
+                        </div>
+                        
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-7 w-7"
+                            disabled={isFirst}
+                            onClick={(e) => { e.stopPropagation(); handleMoveNode(node.id, -1); }}
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-7 w-7"
+                            disabled={isLast}
+                            onClick={(e) => { e.stopPropagation(); handleMoveNode(node.id, 1); }}
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-7 w-7"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteNode(node.id); }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    <span className="text-xs font-medium flex-1 truncate">{nodeInfo.label}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-5 w-5"
-                      onClick={(e) => { e.stopPropagation(); handleDeleteNode(node.id); }}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                  <div className="p-2 text-xs text-muted-foreground">
-                    <p className="line-clamp-2 truncate">{getNodePreview(node)}</p>
-                  </div>
-                  {/* Connection point */}
-                  <div
-                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full border-2 border-primary bg-background cursor-crosshair hover:bg-primary transition-colors"
-                    onClick={(e) => handleStartConnection(node.id, e)}
-                  />
-                </div>
-              );
-            })}
-
-            {localNodes.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center text-muted-foreground">
-                  <p className="text-lg mb-2">Arraste componentes aqui</p>
-                  <p className="text-sm">Comece arrastando um componente da paleta</p>
-                </div>
+                  );
+                })}
+                
+                {/* Final drop zone */}
+                <div
+                  className={`h-8 rounded-lg border-2 border-dashed transition-all ${
+                    dragOverIndex === sortedNodes.length ? "border-primary bg-primary/5" : "border-transparent"
+                  }`}
+                  onDragOver={(e) => handleDragOver(e, sortedNodes.length)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, sortedNodes.length)}
+                />
               </div>
             )}
-          </div>
+          </CardContent>
         </Card>
 
         {/* Config Panel */}

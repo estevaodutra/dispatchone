@@ -17,8 +17,8 @@ import { MediaUploader } from "./MediaUploader";
 interface LocalNode {
   id: string;
   nodeType: string;
-  positionX: number;
-  positionY: number;
+  positionX?: number;
+  positionY?: number;
   nodeOrder: number;
   config: Record<string, unknown>;
 }
