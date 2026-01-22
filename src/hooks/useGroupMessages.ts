@@ -7,10 +7,9 @@ import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
 const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
-// Converte quebras de linha para \r\n literal no payload JSON
+// Retorna texto sem modificação - JSON.stringify já trata quebras de linha corretamente
 const formatLineBreaks = (text: string | null | undefined): string | null => {
-  if (!text) return null;
-  return text.replace(/\r?\n/g, "\r\n");
+  return text || null;
 };
 
 // Processa config dos nodes para formatar quebras de linha
