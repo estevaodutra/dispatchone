@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Instance } from "@/hooks/useInstances";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
+
 const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
 // Retorna texto sem modificação - JSON.stringify já trata quebras de linha corretamente
@@ -52,6 +53,21 @@ const formatNodeConfig = (
   }
 
   return formatted;
+};
+
+// Calculate delay in milliseconds from node config
+const calculateDelayMs = (config: Record<string, unknown>): number => {
+  const days = (config.days as number) || 0;
+  const hours = (config.hours as number) || 0;
+  const minutes = (config.minutes as number) || 0;
+  const seconds = (config.seconds as number) || 0;
+  
+  return (
+    days * 86400000 +
+    hours * 3600000 +
+    minutes * 60000 +
+    seconds * 1000
+  );
 };
 
 export type MessageType = "welcome" | "farewell" | "scheduled" | "keyword_response";
@@ -126,6 +142,24 @@ const transformDbToFrontend = (db: DbGroupMessage): GroupMessage => ({
   mediaType: db.media_type,
   mediaCaption: db.media_caption,
 });
+
+export interface SequenceNode {
+  id: string;
+  nodeType: string;
+  nodeOrder: number;
+  config: Record<string, unknown>;
+}
+
+export interface SendProgress {
+  currentNode: number;
+  totalNodes: number;
+  currentGroup: number;
+  totalGroups: number;
+  groupName: string;
+  nodeType: string;
+  status: "sending" | "waiting" | "completed" | "error";
+  errorMessage?: string;
+}
 
 export function useGroupMessages(groupCampaignId: string | null) {
   const { toast } = useToast();
@@ -265,7 +299,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
     },
   });
 
-  // Send message to webhook
+  // Orchestrated message sending - sends each node individually to webhook
   const sendMessageMutation = useMutation({
     mutationFn: async (params: {
       message: GroupMessage;
@@ -273,81 +307,231 @@ export function useGroupMessages(groupCampaignId: string | null) {
       instance: Instance;
       groups: CampaignGroup[];
       trigger?: { phone?: string; name?: string };
-      sequenceNodes?: Array<{
-        id: string;
-        nodeType: string;
-        nodeOrder: number;
-        config: Record<string, unknown>;
-      }>;
+      sequenceNodes?: SequenceNode[];
+      onProgress?: (progress: SendProgress) => void;
+      abortSignal?: AbortSignal;
     }) => {
-      const payload = {
-        instance: {
-          id: params.instance.id,
-          name: params.instance.name,
-          phone: params.instance.phoneNumber,
-          provider: params.instance.provider,
-          externalInstanceId: params.instance.idInstance,
-          externalInstanceToken: params.instance.tokenInstance,
-        },
-        campaign: {
-          id: params.campaign.id,
-          name: params.campaign.name,
-          status: params.campaign.status,
-        },
-        groups: params.groups.map(g => ({
-          id: g.id,
-          groupJid: g.groupJid,
-          groupName: g.groupName,
-          instanceId: g.instanceId,
-          addedAt: g.addedAt,
-        })),
-        message_set: {
-          id: params.message.id,
-          type: params.message.type,
-          triggerKeyword: params.message.triggerKeyword,
-          schedule: params.message.schedule,
-          sendPrivate: params.message.sendPrivate,
-          mentionMember: params.message.mentionMember,
-          delaySeconds: params.message.delaySeconds,
-          sequenceId: params.message.sequenceId,
-          active: params.message.active,
-        },
-        message_content: {
-          text: formatLineBreaks(params.message.content),
-          variables: params.message.variables || {},
-          mediaUrl: params.message.mediaUrl || null,
-          mediaType: params.message.mediaType || null,
-          mediaCaption: formatLineBreaks(params.message.mediaCaption),
-        },
-        // Include sequence nodes when available (for sequence-linked messages)
-        sequence_nodes: params.sequenceNodes?.map(node => ({
-          id: node.id,
-          nodeType: node.nodeType,
-          nodeOrder: node.nodeOrder,
-          config: formatNodeConfig(node.config, node.nodeType),
-        })) || null,
-        trigger: params.trigger,
-        triggeredAt: new Date().toISOString(),
-      };
+      const { message, campaign, instance, groups, trigger, sequenceNodes, onProgress, abortSignal } = params;
+      
+      // If no sequence nodes, send as simple message
+      if (!sequenceNodes || sequenceNodes.length === 0) {
+        const payload = {
+          instance: {
+            id: instance.id,
+            name: instance.name,
+            phone: instance.phoneNumber,
+            provider: instance.provider,
+            externalInstanceId: instance.idInstance,
+            externalInstanceToken: instance.tokenInstance,
+          },
+          campaign: {
+            id: campaign.id,
+            name: campaign.name,
+            status: campaign.status,
+          },
+          groups: groups.map(g => ({
+            id: g.id,
+            groupJid: g.groupJid,
+            groupName: g.groupName,
+          })),
+          message_content: {
+            text: formatLineBreaks(message.content),
+            variables: message.variables || {},
+            mediaUrl: message.mediaUrl || null,
+            mediaType: message.mediaType || null,
+            mediaCaption: formatLineBreaks(message.mediaCaption),
+          },
+          message_set: {
+            id: message.id,
+            type: message.type,
+            sendPrivate: message.sendPrivate,
+            mentionMember: message.mentionMember,
+          },
+          trigger,
+          triggeredAt: new Date().toISOString(),
+        };
 
-      const response = await fetch(SEND_MESSAGE_WEBHOOK, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+        const response = await fetch(SEND_MESSAGE_WEBHOOK, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+          signal: abortSignal,
+        });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Falha ao enviar mensagem: ${errorText}`);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Falha ao enviar mensagem: ${errorText}`);
+        }
+
+        return { success: true, nodesProcessed: 0, groupsProcessed: groups.length };
       }
 
-      return response.json();
+      // Sort nodes by nodeOrder
+      const sortedNodes = [...sequenceNodes].sort((a, b) => a.nodeOrder - b.nodeOrder);
+      const totalNodes = sortedNodes.length;
+      const totalGroups = groups.length;
+      
+      let nodesProcessed = 0;
+      
+      // For each group
+      for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+        const group = groups[groupIndex];
+        
+        // Check if aborted
+        if (abortSignal?.aborted) {
+          throw new Error("Envio cancelado pelo usuário");
+        }
+        
+        // For each node in the sequence
+        for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
+          const node = sortedNodes[nodeIndex];
+          
+          // Check if aborted
+          if (abortSignal?.aborted) {
+            throw new Error("Envio cancelado pelo usuário");
+          }
+          
+          // If it's a DELAY node, wait locally and don't send to webhook
+          if (node.nodeType === "delay") {
+            const delayMs = calculateDelayMs(node.config);
+            
+            if (delayMs > 0) {
+              // Report waiting status
+              onProgress?.({
+                currentNode: nodeIndex + 1,
+                totalNodes,
+                currentGroup: groupIndex + 1,
+                totalGroups,
+                groupName: group.groupName,
+                nodeType: node.nodeType,
+                status: "waiting",
+              });
+              
+              // Wait for the delay (with abort support)
+              await new Promise<void>((resolve, reject) => {
+                const timeoutId = setTimeout(resolve, delayMs);
+                
+                if (abortSignal) {
+                  abortSignal.addEventListener("abort", () => {
+                    clearTimeout(timeoutId);
+                    reject(new Error("Envio cancelado pelo usuário"));
+                  });
+                }
+              });
+            }
+            
+            nodesProcessed++;
+            continue; // Don't send delay to webhook
+          }
+          
+          // Report sending status
+          onProgress?.({
+            currentNode: nodeIndex + 1,
+            totalNodes,
+            currentGroup: groupIndex + 1,
+            totalGroups,
+            groupName: group.groupName,
+            nodeType: node.nodeType,
+            status: "sending",
+          });
+          
+          // Build individual payload for this node + group
+          const payload = {
+            instance: {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phoneNumber,
+              provider: instance.provider,
+              externalInstanceId: instance.idInstance,
+              externalInstanceToken: instance.tokenInstance,
+            },
+            campaign: {
+              id: campaign.id,
+              name: campaign.name,
+              status: campaign.status,
+            },
+            group: {
+              id: group.id,
+              groupJid: group.groupJid,
+              groupName: group.groupName,
+            },
+            node: {
+              id: node.id,
+              nodeType: node.nodeType,
+              nodeOrder: node.nodeOrder,
+              config: formatNodeConfig(node.config, node.nodeType),
+            },
+            execution: {
+              sequenceId: message.sequenceId,
+              totalNodes,
+              currentNode: nodeIndex + 1,
+              triggeredAt: new Date().toISOString(),
+            },
+            message_set: {
+              id: message.id,
+              type: message.type,
+              sendPrivate: message.sendPrivate,
+              mentionMember: message.mentionMember,
+            },
+            trigger,
+          };
+          
+          // Send to webhook
+          const response = await fetch(SEND_MESSAGE_WEBHOOK, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: abortSignal,
+          });
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            onProgress?.({
+              currentNode: nodeIndex + 1,
+              totalNodes,
+              currentGroup: groupIndex + 1,
+              totalGroups,
+              groupName: group.groupName,
+              nodeType: node.nodeType,
+              status: "error",
+              errorMessage: errorText,
+            });
+            throw new Error(`Falha ao enviar node ${nodeIndex + 1} para ${group.groupName}: ${errorText}`);
+          }
+          
+          nodesProcessed++;
+        }
+      }
+      
+      // Report completion
+      onProgress?.({
+        currentNode: totalNodes,
+        totalNodes,
+        currentGroup: totalGroups,
+        totalGroups,
+        groupName: groups[groups.length - 1]?.groupName || "",
+        nodeType: "completed",
+        status: "completed",
+      });
+      
+      return { success: true, nodesProcessed, groupsProcessed: groups.length };
     },
-    onSuccess: () => {
-      toast({ title: "Enviado", description: "Mensagem enviada para o webhook com sucesso!" });
+    onSuccess: (result) => {
+      if (result.nodesProcessed > 0) {
+        toast({ 
+          title: "Sequência enviada", 
+          description: `${result.nodesProcessed} nodes processados para ${result.groupsProcessed} grupo(s).` 
+        });
+      } else {
+        toast({ title: "Enviado", description: "Mensagem enviada com sucesso!" });
+      }
     },
     onError: (error) => {
-      toast({ title: "Erro ao enviar", description: error.message, variant: "destructive" });
+      if (error.message.includes("cancelado")) {
+        toast({ title: "Cancelado", description: "Envio cancelado pelo usuário.", variant: "default" });
+      } else {
+        toast({ title: "Erro ao enviar", description: error.message, variant: "destructive" });
+      }
     },
   });
 
