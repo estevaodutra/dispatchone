@@ -10,7 +10,7 @@ const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send
 // Converte quebras de linha para \r\n literal no payload JSON
 const formatLineBreaks = (text: string | null | undefined): string | null => {
   if (!text) return null;
-  return text.replace(/\r?\n/g, "\\r\\n");
+  return text.replace(/\r?\n/g, "\r\n");
 };
 
 // Processa config dos nodes para formatar quebras de linha
