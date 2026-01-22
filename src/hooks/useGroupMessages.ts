@@ -152,6 +152,14 @@ export interface SequenceNode {
   config: Record<string, unknown>;
 }
 
+export interface GroupResult {
+  groupName: string;
+  groupJid: string;
+  nodesSuccess: number;
+  nodesFailed: number;
+  completed: boolean;
+}
+
 export interface SendProgress {
   currentNode: number;
   totalNodes: number;
@@ -161,6 +169,11 @@ export interface SendProgress {
   nodeType: string;
   status: "sending" | "waiting" | "completed" | "error";
   errorMessage?: string;
+  // Extended progress tracking
+  groupsCompleted: number;
+  nodesProcessedTotal: number;
+  nodesFailed: number;
+  groupResults: GroupResult[];
 }
 
 export function useGroupMessages(groupCampaignId: string | null) {
@@ -375,10 +388,13 @@ export function useGroupMessages(groupCampaignId: string | null) {
       
       let nodesProcessed = 0;
       let failedNodes = 0;
+      const groupResults: GroupResult[] = [];
       
       // For each group
       for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
         const group = groups[groupIndex];
+        let groupNodesSuccess = 0;
+        let groupNodesFailed = 0;
         
         // Check if aborted
         if (abortSignal?.aborted) {
@@ -408,6 +424,10 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 groupName: group.groupName,
                 nodeType: node.nodeType,
                 status: "waiting",
+                groupsCompleted: groupIndex,
+                nodesProcessedTotal: nodesProcessed,
+                nodesFailed: failedNodes,
+                groupResults: [...groupResults],
               });
               
               // Wait for the delay (with abort support)
@@ -436,6 +456,10 @@ export function useGroupMessages(groupCampaignId: string | null) {
             groupName: group.groupName,
             nodeType: node.nodeType,
             status: "sending",
+            groupsCompleted: groupIndex,
+            nodesProcessedTotal: nodesProcessed,
+            nodesFailed: failedNodes,
+            groupResults: [...groupResults],
           });
           
           // Build individual payload for this node + group
@@ -541,9 +565,14 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 nodeType: node.nodeType,
                 status: "error",
                 errorMessage: errorText,
+                groupsCompleted: groupIndex,
+                nodesProcessedTotal: nodesProcessed + 1,
+                nodesFailed: failedNodes + 1,
+                groupResults: [...groupResults],
               });
               
               // Increment failed counter and CONTINUE (don't throw)
+              groupNodesFailed++;
               failedNodes++;
               nodesProcessed++;
               console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} falhou para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
@@ -563,6 +592,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
               }
               
               // Success - increment counter and log
+              groupNodesSuccess++;
               nodesProcessed++;
               console.log(`✅ Node ${nodeIndex + 1}/${totalNodes} enviado para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
             } catch (error) {
@@ -592,9 +622,14 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 nodeType: node.nodeType,
                 status: "error",
                 errorMessage: errorMessage,
+                groupsCompleted: groupIndex,
+                nodesProcessedTotal: nodesProcessed + 1,
+                nodesFailed: failedNodes + 1,
+                groupResults: [...groupResults],
               });
               
               // Increment failed counter
+              groupNodesFailed++;
               failedNodes++;
               nodesProcessed++;
               console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} erro para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName} - ${errorMessage}`);
@@ -607,6 +642,16 @@ export function useGroupMessages(groupCampaignId: string | null) {
             }
           }
         }
+        
+        // After processing all nodes for this group, add to groupResults
+        groupResults.push({
+          groupName: group.groupName,
+          groupJid: group.groupJid,
+          nodesSuccess: groupNodesSuccess,
+          nodesFailed: groupNodesFailed,
+          completed: true,
+        });
+      }
       
       // Report completion
       onProgress?.({
@@ -617,6 +662,10 @@ export function useGroupMessages(groupCampaignId: string | null) {
         groupName: groups[groups.length - 1]?.groupName || "",
         nodeType: "completed",
         status: "completed",
+        groupsCompleted: totalGroups,
+        nodesProcessedTotal: nodesProcessed,
+        nodesFailed: failedNodes,
+        groupResults: [...groupResults],
       });
       
       return { success: failedNodes === 0, nodesProcessed, nodesFailed: failedNodes, groupsProcessed: groups.length };

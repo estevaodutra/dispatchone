@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useGroupMessages, GroupMessage, MessageType, SendProgress } from "@/hooks/useGroupMessages";
+import { useGroupMessages, GroupMessage, MessageType, SendProgress, GroupResult } from "@/hooks/useGroupMessages";
 import { useSequences } from "@/hooks/useSequences";
 import { useInstances } from "@/hooks/useInstances";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
@@ -67,6 +67,9 @@ import {
   Upload,
   Library,
   Square,
+  Users,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
@@ -453,6 +456,55 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
     return sequences.find(s => s.id === sequenceId)?.name || "Sequência";
   };
 
+  // Group Progress Indicator Component
+  const GroupProgressIndicator = ({ progress }: { progress: SendProgress }) => {
+    const { currentNode, totalNodes, currentGroup, totalGroups, groupsCompleted, groupResults, nodesProcessedTotal, nodesFailed, groupName, status, nodeType } = progress;
+    const totalSteps = totalNodes * totalGroups;
+    const overallPercent = Math.round((nodesProcessedTotal / totalSteps) * 100);
+    
+    return (
+      <div className="mt-3 space-y-3 p-3 rounded-lg bg-muted/50 border border-border">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-primary" />
+            <span className="text-sm font-medium">Grupo {currentGroup} de {totalGroups}</span>
+          </div>
+          <Badge variant="outline" className="text-xs">{groupsCompleted} concluído{groupsCompleted !== 1 ? "s" : ""}</Badge>
+        </div>
+        <div className="flex gap-1">
+          {Array.from({ length: totalGroups }).map((_, i) => (
+            <div key={i} className={cn("h-2 flex-1 rounded-full transition-all duration-300", i < groupsCompleted ? "bg-success" : i === currentGroup - 1 ? "bg-primary animate-pulse" : "bg-muted-foreground/20")} />
+          ))}
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          {status === "waiting" ? <Clock className="h-3 w-3 animate-pulse" /> : <Loader2 className="h-3 w-3 animate-spin" />}
+          <span>{status === "waiting" ? "Aguardando delay..." : status === "sending" ? `Enviando ${nodeType}...` : status === "completed" ? "Concluído!" : "Erro"} <strong className="text-foreground">{groupName}</strong></span>
+          <span className="text-xs">(node {currentNode}/{totalNodes})</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Progress value={overallPercent} className="flex-1 h-2" />
+          <span className="text-xs text-muted-foreground font-medium min-w-[80px] text-right">{nodesProcessedTotal}/{totalSteps} nodes</span>
+        </div>
+        {groupResults && groupResults.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-1">
+            {groupResults.map((gr, i) => (
+              <Badge key={i} variant={gr.nodesFailed > 0 ? "destructive" : "secondary"} className="text-xs py-0.5 px-2">
+                {gr.nodesFailed > 0 ? <XCircle className="h-3 w-3 mr-1" /> : <CheckCircle className="h-3 w-3 mr-1" />}
+                {gr.groupName.length > 20 ? `${gr.groupName.substring(0, 18)}...` : gr.groupName}
+              </Badge>
+            ))}
+          </div>
+        )}
+        {nodesFailed > 0 && (
+          <div className="flex items-center gap-2 text-xs text-destructive">
+            <AlertCircle className="h-3 w-3" />
+            <span>{nodesFailed} node{nodesFailed !== 1 ? "s" : ""} com erro</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const MessageCard = ({ message, onEdit, onDelete, onTest, onCancel }: { 
     message: GroupMessage; 
     onEdit: () => void; 
@@ -525,17 +577,7 @@ export function MessagesTab({ campaignId }: MessagesTabProps) {
               
               {/* Progress indicator when sending */}
               {isMessageSending && currentProgress && (
-                <div className="mt-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <Progress value={getProgressPercent()} className="flex-1 h-2" />
-                    <span className="text-xs text-muted-foreground font-medium">
-                      {getProgressPercent()}%
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {getProgressText()}
-                  </p>
-                </div>
+                <GroupProgressIndicator progress={currentProgress} />
               )}
               
               {/* Schedule info for scheduled messages */}
