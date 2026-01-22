@@ -482,9 +482,6 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
                         {/* Content */}
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm">{nodeInfo.label}</p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {getNodePreview(node)}
-                          </p>
                         </div>
                         
                         {/* Actions */}
