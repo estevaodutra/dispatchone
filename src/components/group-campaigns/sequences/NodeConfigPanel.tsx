@@ -448,6 +448,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
             return (
               <>
                 <div className="space-y-2">
+                  <Label>Título (opcional)</Label>
+                  <Input
+                    placeholder="Título da mensagem"
+                    value={(node.config.title as string) || ""}
+                    onChange={(e) => updateConfig("title", e.target.value)}
+                    maxLength={60}
+                  />
+                  <p className="text-xs text-muted-foreground">Até 60 caracteres</p>
+                </div>
+                <div className="space-y-2">
                   <Label>Texto da Mensagem</Label>
                   <Textarea
                     placeholder="Escolha uma opção:"
@@ -455,6 +465,16 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                     onChange={(e) => updateConfig("text", e.target.value)}
                     rows={2}
                   />
+                </div>
+                <div className="space-y-2">
+                  <Label>Rodapé (opcional)</Label>
+                  <Input
+                    placeholder="Texto do rodapé"
+                    value={(node.config.footer as string) || ""}
+                    onChange={(e) => updateConfig("footer", e.target.value)}
+                    maxLength={60}
+                  />
+                  <p className="text-xs text-muted-foreground">Até 60 caracteres</p>
                 </div>
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
