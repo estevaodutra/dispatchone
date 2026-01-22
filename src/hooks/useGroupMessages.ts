@@ -542,61 +542,71 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 status: "error",
                 errorMessage: errorText,
               });
-              throw new Error(`Falha ao enviar node ${nodeIndex + 1} para ${group.groupName}: ${errorText}`);
+              
+              // Increment failed counter and CONTINUE (don't throw)
+              failedNodes++;
+              nodesProcessed++;
+              console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} falhou para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
+              continue;
             }
             
-            // Update log to sent
-            if (logEntry?.id) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              await (supabase
-                .from("group_message_logs") as any)
-                .update({ 
-                  status: "sent",
-                  response_time_ms: responseTimeMs,
-                })
-                .eq("id", logEntry.id);
+              // Update log to sent
+              if (logEntry?.id) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (supabase
+                  .from("group_message_logs") as any)
+                  .update({ 
+                    status: "sent",
+                    response_time_ms: responseTimeMs,
+                  })
+                  .eq("id", logEntry.id);
+              }
+              
+              // Success - increment counter and log
+              nodesProcessed++;
+              console.log(`✅ Node ${nodeIndex + 1}/${totalNodes} enviado para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
+            } catch (error) {
+              const catchResponseTimeMs = Date.now() - startTime;
+              const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+              
+              // Update log to failed if not already updated
+              if (logEntry?.id) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (supabase
+                  .from("group_message_logs") as any)
+                  .update({ 
+                    status: "failed", 
+                    error_message: errorMessage,
+                    response_time_ms: catchResponseTimeMs,
+                  })
+                  .eq("id", logEntry.id);
+              }
+              
+              // Report error but CONTINUE to next node (don't throw)
+              onProgress?.({
+                currentNode: nodeIndex + 1,
+                totalNodes,
+                currentGroup: groupIndex + 1,
+                totalGroups,
+                groupName: group.groupName,
+                nodeType: node.nodeType,
+                status: "error",
+                errorMessage: errorMessage,
+              });
+              
+              // Increment failed counter
+              failedNodes++;
+              nodesProcessed++;
+              console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} erro para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName} - ${errorMessage}`);
+              
+              // Only rethrow if it's an abort/cancel error
+              if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
+                throw error;
+              }
+              // Continue to next node
             }
-          } catch (error) {
-            const responseTimeMs = Date.now() - startTime;
-            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-            
-            // Update log to failed if not already updated
-            if (logEntry?.id && !errorMessage.includes("Falha ao enviar node")) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              await (supabase
-                .from("group_message_logs") as any)
-                .update({ 
-                  status: "failed", 
-                  error_message: errorMessage,
-                  response_time_ms: responseTimeMs,
-                })
-                .eq("id", logEntry.id);
-            }
-            
-            // Report error but CONTINUE to next node (don't throw)
-            onProgress?.({
-              currentNode: nodeIndex + 1,
-              totalNodes,
-              currentGroup: groupIndex + 1,
-              totalGroups,
-              groupName: group.groupName,
-              nodeType: node.nodeType,
-              status: "error",
-              errorMessage: errorMessage,
-            });
-            
-            // Increment failed counter and continue (don't stop the sequence)
-            failedNodes++;
-            // Only rethrow if it's an abort/cancel error
-            if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
-              throw error;
-            }
-            // Continue to next node
           }
-          
-          nodesProcessed++;
         }
-      }
       
       // Report completion
       onProgress?.({
