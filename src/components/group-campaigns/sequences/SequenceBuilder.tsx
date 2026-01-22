@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
-  ArrowLeft, Save, Play, Pause, Trash2, GripVertical, ChevronDown, ChevronUp,
+  ArrowLeft, Save, Play, Pause, Trash2, GripVertical, ChevronDown, ChevronUp, Copy,
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar
@@ -233,6 +233,30 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
     });
     setLocalConnections(prev => prev.filter(c => c.sourceNodeId !== nodeId && c.targetNodeId !== nodeId));
     if (selectedNodeId === nodeId) setSelectedNodeId(null);
+  };
+
+  const handleDuplicateNode = (nodeId: string) => {
+    const nodeToDuplicate = localNodes.find(n => n.id === nodeId);
+    if (!nodeToDuplicate) return;
+
+    const newId = generateNodeId();
+    const originalIndex = [...localNodes].sort((a, b) => a.nodeOrder - b.nodeOrder)
+      .findIndex(n => n.id === nodeId);
+    
+    const duplicatedNode: LocalNode = {
+      id: newId,
+      nodeType: nodeToDuplicate.nodeType,
+      nodeOrder: originalIndex + 1,
+      config: JSON.parse(JSON.stringify(nodeToDuplicate.config)),
+    };
+
+    setLocalNodes(prev => {
+      const sorted = [...prev].sort((a, b) => a.nodeOrder - b.nodeOrder);
+      sorted.splice(originalIndex + 1, 0, duplicatedNode);
+      return sorted.map((node, idx) => ({ ...node, nodeOrder: idx }));
+    });
+    
+    setSelectedNodeId(newId);
   };
 
   const handleUpdateNodeConfig = (nodeId: string, config: Record<string, unknown>) => {
@@ -482,6 +506,15 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
                             onClick={(e) => { e.stopPropagation(); handleMoveNode(node.id, 1); }}
                           >
                             <ChevronDown className="h-4 w-4" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-7 w-7"
+                            onClick={(e) => { e.stopPropagation(); handleDuplicateNode(node.id); }}
+                            title="Duplicar"
+                          >
+                            <Copy className="h-4 w-4" />
                           </Button>
                           <Button 
                             variant="ghost" 
