@@ -542,10 +542,23 @@ export function useGroupMessages(groupCampaignId: string | null) {
             
             const responseTimeMs = Date.now() - startTime;
             
+            // Parse Z-API response to extract IDs
+            let providerResponse = null;
+            let zaapId = null;
+            let externalMessageId = null;
+            
             if (!response.ok) {
-              const errorText = await response.text();
+              // Try to parse error response as JSON
+              let errorText = '';
+              try {
+                const errorData = await response.json();
+                providerResponse = errorData;
+                errorText = JSON.stringify(errorData);
+              } catch {
+                errorText = await response.text();
+              }
               
-              // Update log to failed
+              // Update log to failed with provider response
               if (logEntry?.id) {
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 await (supabase
@@ -554,6 +567,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
                     status: "failed", 
                     error_message: errorText,
                     response_time_ms: responseTimeMs,
+                    provider_response: providerResponse,
                   })
                   .eq("id", logEntry.id);
               }
@@ -582,7 +596,24 @@ export function useGroupMessages(groupCampaignId: string | null) {
               continue;
             }
             
-            // Update log to sent
+            // Parse successful Z-API response
+            try {
+              const responseData = await response.json();
+              providerResponse = responseData;
+              
+              // Z-API returns array, get first item
+              if (Array.isArray(responseData) && responseData.length > 0) {
+                const firstResult = responseData[0];
+                zaapId = firstResult.zaapId || null;
+                externalMessageId = firstResult.messageId || firstResult.id || null;
+              }
+              
+              console.log(`📨 Resposta Z-API:`, { zaapId, externalMessageId });
+            } catch (parseError) {
+              console.warn(`⚠️ Não foi possível parsear resposta JSON:`, parseError);
+            }
+            
+            // Update log to sent with Z-API response data
             if (logEntry?.id) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               await (supabase
@@ -590,6 +621,9 @@ export function useGroupMessages(groupCampaignId: string | null) {
                 .update({ 
                   status: "sent",
                   response_time_ms: responseTimeMs,
+                  provider_response: providerResponse,
+                  zaap_id: zaapId,
+                  external_message_id: externalMessageId,
                 })
                 .eq("id", logEntry.id);
             }

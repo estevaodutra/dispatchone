@@ -412,6 +412,7 @@ export type Database = {
         Row: {
           campaign_name: string | null
           error_message: string | null
+          external_message_id: string | null
           group_campaign_id: string
           group_jid: string | null
           group_name: string | null
@@ -422,16 +423,19 @@ export type Database = {
           node_order: number | null
           node_type: string | null
           payload: Json | null
+          provider_response: Json | null
           recipient_phone: string | null
           response_time_ms: number | null
           sent_at: string | null
           sequence_id: string | null
           status: string | null
           user_id: string
+          zaap_id: string | null
         }
         Insert: {
           campaign_name?: string | null
           error_message?: string | null
+          external_message_id?: string | null
           group_campaign_id: string
           group_jid?: string | null
           group_name?: string | null
@@ -442,16 +446,19 @@ export type Database = {
           node_order?: number | null
           node_type?: string | null
           payload?: Json | null
+          provider_response?: Json | null
           recipient_phone?: string | null
           response_time_ms?: number | null
           sent_at?: string | null
           sequence_id?: string | null
           status?: string | null
           user_id: string
+          zaap_id?: string | null
         }
         Update: {
           campaign_name?: string | null
           error_message?: string | null
+          external_message_id?: string | null
           group_campaign_id?: string
           group_jid?: string | null
           group_name?: string | null
@@ -462,12 +469,14 @@ export type Database = {
           node_order?: number | null
           node_type?: string | null
           payload?: Json | null
+          provider_response?: Json | null
           recipient_phone?: string | null
           response_time_ms?: number | null
           sent_at?: string | null
           sequence_id?: string | null
           status?: string | null
           user_id?: string
+          zaap_id?: string | null
         }
         Relationships: [
           {
