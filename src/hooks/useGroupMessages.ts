@@ -8,9 +8,11 @@ import { CampaignGroup } from "@/hooks/useCampaignGroups";
 
 const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
-// Retorna texto sem modificação - JSON.stringify já trata quebras de linha corretamente
+// Converte quebras de linha para formato CRLF (padrão WhatsApp/n8n)
 const formatLineBreaks = (text: string | null | undefined): string | null => {
-  return text || null;
+  if (!text) return null;
+  // Normaliza removendo \r existentes, depois adiciona \r antes de cada \n
+  return text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
 };
 
 // Processa config dos nodes para formatar quebras de linha
@@ -372,6 +374,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
       const totalGroups = groups.length;
       
       let nodesProcessed = 0;
+      let failedNodes = 0;
       
       // For each group
       for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
@@ -555,20 +558,40 @@ export function useGroupMessages(groupCampaignId: string | null) {
             }
           } catch (error) {
             const responseTimeMs = Date.now() - startTime;
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
             
             // Update log to failed if not already updated
-            if (logEntry?.id && error instanceof Error && !error.message.includes("Falha ao enviar node")) {
+            if (logEntry?.id && !errorMessage.includes("Falha ao enviar node")) {
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
               await (supabase
                 .from("group_message_logs") as any)
                 .update({ 
                   status: "failed", 
-                  error_message: error.message,
+                  error_message: errorMessage,
                   response_time_ms: responseTimeMs,
                 })
                 .eq("id", logEntry.id);
             }
-            throw error;
+            
+            // Report error but CONTINUE to next node (don't throw)
+            onProgress?.({
+              currentNode: nodeIndex + 1,
+              totalNodes,
+              currentGroup: groupIndex + 1,
+              totalGroups,
+              groupName: group.groupName,
+              nodeType: node.nodeType,
+              status: "error",
+              errorMessage: errorMessage,
+            });
+            
+            // Increment failed counter and continue (don't stop the sequence)
+            failedNodes++;
+            // Only rethrow if it's an abort/cancel error
+            if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
+              throw error;
+            }
+            // Continue to next node
           }
           
           nodesProcessed++;
@@ -586,13 +609,15 @@ export function useGroupMessages(groupCampaignId: string | null) {
         status: "completed",
       });
       
-      return { success: true, nodesProcessed, groupsProcessed: groups.length };
+      return { success: failedNodes === 0, nodesProcessed, nodesFailed: failedNodes, groupsProcessed: groups.length };
     },
     onSuccess: (result) => {
       if (result.nodesProcessed > 0) {
+        const failedText = result.nodesFailed > 0 ? ` (${result.nodesFailed} falhou)` : "";
         toast({ 
-          title: "Sequência enviada", 
-          description: `${result.nodesProcessed} nodes processados para ${result.groupsProcessed} grupo(s).` 
+          title: result.nodesFailed === 0 ? "Sequência enviada" : "Sequência enviada com erros", 
+          description: `${result.nodesProcessed} nodes processados para ${result.groupsProcessed} grupo(s)${failedText}.`,
+          variant: result.nodesFailed > 0 ? "destructive" : "default",
         });
       } else {
         toast({ title: "Enviado", description: "Mensagem enviada com sucesso!" });
