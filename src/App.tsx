@@ -23,6 +23,7 @@ import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import ApiDocs from "./pages/ApiDocs";
 import ApiLogs from "./pages/ApiLogs";
+import SequenceLogs from "./pages/SequenceLogs";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -102,6 +103,16 @@ const App = () => {
                       <ProtectedRoute>
                         <AppLayout>
                           <ApiLogs />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/sequence-logs"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <SequenceLogs />
                         </AppLayout>
                       </ProtectedRoute>
                     }

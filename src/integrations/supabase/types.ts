@@ -410,29 +410,62 @@ export type Database = {
       }
       group_message_logs: {
         Row: {
+          campaign_name: string | null
+          error_message: string | null
           group_campaign_id: string
+          group_jid: string | null
+          group_name: string | null
           id: string
+          instance_id: string | null
+          instance_name: string | null
           message_id: string | null
+          node_order: number | null
+          node_type: string | null
+          payload: Json | null
           recipient_phone: string | null
+          response_time_ms: number | null
           sent_at: string | null
+          sequence_id: string | null
           status: string | null
           user_id: string
         }
         Insert: {
+          campaign_name?: string | null
+          error_message?: string | null
           group_campaign_id: string
+          group_jid?: string | null
+          group_name?: string | null
           id?: string
+          instance_id?: string | null
+          instance_name?: string | null
           message_id?: string | null
+          node_order?: number | null
+          node_type?: string | null
+          payload?: Json | null
           recipient_phone?: string | null
+          response_time_ms?: number | null
           sent_at?: string | null
+          sequence_id?: string | null
           status?: string | null
           user_id: string
         }
         Update: {
+          campaign_name?: string | null
+          error_message?: string | null
           group_campaign_id?: string
+          group_jid?: string | null
+          group_name?: string | null
           id?: string
+          instance_id?: string | null
+          instance_name?: string | null
           message_id?: string | null
+          node_order?: number | null
+          node_type?: string | null
+          payload?: Json | null
           recipient_phone?: string | null
+          response_time_ms?: number | null
           sent_at?: string | null
+          sequence_id?: string | null
           status?: string | null
           user_id?: string
         }
