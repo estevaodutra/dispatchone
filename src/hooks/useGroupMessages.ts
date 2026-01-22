@@ -579,69 +579,68 @@ export function useGroupMessages(groupCampaignId: string | null) {
               continue;
             }
             
-              // Update log to sent
-              if (logEntry?.id) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (supabase
-                  .from("group_message_logs") as any)
-                  .update({ 
-                    status: "sent",
-                    response_time_ms: responseTimeMs,
-                  })
-                  .eq("id", logEntry.id);
-              }
-              
-              // Success - increment counter and log
-              groupNodesSuccess++;
-              nodesProcessed++;
-              console.log(`✅ Node ${nodeIndex + 1}/${totalNodes} enviado para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
-            } catch (error) {
-              const catchResponseTimeMs = Date.now() - startTime;
-              const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-              
-              // Update log to failed if not already updated
-              if (logEntry?.id) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (supabase
-                  .from("group_message_logs") as any)
-                  .update({ 
-                    status: "failed", 
-                    error_message: errorMessage,
-                    response_time_ms: catchResponseTimeMs,
-                  })
-                  .eq("id", logEntry.id);
-              }
-              
-              // Report error but CONTINUE to next node (don't throw)
-              onProgress?.({
-                currentNode: nodeIndex + 1,
-                totalNodes,
-                currentGroup: groupIndex + 1,
-                totalGroups,
-                groupName: group.groupName,
-                nodeType: node.nodeType,
-                status: "error",
-                errorMessage: errorMessage,
-                groupsCompleted: groupIndex,
-                nodesProcessedTotal: nodesProcessed + 1,
-                nodesFailed: failedNodes + 1,
-                groupResults: [...groupResults],
-              });
-              
-              // Increment failed counter
-              groupNodesFailed++;
-              failedNodes++;
-              nodesProcessed++;
-              console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} erro para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName} - ${errorMessage}`);
-              
-              // Only rethrow if it's an abort/cancel error
-              if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
-                throw error;
-              }
-              // Continue to next node
+            // Update log to sent
+            if (logEntry?.id) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (supabase
+                .from("group_message_logs") as any)
+                .update({ 
+                  status: "sent",
+                  response_time_ms: responseTimeMs,
+                })
+                .eq("id", logEntry.id);
             }
+            
+            // Success - increment counter and log
+            groupNodesSuccess++;
+            nodesProcessed++;
+            console.log(`✅ Node ${nodeIndex + 1}/${totalNodes} enviado para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
+          } catch (error) {
+            const catchResponseTimeMs = Date.now() - startTime;
+            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
+            
+            // Update log to failed if not already updated
+            if (logEntry?.id) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              await (supabase
+                .from("group_message_logs") as any)
+                .update({ 
+                  status: "failed", 
+                  error_message: errorMessage,
+                  response_time_ms: catchResponseTimeMs,
+                })
+                .eq("id", logEntry.id);
+            }
+            
+            // Report error but CONTINUE to next node (don't throw)
+            onProgress?.({
+              currentNode: nodeIndex + 1,
+              totalNodes,
+              currentGroup: groupIndex + 1,
+              totalGroups,
+              groupName: group.groupName,
+              nodeType: node.nodeType,
+              status: "error",
+              errorMessage: errorMessage,
+              groupsCompleted: groupIndex,
+              nodesProcessedTotal: nodesProcessed + 1,
+              nodesFailed: failedNodes + 1,
+              groupResults: [...groupResults],
+            });
+            
+            // Increment failed counter
+            groupNodesFailed++;
+            failedNodes++;
+            nodesProcessed++;
+            console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} erro para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName} - ${errorMessage}`);
+            
+            // Only rethrow if it's an abort/cancel error
+            if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
+              throw error;
+            }
+            // Continue to next node
           }
-        }
+        } // End of node loop
         
         // After processing all nodes for this group, add to groupResults
         groupResults.push({
@@ -651,7 +650,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
           nodesFailed: groupNodesFailed,
           completed: true,
         });
-      }
+      } // End of group loop
       
       // Report completion
       onProgress?.({
