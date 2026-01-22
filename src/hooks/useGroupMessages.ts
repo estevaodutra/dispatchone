@@ -7,6 +7,54 @@ import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
 const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
+// Converte quebras de linha para \r\n literal no payload JSON
+const formatLineBreaks = (text: string | null | undefined): string | null => {
+  if (!text) return null;
+  return text.replace(/\r?\n/g, "\\r\\n");
+};
+
+// Processa config dos nodes para formatar quebras de linha
+const formatNodeConfig = (
+  config: Record<string, unknown>,
+  nodeType: string
+): Record<string, unknown> => {
+  const formatted = { ...config };
+
+  // Campos de texto que precisam de formatação
+  const textFields = ["text", "content", "message", "caption", "title", "description"];
+
+  textFields.forEach((field) => {
+    if (typeof formatted[field] === "string") {
+      formatted[field] = formatLineBreaks(formatted[field] as string);
+    }
+  });
+
+  // Para nodes de lista, processar sections
+  if (nodeType === "list" && Array.isArray(formatted.sections)) {
+    formatted.sections = (formatted.sections as Array<Record<string, unknown>>).map((section) => ({
+      ...section,
+      title: typeof section.title === "string" ? formatLineBreaks(section.title as string) : section.title,
+      rows: Array.isArray(section.rows)
+        ? (section.rows as Array<Record<string, unknown>>).map((row) => ({
+            ...row,
+            title: typeof row.title === "string" ? formatLineBreaks(row.title as string) : row.title,
+            description: typeof row.description === "string" ? formatLineBreaks(row.description as string) : row.description,
+          }))
+        : section.rows,
+    }));
+  }
+
+  // Para nodes de botões, processar labels
+  if (nodeType === "buttons" && Array.isArray(formatted.buttons)) {
+    formatted.buttons = (formatted.buttons as Array<Record<string, unknown>>).map((btn) => ({
+      ...btn,
+      label: typeof btn.label === "string" ? formatLineBreaks(btn.label as string) : btn.label,
+    }));
+  }
+
+  return formatted;
+};
+
 export type MessageType = "welcome" | "farewell" | "scheduled" | "keyword_response";
 
 export interface GroupMessage {
@@ -266,18 +314,18 @@ export function useGroupMessages(groupCampaignId: string | null) {
           active: params.message.active,
         },
         message_content: {
-          text: params.message.content,
+          text: formatLineBreaks(params.message.content),
           variables: params.message.variables || {},
           mediaUrl: params.message.mediaUrl || null,
           mediaType: params.message.mediaType || null,
-          mediaCaption: params.message.mediaCaption || null,
+          mediaCaption: formatLineBreaks(params.message.mediaCaption),
         },
         // Include sequence nodes when available (for sequence-linked messages)
         sequence_nodes: params.sequenceNodes?.map(node => ({
           id: node.id,
           nodeType: node.nodeType,
           nodeOrder: node.nodeOrder,
-          config: node.config,
+          config: formatNodeConfig(node.config, node.nodeType),
         })) || null,
         trigger: params.trigger,
         triggeredAt: new Date().toISOString(),
