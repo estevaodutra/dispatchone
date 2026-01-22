@@ -416,66 +416,127 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
           )}
 
           {/* BUTTONS */}
-          {node.nodeType === "buttons" && (
-            <>
-              <div className="space-y-2">
-                <Label>Texto da Mensagem</Label>
-                <Textarea
-                  placeholder="Escolha uma opção:"
-                  value={(node.config.text as string) || ""}
-                  onChange={(e) => updateConfig("text", e.target.value)}
-                  rows={2}
-                />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label>Botões (até 3)</Label>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-6"
-                    onClick={() => {
-                      const buttons = [...((node.config.buttons as {id: string; text: string}[]) || [])];
-                      if (buttons.length < 3) {
-                        buttons.push({ id: String(buttons.length + 1), text: "" });
-                        updateConfig("buttons", buttons);
-                      }
-                    }}
-                    disabled={((node.config.buttons as unknown[]) || []).length >= 3}
-                  >
-                    <Plus className="h-3 w-3 mr-1" /> Adicionar
-                  </Button>
+          {node.nodeType === "buttons" && (() => {
+            type ButtonAction = {
+              id: string;
+              label: string;
+              type: "REPLY" | "CALL" | "URL";
+              phone?: string;
+              url?: string;
+            };
+            
+            const buttons = (node.config.buttons as ButtonAction[]) || [];
+            
+            const updateButton = (index: number, field: keyof ButtonAction, value: string) => {
+              const updated = [...buttons];
+              updated[index] = { ...updated[index], [field]: value };
+              updateConfig("buttons", updated);
+            };
+            
+            const addButton = () => {
+              if (buttons.length < 3) {
+                updateConfig("buttons", [...buttons, { id: String(buttons.length + 1), label: "", type: "REPLY" }]);
+              }
+            };
+            
+            const removeButton = (index: number) => {
+              const updated = [...buttons];
+              updated.splice(index, 1);
+              updateConfig("buttons", updated);
+            };
+            
+            return (
+              <>
+                <div className="space-y-2">
+                  <Label>Texto da Mensagem</Label>
+                  <Textarea
+                    placeholder="Escolha uma opção:"
+                    value={(node.config.text as string) || ""}
+                    onChange={(e) => updateConfig("text", e.target.value)}
+                    rows={2}
+                  />
                 </div>
-                {((node.config.buttons as {id: string; text: string}[]) || []).map((btn, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input
-                      placeholder={`Botão ${i + 1}`}
-                      value={btn.text}
-                      onChange={(e) => {
-                        const buttons = [...((node.config.buttons as {id: string; text: string}[]) || [])];
-                        buttons[i] = { ...buttons[i], text: e.target.value };
-                        updateConfig("buttons", buttons);
-                      }}
-                    />
-                    {((node.config.buttons as unknown[]) || []).length > 1 && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 shrink-0"
-                        onClick={() => {
-                          const buttons = [...((node.config.buttons as {id: string; text: string}[]) || [])];
-                          buttons.splice(i, 1);
-                          updateConfig("buttons", buttons);
-                        }}
-                      >
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
-                    )}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label>Botões (até 3)</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6"
+                      onClick={addButton}
+                      disabled={buttons.length >= 3}
+                    >
+                      <Plus className="h-3 w-3 mr-1" /> Adicionar
+                    </Button>
                   </div>
-                ))}
-              </div>
-            </>
-          )}
+                  {buttons.map((btn, i) => (
+                    <Card key={i} className="p-3 space-y-3">
+                      {/* Label do botão */}
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder={`Botão ${i + 1}`}
+                          value={btn.label || ""}
+                          onChange={(e) => updateButton(i, "label", e.target.value)}
+                        />
+                        {buttons.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-9 shrink-0"
+                            onClick={() => removeButton(i)}
+                          >
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
+                      
+                      {/* Seletor de tipo */}
+                      <div className="space-y-1">
+                        <Label className="text-xs">Tipo de Ação</Label>
+                        <Select 
+                          value={btn.type || "REPLY"} 
+                          onValueChange={(v) => updateButton(i, "type", v)}
+                        >
+                          <SelectTrigger className="h-8">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="REPLY">Resposta Rápida</SelectItem>
+                            <SelectItem value="CALL">Ligar</SelectItem>
+                            <SelectItem value="URL">Abrir Link</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      {/* Campo condicional - CALL */}
+                      {btn.type === "CALL" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">Número de Telefone</Label>
+                          <Input
+                            placeholder="+55 11 99999-9999"
+                            value={btn.phone || ""}
+                            onChange={(e) => updateButton(i, "phone", e.target.value)}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Campo condicional - URL */}
+                      {btn.type === "URL" && (
+                        <div className="space-y-1">
+                          <Label className="text-xs">URL do Link</Label>
+                          <Input
+                            placeholder="https://exemplo.com"
+                            value={btn.url || ""}
+                            onChange={(e) => updateButton(i, "url", e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              </>
+            );
+          })()}
 
           {/* LIST */}
           {node.nodeType === "list" && (

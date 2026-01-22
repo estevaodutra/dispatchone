@@ -187,7 +187,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
       case "poll":
         return { question: "", options: ["", "", ""], multiSelect: false };
       case "buttons":
-        return { text: "", buttons: [{ id: "1", text: "" }] };
+        return { text: "", buttons: [{ id: "1", label: "", type: "REPLY" }] };
       case "list":
         return { 
           title: "", 
