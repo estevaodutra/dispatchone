@@ -8,6 +8,9 @@ const corsHeaders = {
 // Default webhook URL for messages category
 const DEFAULT_MESSAGES_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/messages";
 
+// Max delay per node in Edge Function (20 seconds to stay under timeout)
+const MAX_DELAY_MS = 20000;
+
 interface ScheduleConfig {
   days: number[];
   times: string[];
@@ -37,6 +40,107 @@ interface SequenceNode {
   node_order: number;
   config: Record<string, unknown>;
 }
+
+interface LinkedGroup {
+  group_jid: string;
+  group_name: string;
+}
+
+interface InstanceData {
+  id: string;
+  name: string;
+  phone: string;
+  provider: string;
+  external_instance_id: string;
+  external_instance_token: string;
+  status: string;
+}
+
+// ============= Formatting helpers (copied from useGroupMessages.ts) =============
+
+// Format line breaks for WhatsApp/n8n (CRLF)
+const formatLineBreaks = (text: string | null | undefined): string | null => {
+  if (!text) return null;
+  return text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
+};
+
+// Process node config to format line breaks
+const formatNodeConfig = (
+  config: Record<string, unknown>,
+  nodeType: string
+): Record<string, unknown> => {
+  const formatted = { ...config };
+
+  const textFields = ["text", "content", "message", "caption", "title", "description", "footer"];
+
+  textFields.forEach((field) => {
+    if (typeof formatted[field] === "string") {
+      formatted[field] = formatLineBreaks(formatted[field] as string);
+    }
+  });
+
+  // For list nodes, process sections
+  if (nodeType === "list" && Array.isArray(formatted.sections)) {
+    formatted.sections = (formatted.sections as Array<Record<string, unknown>>).map((section) => ({
+      ...section,
+      title: typeof section.title === "string" ? formatLineBreaks(section.title as string) : section.title,
+      rows: Array.isArray(section.rows)
+        ? (section.rows as Array<Record<string, unknown>>).map((row) => ({
+            ...row,
+            title: typeof row.title === "string" ? formatLineBreaks(row.title as string) : row.title,
+            description: typeof row.description === "string" ? formatLineBreaks(row.description as string) : row.description,
+          }))
+        : section.rows,
+    }));
+  }
+
+  // For button nodes, process labels
+  if (nodeType === "buttons" && Array.isArray(formatted.buttons)) {
+    formatted.buttons = (formatted.buttons as Array<Record<string, unknown>>).map((btn) => ({
+      ...btn,
+      label: typeof btn.label === "string" ? formatLineBreaks(btn.label as string) : btn.label,
+    }));
+  }
+
+  return formatted;
+};
+
+// Calculate delay in milliseconds from node config
+const calculateDelayMs = (config: Record<string, unknown>): number => {
+  const days = (config.days as number) || 0;
+  const hours = (config.hours as number) || 0;
+  const minutes = (config.minutes as number) || 0;
+  const seconds = (config.seconds as number) || 0;
+  
+  return (
+    days * 86400000 +
+    hours * 3600000 +
+    minutes * 60000 +
+    seconds * 1000
+  );
+};
+
+// Get action name based on node type
+const getActionForNodeType = (nodeType: string): string => {
+  const actionMap: Record<string, string> = {
+    message: "message.send_text",
+    text: "message.send_text",
+    image: "message.send_image",
+    video: "message.send_video",
+    audio: "message.send_audio",
+    document: "message.send_document",
+    sticker: "message.send_sticker",
+    location: "message.send_location",
+    contact: "message.send_contact",
+    buttons: "message.send_buttons",
+    list: "message.send_list",
+    poll: "message.send_poll",
+    reaction: "message.send_reaction",
+  };
+  return actionMap[nodeType] || "message.send_text";
+};
+
+// ============= Main handler =============
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -79,7 +183,7 @@ Deno.serve(async (req) => {
 
     console.log(`[Scheduler] Running at ${currentTime} (Brazil), day ${currentDay}, date ${todayDate}`);
 
-    // Fetch all active scheduled messages with their campaign and instance data
+    // Fetch all active scheduled messages
     const { data: messages, error: messagesError } = await supabase
       .from("group_messages")
       .select(`
@@ -126,7 +230,7 @@ Deno.serve(async (req) => {
 
     console.log(`[Scheduler] ${messagesToSend.length} messages match current schedule`);
 
-    const results: Array<{ messageId: string; status: string; error?: string }> = [];
+    const results: Array<{ messageId: string; status: string; nodesProcessed?: number; error?: string }> = [];
 
     for (const message of messagesToSend) {
       try {
@@ -178,15 +282,7 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        const instance = campaign.instances as unknown as {
-          id: string;
-          name: string;
-          phone: string;
-          provider: string;
-          external_instance_id: string;
-          external_instance_token: string;
-          status: string;
-        };
+        const instance = campaign.instances as unknown as InstanceData;
 
         if (instance.status !== "connected") {
           console.log(`[Scheduler] Instance ${instance.id} is not connected, skipping`);
@@ -218,7 +314,7 @@ Deno.serve(async (req) => {
           ? webhookConfig.url 
           : DEFAULT_MESSAGES_WEBHOOK;
 
-        // Build payload
+        // Get sequence nodes if sequence is linked
         let sequenceNodes: SequenceNode[] = [];
         if (message.sequence_id) {
           const { data: nodes } = await supabase
@@ -230,98 +326,248 @@ Deno.serve(async (req) => {
           sequenceNodes = (nodes || []) as SequenceNode[];
         }
 
-        const payload = {
-          action: "message.send_scheduled",
-          body: {
-            messageId: message.id,
-            campaignId: campaign.id,
-            campaignName: campaign.name,
-            content: message.content,
-            mediaUrl: message.media_url,
-            mediaType: message.media_type,
-            mediaCaption: message.media_caption,
-            mentionMember: message.mention_member,
-            sendPrivate: message.send_private,
-            delaySeconds: message.delay_seconds,
-            sequenceId: message.sequence_id,
-            sequenceNodes: sequenceNodes.map(node => ({
-              id: node.id,
-              type: node.node_type,
-              order: node.node_order,
-              config: node.config,
-            })),
-          },
-          instance: {
-            id: instance.id,
-            name: instance.name,
-            phone: instance.phone,
-            provider: instance.provider,
-            externalId: instance.external_instance_id,
-            externalToken: instance.external_instance_token,
-          },
-          groups: linkedGroups.map(g => ({
-            jid: g.group_jid,
-            name: g.group_name,
-          })),
-          userId: message.user_id,
-          scheduledTime: currentTime,
-          scheduledDate: todayDate,
-        };
+        console.log(`[Scheduler] Message ${message.id}: ${sequenceNodes.length} sequence nodes, ${linkedGroups.length} groups`);
 
-        console.log(`[Scheduler] Sending message ${message.id} to ${linkedGroups.length} groups via ${webhookUrl}`);
-
-        // Send to webhook
-        const webhookResponse = await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-
-        const responseText = await webhookResponse.text();
-        let responseData;
-        try {
-          responseData = JSON.parse(responseText);
-        } catch {
-          responseData = { raw: responseText };
-        }
-
-        // Record execution
+        // Record execution start
         await supabase
           .from("scheduled_message_executions")
           .insert({
             message_id: message.id,
             scheduled_date: todayDate,
             scheduled_time: currentTime,
-            status: webhookResponse.ok ? "executed" : "failed",
+            status: "executing",
             groups_count: linkedGroups.length,
             user_id: message.user_id,
           });
 
-        // Log to group_message_logs
-        for (const group of linkedGroups) {
-          await supabase
-            .from("group_message_logs")
-            .insert({
-              user_id: message.user_id,
-              group_campaign_id: message.group_campaign_id,
-              message_id: message.id,
-              sequence_id: message.sequence_id,
-              node_type: "scheduled_trigger",
-              node_order: 0,
-              group_jid: group.group_jid,
-              group_name: group.group_name,
-              instance_id: instance.id,
-              instance_name: instance.name,
-              campaign_name: campaign.name,
-              status: webhookResponse.ok ? "sent" : "failed",
-              error_message: webhookResponse.ok ? null : `Webhook returned ${webhookResponse.status}`,
-              payload: payload,
-              provider_response: responseData,
-            });
+        let nodesProcessed = 0;
+        let nodesFailed = 0;
+
+        // ============= NODE-FIRST ORCHESTRATION =============
+        // If no sequence nodes, send as simple message
+        if (sequenceNodes.length === 0) {
+          // Simple message without sequence
+          const action = message.media_url ? "message.send_media" : "message.send_text";
+          
+          for (const group of linkedGroups) {
+            const payload = {
+              action,
+              body: {
+                messageId: message.id,
+                campaignId: campaign.id,
+                campaignName: campaign.name,
+                content: formatLineBreaks(message.content),
+                mediaUrl: message.media_url,
+                mediaType: message.media_type,
+                mediaCaption: formatLineBreaks(message.media_caption),
+                mentionMember: message.mention_member,
+                sendPrivate: message.send_private,
+              },
+              instance: {
+                id: instance.id,
+                name: instance.name,
+                phone: instance.phone,
+                provider: instance.provider,
+                externalId: instance.external_instance_id,
+                externalToken: instance.external_instance_token,
+              },
+              group: {
+                jid: group.group_jid,
+                name: group.group_name,
+              },
+              userId: message.user_id,
+              scheduledTime: currentTime,
+              scheduledDate: todayDate,
+              webhookUrl,
+              executionMode: "production",
+            };
+
+            try {
+              const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+
+              const responseText = await response.text();
+              let responseData;
+              try {
+                responseData = JSON.parse(responseText);
+              } catch {
+                responseData = { raw: responseText };
+              }
+
+              // Log individual send
+              await supabase.from("group_message_logs").insert({
+                user_id: message.user_id,
+                group_campaign_id: message.group_campaign_id,
+                message_id: message.id,
+                node_type: "simple_message",
+                node_order: 0,
+                group_jid: group.group_jid,
+                group_name: group.group_name,
+                instance_id: instance.id,
+                instance_name: instance.name,
+                campaign_name: campaign.name,
+                status: response.ok ? "sent" : "failed",
+                error_message: response.ok ? null : `HTTP ${response.status}`,
+                payload,
+                provider_response: responseData,
+              });
+
+              if (response.ok) {
+                nodesProcessed++;
+              } else {
+                nodesFailed++;
+              }
+            } catch (err) {
+              nodesFailed++;
+              console.error(`[Scheduler] Error sending to group ${group.group_jid}:`, err);
+            }
+          }
+        } else {
+          // ============= SEQUENCE NODE-BY-NODE PROCESSING =============
+          const sortedNodes = [...sequenceNodes].sort((a, b) => a.node_order - b.node_order);
+
+          for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
+            const node = sortedNodes[nodeIndex];
+            
+            console.log(`[Scheduler] Processing node ${nodeIndex + 1}/${sortedNodes.length}: ${node.node_type}`);
+
+            // If it's a DELAY node, wait and continue (only once, not per group)
+            if (node.node_type === "delay") {
+              const delayMs = calculateDelayMs(node.config);
+              
+              if (delayMs > 0) {
+                // Cap delay at MAX_DELAY_MS to avoid timeout
+                const effectiveDelay = Math.min(delayMs, MAX_DELAY_MS);
+                console.log(`[Scheduler] ⏱️ Delay node: waiting ${effectiveDelay}ms (requested: ${delayMs}ms)`);
+                
+                await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+              }
+              
+              nodesProcessed++;
+              continue; // Don't send delay to webhook
+            }
+
+            // For each group - send this node to all groups (Node-First strategy)
+            for (const group of linkedGroups) {
+              const action = getActionForNodeType(node.node_type);
+              const formattedConfig = formatNodeConfig(node.config, node.node_type);
+              
+              const payload = {
+                action,
+                body: {
+                  node: {
+                    id: node.id,
+                    type: node.node_type,
+                    order: node.node_order,
+                    config: formattedConfig,
+                  },
+                  messageId: message.id,
+                  campaignId: campaign.id,
+                  campaignName: campaign.name,
+                  sequenceId: message.sequence_id,
+                  mentionMember: message.mention_member,
+                  sendPrivate: message.send_private,
+                },
+                instance: {
+                  id: instance.id,
+                  name: instance.name,
+                  phone: instance.phone,
+                  provider: instance.provider,
+                  externalId: instance.external_instance_id,
+                  externalToken: instance.external_instance_token,
+                },
+                group: {
+                  jid: group.group_jid,
+                  name: group.group_name,
+                },
+                userId: message.user_id,
+                scheduledTime: currentTime,
+                scheduledDate: todayDate,
+                webhookUrl,
+                executionMode: "production",
+              };
+
+              try {
+                const response = await fetch(webhookUrl, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(payload),
+                });
+
+                const responseText = await response.text();
+                let responseData;
+                try {
+                  responseData = JSON.parse(responseText);
+                } catch {
+                  responseData = { raw: responseText };
+                }
+
+                // Log individual node execution
+                await supabase.from("group_message_logs").insert({
+                  user_id: message.user_id,
+                  group_campaign_id: message.group_campaign_id,
+                  message_id: message.id,
+                  sequence_id: message.sequence_id,
+                  node_type: node.node_type,
+                  node_order: node.node_order,
+                  group_jid: group.group_jid,
+                  group_name: group.group_name,
+                  instance_id: instance.id,
+                  instance_name: instance.name,
+                  campaign_name: campaign.name,
+                  status: response.ok ? "sent" : "failed",
+                  error_message: response.ok ? null : `HTTP ${response.status}`,
+                  payload,
+                  provider_response: responseData,
+                });
+
+                if (response.ok) {
+                  console.log(`[Scheduler] ✅ Node ${node.node_type} sent to ${group.group_name}`);
+                } else {
+                  nodesFailed++;
+                  console.error(`[Scheduler] ❌ Node ${node.node_type} failed for ${group.group_name}: HTTP ${response.status}`);
+                }
+              } catch (err) {
+                nodesFailed++;
+                console.error(`[Scheduler] ❌ Error sending node to ${group.group_jid}:`, err);
+                
+                // Log failed attempt
+                await supabase.from("group_message_logs").insert({
+                  user_id: message.user_id,
+                  group_campaign_id: message.group_campaign_id,
+                  message_id: message.id,
+                  sequence_id: message.sequence_id,
+                  node_type: node.node_type,
+                  node_order: node.node_order,
+                  group_jid: group.group_jid,
+                  group_name: group.group_name,
+                  instance_id: instance.id,
+                  instance_name: instance.name,
+                  campaign_name: campaign.name,
+                  status: "failed",
+                  error_message: err instanceof Error ? err.message : "Unknown error",
+                  payload: {},
+                });
+              }
+            }
+            
+            nodesProcessed++;
+          }
         }
 
-        console.log(`[Scheduler] Message ${message.id} sent successfully to ${linkedGroups.length} groups`);
-        results.push({ messageId: message.id, status: "sent" });
+        // Update execution status
+        await supabase
+          .from("scheduled_message_executions")
+          .update({ status: nodesFailed === 0 ? "executed" : "partial" })
+          .eq("message_id", message.id)
+          .eq("scheduled_date", todayDate)
+          .eq("scheduled_time", currentTime);
+
+        console.log(`[Scheduler] ✅ Message ${message.id} completed: ${nodesProcessed} nodes processed, ${nodesFailed} failed`);
+        results.push({ messageId: message.id, status: "sent", nodesProcessed });
 
       } catch (error) {
         console.error(`[Scheduler] Error processing message ${message.id}:`, error);
