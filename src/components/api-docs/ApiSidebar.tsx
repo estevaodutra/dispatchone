@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { apiEndpoints, EndpointCategory } from "@/data/api-endpoints";
-import { ChevronDown, ChevronRight, BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle } from "lucide-react";
+import { ChevronDown, ChevronRight, BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ApiSidebarProps {
@@ -67,6 +67,20 @@ export function ApiSidebar({ activeSection, onSectionClick }: ApiSidebarProps) {
             >
               <Key className="h-4 w-4" />
               Autenticação
+            </button>
+
+            {/* Webhook Config */}
+            <button
+              onClick={() => handleClick("webhook-config")}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left",
+                activeSection === "webhook-config"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+            >
+              <Settings className="h-4 w-4" />
+              Configurar Webhooks
             </button>
 
             {/* Divider */}

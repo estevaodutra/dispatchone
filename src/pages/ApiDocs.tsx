@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/dispatch";
-import { ApiSidebar, EndpointSection } from "@/components/api-docs";
+import { ApiSidebar, EndpointSection, WebhookConfigSection } from "@/components/api-docs";
 import { apiEndpoints, eventTypes } from "@/data/api-endpoints";
 import { useLanguage } from "@/i18n";
 import { Button } from "@/components/ui/button";
@@ -183,6 +183,11 @@ const ApiDocs = () => {
                 </div>
               </CardContent>
             </Card>
+          </section>
+
+          {/* Webhook Configuration */}
+          <section id="webhook-config" className="scroll-mt-20">
+            <WebhookConfigSection />
           </section>
 
           {/* Endpoints */}
