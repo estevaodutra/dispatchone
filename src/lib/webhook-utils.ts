@@ -2,7 +2,7 @@
  * Webhook utilities for building standardized payloads
  */
 
-// Standardized payload structure for all webhook calls
+// ============= Message Payload (for sending messages) =============
 export interface StandardizedPayload {
   action: string;
   node: {
@@ -58,8 +58,7 @@ export interface StandardPayloadParams {
 }
 
 /**
- * Builds a standardized webhook payload with the new unified structure.
- * This is the primary function for sending messages.
+ * Builds a standardized webhook payload for message sending.
  */
 export function buildStandardPayload(params: StandardPayloadParams): StandardizedPayload {
   return {
@@ -117,31 +116,118 @@ export function getActionForNodeType(nodeType: string): string {
   return NODE_TYPE_TO_ACTION[nodeType] || `message.send_${nodeType}`;
 }
 
-// ============= Legacy support (can be removed after full migration) =============
-
-export interface WebhookPayload {
+// ============= Instance Payload =============
+export interface InstancePayload {
   action: string;
-  body: Record<string, unknown>;
-  webhookUrl: string;
-  executionMode: "production" | "test";
-  timestamp: string;
+  instance: {
+    id: string;
+    name: string;
+    phone: string;
+    provider: string;
+    externalId: string;
+    externalToken: string;
+  };
+  connection?: {
+    method: "qr" | "phone";
+    origin: string;
+  };
 }
 
-/**
- * @deprecated Use buildStandardPayload instead
- * Builds a legacy webhook payload - kept for backward compatibility
- */
-export function buildWebhookPayload(
-  action: string,
-  body: Record<string, unknown>,
-  webhookUrl: string,
-  mode: "production" | "test" = "production"
-): WebhookPayload {
+export function buildInstancePayload(params: {
+  action: string;
+  instance: {
+    id: string;
+    name: string;
+    phone?: string;
+    provider: string;
+    externalId?: string;
+    externalToken?: string;
+  };
+  connection?: {
+    method: "qr" | "phone";
+    origin: string;
+  };
+}): InstancePayload {
   return {
-    action,
-    body,
-    webhookUrl,
-    executionMode: mode,
-    timestamp: new Date().toISOString(),
+    action: params.action,
+    instance: {
+      id: params.instance.id,
+      name: params.instance.name,
+      phone: params.instance.phone || "",
+      provider: params.instance.provider,
+      externalId: params.instance.externalId || "",
+      externalToken: params.instance.externalToken || "",
+    },
+    ...(params.connection && { connection: params.connection }),
+  };
+}
+
+// ============= Group Payload =============
+export interface GroupPayload {
+  action: string;
+  instance: {
+    id: string;
+    name: string;
+    phone: string;
+    provider: string;
+    externalId: string;
+    externalToken: string;
+  };
+  campaign?: {
+    id: string;
+    name: string;
+  };
+}
+
+export function buildGroupPayload(params: {
+  action: string;
+  instance: {
+    id: string;
+    name: string;
+    phone?: string;
+    provider: string;
+    externalId?: string;
+    externalToken?: string;
+  };
+  campaign?: {
+    id: string;
+    name?: string;
+  };
+}): GroupPayload {
+  return {
+    action: params.action,
+    instance: {
+      id: params.instance.id,
+      name: params.instance.name,
+      phone: params.instance.phone || "",
+      provider: params.instance.provider,
+      externalId: params.instance.externalId || "",
+      externalToken: params.instance.externalToken || "",
+    },
+    ...(params.campaign && {
+      campaign: {
+        id: params.campaign.id,
+        name: params.campaign.name || "",
+      },
+    }),
+  };
+}
+
+// ============= Test Payload =============
+export interface TestPayload {
+  action: string;
+  test: {
+    message: string;
+    timestamp: string;
+  };
+}
+
+export function buildTestPayload(): TestPayload {
+  return {
+    action: "test.connection",
+    test: {
+      message: "Test connection from dispatchOne",
+      timestamp: new Date().toISOString(),
+    },
   };
 }

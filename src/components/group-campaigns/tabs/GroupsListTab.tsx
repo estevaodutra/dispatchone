@@ -10,7 +10,7 @@ import { useInstances } from "@/hooks/useInstances";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
-import { buildWebhookPayload } from "@/lib/webhook-utils";
+import { buildGroupPayload } from "@/lib/webhook-utils";
 import { toast } from "sonner";
 
 interface WhatsAppGroup {
@@ -90,20 +90,21 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     try {
       // Usar URL dinâmica do webhook
       const webhookUrl = getWebhookUrlForCategory("groups", configs);
-      const payload = buildWebhookPayload(
-        "group.list",
-        {
-          instanceId: instance.id,
-          instanceName: instance.name,
-          phone: instance.phoneNumber,
+      const payload = buildGroupPayload({
+        action: "group.list",
+        instance: {
+          id: instance.id,
+          name: instance.name,
+          phone: instance.phoneNumber || "",
           provider: instance.provider,
-          status: instance.status,
-          externalInstanceId: instance.idInstance,
-          externalInstanceToken: instance.tokenInstance,
-          campaignId: campaignId,
+          externalId: instance.idInstance || "",
+          externalToken: instance.tokenInstance || "",
         },
-        webhookUrl
-      );
+        campaign: campaignId ? {
+          id: campaignId,
+          name: "",
+        } : undefined,
+      });
       
       const response = await fetch(
         webhookUrl,

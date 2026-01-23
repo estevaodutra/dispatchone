@@ -129,14 +129,18 @@ export function useWebhookConfigs() {
 
   const testWebhook = async (url: string): Promise<boolean> => {
     try {
+      const payload = {
+        action: "test.connection",
+        test: {
+          message: "Test connection from dispatchOne",
+          timestamp: new Date().toISOString(),
+        },
+      };
+      
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "test.connection",
-          timestamp: new Date().toISOString(),
-          data: { message: "Test connection from dispatchOne" },
-        }),
+        body: JSON.stringify(payload),
         mode: "no-cors",
       });
       
