@@ -5,8 +5,8 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Instance } from "@/hooks/useInstances";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
+import { getWebhookUrlForCategory, WebhookConfig } from "@/hooks/useWebhookConfigs";
 
-const SEND_MESSAGE_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
 // Converte quebras de linha para formato CRLF (padrão WhatsApp/n8n)
 const formatLineBreaks = (text: string | null | undefined): string | null => {
@@ -325,8 +325,12 @@ export function useGroupMessages(groupCampaignId: string | null) {
       sequenceNodes?: SequenceNode[];
       onProgress?: (progress: SendProgress) => void;
       abortSignal?: AbortSignal;
+      webhookConfigs?: WebhookConfig[];
     }) => {
-      const { message, campaign, instance, groups, trigger, sequenceNodes, onProgress, abortSignal } = params;
+      const { message, campaign, instance, groups, trigger, sequenceNodes, onProgress, abortSignal, webhookConfigs } = params;
+      
+      // Obter URL do webhook dinâmica (usa config do usuário ou fallback)
+      const webhookUrl = getWebhookUrlForCategory("messages", webhookConfigs);
       
       // If no sequence nodes, send as simple message
       if (!sequenceNodes || sequenceNodes.length === 0) {
@@ -366,7 +370,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
           triggeredAt: new Date().toISOString(),
         };
 
-        const response = await fetch(SEND_MESSAGE_WEBHOOK, {
+        const response = await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
@@ -533,7 +537,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
           
           try {
             // Send to webhook
-            const response = await fetch(SEND_MESSAGE_WEBHOOK, {
+            const response = await fetch(webhookUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(payload),

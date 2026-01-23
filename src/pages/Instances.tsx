@@ -13,6 +13,7 @@ import { MessageSquare, Settings, RefreshCw, CheckCircle, XCircle, Plus, Loader2
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 import { useInstances, Instance, InstanceFunction, mapFrontendStatusToDb } from "@/hooks/useInstances";
+import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Função para formatar número de telefone brasileiro
@@ -74,6 +75,7 @@ const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: bo
 export default function Instances() {
   const { toast } = useToast();
   const { t } = useLanguage();
+  const { configs } = useWebhookConfigs();
   const { 
     instances, 
     isLoading, 
@@ -132,7 +134,8 @@ export default function Instances() {
 
   const triggerConnectionWebhook = async (method: "qr" | "phone") => {
     if (!selectedInstance) return;
-    const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_generate_qrcode";
+    // Usar URL dinâmica do webhook
+    const webhookUrl = getWebhookUrlForCategory("instance", configs);
     setIsConnecting(true);
     setWebhookResponse(null);
     try {

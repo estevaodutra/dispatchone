@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { webhookCategories } from "@/data/webhook-categories";
+import { webhookCategories, WebhookCategory } from "@/data/webhook-categories";
 
 export interface WebhookConfig {
   id: string;
@@ -15,6 +15,25 @@ export interface WebhookConfig {
   created_at: string | null;
   updated_at: string | null;
 }
+
+// Função utilitária EXPORTADA para obter a URL do webhook de uma categoria
+// Pode ser usada fora do hook com configs passados como parâmetro
+export const getWebhookUrlForCategory = (
+  categoryId: string,
+  configs: WebhookConfig[] | undefined
+): string => {
+  // 1. Busca configuração do usuário
+  const userConfig = configs?.find(c => c.category === categoryId);
+  
+  // 2. Se existe, está ativa e tem URL, usa a URL do usuário
+  if (userConfig?.url && userConfig.is_active) {
+    return userConfig.url;
+  }
+  
+  // 3. Fallback: URL padrão da categoria
+  const category = webhookCategories.find((c: WebhookCategory) => c.id === categoryId);
+  return category?.defaultUrl || "";
+};
 
 export function useWebhookConfigs() {
   const { user } = useAuth();
