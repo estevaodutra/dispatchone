@@ -17,7 +17,7 @@ export const webhookCategories: WebhookCategory[] = [
     id: "messages",
     name: "Mensagens",
     description: "Eventos relacionados a envio e recebimento de mensagens",
-    defaultUrl: "",
+    defaultUrl: "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages",
     actions: [
       { id: "message.sent", name: "message.sent", description: "Mensagem enviada com sucesso" },
       { id: "message.delivered", name: "message.delivered", description: "Mensagem entregue ao destinatário" },
@@ -30,7 +30,7 @@ export const webhookCategories: WebhookCategory[] = [
     id: "instance",
     name: "Instância",
     description: "Eventos de status e conexão da instância WhatsApp",
-    defaultUrl: "",
+    defaultUrl: "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_generate_qrcode",
     actions: [
       { id: "instance.connected", name: "instance.connected", description: "Instância conectada" },
       { id: "instance.disconnected", name: "instance.disconnected", description: "Instância desconectada" },
@@ -53,7 +53,7 @@ export const webhookCategories: WebhookCategory[] = [
     id: "groups",
     name: "Grupos",
     description: "Eventos de grupos do WhatsApp",
-    defaultUrl: "",
+    defaultUrl: "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_get_groups",
     actions: [
       { id: "group.created", name: "group.created", description: "Grupo criado" },
       { id: "group.member_joined", name: "group.member_joined", description: "Membro entrou no grupo" },

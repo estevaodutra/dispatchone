@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useInstances } from "@/hooks/useInstances";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useLanguage } from "@/i18n/LanguageContext";
+import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { toast } from "sonner";
 
 interface WhatsAppGroup {
@@ -32,6 +33,7 @@ interface GroupsListTabProps {
 export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const { t } = useLanguage();
   const { instances, isLoading: instancesLoading } = useInstances();
+  const { configs } = useWebhookConfigs();
   const { 
     linkedGroups, 
     isLoading: linkedLoading, 
@@ -46,6 +48,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
 
@@ -84,8 +87,10 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     setSelectedGroups([]);
     
     try {
+      // Usar URL dinâmica do webhook
+      const webhookUrl = getWebhookUrlForCategory("groups", configs);
       const response = await fetch(
-        "https://n8n-n8n.nuwfic.easypanel.host/webhook/zapi_get_groups",
+        webhookUrl,
         {
           method: "POST",
           headers: {
