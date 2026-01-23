@@ -869,6 +869,47 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_message_executions: {
+        Row: {
+          executed_at: string | null
+          groups_count: number | null
+          id: string
+          message_id: string
+          scheduled_date: string
+          scheduled_time: string
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          executed_at?: string | null
+          groups_count?: number | null
+          id?: string
+          message_id: string
+          scheduled_date: string
+          scheduled_time: string
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          executed_at?: string | null
+          groups_count?: number | null
+          id?: string
+          message_id?: string
+          scheduled_date?: string
+          scheduled_time?: string
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_message_executions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "group_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_connections: {
         Row: {
           condition_path: string | null
