@@ -6,7 +6,7 @@ import { Instance } from "@/hooks/useInstances";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
 import { getWebhookUrlForCategory, WebhookConfig } from "@/hooks/useWebhookConfigs";
-import { buildWebhookPayload, getActionForNodeType } from "@/lib/webhook-utils";
+import { buildStandardPayload, getActionForNodeType } from "@/lib/webhook-utils";
 
 
 // Converte quebras de linha para formato CRLF (padrão WhatsApp/n8n)
@@ -328,66 +328,68 @@ export function useGroupMessages(groupCampaignId: string | null) {
       abortSignal?: AbortSignal;
       webhookConfigs?: WebhookConfig[];
     }) => {
-      const { message, campaign, instance, groups, trigger, sequenceNodes, onProgress, abortSignal, webhookConfigs } = params;
+      const { message, campaign, instance, groups, sequenceNodes, onProgress, abortSignal, webhookConfigs } = params;
       
       // Obter URL do webhook dinâmica (usa config do usuário ou fallback)
       const webhookUrl = getWebhookUrlForCategory("messages", webhookConfigs);
       
-      // If no sequence nodes, send as simple message
+      // If no sequence nodes, send as simple message using standard payload
       if (!sequenceNodes || sequenceNodes.length === 0) {
         // Determine action based on media presence
         const action = message.mediaUrl ? "message.send_media" : "message.send_text";
         
-        const payload = buildWebhookPayload(
-          action,
-          {
-            instance: {
-              id: instance.id,
-              name: instance.name,
-              phone: instance.phoneNumber,
-              provider: instance.provider,
-              externalInstanceId: instance.idInstance,
-              externalInstanceToken: instance.tokenInstance,
+        // Build node config for simple message
+        const simpleNodeConfig: Record<string, unknown> = {
+          text: formatLineBreaks(message.content),
+          sendPrivate: message.sendPrivate,
+          mentionMember: message.mentionMember,
+        };
+        
+        if (message.mediaUrl) {
+          simpleNodeConfig.url = message.mediaUrl;
+          simpleNodeConfig.mediaType = message.mediaType;
+          simpleNodeConfig.caption = formatLineBreaks(message.mediaCaption);
+        }
+
+        // Send to each group with standardized payload
+        for (const group of groups) {
+          const payload = buildStandardPayload({
+            action,
+            node: {
+              id: message.id,
+              type: message.mediaUrl ? "media" : "text",
+              order: 0,
+              config: simpleNodeConfig,
             },
             campaign: {
               id: campaign.id,
               name: campaign.name,
-              status: campaign.status,
             },
-            groups: groups.map(g => ({
-              id: g.id,
-              groupJid: g.groupJid,
-              groupName: g.groupName,
-            })),
-            message_content: {
-              text: formatLineBreaks(message.content),
-              variables: message.variables || {},
-              mediaUrl: message.mediaUrl || null,
-              mediaType: message.mediaType || null,
-              mediaCaption: formatLineBreaks(message.mediaCaption),
+            instance: {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phoneNumber || "",
+              provider: instance.provider,
+              externalId: instance.idInstance || "",
+              externalToken: instance.tokenInstance || "",
             },
-            message_set: {
-              id: message.id,
-              type: message.type,
-              sendPrivate: message.sendPrivate,
-              mentionMember: message.mentionMember,
+            destination: {
+              jid: group.groupJid,
+              name: group.groupName,
             },
-            trigger,
-            triggeredAt: new Date().toISOString(),
-          },
-          webhookUrl
-        );
+          });
 
-        const response = await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          signal: abortSignal,
-        });
+          const response = await fetch(webhookUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: abortSignal,
+          });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Falha ao enviar mensagem: ${errorText}`);
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Falha ao enviar mensagem: ${errorText}`);
+          }
         }
 
         return { success: true, nodesProcessed: 0, groupsProcessed: groups.length };
@@ -479,50 +481,32 @@ export function useGroupMessages(groupCampaignId: string | null) {
           // Get dynamic action based on node type
           const action = getActionForNodeType(node.nodeType);
           
-          // Build individual payload for this node + group
-          const payload = buildWebhookPayload(
+          // Build standardized payload for this node + group
+          const payload = buildStandardPayload({
             action,
-            {
-              instance: {
-                id: instance.id,
-                name: instance.name,
-                phone: instance.phoneNumber,
-                provider: instance.provider,
-                externalInstanceId: instance.idInstance,
-                externalInstanceToken: instance.tokenInstance,
-              },
-              campaign: {
-                id: campaign.id,
-                name: campaign.name,
-                status: campaign.status,
-              },
-              group: {
-                id: group.id,
-                groupJid: group.groupJid,
-                groupName: group.groupName,
-              },
-              node: {
-                id: node.id,
-                nodeType: node.nodeType,
-                nodeOrder: node.nodeOrder,
-                config: formatNodeConfig(node.config, node.nodeType),
-              },
-              execution: {
-                sequenceId: message.sequenceId,
-                totalNodes,
-                currentNode: nodeIndex + 1,
-                triggeredAt: new Date().toISOString(),
-              },
-              message_set: {
-                id: message.id,
-                type: message.type,
-                sendPrivate: message.sendPrivate,
-                mentionMember: message.mentionMember,
-              },
-              trigger,
+            node: {
+              id: node.id,
+              type: node.nodeType,
+              order: node.nodeOrder,
+              config: formatNodeConfig(node.config, node.nodeType),
             },
-            webhookUrl
-          );
+            campaign: {
+              id: campaign.id,
+              name: campaign.name,
+            },
+            instance: {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phoneNumber || "",
+              provider: instance.provider,
+              externalId: instance.idInstance || "",
+              externalToken: instance.tokenInstance || "",
+            },
+            destination: {
+              jid: group.groupJid,
+              name: group.groupName,
+            },
+          });
           
           // Get current user for logging
           const { data: { user: currentUser } } = await supabase.auth.getUser();
