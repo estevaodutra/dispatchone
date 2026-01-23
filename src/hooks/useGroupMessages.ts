@@ -6,6 +6,7 @@ import { Instance } from "@/hooks/useInstances";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
 import { getWebhookUrlForCategory, WebhookConfig } from "@/hooks/useWebhookConfigs";
+import { buildWebhookPayload, getActionForNodeType } from "@/lib/webhook-utils";
 
 
 // Converte quebras de linha para formato CRLF (padrão WhatsApp/n8n)
@@ -334,41 +335,48 @@ export function useGroupMessages(groupCampaignId: string | null) {
       
       // If no sequence nodes, send as simple message
       if (!sequenceNodes || sequenceNodes.length === 0) {
-        const payload = {
-          instance: {
-            id: instance.id,
-            name: instance.name,
-            phone: instance.phoneNumber,
-            provider: instance.provider,
-            externalInstanceId: instance.idInstance,
-            externalInstanceToken: instance.tokenInstance,
+        // Determine action based on media presence
+        const action = message.mediaUrl ? "message.send_media" : "message.send_text";
+        
+        const payload = buildWebhookPayload(
+          action,
+          {
+            instance: {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phoneNumber,
+              provider: instance.provider,
+              externalInstanceId: instance.idInstance,
+              externalInstanceToken: instance.tokenInstance,
+            },
+            campaign: {
+              id: campaign.id,
+              name: campaign.name,
+              status: campaign.status,
+            },
+            groups: groups.map(g => ({
+              id: g.id,
+              groupJid: g.groupJid,
+              groupName: g.groupName,
+            })),
+            message_content: {
+              text: formatLineBreaks(message.content),
+              variables: message.variables || {},
+              mediaUrl: message.mediaUrl || null,
+              mediaType: message.mediaType || null,
+              mediaCaption: formatLineBreaks(message.mediaCaption),
+            },
+            message_set: {
+              id: message.id,
+              type: message.type,
+              sendPrivate: message.sendPrivate,
+              mentionMember: message.mentionMember,
+            },
+            trigger,
+            triggeredAt: new Date().toISOString(),
           },
-          campaign: {
-            id: campaign.id,
-            name: campaign.name,
-            status: campaign.status,
-          },
-          groups: groups.map(g => ({
-            id: g.id,
-            groupJid: g.groupJid,
-            groupName: g.groupName,
-          })),
-          message_content: {
-            text: formatLineBreaks(message.content),
-            variables: message.variables || {},
-            mediaUrl: message.mediaUrl || null,
-            mediaType: message.mediaType || null,
-            mediaCaption: formatLineBreaks(message.mediaCaption),
-          },
-          message_set: {
-            id: message.id,
-            type: message.type,
-            sendPrivate: message.sendPrivate,
-            mentionMember: message.mentionMember,
-          },
-          trigger,
-          triggeredAt: new Date().toISOString(),
-        };
+          webhookUrl
+        );
 
         const response = await fetch(webhookUrl, {
           method: "POST",
@@ -468,46 +476,53 @@ export function useGroupMessages(groupCampaignId: string | null) {
             groupResults: [],
           });
           
+          // Get dynamic action based on node type
+          const action = getActionForNodeType(node.nodeType);
+          
           // Build individual payload for this node + group
-          const payload = {
-            instance: {
-              id: instance.id,
-              name: instance.name,
-              phone: instance.phoneNumber,
-              provider: instance.provider,
-              externalInstanceId: instance.idInstance,
-              externalInstanceToken: instance.tokenInstance,
+          const payload = buildWebhookPayload(
+            action,
+            {
+              instance: {
+                id: instance.id,
+                name: instance.name,
+                phone: instance.phoneNumber,
+                provider: instance.provider,
+                externalInstanceId: instance.idInstance,
+                externalInstanceToken: instance.tokenInstance,
+              },
+              campaign: {
+                id: campaign.id,
+                name: campaign.name,
+                status: campaign.status,
+              },
+              group: {
+                id: group.id,
+                groupJid: group.groupJid,
+                groupName: group.groupName,
+              },
+              node: {
+                id: node.id,
+                nodeType: node.nodeType,
+                nodeOrder: node.nodeOrder,
+                config: formatNodeConfig(node.config, node.nodeType),
+              },
+              execution: {
+                sequenceId: message.sequenceId,
+                totalNodes,
+                currentNode: nodeIndex + 1,
+                triggeredAt: new Date().toISOString(),
+              },
+              message_set: {
+                id: message.id,
+                type: message.type,
+                sendPrivate: message.sendPrivate,
+                mentionMember: message.mentionMember,
+              },
+              trigger,
             },
-            campaign: {
-              id: campaign.id,
-              name: campaign.name,
-              status: campaign.status,
-            },
-            group: {
-              id: group.id,
-              groupJid: group.groupJid,
-              groupName: group.groupName,
-            },
-            node: {
-              id: node.id,
-              nodeType: node.nodeType,
-              nodeOrder: node.nodeOrder,
-              config: formatNodeConfig(node.config, node.nodeType),
-            },
-            execution: {
-              sequenceId: message.sequenceId,
-              totalNodes,
-              currentNode: nodeIndex + 1,
-              triggeredAt: new Date().toISOString(),
-            },
-            message_set: {
-              id: message.id,
-              type: message.type,
-              sendPrivate: message.sendPrivate,
-              mentionMember: message.mentionMember,
-            },
-            trigger,
-          };
+            webhookUrl
+          );
           
           // Get current user for logging
           const { data: { user: currentUser } } = await supabase.auth.getUser();

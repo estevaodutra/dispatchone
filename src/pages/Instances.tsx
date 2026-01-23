@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 import { useInstances, Instance, InstanceFunction, mapFrontendStatusToDb } from "@/hooks/useInstances";
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
+import { buildWebhookPayload } from "@/lib/webhook-utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Função para formatar número de telefone brasileiro
@@ -139,21 +140,26 @@ export default function Instances() {
     setIsConnecting(true);
     setWebhookResponse(null);
     try {
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
+      const payload = buildWebhookPayload(
+        "instance.connect",
+        {
           instanceId: selectedInstance.id,
           instanceName: selectedInstance.name,
           provider: selectedInstance.provider,
           function: selectedInstance.function,
           connectionMethod: method,
-          timestamp: new Date().toISOString(),
           origin: window.location.origin,
           phoneNumber: method === "phone" && selectedInstance.phoneNumber ? selectedInstance.phoneNumber.replace(/\D/g, '') : undefined
-        })
+        },
+        webhookUrl
+      );
+      
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
       });
       const data = await response.json();
       console.log("Webhook response:", data);
