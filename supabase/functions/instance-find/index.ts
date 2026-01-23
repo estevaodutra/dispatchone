@@ -162,14 +162,13 @@ Deno.serve(async (req) => {
       console.log('Instance not found');
       return new Response(
         JSON.stringify({
-          success: false,
-          error: {
-            code: 'INSTANCE_NOT_FOUND',
-            message: 'Instância não encontrada.'
-          }
+          success: true,
+          found: false,
+          instance: null,
+          message: 'Instância não encontrada.'
         }),
         {
-          status: 404,
+          status: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         }
       );
@@ -181,6 +180,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: true,
+        found: true,
         instance: {
           id: foundInstance.id,
           name: foundInstance.name,
