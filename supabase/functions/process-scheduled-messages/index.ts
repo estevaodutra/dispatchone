@@ -56,7 +56,75 @@ interface InstanceData {
   status: string;
 }
 
-// ============= Formatting helpers (copied from useGroupMessages.ts) =============
+// ============= Standardized Payload Builder =============
+
+interface StandardizedPayload {
+  body: {
+    action: string;
+    node: {
+      id: string;
+      type: string;
+      order: number;
+      config: Record<string, unknown>;
+    };
+    campaign: {
+      id: string;
+      name: string;
+    };
+    instance: {
+      id: string;
+      name: string;
+      phone: string;
+      provider: string;
+      externalId: string;
+      externalToken: string;
+    };
+    destination: {
+      phone: string;
+      jid: string;
+      name: string;
+    };
+  };
+}
+
+function buildStandardPayload(params: {
+  action: string;
+  node: { id: string; type: string; order: number; config: Record<string, unknown> };
+  campaign: { id: string; name: string };
+  instance: { id: string; name: string; phone: string; provider: string; externalId: string; externalToken: string };
+  destination: { jid: string; name: string };
+}): StandardizedPayload {
+  return {
+    body: {
+      action: params.action,
+      node: {
+        id: params.node.id,
+        type: params.node.type,
+        order: params.node.order,
+        config: params.node.config,
+      },
+      campaign: {
+        id: params.campaign.id,
+        name: params.campaign.name,
+      },
+      instance: {
+        id: params.instance.id,
+        name: params.instance.name,
+        phone: params.instance.phone,
+        provider: params.instance.provider,
+        externalId: params.instance.externalId,
+        externalToken: params.instance.externalToken,
+      },
+      destination: {
+        phone: params.destination.jid,
+        jid: params.destination.jid,
+        name: params.destination.name,
+      },
+    },
+  };
+}
+
+// ============= Formatting helpers =============
 
 // Format line breaks for WhatsApp/n8n (CRLF)
 const formatLineBreaks = (text: string | null | undefined): string | null => {
@@ -136,6 +204,7 @@ const getActionForNodeType = (nodeType: string): string => {
     list: "message.send_list",
     poll: "message.send_poll",
     reaction: "message.send_reaction",
+    media: "message.send_media",
   };
   return actionMap[nodeType] || "message.send_text";
 };
@@ -349,38 +418,45 @@ Deno.serve(async (req) => {
           // Simple message without sequence
           const action = message.media_url ? "message.send_media" : "message.send_text";
           
+          // Build node config for simple message
+          const simpleNodeConfig: Record<string, unknown> = {
+            text: formatLineBreaks(message.content),
+            sendPrivate: message.send_private,
+            mentionMember: message.mention_member,
+          };
+          
+          if (message.media_url) {
+            simpleNodeConfig.url = message.media_url;
+            simpleNodeConfig.mediaType = message.media_type;
+            simpleNodeConfig.caption = formatLineBreaks(message.media_caption);
+          }
+          
           for (const group of linkedGroups) {
-            const payload = {
+            const payload = buildStandardPayload({
               action,
-              body: {
-                messageId: message.id,
-                campaignId: campaign.id,
-                campaignName: campaign.name,
-                content: formatLineBreaks(message.content),
-                mediaUrl: message.media_url,
-                mediaType: message.media_type,
-                mediaCaption: formatLineBreaks(message.media_caption),
-                mentionMember: message.mention_member,
-                sendPrivate: message.send_private,
+              node: {
+                id: message.id,
+                type: message.media_url ? "media" : "text",
+                order: 0,
+                config: simpleNodeConfig,
+              },
+              campaign: {
+                id: campaign.id,
+                name: campaign.name,
               },
               instance: {
                 id: instance.id,
                 name: instance.name,
-                phone: instance.phone,
+                phone: instance.phone || "",
                 provider: instance.provider,
-                externalId: instance.external_instance_id,
-                externalToken: instance.external_instance_token,
+                externalId: instance.external_instance_id || "",
+                externalToken: instance.external_instance_token || "",
               },
-              group: {
+              destination: {
                 jid: group.group_jid,
                 name: group.group_name,
               },
-              userId: message.user_id,
-              scheduledTime: currentTime,
-              scheduledDate: todayDate,
-              webhookUrl,
-              executionMode: "production",
-            };
+            });
 
             try {
               const response = await fetch(webhookUrl, {
@@ -455,40 +531,31 @@ Deno.serve(async (req) => {
               const action = getActionForNodeType(node.node_type);
               const formattedConfig = formatNodeConfig(node.config, node.node_type);
               
-              const payload = {
+              const payload = buildStandardPayload({
                 action,
-                body: {
-                  node: {
-                    id: node.id,
-                    type: node.node_type,
-                    order: node.node_order,
-                    config: formattedConfig,
-                  },
-                  messageId: message.id,
-                  campaignId: campaign.id,
-                  campaignName: campaign.name,
-                  sequenceId: message.sequence_id,
-                  mentionMember: message.mention_member,
-                  sendPrivate: message.send_private,
+                node: {
+                  id: node.id,
+                  type: node.node_type,
+                  order: node.node_order,
+                  config: formattedConfig,
+                },
+                campaign: {
+                  id: campaign.id,
+                  name: campaign.name,
                 },
                 instance: {
                   id: instance.id,
                   name: instance.name,
-                  phone: instance.phone,
+                  phone: instance.phone || "",
                   provider: instance.provider,
-                  externalId: instance.external_instance_id,
-                  externalToken: instance.external_instance_token,
+                  externalId: instance.external_instance_id || "",
+                  externalToken: instance.external_instance_token || "",
                 },
-                group: {
+                destination: {
                   jid: group.group_jid,
                   name: group.group_name,
                 },
-                userId: message.user_id,
-                scheduledTime: currentTime,
-                scheduledDate: todayDate,
-                webhookUrl,
-                executionMode: "production",
-              };
+              });
 
               try {
                 const response = await fetch(webhookUrl, {
