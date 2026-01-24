@@ -589,6 +589,38 @@ Deno.serve(async (req) => {
 
             if (response.ok) {
               console.log(`[ExecuteMessage] ✅ Node ${node.node_type} sent to ${group.group_name}`);
+              
+              // If this is a poll node and send was successful, register in poll_messages
+              if (node.node_type === "poll" && (zaapId || externalMessageId)) {
+                const pollConfig = node.config as Record<string, unknown>;
+                const pollOptions = (pollConfig.options as string[]) || [];
+                const optionActions = (pollConfig.optionActions as Record<string, unknown>) || {};
+                
+                console.log(`[ExecuteMessage] Registering poll in poll_messages table`);
+                
+                const { error: pollInsertError } = await supabase
+                  .from("poll_messages")
+                  .insert({
+                    user_id: typedMessage.user_id,
+                    message_id: externalMessageId || "",
+                    zaap_id: zaapId,
+                    node_id: node.id,
+                    sequence_id: effectiveSequenceId,
+                    campaign_id: typedCampaign.id,
+                    group_jid: group.group_jid,
+                    instance_id: instance.id,
+                    question_text: (pollConfig.question as string) || (pollConfig.title as string) || "",
+                    options: pollOptions,
+                    option_actions: optionActions,
+                    sent_at: new Date().toISOString(),
+                  });
+                
+                if (pollInsertError) {
+                  console.error(`[ExecuteMessage] Failed to register poll:`, pollInsertError);
+                } else {
+                  console.log(`[ExecuteMessage] Poll registered: zaap_id=${zaapId}, message_id=${externalMessageId}`);
+                }
+              }
             } else {
               nodesFailed++;
               console.log(`[ExecuteMessage] ❌ Node ${node.node_type} failed for ${group.group_name}: HTTP ${response.status}`);
