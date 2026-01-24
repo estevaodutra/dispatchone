@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,13 +7,15 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
-  X, Plus, Trash2,
+  X, Plus, Trash2, Zap,
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar
 } from "lucide-react";
 import { MediaUploader } from "./MediaUploader";
+import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 
 interface LocalNode {
   id: string;
@@ -53,11 +56,33 @@ const NODE_TITLES: Record<string, { title: string; icon: React.ElementType }> = 
 };
 
 export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProps) {
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [editingOptionIndex, setEditingOptionIndex] = useState<number | null>(null);
+  
   const nodeInfo = NODE_TITLES[node.nodeType] || NODE_TITLES.message;
   const Icon = nodeInfo.icon;
 
   const updateConfig = (key: string, value: unknown) => {
     onUpdate({ ...node.config, [key]: value });
+  };
+
+  // Poll action helpers
+  const getOptionAction = (index: number): PollActionConfig | null => {
+    const optionActions = (node.config.optionActions as Record<string, PollActionConfig>) || {};
+    return optionActions[String(index)] || null;
+  };
+
+  const setOptionAction = (index: number, action: PollActionConfig) => {
+    const optionActions = (node.config.optionActions as Record<string, PollActionConfig>) || {};
+    updateConfig("optionActions", {
+      ...optionActions,
+      [String(index)]: action,
+    });
+  };
+
+  const openActionDialog = (index: number) => {
+    setEditingOptionIndex(index);
+    setActionDialogOpen(true);
   };
 
   return (
@@ -374,33 +399,59 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
                     <Plus className="h-3 w-3 mr-1" /> Adicionar
                   </Button>
                 </div>
-                {((node.config.options as string[]) || ["", "", ""]).map((opt, i) => (
-                  <div key={i} className="flex gap-2">
-                    <Input
-                      placeholder={`Opção ${i + 1}`}
-                      value={opt}
-                      onChange={(e) => {
-                        const options = [...((node.config.options as string[]) || [])];
-                        options[i] = e.target.value;
-                        updateConfig("options", options);
-                      }}
-                    />
-                    {((node.config.options as string[]) || []).length > 2 && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9 shrink-0"
-                        onClick={() => {
+                {((node.config.options as string[]) || ["", "", ""]).map((opt, i) => {
+                  const action = getOptionAction(i);
+                  const hasAction = action && action.actionType !== "none";
+                  
+                  return (
+                    <div key={i} className="flex gap-1">
+                      <Input
+                        placeholder={`Opção ${i + 1}`}
+                        value={opt}
+                        onChange={(e) => {
                           const options = [...((node.config.options as string[]) || [])];
-                          options.splice(i, 1);
+                          options[i] = e.target.value;
                           updateConfig("options", options);
                         }}
-                      >
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                ))}
+                        className="flex-1"
+                      />
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-9 w-9 shrink-0"
+                              onClick={() => openActionDialog(i)}
+                            >
+                              <Zap className={`h-4 w-4 ${hasAction ? getActionIconColor(action?.actionType) : "text-muted-foreground"}`} />
+                              {hasAction && (
+                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary" />
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">
+                            {hasAction ? getActionLabel(action?.actionType) : "Configurar ação"}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                      {((node.config.options as string[]) || []).length > 2 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0"
+                          onClick={() => {
+                            const options = [...((node.config.options as string[]) || [])];
+                            options.splice(i, 1);
+                            updateConfig("options", options);
+                          }}
+                        >
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
               <div className="flex items-center justify-between">
                 <Label>Múltipla escolha</Label>
@@ -412,6 +463,23 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
               <p className="text-xs text-amber-600 dark:text-amber-400">
                 ⚠️ Enquetes funcionam apenas em grupos
               </p>
+              
+              {/* Poll Action Dialog */}
+              <PollActionDialog
+                open={actionDialogOpen}
+                onClose={() => {
+                  setActionDialogOpen(false);
+                  setEditingOptionIndex(null);
+                }}
+                optionIndex={editingOptionIndex ?? 0}
+                optionText={((node.config.options as string[]) || [])[editingOptionIndex ?? 0] || ""}
+                currentAction={editingOptionIndex !== null ? getOptionAction(editingOptionIndex) : null}
+                onSave={(action) => {
+                  if (editingOptionIndex !== null) {
+                    setOptionAction(editingOptionIndex, action);
+                  }
+                }}
+              />
             </>
           )}
 
