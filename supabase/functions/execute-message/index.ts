@@ -14,10 +14,20 @@ const MAX_DELAY_MS = 20000;
 // ============= Types =============
 
 interface ExecuteMessageRequest {
-  messageId: string;
+  messageId?: string;
   campaignId: string;
   groupIds?: string[];
   sequenceId?: string | null;
+  triggerContext?: TriggerContext;
+}
+
+interface TriggerContext {
+  respondentPhone: string;
+  respondentName: string;
+  respondentJid: string;
+  groupJid: string;
+  pollOptionText?: string;
+  sendPrivate: boolean;
 }
 
 interface GroupMessage {
@@ -63,6 +73,7 @@ interface CampaignData {
   name: string;
   status: string;
   instance_id: string;
+  user_id: string;
   instances: InstanceData;
 }
 
@@ -228,33 +239,47 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: ExecuteMessageRequest = await req.json();
-    const { messageId, campaignId, sequenceId } = body;
+    const { messageId, campaignId, sequenceId, triggerContext } = body;
 
-    if (!messageId || !campaignId) {
+    // Check if this is a triggered execution (from poll/webhook) or normal execution
+    const isTriggeredExecution = !!triggerContext && !messageId;
+
+    if (!isTriggeredExecution && (!messageId || !campaignId)) {
       return new Response(
         JSON.stringify({ error: "messageId and campaignId are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[ExecuteMessage] Starting execution for message ${messageId}, campaign ${campaignId}`);
-
-    // Get message details
-    const { data: message, error: messageError } = await supabase
-      .from("group_messages")
-      .select("*")
-      .eq("id", messageId)
-      .single();
-
-    if (messageError || !message) {
-      console.error("[ExecuteMessage] Message not found:", messageError);
+    if (!campaignId) {
       return new Response(
-        JSON.stringify({ error: "Message not found" }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: "campaignId is required" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const typedMessage = message as GroupMessage;
+    console.log(`[ExecuteMessage] Starting execution - triggered: ${isTriggeredExecution}, campaign: ${campaignId}, sequence: ${sequenceId}`);
+
+    // Get message details (only if not triggered execution)
+    let typedMessage: GroupMessage | null = null;
+    
+    if (!isTriggeredExecution && messageId) {
+      const { data: message, error: messageError } = await supabase
+        .from("group_messages")
+        .select("*")
+        .eq("id", messageId)
+        .single();
+
+      if (messageError || !message) {
+        console.error("[ExecuteMessage] Message not found:", messageError);
+        return new Response(
+          JSON.stringify({ error: "Message not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      typedMessage = message as GroupMessage;
+    }
 
     // Get campaign with instance
     const { data: campaign, error: campaignError } = await supabase
@@ -264,6 +289,7 @@ Deno.serve(async (req) => {
         name,
         status,
         instance_id,
+        user_id,
         instances!inner(
           id,
           name,
@@ -295,26 +321,33 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get linked groups
+    // Determine user_id for logging and webhook lookup
+    const userId = typedMessage?.user_id || typedCampaign.user_id;
+    
+    // For triggered execution with sendPrivate, we send to the respondent, not to groups
+    const sendToPrivate = isTriggeredExecution && triggerContext?.sendPrivate;
+    
+    // Get linked groups (not needed for private sends, but we fetch anyway for logging)
     const { data: linkedGroups, error: groupsError } = await supabase
       .from("campaign_groups")
       .select("id, group_jid, group_name")
       .eq("campaign_id", campaignId);
 
-    if (groupsError || !linkedGroups || linkedGroups.length === 0) {
+    // For triggered private sends, we don't need groups
+    if (!sendToPrivate && (groupsError || !linkedGroups || linkedGroups.length === 0)) {
       return new Response(
         JSON.stringify({ error: "No linked groups found" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const groups = linkedGroups as LinkedGroup[];
+    const groups = (linkedGroups || []) as LinkedGroup[];
 
     // Get user's webhook config
     const { data: webhookConfig } = await supabase
       .from("webhook_configs")
       .select("url, is_active")
-      .eq("user_id", typedMessage.user_id)
+      .eq("user_id", userId)
       .eq("category", "messages")
       .maybeSingle();
 
@@ -324,7 +357,7 @@ Deno.serve(async (req) => {
 
     // Get sequence nodes if sequence is linked
     let sequenceNodes: SequenceNode[] = [];
-    const effectiveSequenceId = sequenceId || typedMessage.sequence_id;
+    const effectiveSequenceId = sequenceId || typedMessage?.sequence_id;
     
     if (effectiveSequenceId) {
       const { data: nodes } = await supabase
@@ -336,14 +369,21 @@ Deno.serve(async (req) => {
       sequenceNodes = (nodes || []) as SequenceNode[];
     }
 
-    console.log(`[ExecuteMessage] ${sequenceNodes.length} sequence nodes, ${groups.length} groups, webhook: ${webhookUrl}`);
+    console.log(`[ExecuteMessage] ${sequenceNodes.length} sequence nodes, triggered: ${isTriggeredExecution}, sendPrivate: ${sendToPrivate}, webhook: ${webhookUrl}`);
 
     let nodesProcessed = 0;
     let nodesFailed = 0;
 
     // ============= NODE-FIRST ORCHESTRATION =============
     if (sequenceNodes.length === 0) {
-      // Simple message without sequence
+      // Simple message without sequence - only valid if we have a typedMessage
+      if (!typedMessage) {
+        return new Response(
+          JSON.stringify({ error: "No sequence nodes found and no message provided" }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      
       const action = typedMessage.media_url ? "message.send_media" : "message.send_text";
       
       const simpleNodeConfig: Record<string, unknown> = {
@@ -391,7 +431,7 @@ Deno.serve(async (req) => {
         const { data: logEntry } = await supabase
           .from("group_message_logs")
           .insert({
-            user_id: typedMessage.user_id,
+            user_id: userId,
             group_campaign_id: typedCampaign.id,
             message_id: typedMessage.id,
             node_type: "simple_message",
@@ -474,6 +514,27 @@ Deno.serve(async (req) => {
       // ============= SEQUENCE NODE-BY-NODE PROCESSING =============
       const sortedNodes = [...sequenceNodes].sort((a, b) => a.node_order - b.node_order);
 
+      // Helper function to replace variables in text
+      const replaceVariables = (text: string): string => {
+        if (!text) return text;
+        let result = text;
+        if (triggerContext) {
+          result = result.replace(/\{\{name\}\}/g, triggerContext.respondentName || "");
+          result = result.replace(/\{\{phone\}\}/g, triggerContext.respondentPhone || "");
+          result = result.replace(/\{\{option\}\}/g, triggerContext.pollOptionText || "");
+        }
+        return result;
+      };
+
+      // Determine destinations based on sendToPrivate flag
+      const destinations = sendToPrivate && triggerContext
+        ? [{ 
+            group_jid: triggerContext.respondentJid, 
+            group_name: triggerContext.respondentName || triggerContext.respondentPhone,
+            isPrivate: true
+          }]
+        : groups.map(g => ({ ...g, isPrivate: false }));
+
       for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
         const node = sortedNodes[nodeIndex];
         
@@ -493,10 +554,20 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Send this node to ALL groups
-        for (const group of groups) {
+        // Send this node to all destinations
+        for (const dest of destinations) {
           const action = getActionForNodeType(node.node_type);
+          
+          // Clone and format config, applying variable replacement
           const formattedConfig = formatNodeConfig(node.config, node.node_type);
+          
+          // Replace variables in text fields
+          const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question"];
+          textFields.forEach((field) => {
+            if (typeof formattedConfig[field] === "string") {
+              formattedConfig[field] = replaceVariables(formattedConfig[field] as string);
+            }
+          });
           
           const payload = buildStandardPayload({
             action,
@@ -519,8 +590,8 @@ Deno.serve(async (req) => {
               externalToken: instance.external_instance_token || "",
             },
             destination: {
-              jid: group.group_jid,
-              name: group.group_name,
+              jid: dest.group_jid,
+              name: dest.group_name,
             },
           });
 
@@ -530,14 +601,15 @@ Deno.serve(async (req) => {
           const { data: logEntry } = await supabase
             .from("group_message_logs")
             .insert({
-              user_id: typedMessage.user_id,
+              user_id: userId,
               group_campaign_id: typedCampaign.id,
-              message_id: typedMessage.id,
+              message_id: typedMessage?.id || null,
               sequence_id: effectiveSequenceId,
               node_type: node.node_type,
               node_order: node.node_order,
-              group_jid: group.group_jid,
-              group_name: group.group_name,
+              group_jid: dest.group_jid,
+              group_name: dest.group_name,
+              recipient_phone: dest.isPrivate ? triggerContext?.respondentPhone : null,
               instance_id: instance.id,
               instance_name: instance.name,
               campaign_name: typedCampaign.name,
@@ -588,10 +660,10 @@ Deno.serve(async (req) => {
             }
 
             if (response.ok) {
-              console.log(`[ExecuteMessage] ✅ Node ${node.node_type} sent to ${group.group_name}`);
+              console.log(`[ExecuteMessage] ✅ Node ${node.node_type} sent to ${dest.group_name}${dest.isPrivate ? ' (private)' : ''}`);
               
-              // If this is a poll node and send was successful, register in poll_messages
-              if (node.node_type === "poll" && (zaapId || externalMessageId)) {
+              // If this is a poll node and send was successful, register in poll_messages (only for group sends)
+              if (node.node_type === "poll" && (zaapId || externalMessageId) && !dest.isPrivate) {
                 const pollConfig = node.config as Record<string, unknown>;
                 const pollOptions = (pollConfig.options as string[]) || [];
                 const optionActions = (pollConfig.optionActions as Record<string, unknown>) || {};
@@ -601,13 +673,13 @@ Deno.serve(async (req) => {
                 const { error: pollInsertError } = await supabase
                   .from("poll_messages")
                   .insert({
-                    user_id: typedMessage.user_id,
+                    user_id: userId,
                     message_id: externalMessageId || "",
                     zaap_id: zaapId,
                     node_id: node.id,
                     sequence_id: effectiveSequenceId,
                     campaign_id: typedCampaign.id,
-                    group_jid: group.group_jid,
+                    group_jid: dest.group_jid,
                     instance_id: instance.id,
                     question_text: (pollConfig.question as string) || (pollConfig.title as string) || "",
                     options: pollOptions,
@@ -623,11 +695,11 @@ Deno.serve(async (req) => {
               }
             } else {
               nodesFailed++;
-              console.log(`[ExecuteMessage] ❌ Node ${node.node_type} failed for ${group.group_name}: HTTP ${response.status}`);
+              console.log(`[ExecuteMessage] ❌ Node ${node.node_type} failed for ${dest.group_name}: HTTP ${response.status}`);
             }
           } catch (err) {
             nodesFailed++;
-            console.error(`[ExecuteMessage] ❌ Error sending node to ${group.group_name}:`, err);
+            console.error(`[ExecuteMessage] ❌ Error sending node to ${dest.group_name}:`, err);
             
             if (logEntry?.id) {
               await supabase

@@ -232,38 +232,40 @@ Deno.serve(async (req) => {
         case "start_sequence": {
           const sequenceId = actionConfig.config.sequenceId as string;
           const campaignId = actionConfig.config.campaignId as string || typedPoll.campaign_id;
+          const sendPrivate = actionConfig.config.sendPrivate as boolean || false;
           
           if (sequenceId) {
-            // Find a message trigger to use for execution
-            const { data: triggerMessage } = await supabase
-              .from("group_messages")
-              .select("id")
-              .eq("group_campaign_id", campaignId)
-              .eq("sequence_id", sequenceId)
-              .limit(1)
-              .maybeSingle();
+            console.log(`[HandlePollResponse] Starting sequence ${sequenceId} for ${respondent.phone}`);
+            
+            // Build trigger context with respondent data
+            const triggerContext = {
+              respondentPhone: respondent.phone,
+              respondentName: respondent.name || "",
+              respondentJid: respondent.jid || `${respondent.phone}@s.whatsapp.net`,
+              groupJid: group_jid,
+              pollOptionText: response.option_text || typedPoll.options[response.option_index] || "",
+              sendPrivate: sendPrivate,
+            };
+            
+            // Invoke execute-message function with triggerContext
+            const executeResponse = await fetch(`${supabaseUrl}/functions/v1/execute-message`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                campaignId: campaignId,
+                sequenceId: sequenceId,
+                triggerContext: triggerContext,
+              }),
+            });
 
-            if (triggerMessage) {
-              // Invoke execute-message function
-              const executeResponse = await fetch(`${supabaseUrl}/functions/v1/execute-message`, {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${supabaseServiceKey}`,
-                },
-                body: JSON.stringify({
-                  messageId: triggerMessage.id,
-                  campaignId: campaignId,
-                  sequenceId: sequenceId,
-                }),
-              });
-
-              actionResult = await executeResponse.json();
-              actionSuccess = executeResponse.ok;
-              console.log(`[HandlePollResponse] Sequence started: ${actionSuccess}`);
-            } else {
-              actionResult = { error: "No trigger message found for sequence" };
-            }
+            actionResult = await executeResponse.json();
+            actionSuccess = executeResponse.ok && actionResult.success !== false;
+            console.log(`[HandlePollResponse] Sequence execution result:`, actionResult);
+          } else {
+            actionResult = { error: "No sequence ID configured" };
           }
           break;
         }
