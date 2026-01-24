@@ -59,31 +59,29 @@ interface InstanceData {
 // ============= Standardized Payload Builder =============
 
 interface StandardizedPayload {
-  body: {
-    action: string;
-    node: {
-      id: string;
-      type: string;
-      order: number;
-      config: Record<string, unknown>;
-    };
-    campaign: {
-      id: string;
-      name: string;
-    };
-    instance: {
-      id: string;
-      name: string;
-      phone: string;
-      provider: string;
-      externalId: string;
-      externalToken: string;
-    };
-    destination: {
-      phone: string;
-      jid: string;
-      name: string;
-    };
+  action: string;
+  node: {
+    id: string;
+    type: string;
+    order: number;
+    config: Record<string, unknown>;
+  };
+  campaign: {
+    id: string;
+    name: string;
+  };
+  instance: {
+    id: string;
+    name: string;
+    phone: string;
+    provider: string;
+    externalId: string;
+    externalToken: string;
+  };
+  destination: {
+    phone: string;
+    jid: string;
+    name: string;
   };
 }
 
@@ -95,31 +93,29 @@ function buildStandardPayload(params: {
   destination: { jid: string; name: string };
 }): StandardizedPayload {
   return {
-    body: {
-      action: params.action,
-      node: {
-        id: params.node.id,
-        type: params.node.type,
-        order: params.node.order,
-        config: params.node.config,
-      },
-      campaign: {
-        id: params.campaign.id,
-        name: params.campaign.name,
-      },
-      instance: {
-        id: params.instance.id,
-        name: params.instance.name,
-        phone: params.instance.phone,
-        provider: params.instance.provider,
-        externalId: params.instance.externalId,
-        externalToken: params.instance.externalToken,
-      },
-      destination: {
-        phone: params.destination.jid,
-        jid: params.destination.jid,
-        name: params.destination.name,
-      },
+    action: params.action,
+    node: {
+      id: params.node.id,
+      type: params.node.type,
+      order: params.node.order,
+      config: params.node.config,
+    },
+    campaign: {
+      id: params.campaign.id,
+      name: params.campaign.name,
+    },
+    instance: {
+      id: params.instance.id,
+      name: params.instance.name,
+      phone: params.instance.phone,
+      provider: params.instance.provider,
+      externalId: params.instance.externalId,
+      externalToken: params.instance.externalToken,
+    },
+    destination: {
+      phone: params.destination.jid,
+      jid: params.destination.jid,
+      name: params.destination.name,
     },
   };
 }

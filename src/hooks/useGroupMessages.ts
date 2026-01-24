@@ -5,73 +5,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Instance } from "@/hooks/useInstances";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { CampaignGroup } from "@/hooks/useCampaignGroups";
-import { getWebhookUrlForCategory, WebhookConfig } from "@/hooks/useWebhookConfigs";
-import { buildStandardPayload, getActionForNodeType } from "@/lib/webhook-utils";
+import { WebhookConfig } from "@/hooks/useWebhookConfigs";
 
-
-// Converte quebras de linha para formato CRLF (padrão WhatsApp/n8n)
-const formatLineBreaks = (text: string | null | undefined): string | null => {
-  if (!text) return null;
-  // Normaliza removendo \r existentes, depois adiciona \r antes de cada \n
-  return text.replace(/\r\n/g, '\n').replace(/\n/g, '\r\n');
-};
-
-// Processa config dos nodes para formatar quebras de linha
-const formatNodeConfig = (
-  config: Record<string, unknown>,
-  nodeType: string
-): Record<string, unknown> => {
-  const formatted = { ...config };
-
-  // Campos de texto que precisam de formatação
-  const textFields = ["text", "content", "message", "caption", "title", "description", "footer"];
-
-  textFields.forEach((field) => {
-    if (typeof formatted[field] === "string") {
-      formatted[field] = formatLineBreaks(formatted[field] as string);
-    }
-  });
-
-  // Para nodes de lista, processar sections
-  if (nodeType === "list" && Array.isArray(formatted.sections)) {
-    formatted.sections = (formatted.sections as Array<Record<string, unknown>>).map((section) => ({
-      ...section,
-      title: typeof section.title === "string" ? formatLineBreaks(section.title as string) : section.title,
-      rows: Array.isArray(section.rows)
-        ? (section.rows as Array<Record<string, unknown>>).map((row) => ({
-            ...row,
-            title: typeof row.title === "string" ? formatLineBreaks(row.title as string) : row.title,
-            description: typeof row.description === "string" ? formatLineBreaks(row.description as string) : row.description,
-          }))
-        : section.rows,
-    }));
-  }
-
-  // Para nodes de botões, processar labels
-  if (nodeType === "buttons" && Array.isArray(formatted.buttons)) {
-    formatted.buttons = (formatted.buttons as Array<Record<string, unknown>>).map((btn) => ({
-      ...btn,
-      label: typeof btn.label === "string" ? formatLineBreaks(btn.label as string) : btn.label,
-    }));
-  }
-
-  return formatted;
-};
-
-// Calculate delay in milliseconds from node config
-const calculateDelayMs = (config: Record<string, unknown>): number => {
-  const days = (config.days as number) || 0;
-  const hours = (config.hours as number) || 0;
-  const minutes = (config.minutes as number) || 0;
-  const seconds = (config.seconds as number) || 0;
-  
-  return (
-    days * 86400000 +
-    hours * 3600000 +
-    minutes * 60000 +
-    seconds * 1000
-  );
-};
+// Message type definition
 
 export type MessageType = "welcome" | "farewell" | "scheduled" | "keyword_response";
 
@@ -315,7 +251,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
     },
   });
 
-  // Orchestrated message sending - sends each node individually to webhook
+  // Server-side message execution via Edge Function
   const sendMessageMutation = useMutation({
     mutationFn: async (params: {
       message: GroupMessage;
@@ -328,393 +264,69 @@ export function useGroupMessages(groupCampaignId: string | null) {
       abortSignal?: AbortSignal;
       webhookConfigs?: WebhookConfig[];
     }) => {
-      const { message, campaign, instance, groups, sequenceNodes, onProgress, abortSignal, webhookConfigs } = params;
+      const { message, campaign, groups, sequenceNodes, onProgress } = params;
       
-      // Obter URL do webhook dinâmica (usa config do usuário ou fallback)
-      const webhookUrl = getWebhookUrlForCategory("messages", webhookConfigs);
-      
-      // If no sequence nodes, send as simple message using standard payload
-      if (!sequenceNodes || sequenceNodes.length === 0) {
-        // Determine action based on media presence
-        const action = message.mediaUrl ? "message.send_media" : "message.send_text";
-        
-        // Build node config for simple message
-        const simpleNodeConfig: Record<string, unknown> = {
-          text: formatLineBreaks(message.content),
-          sendPrivate: message.sendPrivate,
-          mentionMember: message.mentionMember,
-        };
-        
-        if (message.mediaUrl) {
-          simpleNodeConfig.url = message.mediaUrl;
-          simpleNodeConfig.mediaType = message.mediaType;
-          simpleNodeConfig.caption = formatLineBreaks(message.mediaCaption);
-        }
+      // Report starting status
+      onProgress?.({
+        currentNode: 1,
+        totalNodes: sequenceNodes?.length || 1,
+        currentGroup: 1,
+        totalGroups: groups.length,
+        groupName: "Iniciando execução no servidor...",
+        nodeType: "starting",
+        status: "sending",
+        groupsCompleted: 0,
+        nodesProcessedTotal: 0,
+        nodesFailed: 0,
+        groupResults: [],
+      });
 
-        // Send to each group with standardized payload
-        for (const group of groups) {
-          const payload = buildStandardPayload({
-            action,
-            node: {
-              id: message.id,
-              type: message.mediaUrl ? "media" : "text",
-              order: 0,
-              config: simpleNodeConfig,
-            },
-            campaign: {
-              id: campaign.id,
-              name: campaign.name,
-            },
-            instance: {
-              id: instance.id,
-              name: instance.name,
-              phone: instance.phoneNumber || "",
-              provider: instance.provider,
-              externalId: instance.idInstance || "",
-              externalToken: instance.tokenInstance || "",
-            },
-            destination: {
-              jid: group.groupJid,
-              name: group.groupName,
-            },
-          });
+      // Call Edge Function for server-side execution
+      const { data, error } = await supabase.functions.invoke("execute-message", {
+        body: {
+          messageId: message.id,
+          campaignId: campaign.id,
+          sequenceId: message.sequenceId,
+        },
+      });
 
-          const response = await fetch(webhookUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            signal: abortSignal,
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Falha ao enviar mensagem: ${errorText}`);
-          }
-        }
-
-        return { success: true, nodesProcessed: 0, groupsProcessed: groups.length };
+      if (error) {
+        throw new Error(error.message || "Erro ao executar mensagem");
       }
 
-      // Sort nodes by nodeOrder
-      const sortedNodes = [...sequenceNodes].sort((a, b) => a.nodeOrder - b.nodeOrder);
-      const totalNodes = sortedNodes.length;
-      const totalGroups = groups.length;
-      
-      let nodesProcessed = 0;
-      let failedNodes = 0;
-      
-      // Track stats per group for final results
-      const groupStats = new Map<string, { success: number; failed: number }>();
-      groups.forEach(g => groupStats.set(g.groupJid, { success: 0, failed: 0 }));
-      
-      // NODE-FIRST: For each node, send to ALL groups before moving to next node
-      for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
-        const node = sortedNodes[nodeIndex];
-        
-        // Check if aborted
-        if (abortSignal?.aborted) {
-          throw new Error("Envio cancelado pelo usuário");
-        }
-        
-        // If it's a DELAY node, wait ONCE (not per group) and then continue
-        if (node.nodeType === "delay") {
-          const delayMs = calculateDelayMs(node.config);
-          
-          if (delayMs > 0) {
-            // Report waiting status
-            onProgress?.({
-              currentNode: nodeIndex + 1,
-              totalNodes,
-              currentGroup: 0,
-              totalGroups,
-              groupName: "Aguardando delay...",
-              nodeType: node.nodeType,
-              status: "waiting",
-              groupsCompleted: 0,
-              nodesProcessedTotal: nodesProcessed,
-              nodesFailed: failedNodes,
-              groupResults: [],
-            });
-            
-            // Wait for the delay (with abort support)
-            await new Promise<void>((resolve, reject) => {
-              const timeoutId = setTimeout(resolve, delayMs);
-              
-              if (abortSignal) {
-                abortSignal.addEventListener("abort", () => {
-                  clearTimeout(timeoutId);
-                  reject(new Error("Envio cancelado pelo usuário"));
-                });
-              }
-            });
-          }
-          
-          nodesProcessed++;
-          console.log(`⏱️ Delay node ${nodeIndex + 1}/${totalNodes} concluído`);
-          continue; // Don't send delay to webhook, move to next node
-        }
-        
-        // For each group - send this node to all groups
-        for (let groupIndex = 0; groupIndex < groups.length; groupIndex++) {
-          const group = groups[groupIndex];
-          
-          // Check if aborted
-          if (abortSignal?.aborted) {
-            throw new Error("Envio cancelado pelo usuário");
-          }
-          
-          // Report sending status
-          onProgress?.({
-            currentNode: nodeIndex + 1,
-            totalNodes,
-            currentGroup: groupIndex + 1,
-            totalGroups,
-            groupName: group.groupName,
-            nodeType: node.nodeType,
-            status: "sending",
-            groupsCompleted: groupIndex,
-            nodesProcessedTotal: nodesProcessed,
-            nodesFailed: failedNodes,
-            groupResults: [],
-          });
-          
-          // Get dynamic action based on node type
-          const action = getActionForNodeType(node.nodeType);
-          
-          // Build standardized payload for this node + group
-          const payload = buildStandardPayload({
-            action,
-            node: {
-              id: node.id,
-              type: node.nodeType,
-              order: node.nodeOrder,
-              config: formatNodeConfig(node.config, node.nodeType),
-            },
-            campaign: {
-              id: campaign.id,
-              name: campaign.name,
-            },
-            instance: {
-              id: instance.id,
-              name: instance.name,
-              phone: instance.phoneNumber || "",
-              provider: instance.provider,
-              externalId: instance.idInstance || "",
-              externalToken: instance.tokenInstance || "",
-            },
-            destination: {
-              jid: group.groupJid,
-              name: group.groupName,
-            },
-          });
-          
-          // Get current user for logging
-          const { data: { user: currentUser } } = await supabase.auth.getUser();
-          const startTime = Date.now();
-          
-          // Create log entry before sending (using raw insert for new columns)
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const { data: logEntry } = await (supabase
-            .from("group_message_logs") as any)
-            .insert({
-              user_id: currentUser?.id,
-              group_campaign_id: campaign.id,
-              sequence_id: message.sequenceId,
-              message_id: message.id,
-              node_type: node.nodeType,
-              node_order: node.nodeOrder,
-              group_jid: group.groupJid,
-              group_name: group.groupName,
-              instance_id: instance.id,
-              instance_name: instance.name,
-              campaign_name: campaign.name,
-              status: "sending",
-              payload: payload,
-            })
-            .select()
-            .single();
-          
-          try {
-            // Send to webhook
-            const response = await fetch(webhookUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-              signal: abortSignal,
-            });
-            
-            const responseTimeMs = Date.now() - startTime;
-            
-            // Parse Z-API response to extract IDs
-            let providerResponse = null;
-            let zaapId = null;
-            let externalMessageId = null;
-            
-            if (!response.ok) {
-              // Try to parse error response as JSON
-              let errorText = '';
-              try {
-                const errorData = await response.json();
-                providerResponse = errorData;
-                errorText = JSON.stringify(errorData);
-              } catch {
-                errorText = await response.text();
-              }
-              
-              // Update log to failed with provider response
-              if (logEntry?.id) {
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                await (supabase
-                  .from("group_message_logs") as any)
-                  .update({ 
-                    status: "failed", 
-                    error_message: errorText,
-                    response_time_ms: responseTimeMs,
-                    provider_response: providerResponse,
-                  })
-                  .eq("id", logEntry.id);
-              }
-              
-              onProgress?.({
-                currentNode: nodeIndex + 1,
-                totalNodes,
-                currentGroup: groupIndex + 1,
-                totalGroups,
-                groupName: group.groupName,
-                nodeType: node.nodeType,
-                status: "error",
-                errorMessage: errorText,
-                groupsCompleted: groupIndex,
-                nodesProcessedTotal: nodesProcessed + 1,
-                nodesFailed: failedNodes + 1,
-                groupResults: [],
-              });
-              
-              // Increment failed counter and CONTINUE (don't throw)
-              const stats = groupStats.get(group.groupJid)!;
-              stats.failed++;
-              failedNodes++;
-              nodesProcessed++;
-              console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} falhou para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
-              continue;
-            }
-            
-            // Parse successful Z-API response
-            try {
-              const responseData = await response.json();
-              providerResponse = responseData;
-              
-              // Z-API returns array, get first item
-              if (Array.isArray(responseData) && responseData.length > 0) {
-                const firstResult = responseData[0];
-                zaapId = firstResult.zaapId || null;
-                externalMessageId = firstResult.messageId || firstResult.id || null;
-              }
-              
-              console.log(`📨 Resposta Z-API:`, { zaapId, externalMessageId });
-            } catch (parseError) {
-              console.warn(`⚠️ Não foi possível parsear resposta JSON:`, parseError);
-            }
-            
-            // Update log to sent with Z-API response data
-            if (logEntry?.id) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              await (supabase
-                .from("group_message_logs") as any)
-                .update({ 
-                  status: "sent",
-                  response_time_ms: responseTimeMs,
-                  provider_response: providerResponse,
-                  zaap_id: zaapId,
-                  external_message_id: externalMessageId,
-                })
-                .eq("id", logEntry.id);
-            }
-            
-            // Success - increment counter and log
-            const stats = groupStats.get(group.groupJid)!;
-            stats.success++;
-            nodesProcessed++;
-            console.log(`✅ Node ${nodeIndex + 1}/${totalNodes} enviado para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName}`);
-          } catch (error) {
-            const catchResponseTimeMs = Date.now() - startTime;
-            const errorMessage = error instanceof Error ? error.message : "Erro desconhecido";
-            
-            // Update log to failed if not already updated
-            if (logEntry?.id) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              await (supabase
-                .from("group_message_logs") as any)
-                .update({ 
-                  status: "failed", 
-                  error_message: errorMessage,
-                  response_time_ms: catchResponseTimeMs,
-                })
-                .eq("id", logEntry.id);
-            }
-            
-            // Report error but CONTINUE to next group (don't throw)
-            onProgress?.({
-              currentNode: nodeIndex + 1,
-              totalNodes,
-              currentGroup: groupIndex + 1,
-              totalGroups,
-              groupName: group.groupName,
-              nodeType: node.nodeType,
-              status: "error",
-              errorMessage: errorMessage,
-              groupsCompleted: groupIndex,
-              nodesProcessedTotal: nodesProcessed + 1,
-              nodesFailed: failedNodes + 1,
-              groupResults: [],
-            });
-            
-            // Increment failed counter
-            const stats = groupStats.get(group.groupJid)!;
-            stats.failed++;
-            failedNodes++;
-            nodesProcessed++;
-            console.log(`❌ Node ${nodeIndex + 1}/${totalNodes} erro para grupo ${groupIndex + 1}/${totalGroups}: ${group.groupName} - ${errorMessage}`);
-            
-            // Only rethrow if it's an abort/cancel error
-            if (errorMessage.includes("cancelado") || errorMessage.includes("aborted")) {
-              throw error;
-            }
-            // Continue to next group
-          }
-        } // End of group loop for this node
-        
-        console.log(`📦 Node ${nodeIndex + 1}/${totalNodes} enviado para todos os ${totalGroups} grupos`);
-      } // End of node loop
-      
-      // Build final groupResults from stats
-      const groupResults: GroupResult[] = groups.map(g => {
-        const stats = groupStats.get(g.groupJid)!;
-        return {
-          groupName: g.groupName,
-          groupJid: g.groupJid,
-          nodesSuccess: stats.success,
-          nodesFailed: stats.failed,
-          completed: true,
-        };
-      });
-      
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
       // Report completion
+      const result = data as { 
+        success: boolean; 
+        nodesProcessed: number; 
+        nodesFailed: number; 
+        groupsProcessed: number;
+        totalTimeMs: number;
+      };
+
       onProgress?.({
-        currentNode: totalNodes,
-        totalNodes,
-        currentGroup: totalGroups,
-        totalGroups,
-        groupName: groups[groups.length - 1]?.groupName || "",
+        currentNode: result.nodesProcessed,
+        totalNodes: result.nodesProcessed,
+        currentGroup: result.groupsProcessed,
+        totalGroups: result.groupsProcessed,
+        groupName: "Concluído",
         nodeType: "completed",
         status: "completed",
-        groupsCompleted: totalGroups,
-        nodesProcessedTotal: nodesProcessed,
-        nodesFailed: failedNodes,
-        groupResults: [...groupResults],
+        groupsCompleted: result.groupsProcessed,
+        nodesProcessedTotal: result.nodesProcessed,
+        nodesFailed: result.nodesFailed,
+        groupResults: [],
       });
-      
-      return { success: failedNodes === 0, nodesProcessed, nodesFailed: failedNodes, groupsProcessed: groups.length };
+
+      return { 
+        success: result.success, 
+        nodesProcessed: result.nodesProcessed, 
+        nodesFailed: result.nodesFailed, 
+        groupsProcessed: result.groupsProcessed 
+      };
     },
     onSuccess: (result) => {
       if (result.nodesProcessed > 0) {
@@ -729,11 +341,7 @@ export function useGroupMessages(groupCampaignId: string | null) {
       }
     },
     onError: (error) => {
-      if (error.message.includes("cancelado")) {
-        toast({ title: "Cancelado", description: "Envio cancelado pelo usuário.", variant: "default" });
-      } else {
-        toast({ title: "Erro ao enviar", description: error.message, variant: "destructive" });
-      }
+      toast({ title: "Erro ao enviar", description: error.message, variant: "destructive" });
     },
   });
 
