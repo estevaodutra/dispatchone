@@ -1379,6 +1379,164 @@ response = requests.post(
         }
       }
     ]
+  },
+  {
+    id: "poll-responses",
+    name: "Respostas de Enquetes",
+    description: "Endpoints para processar respostas de enquetes",
+    endpoints: [
+      {
+        id: "handle-poll-response",
+        method: "POST",
+        path: "/handle-poll-response",
+        description: "Processa a resposta de um participante a uma enquete e executa a ação configurada para a opção selecionada.",
+        attributes: [
+          {
+            name: "message_id",
+            type: "string",
+            required: true,
+            description: "ID da mensagem da enquete (ou zaap_id retornado pela Z-API)"
+          },
+          {
+            name: "instance_id",
+            type: "string",
+            required: false,
+            description: "UUID da instância WhatsApp"
+          },
+          {
+            name: "group_jid",
+            type: "string",
+            required: false,
+            description: "JID do grupo (ex: 120363423000705472@g.us)"
+          },
+          {
+            name: "respondent.phone",
+            type: "string",
+            required: true,
+            description: "Telefone de quem respondeu (ex: 5511999999999)"
+          },
+          {
+            name: "respondent.name",
+            type: "string",
+            required: false,
+            description: "Nome do participante (pushName do WhatsApp)"
+          },
+          {
+            name: "respondent.jid",
+            type: "string",
+            required: false,
+            description: "JID completo do respondente"
+          },
+          {
+            name: "response.option_index",
+            type: "number",
+            required: true,
+            description: "Índice da opção selecionada (começa em 0)"
+          },
+          {
+            name: "response.option_text",
+            type: "string",
+            required: false,
+            description: "Texto da opção selecionada"
+          },
+          {
+            name: "timestamp",
+            type: "string",
+            required: false,
+            description: "Data/hora da resposta (ISO 8601)"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/handle-poll-response" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "message_id": "FB9520F9EB28F8FDF1CE",
+    "instance_id": "uuid-da-instancia",
+    "group_jid": "120363423000705472@g.us",
+    "respondent": {
+      "phone": "5512982402981",
+      "name": "João Silva",
+      "jid": "5512982402981@s.whatsapp.net"
+    },
+    "response": {
+      "option_index": 0,
+      "option_text": "Venceu quero Renovar"
+    },
+    "timestamp": "2025-01-24T14:30:00Z"
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/handle-poll-response',
+  {
+    message_id: 'FB9520F9EB28F8FDF1CE',
+    instance_id: 'uuid-da-instancia',
+    group_jid: '120363423000705472@g.us',
+    respondent: {
+      phone: '5512982402981',
+      name: 'João Silva',
+      jid: '5512982402981@s.whatsapp.net'
+    },
+    response: {
+      option_index: 0,
+      option_text: 'Venceu quero Renovar'
+    },
+    timestamp: '2025-01-24T14:30:00Z'
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/handle-poll-response',
+    json={
+        'message_id': 'FB9520F9EB28F8FDF1CE',
+        'instance_id': 'uuid-da-instancia',
+        'group_jid': '120363423000705472@g.us',
+        'respondent': {
+            'phone': '5512982402981',
+            'name': 'João Silva',
+            'jid': '5512982402981@s.whatsapp.net'
+        },
+        'response': {
+            'option_index': 0,
+            'option_text': 'Venceu quero Renovar'
+        },
+        'timestamp': '2025-01-24T14:30:00Z'
+    },
+    headers={
+        'Content-Type': 'application/json'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              message: "Action executed successfully",
+              data: {
+                action_type: "start_sequence",
+                action_id: "uuid-da-acao",
+                executed_at: "2025-01-24T14:30:05Z"
+              }
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: "POLL_NOT_FOUND",
+              message: "Poll message not found"
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
