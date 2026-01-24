@@ -364,6 +364,7 @@ export type Database = {
           profile_photo: string | null
           status: string | null
           strikes: number | null
+          tags: string[] | null
           user_id: string
         }
         Insert: {
@@ -380,6 +381,7 @@ export type Database = {
           profile_photo?: string | null
           status?: string | null
           strikes?: number | null
+          tags?: string[] | null
           user_id: string
         }
         Update: {
@@ -396,6 +398,7 @@ export type Database = {
           profile_photo?: string | null
           status?: string | null
           strikes?: number | null
+          tags?: string[] | null
           user_id?: string
         }
         Relationships: [
@@ -808,6 +811,113 @@ export type Database = {
             columns: ["instance_id"]
             isOneToOne: false
             referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      poll_messages: {
+        Row: {
+          campaign_id: string
+          expires_at: string | null
+          group_jid: string
+          id: string
+          instance_id: string
+          message_id: string
+          node_id: string
+          option_actions: Json
+          options: Json
+          question_text: string
+          sent_at: string | null
+          sequence_id: string
+          user_id: string
+          zaap_id: string | null
+        }
+        Insert: {
+          campaign_id: string
+          expires_at?: string | null
+          group_jid: string
+          id?: string
+          instance_id: string
+          message_id: string
+          node_id: string
+          option_actions?: Json
+          options?: Json
+          question_text: string
+          sent_at?: string | null
+          sequence_id: string
+          user_id: string
+          zaap_id?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          expires_at?: string | null
+          group_jid?: string
+          id?: string
+          instance_id?: string
+          message_id?: string
+          node_id?: string
+          option_actions?: Json
+          options?: Json
+          question_text?: string
+          sent_at?: string | null
+          sequence_id?: string
+          user_id?: string
+          zaap_id?: string | null
+        }
+        Relationships: []
+      }
+      poll_responses: {
+        Row: {
+          action_executed: boolean | null
+          action_result: Json | null
+          action_type: string | null
+          executed_at: string | null
+          id: string
+          option_index: number
+          option_text: string
+          poll_message_id: string
+          responded_at: string | null
+          respondent_jid: string | null
+          respondent_name: string | null
+          respondent_phone: string
+          user_id: string
+        }
+        Insert: {
+          action_executed?: boolean | null
+          action_result?: Json | null
+          action_type?: string | null
+          executed_at?: string | null
+          id?: string
+          option_index: number
+          option_text: string
+          poll_message_id: string
+          responded_at?: string | null
+          respondent_jid?: string | null
+          respondent_name?: string | null
+          respondent_phone: string
+          user_id: string
+        }
+        Update: {
+          action_executed?: boolean | null
+          action_result?: Json | null
+          action_type?: string | null
+          executed_at?: string | null
+          id?: string
+          option_index?: number
+          option_text?: string
+          poll_message_id?: string
+          responded_at?: string | null
+          respondent_jid?: string | null
+          respondent_name?: string | null
+          respondent_phone?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "poll_responses_poll_message_id_fkey"
+            columns: ["poll_message_id"]
+            isOneToOne: false
+            referencedRelation: "poll_messages"
             referencedColumns: ["id"]
           },
         ]
