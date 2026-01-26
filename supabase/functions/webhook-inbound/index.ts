@@ -73,6 +73,18 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
     };
   }
   
+  // Check for reaction events (n8n wraps in body)
+  const body = rawEvent.body as Record<string, unknown> | undefined;
+  const reaction = (body?.reaction || rawEvent.reaction) as Record<string, unknown> | undefined;
+  
+  if (reaction?.value !== undefined) {
+    return {
+      eventType: "reaction",
+      eventSubtype: String(reaction.value),
+      classification: "identified",
+    };
+  }
+  
   // Check if it's a message.received event
   if (eventName === "message.received" || eventName === "ReceivedCallback") {
     const data = rawEvent.data as Record<string, unknown> | undefined;
