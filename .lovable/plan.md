@@ -1,107 +1,165 @@
 
-# Plano: Adicionar Classificacao de Evento "reaction"
+# Plano: Adicionar Botao "Reclassificar Tudo"
 
-## Contexto
+## Objetivo
 
-O sistema atual nao identifica eventos de reacao do WhatsApp. Quando um usuario reage a uma mensagem com emoji (como "👍" ou "❤️"), o evento e classificado como "unknown".
-
-## Estrutura do Payload (Z-API via n8n)
-
-```text
-raw_event: {
-  body: {
-    reaction: {
-      reactionBy: "179250594320603",
-      referencedMessage: {
-        messageId: "3EB0BAF5EC9486EA12A256",
-        ...
-      },
-      time: 1769451458000,
-      value: "👍"   <-- emoji da reacao
-    },
-    type: "ReceivedCallback",
-    instanceId: "3E249...",
-    ...
-  }
-}
-```
-
-## Logica de Deteccao
-
-- **Condicao**: Verificar se `body.reaction.value` existe
-- **event_type**: `reaction`
-- **event_subtype**: O valor do emoji (ex: "👍", "❤️")
-- **classification**: `identified`
+Adicionar um botao na pagina de Eventos que reprocessa TODOS os eventos existentes usando a logica de classificacao atualizada da Edge Function, aplicando novas deteccoes (como "reaction") a eventos previamente classificados como "unknown".
 
 ---
 
-## Arquivo a Modificar
+## Arquivos a Modificar
 
 | Arquivo | Acao |
 |---------|------|
-| `supabase/functions/webhook-inbound/index.ts` | Adicionar deteccao de reaction na funcao classifyZApiEvent |
+| `supabase/functions/reclassify-events/index.ts` | Criar nova Edge Function |
+| `supabase/config.toml` | Registrar a nova funcao |
+| `src/hooks/useWebhookEvents.ts` | Adicionar hook `useReclassifyAllEvents` |
+| `src/pages/WebhookEvents.tsx` | Adicionar botao "Reclassificar Tudo" |
 
 ---
 
-## Mudancas Tecnicas
+## Arquitetura da Solucao
 
-### 1. Atualizar funcao `classifyZApiEvent`
+```text
++---------------------+       +--------------------------+       +------------------+
+| Botao UI            | ----> | Edge Function            | ----> | webhook_events   |
+| "Reclassificar Tudo"|       | reclassify-events        |       | (UPDATE rows)    |
++---------------------+       +--------------------------+       +------------------+
+                                      |
+                                      v
+                              Mesma logica de
+                              classifyZApiEvent()
+                              extractContext()
+```
 
-Adicionar verificacao para `reaction.value` ANTES da verificacao de mensagem:
+---
+
+## Implementacao
+
+### 1. Nova Edge Function: `reclassify-events`
+
+A funcao ira:
+1. Buscar todos os eventos do usuario (ou apenas os "pending"/"unknown")
+2. Reprocessar cada `raw_event` usando a mesma logica de classificacao
+3. Atualizar os campos `event_type`, `event_subtype`, `classification` e contexto
+4. Retornar contagem de eventos atualizados
+
+Parametros opcionais:
+- `only_pending`: Se `true`, reprocessa apenas eventos com `classification = 'pending'`
+- `only_unknown`: Se `true`, reprocessa apenas eventos com `event_type = 'unknown'`
+
+### 2. Hook: `useReclassifyAllEvents`
 
 ```typescript
-function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationResult {
-  const event = rawEvent.event as string | undefined;
-  const eventType = rawEvent.eventType as string | undefined;
-  const eventName = event || eventType;
+export function useReclassifyAllEvents() {
+  const queryClient = useQueryClient();
   
-  // Check direct mapping first
-  if (eventName && ZAPI_EVENT_MAP[eventName]) {
-    return {
-      eventType: ZAPI_EVENT_MAP[eventName],
-      eventSubtype: eventName,
-      classification: "identified",
-    };
-  }
-  
-  // Check for reaction events (n8n wraps in body)
-  const body = rawEvent.body as Record<string, unknown> | undefined;
-  const reaction = (body?.reaction || rawEvent.reaction) as Record<string, unknown> | undefined;
-  
-  if (reaction?.value !== undefined) {
-    return {
-      eventType: "reaction",
-      eventSubtype: String(reaction.value),
-      classification: "identified",
-    };
-  }
-  
-  // ... resto da funcao existente
+  return useMutation({
+    mutationFn: async (options?: { onlyPending?: boolean }) => {
+      const { data, error } = await supabase.functions.invoke('reclassify-events', {
+        body: { only_pending: options?.onlyPending }
+      });
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["webhook-events"] });
+      queryClient.invalidateQueries({ queryKey: ["webhook-events-stats"] });
+    },
+  });
 }
 ```
 
-### 2. Ordem de Verificacao
+### 3. Botao na UI
 
-A deteccao de reaction sera feita:
-1. Apos verificar o mapeamento direto de eventos (`ZAPI_EVENT_MAP`)
-2. Antes da verificacao de tipos de mensagem (`MESSAGE_TYPE_MAP`)
+Adicionar junto aos botoes existentes no header:
+
+```tsx
+<Button 
+  variant="outline" 
+  size="sm" 
+  onClick={handleReclassifyAll}
+  disabled={isReclassifying}
+>
+  <RotateCw className={cn("mr-2 h-4 w-4", isReclassifying && "animate-spin")} />
+  Reclassificar Tudo
+</Button>
+```
 
 ---
 
-## Exemplos de Classificacao
+## Fluxo do Usuario
 
-| Payload | event_type | event_subtype |
-|---------|------------|---------------|
-| `reaction.value = "👍"` | `reaction` | `👍` |
-| `reaction.value = "❤️"` | `reaction` | `❤️` |
-| `reaction.value = ""` (remocao) | `reaction` | `` |
+1. Usuario clica em "Reclassificar Tudo"
+2. Sistema mostra toast "Reclassificando eventos..."
+3. Edge Function processa todos os eventos
+4. Sistema mostra toast "X eventos reclassificados"
+5. Tabela e stats sao atualizados automaticamente
 
 ---
 
 ## Beneficios
 
-1. **Visibilidade**: Reacoes aparecerao corretamente no painel de eventos
-2. **Filtragem**: Usuarios poderao filtrar por tipo "reaction"
-3. **Analytics**: Possibilidade de contar reacoes por tipo de emoji
-4. **Automacao**: Triggers podem ser configurados para reagir a reacoes especificas
+1. **Retroativo**: Aplica novas classificacoes a eventos antigos
+2. **Correcao em massa**: Corrige eventos que foram classificados incorretamente
+3. **Simples**: Um clique para reprocessar tudo
+4. **Seguro**: Usa mesma logica da funcao de inbound
 
+---
+
+## Secao Tecnica
+
+### Logica de Classificacao (duplicada na nova Edge Function)
+
+A nova Edge Function contera copia das funcoes:
+- `classifyZApiEvent()`
+- `classifyEvolutionEvent()`
+- `classifyMetaEvent()`
+- `classifyEvent()`
+- `extractZApiContext()`
+- `extractContext()`
+
+Estas funcoes serao identicas as da `webhook-inbound` para garantir consistencia.
+
+### Query de Busca
+
+```typescript
+const { data: events } = await supabase
+  .from("webhook_events")
+  .select("id, source, raw_event")
+  .eq("user_id", userId)
+  .order("received_at", { ascending: false })
+  .limit(1000);
+```
+
+### Query de Update (em batch)
+
+```typescript
+for (const event of events) {
+  const classification = classifyEvent(event.source, event.raw_event);
+  const context = extractContext(event.source, event.raw_event);
+  
+  await supabase
+    .from("webhook_events")
+    .update({
+      event_type: classification.eventType,
+      event_subtype: classification.eventSubtype,
+      classification: classification.classification,
+      chat_jid: context.chatJid,
+      // ... demais campos de contexto
+    })
+    .eq("id", event.id);
+}
+```
+
+### Resposta da Edge Function
+
+```json
+{
+  "success": true,
+  "total_processed": 150,
+  "reclassified": 23,
+  "unchanged": 127
+}
+```
