@@ -20,11 +20,13 @@ import {
   useClassifyEvent,
   useReprocessEvent,
   useIgnoreEvent,
+  useReclassifyAllEvents,
   getEventCategory,
   WebhookEvent,
   WebhookEventFilters,
 } from "@/hooks/useWebhookEvents";
 import { useInstances } from "@/hooks/useInstances";
+import { cn } from "@/lib/utils";
 
 const EVENT_TYPES = [
   "text_message", "image_message", "video_message", "audio_message",
@@ -99,11 +101,29 @@ export default function WebhookEvents() {
   const classifyMutation = useClassifyEvent();
   const reprocessMutation = useReprocessEvent();
   const ignoreMutation = useIgnoreEvent();
+  const reclassifyMutation = useReclassifyAllEvents();
   
   const handleRefresh = () => {
     refetch();
     refetchStats();
     toast({ title: "Atualizado", description: "Eventos atualizados" });
+  };
+  
+  const handleReclassifyAll = async () => {
+    toast({ title: "Reclassificando...", description: "Processando todos os eventos com a lógica atualizada" });
+    try {
+      const result = await reclassifyMutation.mutateAsync({});
+      toast({
+        title: "Reclassificação concluída",
+        description: `${result.reclassified} eventos reclassificados de ${result.total_processed} processados`,
+      });
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Falha ao reclassificar eventos",
+        variant: "destructive",
+      });
+    }
   };
   
   const handleCopyPayload = () => {
@@ -217,6 +237,15 @@ export default function WebhookEvents() {
         description="Visualize e gerencie eventos recebidos do WhatsApp"
         actions={
           <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleReclassifyAll}
+              disabled={reclassifyMutation.isPending}
+            >
+              <RotateCw className={cn("mr-2 h-4 w-4", reclassifyMutation.isPending && "animate-spin")} />
+              Reclassificar Tudo
+            </Button>
             <Button variant="outline" size="sm" onClick={handleRefresh}>
               <RefreshCw className="mr-2 h-4 w-4" />
               Atualizar

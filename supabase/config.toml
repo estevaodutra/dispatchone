@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.webhook-inbound]
 verify_jwt = false
+
+[functions.reclassify-events]
+verify_jwt = false
