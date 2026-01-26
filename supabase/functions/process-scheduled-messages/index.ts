@@ -56,6 +56,22 @@ interface InstanceData {
   status: string;
 }
 
+interface PausedExecution {
+  id: string;
+  user_id: string;
+  campaign_id: string;
+  sequence_id: string;
+  message_id: string | null;
+  trigger_context: Record<string, unknown>;
+  current_node_index: number;
+  nodes_data: SequenceNode[];
+  destinations: Array<{ group_jid: string; group_name: string; isPrivate?: boolean }>;
+  status: string;
+  resume_at: string;
+  nodes_processed: number;
+  nodes_failed: number;
+}
+
 // ============= Standardized Payload Builder =============
 
 interface StandardizedPayload {
@@ -247,6 +263,66 @@ Deno.serve(async (req) => {
     const todayDate = new Date().toISOString().split("T")[0];
 
     console.log(`[Scheduler] Running at ${currentTime} (Brazil), day ${currentDay}, date ${todayDate}`);
+
+    // ============= PROCESS PAUSED EXECUTIONS FIRST =============
+    const { data: pausedExecutions, error: pausedError } = await supabase
+      .from("sequence_executions")
+      .select("*")
+      .eq("status", "paused")
+      .lte("resume_at", now.toISOString());
+
+    if (pausedError) {
+      console.error("[Scheduler] Error fetching paused executions:", pausedError);
+    } else if (pausedExecutions && pausedExecutions.length > 0) {
+      console.log(`[Scheduler] Found ${pausedExecutions.length} paused executions ready to resume`);
+
+      for (const execution of pausedExecutions as PausedExecution[]) {
+        try {
+          console.log(`[Scheduler] Resuming execution ${execution.id} from node ${execution.current_node_index}`);
+
+          // Mark as running to prevent duplicate processing
+          await supabase
+            .from("sequence_executions")
+            .update({ status: "running", updated_at: new Date().toISOString() })
+            .eq("id", execution.id);
+
+          // Call execute-message to continue processing
+          const response = await fetch(`${supabaseUrl}/functions/v1/execute-message`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              campaignId: execution.campaign_id,
+              sequenceId: execution.sequence_id,
+              messageId: execution.message_id,
+              triggerContext: execution.trigger_context,
+              executionId: execution.id,
+              startFromNodeIndex: execution.current_node_index,
+            }),
+          });
+
+          const result = await response.json();
+          console.log(`[Scheduler] Resumed execution ${execution.id} result:`, result);
+
+        } catch (err) {
+          console.error(`[Scheduler] Error resuming execution ${execution.id}:`, err);
+          
+          // Mark as failed
+          await supabase
+            .from("sequence_executions")
+            .update({
+              status: "failed",
+              error_message: err instanceof Error ? err.message : "Unknown error",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", execution.id);
+        }
+      }
+    }
+
+    // ============= PROCESS SCHEDULED MESSAGES =============
 
     // Fetch all active scheduled messages
     const { data: messages, error: messagesError } = await supabase
@@ -500,22 +576,72 @@ Deno.serve(async (req) => {
         } else {
           // ============= SEQUENCE NODE-BY-NODE PROCESSING =============
           const sortedNodes = [...sequenceNodes].sort((a, b) => a.node_order - b.node_order);
+          const destinations = linkedGroups.map(g => ({ group_jid: g.group_jid, group_name: g.group_name, isPrivate: false }));
 
           for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
             const node = sortedNodes[nodeIndex];
             
             console.log(`[Scheduler] Processing node ${nodeIndex + 1}/${sortedNodes.length}: ${node.node_type}`);
 
-            // If it's a DELAY node, wait and continue (only once, not per group)
+            // If it's a DELAY node, check if it's a long delay
             if (node.node_type === "delay") {
               const delayMs = calculateDelayMs(node.config);
               
-              if (delayMs > 0) {
-                // Cap delay at MAX_DELAY_MS to avoid timeout
-                const effectiveDelay = Math.min(delayMs, MAX_DELAY_MS);
-                console.log(`[Scheduler] ⏱️ Delay node: waiting ${effectiveDelay}ms (requested: ${delayMs}ms)`);
+              if (delayMs > MAX_DELAY_MS) {
+                // Long delay - save state and schedule continuation
+                const resumeAt = new Date(Date.now() + delayMs);
                 
-                await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+                console.log(`[Scheduler] ⏱️ Long delay: ${delayMs}ms. Scheduling for ${resumeAt.toISOString()}`);
+                
+                const { data: savedExecution, error: saveError } = await supabase
+                  .from("sequence_executions")
+                  .insert({
+                    user_id: message.user_id,
+                    campaign_id: campaign.id,
+                    sequence_id: message.sequence_id,
+                    message_id: message.id,
+                    trigger_context: {},
+                    current_node_index: nodeIndex + 1,
+                    nodes_data: sortedNodes,
+                    destinations: destinations,
+                    status: "paused",
+                    resume_at: resumeAt.toISOString(),
+                    nodes_processed: nodesProcessed,
+                    nodes_failed: nodesFailed,
+                  })
+                  .select()
+                  .single();
+
+                if (saveError) {
+                  console.error("[Scheduler] Failed to save execution state:", saveError);
+                  // Fallback to capped delay
+                  const effectiveDelay = Math.min(delayMs, MAX_DELAY_MS);
+                  console.log(`[Scheduler] ⏱️ Fallback: waiting ${effectiveDelay}ms`);
+                  await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+                } else {
+                  console.log(`[Scheduler] ✅ Execution ${savedExecution.id} paused`);
+                  
+                  // Update execution status and break out
+                  await supabase
+                    .from("scheduled_message_executions")
+                    .update({ status: "paused" })
+                    .eq("message_id", message.id)
+                    .eq("scheduled_date", todayDate)
+                    .eq("scheduled_time", currentTime);
+
+                  results.push({ 
+                    messageId: message.id, 
+                    status: "paused", 
+                    nodesProcessed,
+                    error: `Will resume at ${resumeAt.toISOString()}`
+                  });
+                  
+                  break; // Exit the node loop
+                }
+              } else if (delayMs > 0) {
+                // Short delay - wait inline
+                console.log(`[Scheduler] ⏱️ Short delay: waiting ${delayMs}ms`);
+                await new Promise(resolve => setTimeout(resolve, delayMs));
               }
               
               nodesProcessed++;
@@ -621,16 +747,19 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Update execution status
-        await supabase
-          .from("scheduled_message_executions")
-          .update({ status: nodesFailed === 0 ? "executed" : "partial" })
-          .eq("message_id", message.id)
-          .eq("scheduled_date", todayDate)
-          .eq("scheduled_time", currentTime);
+        // Update execution status (only if not already paused)
+        const existingResult = results.find(r => r.messageId === message.id);
+        if (!existingResult || existingResult.status !== "paused") {
+          await supabase
+            .from("scheduled_message_executions")
+            .update({ status: nodesFailed === 0 ? "executed" : "partial" })
+            .eq("message_id", message.id)
+            .eq("scheduled_date", todayDate)
+            .eq("scheduled_time", currentTime);
 
-        console.log(`[Scheduler] ✅ Message ${message.id} completed: ${nodesProcessed} nodes processed, ${nodesFailed} failed`);
-        results.push({ messageId: message.id, status: "sent", nodesProcessed });
+          console.log(`[Scheduler] ✅ Message ${message.id} completed: ${nodesProcessed} nodes processed, ${nodesFailed} failed`);
+          results.push({ messageId: message.id, status: "sent", nodesProcessed });
+        }
 
       } catch (error) {
         console.error(`[Scheduler] Error processing message ${message.id}:`, error);
@@ -650,6 +779,7 @@ Deno.serve(async (req) => {
         brasilDay: currentDay,
         totalMessages: messages?.length || 0,
         matchingMessages: messagesToSend.length,
+        pausedExecutionsResumed: pausedExecutions?.length || 0,
         results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
