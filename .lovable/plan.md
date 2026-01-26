@@ -1,108 +1,111 @@
 
 
-## Objetivo
-Adicionar detecção automática para eventos de **group participant add** (e outros eventos de grupo similares) baseados no campo `body.notification` do payload Z-API via n8n.
+## Problema Identificado
 
-## Análise do Payload
+A detecção de imagem atual NÃO inclui o campo `body.photo` que o Z-API usa para enviar URLs de imagens.
 
-O evento de adição de participante vem com:
+**Payload do usuário:**
 ```json
 {
   "body": {
-    "type": "ReceivedCallback",
-    "notification": "GROUP_PARTICIPANT_ADD",
-    "notificationParameters": ["253438017437856@lid"]
+    "photo": "https://pps.whatsapp.net/v/t61.24694-24/..."
   }
 }
 ```
 
-O campo chave é `body.notification` que contém o tipo de notificação de grupo.
+**Lógica atual (incompleta):**
+```typescript
+if (
+  body?.image !== undefined ||
+  body?.imageUrl !== undefined ||
+  rawEvent.imageUrl !== undefined ||
+  mimeType?.startsWith("image/")
+) { ... }
+```
+
+O campo `body.photo` não está sendo verificado!
+
+---
+
+## Solução
+
+Adicionar verificação para `body.photo` quando contém uma URL válida (começa com "https://").
+
+---
 
 ## Arquivos a Modificar
 
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/webhook-inbound/index.ts` | Adicionar detecção de `body.notification` |
-| `supabase/functions/reclassify-events/index.ts` | Replicar a mesma lógica |
+| Arquivo | Linha | Ação |
+|---------|-------|------|
+| `supabase/functions/webhook-inbound/index.ts` | ~79-85 | Adicionar `body.photo` |
+| `supabase/functions/reclassify-events/index.ts` | ~79-85 | Adicionar `body.photo` |
 
-## Lógica de Detecção
+---
 
-Adicionar verificação para `body.notification` **antes** do mapeamento direto de eventos, mapeando:
+## Mudança Técnica
 
-| body.notification | event_type |
-|-------------------|------------|
-| `GROUP_PARTICIPANT_ADD` | `group_join` |
-| `GROUP_PARTICIPANT_REMOVE` | `group_leave` |
-| `GROUP_PARTICIPANT_PROMOTE` | `group_promote` |
-| `GROUP_PARTICIPANT_DEMOTE` | `group_demote` |
-
-## Mudanças Técnicas
-
-### Em ambas Edge Functions (`webhook-inbound` e `reclassify-events`)
-
-Após a detecção de mídia e antes do mapeamento direto `ZAPI_EVENT_MAP`, adicionar:
-
+**De:**
 ```typescript
-// ==========================================
-// GROUP NOTIFICATION DETECTION (n8n/Z-API format)
-// body.notification contains group events like GROUP_PARTICIPANT_ADD
-// ==========================================
-const notification = body?.notification as string | undefined;
-
-if (notification) {
-  const notificationMap: Record<string, string> = {
-    "GROUP_PARTICIPANT_ADD": "group_join",
-    "GROUP_PARTICIPANT_REMOVE": "group_leave", 
-    "GROUP_PARTICIPANT_PROMOTE": "group_promote",
-    "GROUP_PARTICIPANT_DEMOTE": "group_demote",
-    "GROUP_PARTICIPANT_LEAVE": "group_leave",
-    "GROUP_CREATE": "group_update",
-    "GROUP_SUBJECT": "group_update",
-    "GROUP_DESCRIPTION": "group_update",
-    "GROUP_ICON": "group_update",
+// Image detection
+if (
+  body?.image !== undefined ||
+  body?.imageUrl !== undefined ||
+  rawEvent.imageUrl !== undefined ||
+  mimeType?.startsWith("image/")
+) {
+  return {
+    eventType: "image_message",
+    eventSubtype: mimeType || (body?.image ? "body.image" : "imageUrl"),
+    classification: "identified",
   };
-
-  if (notificationMap[notification]) {
-    return {
-      eventType: notificationMap[notification],
-      eventSubtype: notification,
-      classification: "identified",
-    };
-  }
 }
 ```
 
-## Posicionamento no Código
+**Para:**
+```typescript
+// Image detection
+const bodyPhoto = body?.photo as string | undefined;
+const hasPhotoUrl = bodyPhoto && bodyPhoto.startsWith("https://");
 
-A ordem de verificação em `classifyZApiEvent` será:
-1. Detecção de mídia (image, video, audio, document, sticker)
-2. **Detecção de notificações de grupo** ← NOVO
-3. Mapeamento direto de eventos (`ZAPI_EVENT_MAP`)
-4. Detecção de reações
-5. Detecção de PLAYED
-6. Detecção de texto em `body.text`
-7. Fallback para `unknown`
+if (
+  body?.image !== undefined ||
+  body?.imageUrl !== undefined ||
+  rawEvent.imageUrl !== undefined ||
+  hasPhotoUrl ||
+  mimeType?.startsWith("image/")
+) {
+  return {
+    eventType: "image_message",
+    eventSubtype: mimeType || (body?.image ? "body.image" : (hasPhotoUrl ? "body.photo" : "imageUrl")),
+    classification: "identified",
+  };
+}
+```
+
+---
 
 ## Resultado Esperado
 
-Eventos com payload:
+Eventos com payload contendo:
 ```json
 {
   "body": {
-    "notification": "GROUP_PARTICIPANT_ADD"
+    "photo": "https://pps.whatsapp.net/..."
   }
 }
 ```
 
 Serão classificados como:
-- `event_type`: `group_join`
-- `event_subtype`: `GROUP_PARTICIPANT_ADD`
+- `event_type`: `image_message`
+- `event_subtype`: `body.photo`
 - `classification`: `identified`
 - `processing_status`: `processed`
+
+---
 
 ## Após Implementação
 
 1. Edge Functions serão redeployadas automaticamente
-2. Novos eventos de grupo serão identificados corretamente
+2. Novos eventos com `body.photo` serão identificados como imagem
 3. Use "Reclassificar Todos" para corrigir eventos antigos
 
