@@ -508,7 +508,7 @@ Deno.serve(async (req) => {
     // Build query
     let query = supabase
       .from("webhook_events")
-      .select("id, source, raw_event, event_type, classification")
+      .select("id, source, raw_event, event_type, classification, processing_status")
       .eq("user_id", user.id)
       .order("received_at", { ascending: false })
       .limit(1000);
@@ -542,10 +542,12 @@ Deno.serve(async (req) => {
         const classification = classifyEvent(event.source, rawEvent);
         const context = extractContext(event.source, rawEvent);
 
-        // Check if classification changed
+        // Check if classification changed OR if processing_status is inconsistent
+        const expectedStatus = classification.classification === "identified" ? "processed" : "pending";
         const hasChanged = 
           event.event_type !== classification.eventType ||
-          event.classification !== classification.classification;
+          event.classification !== classification.classification ||
+          event.processing_status !== expectedStatus;
 
         if (hasChanged) {
           const { error: updateError } = await supabase
