@@ -249,21 +249,26 @@ export function useClassifyEvent() {
   });
 }
 
+export interface ReprocessResult {
+  success: boolean;
+  event_id: string;
+  event_type: string;
+  classification: string;
+  processing_status: string;
+  changed: boolean;
+}
+
 export function useReprocessEvent() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from("webhook_events")
-        .update({
-          processing_status: "pending",
-          processing_error: null,
-          processed_at: null,
-        })
-        .eq("id", id);
+    mutationFn: async (id: string): Promise<ReprocessResult> => {
+      const { data, error } = await supabase.functions.invoke('reclassify-events', {
+        body: { event_id: id, force: true }
+      });
       
       if (error) throw error;
+      return data as ReprocessResult;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["webhook-events"] });
