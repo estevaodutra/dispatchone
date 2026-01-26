@@ -189,7 +189,7 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
     };
   }
   
-  // Check for played events (audio/video played by recipient)
+  // Check for message status callbacks (PLAYED, RECEIVED, etc.)
   // Z-API sends status directly in body.status when body.type === "MessageStatusCallback"
   const bodyStatus = body?.status as string | undefined;
 
@@ -197,6 +197,14 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
     return {
       eventType: "played",
       eventSubtype: "PLAYED",
+      classification: "identified",
+    };
+  }
+
+  if (bodyStatus === "RECEIVED") {
+    return {
+      eventType: "message_received",
+      eventSubtype: "RECEIVED",
       classification: "identified",
     };
   }
