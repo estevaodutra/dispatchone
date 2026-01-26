@@ -136,6 +136,34 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
   }
   
   // ==========================================
+  // GROUP NOTIFICATION DETECTION (n8n/Z-API format)
+  // body.notification contains group events like GROUP_PARTICIPANT_ADD
+  // ==========================================
+  const notification = body?.notification as string | undefined;
+
+  if (notification) {
+    const notificationMap: Record<string, string> = {
+      "GROUP_PARTICIPANT_ADD": "group_join",
+      "GROUP_PARTICIPANT_REMOVE": "group_leave",
+      "GROUP_PARTICIPANT_PROMOTE": "group_promote",
+      "GROUP_PARTICIPANT_DEMOTE": "group_demote",
+      "GROUP_PARTICIPANT_LEAVE": "group_leave",
+      "GROUP_CREATE": "group_update",
+      "GROUP_SUBJECT": "group_update",
+      "GROUP_DESCRIPTION": "group_update",
+      "GROUP_ICON": "group_update",
+    };
+
+    if (notificationMap[notification]) {
+      return {
+        eventType: notificationMap[notification],
+        eventSubtype: notification,
+        classification: "identified",
+      };
+    }
+  }
+  
+  // ==========================================
   // Direct event mapping (after media check)
   // ==========================================
   if (eventName && ZAPI_EVENT_MAP[eventName]) {
