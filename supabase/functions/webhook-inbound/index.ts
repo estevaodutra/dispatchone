@@ -270,16 +270,22 @@ Deno.serve(async (req) => {
       payload = body as InboundPayload;
     } else {
       // Direct payload from provider - auto-wrap it
+      // n8n sends the payload nested in body.body when forwarding webhooks
+      const nestedBody = body.body as Record<string, unknown> | undefined;
+      
       // Try to extract instance_id from common Z-API/Evolution fields
+      // Check both root level and nested body (for n8n forwarded webhooks)
       const instanceId = body.instanceId || 
+                         nestedBody?.instanceId ||
                          body.instance || 
+                         nestedBody?.connectedPhone ||
                          body.phone ||
                          body.sender?.phone ||
                          "unknown";
       
       payload = {
         source: "z-api",
-        instance_id: instanceId,
+        instance_id: String(instanceId),
         raw_event: body
       };
       
