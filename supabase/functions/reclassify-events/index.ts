@@ -59,7 +59,85 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
   const rawType = rawEvent.type as string | undefined;
   const eventName = event || eventType || rawType;
   
-  // Check direct mapping first
+  // Extract body for n8n/Z-API format detection
+  const body = rawEvent.body as Record<string, unknown> | undefined;
+  
+  // ==========================================
+  // MEDIA DETECTION (n8n/Z-API format) - PRIORITY
+  // Must check BEFORE direct mapping to avoid text_message override
+  // ==========================================
+  
+  const mimeType = (body?.mimeType || rawEvent.mimeType || body?.mimetype || rawEvent.mimetype) as string | undefined;
+  
+  // Image detection
+  if (
+    body?.image !== undefined ||
+    body?.imageUrl !== undefined ||
+    rawEvent.imageUrl !== undefined ||
+    mimeType?.startsWith("image/")
+  ) {
+    return {
+      eventType: "image_message",
+      eventSubtype: mimeType || (body?.image ? "body.image" : "imageUrl"),
+      classification: "identified",
+    };
+  }
+  
+  // Video detection
+  if (
+    body?.video !== undefined ||
+    body?.videoUrl !== undefined ||
+    rawEvent.videoUrl !== undefined ||
+    mimeType?.startsWith("video/")
+  ) {
+    return {
+      eventType: "video_message",
+      eventSubtype: mimeType || (body?.video ? "body.video" : "videoUrl"),
+      classification: "identified",
+    };
+  }
+  
+  // Audio detection
+  if (
+    body?.audio !== undefined ||
+    body?.audioUrl !== undefined ||
+    rawEvent.audioUrl !== undefined ||
+    body?.ptt !== undefined ||
+    mimeType?.startsWith("audio/")
+  ) {
+    return {
+      eventType: "audio_message",
+      eventSubtype: mimeType || (body?.audio ? "body.audio" : (body?.ptt ? "ptt" : "audioUrl")),
+      classification: "identified",
+    };
+  }
+  
+  // Document detection
+  if (
+    body?.document !== undefined ||
+    body?.documentUrl !== undefined ||
+    rawEvent.documentUrl !== undefined ||
+    mimeType?.startsWith("application/")
+  ) {
+    return {
+      eventType: "document_message",
+      eventSubtype: mimeType || (body?.document ? "body.document" : "documentUrl"),
+      classification: "identified",
+    };
+  }
+  
+  // Sticker detection
+  if (body?.sticker !== undefined || rawEvent.sticker !== undefined) {
+    return {
+      eventType: "sticker_message",
+      eventSubtype: "sticker",
+      classification: "identified",
+    };
+  }
+  
+  // ==========================================
+  // Direct event mapping (after media check)
+  // ==========================================
   if (eventName && ZAPI_EVENT_MAP[eventName]) {
     return {
       eventType: ZAPI_EVENT_MAP[eventName],
@@ -69,7 +147,6 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
   }
   
   // Check for reaction events (n8n wraps in body)
-  const body = rawEvent.body as Record<string, unknown> | undefined;
   const reaction = (body?.reaction || rawEvent.reaction) as Record<string, unknown> | undefined;
   
   if (reaction?.value !== undefined) {
@@ -247,7 +324,8 @@ function extractZApiContext(rawEvent: Record<string, unknown>): EventContext {
   const chat = (rawEvent.chat || body?.chat || message?.chat) as Record<string, unknown> | undefined;
   const sender = (rawEvent.sender || body?.sender || message?.sender) as Record<string, unknown> | undefined;
   
-  const chatJid = (
+  // Try multiple sources for chatJid, including n8n format (phone/from)
+  let chatJid = (
     rawEvent.chatId || 
     rawEvent.from || 
     body?.chatId || 
@@ -256,14 +334,24 @@ function extractZApiContext(rawEvent: Record<string, unknown>): EventContext {
     message?.from
   ) as string | null;
   
+  // Fallback for n8n/Z-API format
+  if (!chatJid) {
+    chatJid = (rawEvent.phone || body?.phone) as string | null;
+  }
+  
   const isGroup = chatJid?.includes("@g.us") || false;
   
-  const senderPhone = (
+  // Extract phone from JID or use sender field
+  let senderPhone = (
     sender?.phone ||
     rawEvent.senderPhone ||
     body?.senderPhone ||
     (rawEvent.participant as string)
   ) as string | null;
+  
+  if (!senderPhone && chatJid) {
+    senderPhone = chatJid.split("@")[0];
+  }
   
   const senderName = (
     sender?.name ||
@@ -279,7 +367,8 @@ function extractZApiContext(rawEvent: Record<string, unknown>): EventContext {
     body?.messageId ||
     body?.id ||
     message?.id ||
-    (message?.key as Record<string, unknown>)?.id
+    (message?.key as Record<string, unknown>)?.id ||
+    rawEvent.zapiMessageId
   ) as string | null;
   
   const timestamp = (
