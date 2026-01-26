@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.handle-poll-response]
 verify_jwt = false
+
+[functions.webhook-inbound]
+verify_jwt = false

@@ -12,6 +12,7 @@ export const es = {
     billing: "Facturación",
     settings: "Configuración",
     apiDocs: "Documentación API",
+    webhookEvents: "Eventos",
     collapse: "Colapsar",
   },
 

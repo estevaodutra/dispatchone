@@ -15,6 +15,7 @@ import {
   Code2,
   Activity,
   SendHorizontal,
+  Radio,
 } from "lucide-react";
 import {
   Sidebar,
@@ -47,6 +48,7 @@ export function AppSidebar() {
     { title: t("nav.instances"), url: "/instances", icon: MessageSquare },
     { title: t("nav.apiLogs"), url: "/api-logs", icon: Activity },
     { title: "Logs de Envio", url: "/sequence-logs", icon: SendHorizontal },
+    { title: t("nav.webhookEvents") || "Eventos", url: "/events", icon: Radio },
     { title: t("nav.alerts"), url: "/alerts", icon: Bell },
     { title: t("nav.billing"), url: "/billing", icon: CreditCard },
     { title: t("nav.settings"), url: "/settings", icon: Settings },
