@@ -36,6 +36,8 @@ const EVENT_TYPES = [
   "group_join", "group_leave", "group_promote", "group_demote", "group_update",
   "connection_status", "qrcode_update",
   "call_received",
+  "reaction",
+  "played",
   "unknown",
 ];
 
