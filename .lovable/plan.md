@@ -1,119 +1,108 @@
 
 
-## Correção: Detecção de eventos PLAYED
+## Objetivo
+Adicionar detecção automática para eventos de **group participant add** (e outros eventos de grupo similares) baseados no campo `body.notification` do payload Z-API via n8n.
 
-### Problema Identificado
-A lógica atual tenta acessar `body.type.status`, mas no payload Z-API o `body.type` é uma **string** (`"MessageStatusCallback"`), não um objeto. O campo `status` está diretamente em `body.status`.
+## Análise do Payload
 
-**Código atual (errado):**
-```typescript
-const bodyType = body?.type as Record<string, unknown> | undefined;
-const typeStatus = bodyType?.status as string | undefined;
-if (typeStatus === "PLAYED") { ... }
-```
-
-**Payload real:**
+O evento de adição de participante vem com:
 ```json
 {
   "body": {
-    "type": "MessageStatusCallback",
-    "status": "PLAYED"
+    "type": "ReceivedCallback",
+    "notification": "GROUP_PARTICIPANT_ADD",
+    "notificationParameters": ["253438017437856@lid"]
   }
 }
 ```
 
-### Solucao
-Mudar para verificar `body.status === "PLAYED"` diretamente.
-
----
+O campo chave é `body.notification` que contém o tipo de notificação de grupo.
 
 ## Arquivos a Modificar
 
-| Arquivo | Linha | Acao |
-|---------|-------|------|
-| `supabase/functions/webhook-inbound/index.ts` | 167-177 | Corrigir logica |
-| `supabase/functions/reclassify-events/index.ts` | ~120 | Corrigir logica |
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/webhook-inbound/index.ts` | Adicionar detecção de `body.notification` |
+| `supabase/functions/reclassify-events/index.ts` | Replicar a mesma lógica |
 
----
+## Lógica de Detecção
 
-## Mudanca no webhook-inbound/index.ts
+Adicionar verificação para `body.notification` **antes** do mapeamento direto de eventos, mapeando:
 
-**De (linhas 167-177):**
+| body.notification | event_type |
+|-------------------|------------|
+| `GROUP_PARTICIPANT_ADD` | `group_join` |
+| `GROUP_PARTICIPANT_REMOVE` | `group_leave` |
+| `GROUP_PARTICIPANT_PROMOTE` | `group_promote` |
+| `GROUP_PARTICIPANT_DEMOTE` | `group_demote` |
+
+## Mudanças Técnicas
+
+### Em ambas Edge Functions (`webhook-inbound` e `reclassify-events`)
+
+Após a detecção de mídia e antes do mapeamento direto `ZAPI_EVENT_MAP`, adicionar:
+
 ```typescript
-// Check for played events (audio/video played by recipient)
-const bodyType = body?.type as Record<string, unknown> | undefined;
-const typeStatus = bodyType?.status as string | undefined;
+// ==========================================
+// GROUP NOTIFICATION DETECTION (n8n/Z-API format)
+// body.notification contains group events like GROUP_PARTICIPANT_ADD
+// ==========================================
+const notification = body?.notification as string | undefined;
 
-if (typeStatus === "PLAYED") {
-  return {
-    eventType: "played",
-    eventSubtype: "PLAYED",
-    classification: "identified",
+if (notification) {
+  const notificationMap: Record<string, string> = {
+    "GROUP_PARTICIPANT_ADD": "group_join",
+    "GROUP_PARTICIPANT_REMOVE": "group_leave", 
+    "GROUP_PARTICIPANT_PROMOTE": "group_promote",
+    "GROUP_PARTICIPANT_DEMOTE": "group_demote",
+    "GROUP_PARTICIPANT_LEAVE": "group_leave",
+    "GROUP_CREATE": "group_update",
+    "GROUP_SUBJECT": "group_update",
+    "GROUP_DESCRIPTION": "group_update",
+    "GROUP_ICON": "group_update",
   };
-}
-```
 
-**Para:**
-```typescript
-// Check for played events (audio/video played by recipient)
-// Z-API sends status directly in body.status when body.type === "MessageStatusCallback"
-const bodyStatus = body?.status as string | undefined;
-
-if (bodyStatus === "PLAYED") {
-  return {
-    eventType: "played",
-    eventSubtype: "PLAYED",
-    classification: "identified",
-  };
-}
-```
-
----
-
-## Mudanca no reclassify-events/index.ts
-
-Aplicar a mesma correcao na funcao `classifyZApiEvent` (linhas 120-134):
-
-**De:**
-```typescript
-const bodyType = body?.type as Record<string, unknown> | undefined;
-const typeStatus = bodyType?.status as string | undefined;
-
-if (typeStatus === "PLAYED") { ... }
-```
-
-**Para:**
-```typescript
-const bodyStatus = body?.status as string | undefined;
-
-if (bodyStatus === "PLAYED") { ... }
-```
-
----
-
-## Resultado Esperado
-
-Eventos com o payload:
-```json
-{
-  "body": {
-    "type": "MessageStatusCallback",
-    "status": "PLAYED"
+  if (notificationMap[notification]) {
+    return {
+      eventType: notificationMap[notification],
+      eventSubtype: notification,
+      classification: "identified",
+    };
   }
 }
 ```
 
-Serao classificados como:
-- `event_type`: `played`
-- `event_subtype`: `PLAYED`
+## Posicionamento no Código
+
+A ordem de verificação em `classifyZApiEvent` será:
+1. Detecção de mídia (image, video, audio, document, sticker)
+2. **Detecção de notificações de grupo** ← NOVO
+3. Mapeamento direto de eventos (`ZAPI_EVENT_MAP`)
+4. Detecção de reações
+5. Detecção de PLAYED
+6. Detecção de texto em `body.text`
+7. Fallback para `unknown`
+
+## Resultado Esperado
+
+Eventos com payload:
+```json
+{
+  "body": {
+    "notification": "GROUP_PARTICIPANT_ADD"
+  }
+}
+```
+
+Serão classificados como:
+- `event_type`: `group_join`
+- `event_subtype`: `GROUP_PARTICIPANT_ADD`
 - `classification`: `identified`
 - `processing_status`: `processed`
 
----
+## Após Implementação
 
-## Depois da Implementacao
-
-1. As Edge Functions serao redeployadas automaticamente
-2. Novos eventos PLAYED serao identificados corretamente
-3. Use o botao "Reclassificar Todos" para corrigir eventos antigos
+1. Edge Functions serão redeployadas automaticamente
+2. Novos eventos de grupo serão identificados corretamente
+3. Use "Reclassificar Todos" para corrigir eventos antigos
 
