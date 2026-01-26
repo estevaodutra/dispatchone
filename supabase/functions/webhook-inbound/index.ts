@@ -85,6 +85,18 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
     };
   }
   
+  // Check for played events (audio/video played by recipient)
+  const bodyType = (body?.type || rawEvent.type) as Record<string, unknown> | undefined;
+  const typeStatus = bodyType?.status as string | undefined;
+
+  if (typeStatus === "PLAYED") {
+    return {
+      eventType: "played",
+      eventSubtype: "PLAYED",
+      classification: "identified",
+    };
+  }
+  
   // Check if it's a message.received event
   if (eventName === "message.received" || eventName === "ReceivedCallback") {
     const data = rawEvent.data as Record<string, unknown> | undefined;
