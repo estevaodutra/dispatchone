@@ -1,76 +1,152 @@
 
+# Plano: Corrigir Classificacao de Eventos "ReceivedCallback"
 
-# Plano: Adicionar "played" e "reaction" às Listas de Tipos de Evento
+## Problema Identificado
 
-## Problema
+O payload Z-API via n8n tem esta estrutura:
 
-As Edge Functions estão classificando eventos como "played" e "reaction", mas esses tipos não aparecem no filtro da UI porque não foram adicionados às listas de tipos de evento no frontend.
+```text
+raw_event: {
+  body: {
+    text: {
+      message: "Vc está criando pelo Gemini?"
+    }
+  },
+  type: "ReceivedCallback",   <-- Campo 'type' no nivel raiz
+  phone: "120363...group",
+  status: "RECEIVED"
+}
+```
+
+### Causa Raiz
+
+A logica de classificacao busca o nome do evento em:
+- `rawEvent.event`
+- `rawEvent.eventType`
+
+Mas NAO busca em `rawEvent.type` onde o valor "ReceivedCallback" esta localizado.
+
+Alem disso, no `webhook-inbound`, a logica para mensagens recebidas espera chaves como `conversation` ou `extendedTextMessage`, mas o payload tem `body.text.message`.
+
+---
 
 ## Arquivos a Modificar
 
-| Arquivo | Ação |
+| Arquivo | Acao |
 |---------|------|
-| `src/pages/WebhookEvents.tsx` | Adicionar "played" e "reaction" na lista EVENT_TYPES |
-| `src/hooks/useWebhookEvents.ts` | Adicionar "played" e "reaction" nas categorias EVENT_CATEGORIES |
+| `supabase/functions/webhook-inbound/index.ts` | Atualizar classifyZApiEvent para detectar body.text e rawEvent.type |
+| `supabase/functions/reclassify-events/index.ts` | Atualizar classifyZApiEvent para detectar body.text e rawEvent.type |
 
 ---
 
-## Mudanças
+## Mudancas Tecnicas
 
-### 1. `src/pages/WebhookEvents.tsx` (linha 31-40)
+### 1. Atualizar `webhook-inbound/index.ts`
 
-Adicionar os novos tipos à lista EVENT_TYPES:
+Modificar a funcao `classifyZApiEvent` para:
+1. Incluir `rawEvent.type` na busca do eventName
+2. Detectar mensagens de texto em `body.text.message`
 
 ```typescript
-const EVENT_TYPES = [
-  "text_message", "image_message", "video_message", "audio_message",
-  "document_message", "sticker_message", "location_message", "contact_message",
-  "message_status", "message_reaction", "message_revoked",
-  "button_response", "list_response", "poll_response",
-  "group_join", "group_leave", "group_promote", "group_demote", "group_update",
-  "connection_status", "qrcode_update",
-  "call_received",
-  "reaction",    // NOVO
-  "played",      // NOVO
-  "unknown",
-];
+function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationResult {
+  const event = rawEvent.event as string | undefined;
+  const eventType = rawEvent.eventType as string | undefined;
+  const rawType = rawEvent.type as string | undefined;  // NOVO
+  const eventName = event || eventType || rawType;      // INCLUIR rawType
+  
+  // Check direct mapping first (ReceivedCallback -> text_message)
+  if (eventName && ZAPI_EVENT_MAP[eventName]) {
+    return {
+      eventType: ZAPI_EVENT_MAP[eventName],
+      eventSubtype: eventName,
+      classification: "identified",
+    };
+  }
+  
+  // ... codigo existente de reaction e played ...
+  
+  // Check for text message in body.text (n8n Z-API format)
+  const body = rawEvent.body as Record<string, unknown> | undefined;
+  const bodyText = body?.text as Record<string, unknown> | undefined;
+  if (bodyText?.message !== undefined) {
+    return {
+      eventType: "text_message",
+      eventSubtype: "ReceivedCallback",
+      classification: "identified",
+    };
+  }
+  
+  // ... resto do codigo ...
+}
 ```
 
-### 2. `src/hooks/useWebhookEvents.ts` (linha 47-58)
+### 2. Adicionar "ReceivedCallback" ao ZAPI_EVENT_MAP em webhook-inbound
 
-Adicionar os novos tipos às categorias apropriadas:
+Adicionar o mapeamento que ja existe no reclassify-events:
 
 ```typescript
-const EVENT_CATEGORIES: Record<string, string[]> = {
-  messages: [
-    "text_message", "image_message", "video_message", "audio_message",
-    "document_message", "sticker_message", "location_message", "contact_message",
-    "message_status", "message_reaction", "message_revoked",
-    "played",  // NOVO - indicador de áudio/vídeo reproduzido
-  ],
-  interactive: ["button_response", "list_response", "poll_response", "reaction"],  // NOVO
-  groups: ["group_join", "group_leave", "group_promote", "group_demote", "group_update"],
-  connection: ["connection_status", "qrcode_update"],
-  calls: ["call_received"],
-  pending: ["unknown"],
+const ZAPI_EVENT_MAP: Record<string, string> = {
+  // ... existentes ...
+  "ReceivedCallback": "text_message",  // NOVO
 };
 ```
 
+### 3. Atualizar `reclassify-events/index.ts`
+
+Aplicar a mesma logica:
+1. Incluir `rawEvent.type` na busca do eventName
+2. Detectar mensagens de texto em `body.text.message`
+
+```typescript
+function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationResult {
+  const event = rawEvent.event as string | undefined;
+  const eventType = rawEvent.eventType as string | undefined;
+  const rawType = rawEvent.type as string | undefined;  // NOVO
+  const eventName = event || eventType || rawType;      // INCLUIR rawType
+  
+  // ... resto da logica igual ...
+  
+  // Check for text message in body.text (n8n Z-API format)
+  const body = rawEvent.body as Record<string, unknown> | undefined;
+  const bodyText = body?.text as Record<string, unknown> | undefined;
+  if (bodyText?.message !== undefined) {
+    return {
+      eventType: "text_message",
+      eventSubtype: "text",
+      classification: "identified",
+    };
+  }
+  
+  // ... resto do codigo ...
+}
+```
+
 ---
 
-## Categorização dos Novos Tipos
+## Ordem de Verificacao Atualizada
 
-| Tipo | Categoria | Justificativa |
-|------|-----------|---------------|
-| `played` | messages | Indica que o destinatário reproduziu uma mensagem de áudio/vídeo |
-| `reaction` | interactive | É uma interação do usuário com uma mensagem (emoji) |
+1. Mapeamento direto de eventos (ZAPI_EVENT_MAP) - agora inclui rawEvent.type
+2. Verificacao de reactions
+3. Verificacao de played events
+4. **NOVO**: Verificacao de body.text.message
+5. Verificacao de message types (conversation, imageMessage, etc.)
+6. Verificacao de group actions
+7. Verificacao de button/list responses
+8. Fallback para unknown
 
 ---
 
-## Resultado
+## Resultado Esperado
 
-Após as mudanças:
-1. Os tipos "played" e "reaction" aparecerão no dropdown de filtro
-2. Os badges terão cores apropriadas baseadas na categoria
-3. A função `getEventCategory()` retornará a categoria correta para os novos tipos
+| Payload | event_type | event_subtype |
+|---------|------------|---------------|
+| `type: "ReceivedCallback"` | `text_message` | `ReceivedCallback` |
+| `body.text.message: "..."` | `text_message` | `text` |
 
+---
+
+## Beneficios
+
+1. Eventos com `type: "ReceivedCallback"` serao classificados corretamente
+2. Mensagens com estrutura `body.text.message` serao identificadas
+3. Reclassificacao ira corrigir eventos existentes marcados como "unknown"
