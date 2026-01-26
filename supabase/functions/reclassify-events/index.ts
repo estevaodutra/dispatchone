@@ -216,6 +216,14 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
       classification: "identified",
     };
   }
+
+  if (bodyStatus === "READ_BY_ME") {
+    return {
+      eventType: "read_by_me",
+      eventSubtype: "READ_BY_ME",
+      classification: "identified",
+    };
+  }
   
   // Check for text message in body.text (n8n Z-API format)
   const bodyText = body?.text as Record<string, unknown> | undefined;
