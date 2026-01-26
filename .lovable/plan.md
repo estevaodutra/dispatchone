@@ -1,10 +1,10 @@
 
 
-# Plano: Adicionar Classificacao de Evento "played audio"
+# Plano: Adicionar Classificacao de Evento "played"
 
 ## Contexto
 
-O sistema atual nao identifica eventos de audio reproduzido no WhatsApp. Quando um audio e reproduzido pelo destinatario, o evento e classificado como "unknown".
+O sistema atual nao identifica eventos de audio/video reproduzido no WhatsApp. Quando um audio e reproduzido pelo destinatario, o evento e classificado como "unknown".
 
 ## Estrutura do Payload (Z-API via n8n)
 
@@ -23,7 +23,7 @@ raw_event: {
 ## Logica de Deteccao
 
 - **Condicao**: Verificar se `body.type.status === "PLAYED"`
-- **event_type**: `played audio`
+- **event_type**: `played`
 - **event_subtype**: `PLAYED`
 - **classification**: `identified`
 
@@ -33,7 +33,7 @@ raw_event: {
 
 | Arquivo | Acao |
 |---------|------|
-| `supabase/functions/webhook-inbound/index.ts` | Adicionar deteccao de "played audio" na funcao classifyZApiEvent |
+| `supabase/functions/webhook-inbound/index.ts` | Adicionar deteccao de "played" na funcao classifyZApiEvent |
 | `supabase/functions/reclassify-events/index.ts` | Adicionar mesma deteccao para reclassificacao |
 
 ---
@@ -42,7 +42,7 @@ raw_event: {
 
 ### 1. Atualizar funcao `classifyZApiEvent` em `webhook-inbound/index.ts`
 
-Adicionar verificacao para `body.type.status === "PLAYED"` APOS a verificacao de reaction e ANTES das verificacoes de mensagem (linha 87):
+Adicionar verificacao para `body.type.status === "PLAYED"` APOS a verificacao de reaction (linha 86) e ANTES das verificacoes de mensagem:
 
 ```typescript
 // Check for reaction events (n8n wraps in body)
@@ -57,13 +57,13 @@ if (reaction?.value !== undefined) {
   };
 }
 
-// Check for played audio events (audio/video played)
+// Check for played events (audio/video played by recipient)
 const bodyType = (body?.type || rawEvent.type) as Record<string, unknown> | undefined;
 const typeStatus = bodyType?.status as string | undefined;
 
 if (typeStatus === "PLAYED") {
   return {
-    eventType: "played audio",
+    eventType: "played",
     eventSubtype: "PLAYED",
     classification: "identified",
   };
@@ -74,7 +74,7 @@ if (typeStatus === "PLAYED") {
 
 ### 2. Atualizar funcao `classifyZApiEvent` em `reclassify-events/index.ts`
 
-Adicionar a mesma verificacao APOS a verificacao de reaction (linha 80):
+Adicionar a mesma verificacao APOS a verificacao de reaction (linha 80) e ANTES das verificacoes de message type:
 
 ```typescript
 // Check for reaction events (n8n wraps in body)
@@ -89,13 +89,13 @@ if (reaction?.value !== undefined) {
   };
 }
 
-// Check for played audio events (audio/video played)
+// Check for played events (audio/video played by recipient)
 const bodyType = (body?.type || rawEvent.type) as Record<string, unknown> | undefined;
 const typeStatus = bodyType?.status as string | undefined;
 
 if (typeStatus === "PLAYED") {
   return {
-    eventType: "played audio",
+    eventType: "played",
     eventSubtype: "PLAYED",
     classification: "identified",
   };
@@ -108,7 +108,7 @@ if (typeStatus === "PLAYED") {
 
 ## Ordem de Verificacao na funcao
 
-A deteccao de "played audio" sera feita:
+A deteccao de "played" sera feita:
 1. Apos verificar o mapeamento direto de eventos (`ZAPI_EVENT_MAP`)
 2. Apos verificacao de reactions
 3. Antes da verificacao de tipos de mensagem
@@ -119,14 +119,14 @@ A deteccao de "played audio" sera feita:
 
 | Payload | event_type | event_subtype |
 |---------|------------|---------------|
-| `body.type.status = "PLAYED"` | `played audio` | `PLAYED` |
+| `body.type.status = "PLAYED"` | `played` | `PLAYED` |
 
 ---
 
 ## Beneficios
 
 1. **Visibilidade**: Eventos de reproducao aparecerao corretamente no painel
-2. **Filtragem**: Usuarios poderao filtrar por tipo "played audio"
-3. **Analytics**: Possibilidade de rastrear quantos audios foram reproduzidos
-4. **Confirmacao de leitura**: Indica que o destinatario de fato ouviu a midia
+2. **Filtragem**: Usuarios poderao filtrar por tipo "played"
+3. **Analytics**: Possibilidade de rastrear quantos audios/videos foram reproduzidos
+4. **Confirmacao de leitura**: Indica que o destinatario de fato ouviu/assistiu a midia
 
