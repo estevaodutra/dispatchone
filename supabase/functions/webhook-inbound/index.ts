@@ -260,20 +260,44 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
 
-    const body = await req.json() as InboundPayload;
+    const body = await req.json();
     
-    // Validate required fields
-    if (!body.instance_id || !body.raw_event) {
+    // Detect payload format and normalize
+    let payload: InboundPayload;
+    
+    if (body.raw_event && body.instance_id) {
+      // Already in expected encapsulated format
+      payload = body as InboundPayload;
+    } else {
+      // Direct payload from provider - auto-wrap it
+      // Try to extract instance_id from common Z-API/Evolution fields
+      const instanceId = body.instanceId || 
+                         body.instance || 
+                         body.phone ||
+                         body.sender?.phone ||
+                         "unknown";
+      
+      payload = {
+        source: "z-api",
+        instance_id: instanceId,
+        raw_event: body
+      };
+      
+      console.log("[webhook-inbound] Auto-wrapped raw payload, detected instance_id:", instanceId);
+    }
+    
+    // Validate required fields after normalization
+    if (!payload.instance_id || !payload.raw_event) {
       return new Response(
         JSON.stringify({ success: false, error: "Missing required fields: instance_id and raw_event" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const source = body.source || "z-api";
-    const externalInstanceId = body.instance_id;
-    const receivedAt = body.received_at || new Date().toISOString();
-    const rawEvent = body.raw_event;
+    const source = payload.source || "z-api";
+    const externalInstanceId = payload.instance_id;
+    const receivedAt = payload.received_at || new Date().toISOString();
+    const rawEvent = payload.raw_event;
 
     console.log(`[webhook-inbound] Received event from ${source}, instance: ${externalInstanceId}`);
 
