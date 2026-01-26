@@ -56,7 +56,8 @@ const MESSAGE_TYPE_MAP: Record<string, string> = {
 function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationResult {
   const event = rawEvent.event as string | undefined;
   const eventType = rawEvent.eventType as string | undefined;
-  const eventName = event || eventType;
+  const rawType = rawEvent.type as string | undefined;
+  const eventName = event || eventType || rawType;
   
   // Check direct mapping first
   if (eventName && ZAPI_EVENT_MAP[eventName]) {
@@ -80,13 +81,23 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
   }
   
   // Check for played events (audio/video played by recipient)
-  const bodyType = (body?.type || rawEvent.type) as Record<string, unknown> | undefined;
+  const bodyType = body?.type as Record<string, unknown> | undefined;
   const typeStatus = bodyType?.status as string | undefined;
 
   if (typeStatus === "PLAYED") {
     return {
       eventType: "played",
       eventSubtype: "PLAYED",
+      classification: "identified",
+    };
+  }
+  
+  // Check for text message in body.text (n8n Z-API format)
+  const bodyText = body?.text as Record<string, unknown> | undefined;
+  if (bodyText?.message !== undefined) {
+    return {
+      eventType: "text_message",
+      eventSubtype: "text",
       classification: "identified",
     };
   }
