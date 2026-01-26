@@ -502,10 +502,98 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const onlyPending = body.only_pending === true;
     const onlyUnknown = body.only_unknown === true;
+    const eventId = body.event_id as string | undefined;
+    const force = body.force === true;
 
-    console.log(`[reclassify-events] User: ${user.id}, onlyPending: ${onlyPending}, onlyUnknown: ${onlyUnknown}`);
+    console.log(`[reclassify-events] User: ${user.id}, onlyPending: ${onlyPending}, onlyUnknown: ${onlyUnknown}, eventId: ${eventId || 'none'}, force: ${force}`);
 
-    // Build query
+    // Single event reprocessing
+    if (eventId) {
+      // Fetch the single event
+      const { data: event, error: fetchError } = await supabase
+        .from("webhook_events")
+        .select("id, source, raw_event, event_type, classification, processing_status")
+        .eq("id", eventId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (fetchError) {
+        console.error("[reclassify-events] Fetch error:", fetchError);
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch event" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      if (!event) {
+        return new Response(
+          JSON.stringify({ error: "Event not found" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
+      const rawEvent = event.raw_event as Record<string, unknown>;
+      const classification = classifyEvent(event.source, rawEvent);
+      const context = extractContext(event.source, rawEvent);
+      const expectedStatus = classification.classification === "identified" ? "processed" : "pending";
+      
+      const hasChanged = 
+        force ||
+        event.event_type !== classification.eventType ||
+        event.classification !== classification.classification ||
+        event.processing_status !== expectedStatus;
+
+      if (hasChanged) {
+        const { error: updateError } = await supabase
+          .from("webhook_events")
+          .update({
+            event_type: classification.eventType,
+            event_subtype: classification.eventSubtype,
+            classification: classification.classification,
+            processing_status: expectedStatus,
+            processed_at: expectedStatus === "processed" ? new Date().toISOString() : null,
+            chat_jid: context.chatJid,
+            chat_type: context.chatType,
+            chat_name: context.chatName,
+            sender_phone: context.senderPhone,
+            sender_name: context.senderName,
+            message_id: context.messageId,
+            event_timestamp: context.eventTimestamp,
+            processing_error: null,
+          })
+          .eq("id", event.id);
+
+        if (updateError) {
+          console.error(`[reclassify-events] Update error for ${event.id}:`, updateError);
+          return new Response(
+            JSON.stringify({ error: "Failed to update event" }),
+            { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
+
+        console.log(`[reclassify-events] Reprocessed ${event.id}: ${event.event_type} -> ${classification.eventType}, status: ${expectedStatus}`);
+      } else {
+        console.log(`[reclassify-events] Event ${event.id} unchanged`);
+      }
+
+      const result = {
+        success: true,
+        event_id: event.id,
+        event_type: classification.eventType,
+        classification: classification.classification,
+        processing_status: expectedStatus,
+        changed: hasChanged,
+      };
+
+      console.log("[reclassify-events] Single event result:", result);
+
+      return new Response(
+        JSON.stringify(result),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Batch reclassification (existing behavior)
     let query = supabase
       .from("webhook_events")
       .select("id, source, raw_event, event_type, classification, processing_status")
@@ -556,7 +644,8 @@ Deno.serve(async (req) => {
               event_type: classification.eventType,
               event_subtype: classification.eventSubtype,
               classification: classification.classification,
-              processing_status: classification.classification === "identified" ? "processed" : "pending",
+              processing_status: expectedStatus,
+              processed_at: expectedStatus === "processed" ? new Date().toISOString() : null,
               chat_jid: context.chatJid,
               chat_type: context.chatType,
               chat_name: context.chatName,

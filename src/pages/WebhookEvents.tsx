@@ -145,9 +145,20 @@ export default function WebhookEvents() {
   };
   
   const handleReprocess = async (event: WebhookEvent) => {
-    await reprocessMutation.mutateAsync(event.id);
-    toast({ title: "Reprocessando", description: "Evento marcado para reprocessamento" });
-    setSelectedEvent(null);
+    try {
+      const result = await reprocessMutation.mutateAsync(event.id);
+      toast({
+        title: "Evento reclassificado",
+        description: `Tipo: ${result.event_type}, Status: ${result.processing_status}`,
+      });
+      setSelectedEvent(null);
+    } catch (error) {
+      toast({
+        title: "Erro",
+        description: "Falha ao reprocessar evento",
+        variant: "destructive",
+      });
+    }
   };
   
   const handleIgnore = async (event: WebhookEvent) => {
@@ -545,8 +556,8 @@ export default function WebhookEvents() {
                 onClick={() => handleReprocess(selectedEvent)}
                 disabled={reprocessMutation.isPending}
               >
-                <RotateCw className="mr-2 h-4 w-4" />
-                Reprocessar
+                <RotateCw className={cn("mr-2 h-4 w-4", reprocessMutation.isPending && "animate-spin")} />
+                Reclassificar
               </Button>
               <Button
                 variant="outline"
