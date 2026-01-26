@@ -637,6 +637,11 @@ Deno.serve(async (req) => {
           event.classification !== classification.classification ||
           event.processing_status !== expectedStatus;
 
+        // Debug logging for first 10 events
+        if (reclassified + unchanged + errors < 10) {
+          console.log(`[reclassify-events] Event ${event.id}: current=${event.event_type}/${event.classification}/${event.processing_status} -> new=${classification.eventType}/${classification.classification}/${expectedStatus} hasChanged=${hasChanged}`);
+        }
+
         if (hasChanged) {
           const { error: updateError } = await supabase
             .from("webhook_events")
