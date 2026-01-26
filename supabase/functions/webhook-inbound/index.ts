@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
         raw_event: rawEvent,
         event_timestamp: context.eventTimestamp,
         received_at: receivedAt,
-        processing_status: "pending",
+        processing_status: classification.classification === "identified" ? "processed" : "pending",
       })
       .select("id")
       .single();

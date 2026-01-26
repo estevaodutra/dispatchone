@@ -409,6 +409,7 @@ Deno.serve(async (req) => {
               event_type: classification.eventType,
               event_subtype: classification.eventSubtype,
               classification: classification.classification,
+              processing_status: classification.classification === "identified" ? "processed" : "pending",
               chat_jid: context.chatJid,
               chat_type: context.chatType,
               chat_name: context.chatName,
