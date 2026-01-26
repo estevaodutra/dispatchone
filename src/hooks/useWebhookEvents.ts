@@ -48,7 +48,7 @@ const EVENT_CATEGORIES: Record<string, string[]> = {
   messages: [
     "text_message", "image_message", "video_message", "audio_message",
     "document_message", "sticker_message", "location_message", "contact_message",
-    "message_status", "message_reaction", "message_revoked", "message_received",
+    "message_status", "message_reaction", "message_revoked", "message_received", "message_read",
     "played",
   ],
   interactive: ["button_response", "list_response", "poll_response", "reaction"],
