@@ -292,3 +292,33 @@ export function useIgnoreEvent() {
     },
   });
 }
+
+export interface ReclassifyResult {
+  success: boolean;
+  total_processed: number;
+  reclassified: number;
+  unchanged: number;
+  errors?: number;
+}
+
+export function useReclassifyAllEvents() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (options?: { onlyPending?: boolean; onlyUnknown?: boolean }): Promise<ReclassifyResult> => {
+      const { data, error } = await supabase.functions.invoke('reclassify-events', {
+        body: { 
+          only_pending: options?.onlyPending,
+          only_unknown: options?.onlyUnknown,
+        }
+      });
+      
+      if (error) throw error;
+      return data as ReclassifyResult;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["webhook-events"] });
+      queryClient.invalidateQueries({ queryKey: ["webhook-events-stats"] });
+    },
+  });
+}
