@@ -19,6 +19,9 @@ interface ExecuteMessageRequest {
   groupIds?: string[];
   sequenceId?: string | null;
   triggerContext?: TriggerContext;
+  // For resumed executions
+  executionId?: string;
+  startFromNodeIndex?: number;
 }
 
 interface TriggerContext {
@@ -75,6 +78,12 @@ interface CampaignData {
   instance_id: string;
   user_id: string;
   instances: InstanceData;
+}
+
+interface DestinationData {
+  group_jid: string;
+  group_name: string;
+  isPrivate?: boolean;
 }
 
 // ============= Standardized Payload =============
@@ -239,12 +248,15 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: ExecuteMessageRequest = await req.json();
-    const { messageId, campaignId, sequenceId, triggerContext } = body;
+    const { messageId, campaignId, sequenceId, triggerContext, executionId, startFromNodeIndex } = body;
+
+    // Check if this is a resumed execution
+    const isResumedExecution = !!executionId && startFromNodeIndex !== undefined;
 
     // Check if this is a triggered execution (from poll/webhook) or normal execution
     const isTriggeredExecution = !!triggerContext && !messageId;
 
-    if (!isTriggeredExecution && (!messageId || !campaignId)) {
+    if (!isResumedExecution && !isTriggeredExecution && (!messageId || !campaignId)) {
       return new Response(
         JSON.stringify({ error: "messageId and campaignId are required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -258,12 +270,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[ExecuteMessage] Starting execution - triggered: ${isTriggeredExecution}, campaign: ${campaignId}, sequence: ${sequenceId}`);
+    console.log(`[ExecuteMessage] Starting execution - triggered: ${isTriggeredExecution}, resumed: ${isResumedExecution}, campaign: ${campaignId}, sequence: ${sequenceId}`);
 
     // Get message details (only if not triggered execution)
     let typedMessage: GroupMessage | null = null;
     
-    if (!isTriggeredExecution && messageId) {
+    if (!isTriggeredExecution && !isResumedExecution && messageId) {
       const { data: message, error: messageError } = await supabase
         .from("group_messages")
         .select("*")
@@ -371,7 +383,7 @@ Deno.serve(async (req) => {
 
     console.log(`[ExecuteMessage] ${sequenceNodes.length} sequence nodes, triggered: ${isTriggeredExecution}, sendPrivate: ${sendToPrivate}, webhook: ${webhookUrl}`);
 
-    let nodesProcessed = 0;
+    let nodesProcessed = isResumedExecution ? (startFromNodeIndex || 0) : 0;
     let nodesFailed = 0;
 
     // ============= NODE-FIRST ORCHESTRATION =============
@@ -527,15 +539,18 @@ Deno.serve(async (req) => {
       };
 
       // Determine destinations based on sendToPrivate flag
-      const destinations = sendToPrivate && triggerContext
+      const destinations: DestinationData[] = sendToPrivate && triggerContext
         ? [{ 
             group_jid: triggerContext.respondentJid, 
             group_name: triggerContext.respondentName || triggerContext.respondentPhone,
             isPrivate: true
           }]
-        : groups.map(g => ({ ...g, isPrivate: false }));
+        : groups.map(g => ({ group_jid: g.group_jid, group_name: g.group_name, isPrivate: false }));
 
-      for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
+      // Determine starting node index
+      const startNodeIndex = isResumedExecution && startFromNodeIndex !== undefined ? startFromNodeIndex : 0;
+
+      for (let nodeIndex = startNodeIndex; nodeIndex < sortedNodes.length; nodeIndex++) {
         const node = sortedNodes[nodeIndex];
         
         console.log(`[ExecuteMessage] Processing node ${nodeIndex + 1}/${sortedNodes.length}: ${node.node_type}`);
@@ -544,10 +559,61 @@ Deno.serve(async (req) => {
         if (node.node_type === "delay") {
           const delayMs = calculateDelayMs(node.config);
           
-          if (delayMs > 0) {
-            const effectiveDelay = Math.min(delayMs, MAX_DELAY_MS);
-            console.log(`[ExecuteMessage] ⏱️ Delay: waiting ${effectiveDelay}ms (requested: ${delayMs}ms)`);
-            await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+          if (delayMs > MAX_DELAY_MS) {
+            // Long delay - save state and schedule continuation
+            const resumeAt = new Date(Date.now() + delayMs);
+            
+            console.log(`[ExecuteMessage] ⏱️ Long delay detected: ${delayMs}ms. Scheduling continuation for ${resumeAt.toISOString()}`);
+            
+            // Save execution state
+            const { data: savedExecution, error: saveError } = await supabase
+              .from("sequence_executions")
+              .insert({
+                user_id: userId,
+                campaign_id: campaignId,
+                sequence_id: effectiveSequenceId,
+                message_id: typedMessage?.id || null,
+                trigger_context: triggerContext || {},
+                current_node_index: nodeIndex + 1, // Resume from next node
+                nodes_data: sortedNodes,
+                destinations: destinations,
+                status: "paused",
+                resume_at: resumeAt.toISOString(),
+                nodes_processed: nodesProcessed,
+                nodes_failed: nodesFailed,
+              })
+              .select()
+              .single();
+            
+            if (saveError) {
+              console.error("[ExecuteMessage] Failed to save execution state:", saveError);
+              // Continue with capped delay as fallback
+              const effectiveDelay = Math.min(delayMs, MAX_DELAY_MS);
+              console.log(`[ExecuteMessage] ⏱️ Fallback: waiting ${effectiveDelay}ms`);
+              await new Promise(resolve => setTimeout(resolve, effectiveDelay));
+            } else {
+              console.log(`[ExecuteMessage] ✅ Execution ${savedExecution.id} paused, will resume at ${resumeAt.toISOString()}`);
+              
+              // Return partial response
+              const totalTimeMs = Date.now() - startTime;
+              return new Response(
+                JSON.stringify({
+                  success: true,
+                  status: "paused",
+                  executionId: savedExecution.id,
+                  resumeAt: resumeAt.toISOString(),
+                  nodesProcessed,
+                  nodesFailed,
+                  totalTimeMs,
+                  message: `Execution paused. Will resume in ${Math.round(delayMs / 60000)} minutes.`,
+                }),
+                { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+              );
+            }
+          } else if (delayMs > 0) {
+            // Short delay - wait inline
+            console.log(`[ExecuteMessage] ⏱️ Short delay: waiting ${delayMs}ms`);
+            await new Promise(resolve => setTimeout(resolve, delayMs));
           }
           
           nodesProcessed++;
@@ -716,6 +782,21 @@ Deno.serve(async (req) => {
         
         nodesProcessed++;
       }
+
+      // If this was a resumed execution, update the execution record
+      if (isResumedExecution && executionId) {
+        await supabase
+          .from("sequence_executions")
+          .update({
+            status: nodesFailed === 0 ? "completed" : "failed",
+            nodes_processed: nodesProcessed,
+            nodes_failed: nodesFailed,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", executionId);
+        
+        console.log(`[ExecuteMessage] ✅ Resumed execution ${executionId} completed`);
+      }
     }
 
     const totalTimeMs = Date.now() - startTime;
@@ -725,6 +806,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: nodesFailed === 0,
+        status: "completed",
         nodesProcessed,
         nodesFailed,
         groupsProcessed: groups.length,

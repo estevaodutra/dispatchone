@@ -1072,6 +1072,85 @@ export type Database = {
           },
         ]
       }
+      sequence_executions: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          current_node_index: number | null
+          destinations: Json
+          error_message: string | null
+          id: string
+          message_id: string | null
+          nodes_data: Json
+          nodes_failed: number | null
+          nodes_processed: number | null
+          resume_at: string | null
+          sequence_id: string
+          status: string | null
+          trigger_context: Json | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          current_node_index?: number | null
+          destinations?: Json
+          error_message?: string | null
+          id?: string
+          message_id?: string | null
+          nodes_data?: Json
+          nodes_failed?: number | null
+          nodes_processed?: number | null
+          resume_at?: string | null
+          sequence_id: string
+          status?: string | null
+          trigger_context?: Json | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          current_node_index?: number | null
+          destinations?: Json
+          error_message?: string | null
+          id?: string
+          message_id?: string | null
+          nodes_data?: Json
+          nodes_failed?: number | null
+          nodes_processed?: number | null
+          resume_at?: string | null
+          sequence_id?: string
+          status?: string | null
+          trigger_context?: Json | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sequence_executions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_executions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "group_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sequence_executions_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "message_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_nodes: {
         Row: {
           config: Json
