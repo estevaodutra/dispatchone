@@ -12,6 +12,7 @@ export const en = {
     billing: "Billing",
     settings: "Settings",
     apiDocs: "API Documentation",
+    webhookEvents: "Events",
     collapse: "Collapse",
   },
 

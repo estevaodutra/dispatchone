@@ -1288,6 +1288,78 @@ export type Database = {
         }
         Relationships: []
       }
+      webhook_events: {
+        Row: {
+          chat_jid: string | null
+          chat_name: string | null
+          chat_type: string | null
+          classification: string | null
+          event_subtype: string | null
+          event_timestamp: string | null
+          event_type: string
+          external_instance_id: string
+          id: string
+          instance_id: string | null
+          message_id: string | null
+          processed_at: string | null
+          processing_error: string | null
+          processing_result: Json | null
+          processing_status: string | null
+          raw_event: Json
+          received_at: string | null
+          sender_name: string | null
+          sender_phone: string | null
+          source: string
+          user_id: string | null
+        }
+        Insert: {
+          chat_jid?: string | null
+          chat_name?: string | null
+          chat_type?: string | null
+          classification?: string | null
+          event_subtype?: string | null
+          event_timestamp?: string | null
+          event_type?: string
+          external_instance_id: string
+          id?: string
+          instance_id?: string | null
+          message_id?: string | null
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_result?: Json | null
+          processing_status?: string | null
+          raw_event: Json
+          received_at?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
+          source?: string
+          user_id?: string | null
+        }
+        Update: {
+          chat_jid?: string | null
+          chat_name?: string | null
+          chat_type?: string | null
+          classification?: string | null
+          event_subtype?: string | null
+          event_timestamp?: string | null
+          event_type?: string
+          external_instance_id?: string
+          id?: string
+          instance_id?: string | null
+          message_id?: string | null
+          processed_at?: string | null
+          processing_error?: string | null
+          processing_result?: Json | null
+          processing_status?: string | null
+          raw_event?: Json
+          received_at?: string | null
+          sender_name?: string | null
+          sender_phone?: string | null
+          source?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

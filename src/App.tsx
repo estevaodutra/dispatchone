@@ -24,6 +24,7 @@ import Settings from "./pages/Settings";
 import ApiDocs from "./pages/ApiDocs";
 import ApiLogs from "./pages/ApiLogs";
 import SequenceLogs from "./pages/SequenceLogs";
+import WebhookEvents from "./pages/WebhookEvents";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -113,6 +114,16 @@ const App = () => {
                       <ProtectedRoute>
                         <AppLayout>
                           <SequenceLogs />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/events"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <WebhookEvents />
                         </AppLayout>
                       </ProtectedRoute>
                     }
