@@ -1537,6 +1537,124 @@ response = requests.post(
         }
       }
     ]
+  },
+  {
+    id: "webhooks-inbound",
+    name: "Webhooks (Recebimento)",
+    description: "Endpoint para receber eventos do WhatsApp via n8n",
+    endpoints: [
+      {
+        id: "webhook-inbound",
+        method: "POST",
+        path: "/webhook-inbound",
+        description: "Recebe eventos de WhatsApp repassados pelo n8n. O sistema classifica automaticamente o tipo de evento e extrai contexto (chat, remetente, message_id). Este endpoint é público e não requer autenticação.",
+        attributes: [
+          {
+            name: "source",
+            type: "string",
+            required: true,
+            description: "Origem do evento: 'z-api', 'evolution' ou 'meta'"
+          },
+          {
+            name: "instance_id",
+            type: "string",
+            required: true,
+            description: "ID externo da instância WhatsApp (identificador no provedor)"
+          },
+          {
+            name: "received_at",
+            type: "string",
+            required: false,
+            description: "Data/hora do recebimento no formato ISO 8601 (ex: 2025-01-26T14:30:00.000Z)"
+          },
+          {
+            name: "raw_event",
+            type: "object",
+            required: true,
+            description: "Payload original do provedor sem modificações"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/webhook-inbound" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "source": "z-api",
+    "instance_id": "instance_001",
+    "raw_event": {
+      "event": "message.received",
+      "data": {
+        "key": { "remoteJid": "5511999999999@s.whatsapp.net", "id": "MSG123" },
+        "message": { "conversation": "Olá!" },
+        "pushName": "João Silva",
+        "messageTimestamp": 1706284200
+      }
+    }
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/webhook-inbound',
+  {
+    source: 'z-api',
+    instance_id: 'instance_001',
+    raw_event: {
+      event: 'message.received',
+      data: {
+        key: { remoteJid: '5511999999999@s.whatsapp.net', id: 'MSG123' },
+        message: { conversation: 'Olá!' },
+        pushName: 'João Silva',
+        messageTimestamp: 1706284200
+      }
+    }
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/webhook-inbound',
+    json={
+        'source': 'z-api',
+        'instance_id': 'instance_001',
+        'raw_event': {
+            'event': 'message.received',
+            'data': {
+                'key': { 'remoteJid': '5511999999999@s.whatsapp.net', 'id': 'MSG123' },
+                'message': { 'conversation': 'Olá!' },
+                'pushName': 'João Silva',
+                'messageTimestamp': 1706284200
+            }
+        }
+    },
+    headers={
+        'Content-Type': 'application/json'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 201,
+            body: {
+              success: true,
+              event_id: "uuid-do-evento",
+              event_type: "text_message",
+              classification: "identified"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              success: false,
+              error: "Missing required fields: source, instance_id, raw_event"
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
