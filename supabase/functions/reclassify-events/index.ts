@@ -606,10 +606,10 @@ Deno.serve(async (req) => {
       query = query.eq("event_type", "unknown");
     }
 
-    // Prioritize pending events by ordering classification ascending
-    // 'pending' comes before 'identified' alphabetically
+    // Prioritize pending events by ordering classification descending
+    // 'pending' > 'identified' alphabetically, so DESC puts pending first
     query = query
-      .order("classification", { ascending: true })
+      .order("classification", { ascending: false })
       .order("received_at", { ascending: false })
       .limit(1000);
 
