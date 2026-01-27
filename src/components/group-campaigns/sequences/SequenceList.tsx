@@ -23,11 +23,12 @@ interface SequenceListProps {
 }
 
 const TRIGGER_TYPES = [
-  { value: "member_join", label: "Novo membro entra", icon: Users },
-  { value: "member_leave", label: "Membro sai", icon: Users },
-  { value: "keyword", label: "Palavra-chave", icon: Keyboard },
-  { value: "scheduled", label: "Agendado", icon: Clock },
-  { value: "manual", label: "Manual", icon: MessageSquare },
+  { value: "member_join", label: "Membro entrar", icon: Users, color: "bg-green-500" },
+  { value: "member_leave", label: "Membro sair", icon: Users, color: "bg-red-500" },
+  { value: "keyword", label: "Palavra-chave", icon: Keyboard, color: "bg-purple-500" },
+  { value: "scheduled", label: "Agendado", icon: Clock, color: "bg-orange-500" },
+  { value: "webhook", label: "Webhook", icon: MessageSquare, color: "bg-blue-500" },
+  { value: "manual", label: "Manual", icon: MessageSquare, color: "bg-slate-500" },
 ];
 
 export function SequenceList({
@@ -53,7 +54,42 @@ export function SequenceList({
   };
 
   const getTriggerInfo = (type: string) => {
-    return TRIGGER_TYPES.find(t => t.value === type) || TRIGGER_TYPES[4];
+    return TRIGGER_TYPES.find(t => t.value === type) || TRIGGER_TYPES[5];
+  };
+
+  const getTriggerPreview = (sequence: MessageSequence) => {
+    const config = sequence.triggerConfig as Record<string, unknown>;
+    
+    switch (sequence.triggerType) {
+      case "scheduled": {
+        const days = (config?.days as number[]) || [];
+        const times = (config?.times as string[]) || [];
+        const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+        const dayStr = days.length === 7 
+          ? "Todos os dias" 
+          : days.length === 0 
+            ? "Sem dias" 
+            : days.map(d => dayNames[d]).join(", ");
+        const timeStr = times.length === 0 
+          ? "" 
+          : times.length <= 3 
+            ? ` às ${times.join(", ")}` 
+            : ` às ${times.slice(0, 2).join(", ")} +${times.length - 2}`;
+        return `${dayStr}${timeStr}`;
+      }
+      case "keyword": {
+        const keyword = config?.keyword as string;
+        const matchType = config?.matchType as string;
+        return keyword ? `"${keyword}" (${matchType || "contains"})` : "Sem palavra-chave";
+      }
+      case "member_join":
+      case "member_leave":
+        return config?.sendPrivate ? "No privado" : "No grupo";
+      case "webhook":
+        return "Via API externa";
+      default:
+        return "Disparo manual";
+    }
   };
 
   if (isLoading) {
@@ -121,6 +157,9 @@ export function SequenceList({
                           <TriggerIcon className="h-3 w-3" />
                           {triggerInfo.label}
                         </CardDescription>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {getTriggerPreview(sequence)}
+                        </p>
                       </div>
                     </div>
                     <Switch
