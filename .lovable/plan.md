@@ -1,133 +1,177 @@
 
 
-## Correção: Execução Sequencial Garantida
+## Refatoração: Consolidar Mensagens em Sequências
 
-### Problemas Identificados
+### Visão Geral
 
-Analisei os logs e encontrei 3 problemas críticos no processamento de sequências:
-
----
-
-### Problema 1: Re-execução da Sequência em Novos Horários Agendados
-
-**O que acontece:**
-- Uma sequência começa às 13:00 e pausa no primeiro delay (1 minuto)
-- A mensagem está agendada para 10:00 E 10:17
-- Quando o cron dispara às 10:17, ele **inicia uma nova execução do zero** em vez de continuar a pausada
-- Resultado: nodes 0, 2 são enviados duas vezes; nodes 6, 8, 10 nunca são enviados
-
-**Evidência:**
-| Horário | Node | Grupo | Problema |
-|---------|------|-------|----------|
-| 13:00 | 0 (video) | G1, G2 | ✅ Correto - início |
-| 13:02 | 2 (buttons) | G1, G2 | ✅ Correto - continuação |
-| 13:17 | 0 (video) | G1, G2 | ❌ REINICIOU do zero! |
-| 13:19 | 2 (buttons) | G1, G2 | ❌ Duplicado |
+A aba "Mensagens" será removida e toda a funcionalidade de automação será consolidada na aba "Sequências". Cada sequência terá um **componente de gatilho fixo** (Trigger) no topo que define quando a sequência é executada.
 
 ---
 
-### Problema 2: Execuções Órfãs com Status "running"
+### Tipos de Gatilho (Triggers)
 
-**O que acontece:**
-- Quando uma execução pausada é resumida, ela cria uma NOVA entrada no banco
-- A execução anterior fica com status "running" para sempre
-- Atualmente existem 10+ execuções órfãs
-
----
-
-### Problema 3: Falta de Verificação de Execução em Andamento
-
-O `process-scheduled-messages` não verifica se já existe uma execução ativa antes de iniciar uma nova.
+| Gatilho | Descrição | Configuração |
+|---------|-----------|--------------|
+| **Membro entrar no grupo** | Dispara quando um novo membro entra | Opção: Enviar no privado |
+| **Membro sair do grupo** | Dispara quando um membro sai | Opção: Enviar no privado |
+| **Agendado** | Dispara em horários programados | Dias da semana + Horários (manual ou intervalo) |
+| **Palavra-chave** | Dispara quando uma palavra/frase é detectada | Palavra-chave + Match exato/contém |
+| **Webhook externo** | Dispara por outra automação/API | URL única para receber POST |
+| **Manual** | Disparado apenas pelo usuário | Botão de teste/envio |
 
 ---
 
-### Solução Proposta
+### Arquitetura de Componentes
 
-**Arquivo:** `supabase/functions/process-scheduled-messages/index.ts`
-
-#### Alteração 1: Verificar execução em andamento antes de criar nova
-
-```typescript
-// Antes de iniciar nova execução, verificar se já existe uma em andamento
-const { data: activeExecution } = await supabase
-  .from("sequence_executions")
-  .select("id, current_node_index, status")
-  .eq("sequence_id", message.sequence_id)
-  .in("status", ["paused", "running"])
-  .order("created_at", { ascending: false })
-  .limit(1)
-  .maybeSingle();
-
-if (activeExecution) {
-  console.log(`[Scheduler] Sequence ${message.sequence_id} already has active execution ${activeExecution.id} at node ${activeExecution.current_node_index}, skipping new trigger`);
-  results.push({ 
-    messageId: message.id, 
-    status: "skipped", 
-    error: "Execution already in progress" 
-  });
-  continue;
-}
+```text
+SequencesTab (existente)
+├── SequenceList (atualizado)
+│   └── Cards com preview do trigger
+│
+└── SequenceBuilder (atualizado)
+    ├── TriggerConfigCard [NOVO - fixo no topo]
+    │   ├── Seletor de tipo de gatilho
+    │   └── Configurações específicas do gatilho
+    │
+    └── NodeList (existente)
+        └── Nodes de ação (mensagem, delay, etc.)
 ```
 
-#### Alteração 2: Limpar execuções órfãs ao completar
+---
 
-**Arquivo:** `supabase/functions/execute-message/index.ts`
+### Mudanças por Arquivo
+
+#### 1. Remover Aba "Mensagens"
+
+| Arquivo | Ação |
+|---------|------|
+| `src/components/group-campaigns/GroupCampaignDetails.tsx` | Remover import e TabContent de MessagesTab; reduzir grid-cols de 7 para 6 |
+| `src/components/group-campaigns/tabs/MessagesTab.tsx` | **DELETAR** arquivo |
+| `src/components/group-campaigns/index.ts` | Remover export da MessagesTab |
+
+#### 2. Criar Componente TriggerConfigCard
+
+**Novo arquivo:** `src/components/group-campaigns/sequences/TriggerConfigCard.tsx`
+
+- Card fixo que aparece sempre no topo do SequenceBuilder
+- Não é arrastável/deletável (é obrigatório)
+- Contém configurações específicas por tipo de trigger:
+  - **member_join/member_leave**: Switch "Enviar no privado"
+  - **scheduled**: Seletor de dias + horários (reutilizar lógica do MessagesTab)
+  - **keyword**: Input para palavra-chave + tipo de match
+  - **webhook**: Exibe URL única para receber eventos
+  - **manual**: Apenas informativo
+
+#### 3. Atualizar SequenceBuilder
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/components/group-campaigns/sequences/SequenceBuilder.tsx` | Adicionar TriggerConfigCard acima da lista de nodes |
+
+#### 4. Atualizar SequenceList
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/components/group-campaigns/sequences/SequenceList.tsx` | Mostrar preview da configuração do trigger no card (ex: "Seg-Sex às 10:00, 14:00") |
+
+#### 5. Atualizar useSequences
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/hooks/useSequences.ts` | Garantir que `triggerConfig` aceita todas as configurações necessárias (schedule, keyword, sendPrivate, etc.) |
+
+---
+
+### Estrutura do triggerConfig no Banco
+
+A coluna `trigger_config` (JSONB) na tabela `message_sequences` armazenará:
 
 ```typescript
-// Quando uma execução resume e completa, marcar execuções antigas como "superseded"
-if (isResumedExecution && executionId) {
-  // Mark old "running" executions for same sequence as superseded
-  await supabase
-    .from("sequence_executions")
-    .update({
-      status: "superseded",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("sequence_id", effectiveSequenceId)
-    .eq("status", "running")
-    .neq("id", executionId);
+// member_join ou member_leave
+{
+  sendPrivate: boolean;
 }
+
+// scheduled
+{
+  days: number[];           // [0-6] para dom-sáb
+  times: string[];          // ["10:00", "14:00"]
+  mode: "manual" | "interval";
+  intervalConfig?: {
+    start: string;
+    end: string;
+    minutes: number;
+  };
+}
+
+// keyword
+{
+  keyword: string;
+  matchType: "exact" | "contains" | "startsWith";
+  caseSensitive: boolean;
+}
+
+// webhook
+{
+  webhookId: string;        // ID único para construir URL
+}
+
+// manual
+{} // vazio
 ```
 
-#### Alteração 3: Adicionar limpeza periódica de execuções órfãs
+---
 
-No início do `process-scheduled-messages`, antes de processar paused executions:
+### Fluxo de Usuário Atualizado
 
-```typescript
-// Clean up orphan executions stuck as "running" for more than 30 minutes
-const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-const { data: orphanExecutions } = await supabase
-  .from("sequence_executions")
-  .update({ 
-    status: "orphaned",
-    error_message: "Cleaned up - stuck as running for >30 minutes",
-    updated_at: new Date().toISOString()
-  })
-  .eq("status", "running")
-  .lt("updated_at", thirtyMinutesAgo)
-  .select("id");
+1. Usuário clica em "Nova Sequência" na aba Sequências
+2. Modal pede nome e tipo de gatilho
+3. Ao criar, SequenceBuilder abre com o TriggerConfigCard no topo
+4. Usuário configura o gatilho e adiciona nodes de ação
+5. Ao salvar, trigger_type e trigger_config são salvos junto com os nodes
 
-if (orphanExecutions && orphanExecutions.length > 0) {
-  console.log(`[Scheduler] Cleaned up ${orphanExecutions.length} orphan executions`);
-}
-```
+---
+
+### Migração de Dados
+
+A tabela `group_messages` será mantida inicialmente para compatibilidade com sequências agendadas existentes. O `process-scheduled-messages` Edge Function já busca pelo `sequence_id`, então continuará funcionando. Em uma fase futura, os dados podem ser migrados completamente.
+
+---
+
+### Arquivos Novos
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `src/components/group-campaigns/sequences/TriggerConfigCard.tsx` | Componente de configuração do gatilho |
+| `src/components/group-campaigns/sequences/triggers/ScheduleTriggerConfig.tsx` | Configuração específica para agendamento |
+| `src/components/group-campaigns/sequences/triggers/KeywordTriggerConfig.tsx` | Configuração específica para palavra-chave |
 
 ---
 
 ### Arquivos a Modificar
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/functions/process-scheduled-messages/index.ts` | Verificar execução ativa antes de criar nova + limpeza de órfãos |
-| `supabase/functions/execute-message/index.ts` | Marcar execuções antigas como "superseded" ao completar |
+| Arquivo | Modificação |
+|---------|-------------|
+| `src/components/group-campaigns/GroupCampaignDetails.tsx` | Remover aba Mensagens |
+| `src/components/group-campaigns/sequences/SequenceBuilder.tsx` | Adicionar TriggerConfigCard no header |
+| `src/components/group-campaigns/sequences/SequenceList.tsx` | Melhorar preview do trigger |
+| `src/hooks/useSequences.ts` | Tipagem para triggerConfig |
+| `src/components/group-campaigns/index.ts` | Remover export MessagesTab |
+
+---
+
+### Arquivos a Deletar
+
+| Arquivo | Motivo |
+|---------|--------|
+| `src/components/group-campaigns/tabs/MessagesTab.tsx` | Funcionalidade movida para Sequências |
 
 ---
 
 ### Resultado Esperado
 
-1. Cada sequência só terá UMA execução ativa por vez
-2. Novos triggers de horário agendado serão ignorados se a sequência já está em execução
-3. Todos os nodes (0-10) serão enviados em ordem
-4. Sem duplicações de mensagens
-5. Execuções órfãs serão limpas automaticamente
+- Interface simplificada com uma única aba de automação
+- Gatilhos configurados diretamente na sequência (sem duplicação)
+- Lógica de agendamento, palavra-chave, etc. centralizada
+- Melhor UX com fluxo visual claro (trigger → ações)
 
