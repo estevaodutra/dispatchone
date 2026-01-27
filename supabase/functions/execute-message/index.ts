@@ -796,6 +796,25 @@ Deno.serve(async (req) => {
           .eq("id", executionId);
         
         console.log(`[ExecuteMessage] ✅ Resumed execution ${executionId} completed`);
+        
+        // Mark other "running" executions for the same sequence as superseded
+        if (effectiveSequenceId) {
+          const { data: supersededExecutions } = await supabase
+            .from("sequence_executions")
+            .update({
+              status: "superseded",
+              error_message: `Superseded by execution ${executionId}`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("sequence_id", effectiveSequenceId)
+            .eq("status", "running")
+            .neq("id", executionId)
+            .select("id");
+          
+          if (supersededExecutions && supersededExecutions.length > 0) {
+            console.log(`[ExecuteMessage] Marked ${supersededExecutions.length} old executions as superseded`);
+          }
+        }
       }
     }
 
