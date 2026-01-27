@@ -264,6 +264,23 @@ Deno.serve(async (req) => {
 
     console.log(`[Scheduler] Running at ${currentTime} (Brazil), day ${currentDay}, date ${todayDate}`);
 
+    // ============= CLEANUP ORPHAN EXECUTIONS =============
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+    const { data: orphanExecutions } = await supabase
+      .from("sequence_executions")
+      .update({ 
+        status: "orphaned",
+        error_message: "Cleaned up - stuck as running for >30 minutes",
+        updated_at: new Date().toISOString()
+      })
+      .eq("status", "running")
+      .lt("updated_at", thirtyMinutesAgo)
+      .select("id");
+
+    if (orphanExecutions && orphanExecutions.length > 0) {
+      console.log(`[Scheduler] Cleaned up ${orphanExecutions.length} orphan executions`);
+    }
+
     // ============= PROCESS PAUSED EXECUTIONS FIRST =============
     const { data: pausedExecutions, error: pausedError } = await supabase
       .from("sequence_executions")
@@ -388,6 +405,28 @@ Deno.serve(async (req) => {
           console.log(`[Scheduler] Message ${message.id} already executed at ${currentTime} today, skipping`);
           results.push({ messageId: message.id, status: "skipped", error: "Already executed" });
           continue;
+        }
+
+        // Check if sequence already has an active execution (paused or running)
+        if (message.sequence_id) {
+          const { data: activeExecution } = await supabase
+            .from("sequence_executions")
+            .select("id, current_node_index, status")
+            .eq("sequence_id", message.sequence_id)
+            .in("status", ["paused", "running"])
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (activeExecution) {
+            console.log(`[Scheduler] Sequence ${message.sequence_id} already has active execution ${activeExecution.id} at node ${activeExecution.current_node_index}, skipping new trigger`);
+            results.push({ 
+              messageId: message.id, 
+              status: "skipped", 
+              error: "Execution already in progress" 
+            });
+            continue;
+          }
         }
 
         // Get campaign details
