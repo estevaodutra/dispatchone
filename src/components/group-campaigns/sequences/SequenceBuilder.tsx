@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { NodeConfigPanel } from "./NodeConfigPanel";
+import { TriggerConfigCard, TriggerType, TriggerConfig } from "./TriggerConfigCard";
 
 interface SequenceBuilderProps {
   sequence: MessageSequence;
@@ -86,6 +87,12 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
   const [sequenceName, setSequenceName] = useState(sequence.name);
   const [openCategories, setOpenCategories] = useState<string[]>(["messages", "media", "interactive", "flow"]);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  
+  // Trigger state
+  const [triggerType, setTriggerType] = useState<TriggerType>(sequence.triggerType as TriggerType || "manual");
+  const [triggerConfig, setTriggerConfig] = useState<TriggerConfig>(
+    (sequence.triggerConfig as TriggerConfig) || {}
+  );
 
   const { nodes, connections, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
 
@@ -104,6 +111,12 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
       })));
     }
   }, [nodes, connections]);
+
+  // Sync trigger state when sequence changes
+  useEffect(() => {
+    setTriggerType(sequence.triggerType as TriggerType || "manual");
+    setTriggerConfig((sequence.triggerConfig as TriggerConfig) || {});
+  }, [sequence.id, sequence.triggerType, sequence.triggerConfig]);
 
   const generateNodeId = () => `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
@@ -267,7 +280,15 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
 
   const handleSave = async () => {
     try {
-      await onUpdate({ id: sequence.id, updates: { name: sequenceName } });
+      // Save trigger config along with name
+      await onUpdate({ 
+        id: sequence.id, 
+        updates: { 
+          name: sequenceName,
+          triggerType: triggerType,
+          triggerConfig: triggerConfig as Record<string, unknown>,
+        } 
+      });
       
       const idMapping = await saveNodes(localNodes.map(node => ({
         localId: node.id,
@@ -375,7 +396,16 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
         </div>
       </div>
 
-      <div className="flex gap-4 h-[calc(100vh-280px)] min-h-[500px]">
+      {/* Trigger Config Card - Fixed at top */}
+      <TriggerConfigCard
+        triggerType={triggerType}
+        triggerConfig={triggerConfig}
+        onTriggerTypeChange={setTriggerType}
+        onTriggerConfigChange={setTriggerConfig}
+        sequenceId={sequence.id}
+      />
+
+      <div className="flex gap-4 h-[calc(100vh-380px)] min-h-[400px]">
         {/* Node Palette */}
         <Card className="w-52 shrink-0 overflow-y-auto">
           <CardHeader className="pb-3">
