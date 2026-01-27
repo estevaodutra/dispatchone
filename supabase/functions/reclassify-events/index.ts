@@ -593,13 +593,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Batch reclassification (existing behavior)
+    // Batch reclassification - prioritize pending events
     let query = supabase
       .from("webhook_events")
       .select("id, source, raw_event, event_type, classification, processing_status")
-      .eq("user_id", user.id)
-      .order("received_at", { ascending: false })
-      .limit(1000);
+      .eq("user_id", user.id);
 
     if (onlyPending) {
       query = query.eq("classification", "pending");
@@ -607,6 +605,13 @@ Deno.serve(async (req) => {
     if (onlyUnknown) {
       query = query.eq("event_type", "unknown");
     }
+
+    // Prioritize pending events by ordering classification ascending
+    // 'pending' comes before 'identified' alphabetically
+    query = query
+      .order("classification", { ascending: true })
+      .order("received_at", { ascending: false })
+      .limit(1000);
 
     const { data: events, error: fetchError } = await query;
 
