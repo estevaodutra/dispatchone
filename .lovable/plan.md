@@ -1,83 +1,56 @@
 
 
-## Correção: Priorizar Eventos Pendentes na Reclassificação
+## Correção: Ordenação da Query de Reclassificação
 
 ### Problema Identificado
 
-A query do batch processing ordena por `received_at DESC` e limita a 1000 registros. Isso significa que:
+O bug está na linha 612 do arquivo `supabase/functions/reclassify-events/index.ts`:
 
-- Os **39 eventos `unknown/pending`** são antigos e ficam fora do limite de 1000
-- Os **26 eventos `identified` mas `pending`** também podem estar fora
-- Por isso "Reclassificar Tudo" processa 1000 eventos mas altera 0
+```typescript
+.order("classification", { ascending: true })  // ERRADO!
+```
+
+**Motivo:** Alfabeticamente, `'identified'` (letra 'i') vem **antes** de `'pending'` (letra 'p'). Então ordenar ASC coloca `identified` primeiro, não `pending`.
+
+### Evidência
+
+Query com `ASC` (atual - errada):
+```
+identified, identified, identified... (2581 eventos)
+```
+
+Query com `DESC` (correta):
+```
+pending, pending, pending... (39 eventos primeiro)
+```
 
 ### Solução
 
-Alterar a query do batch para priorizar eventos que precisam de correção:
-
-```text
-Ordenação: 
-1. Primeiro: eventos com classification = 'pending' OU processing_status != expectedStatus
-2. Depois: por received_at DESC
-```
-
-Mas como SQL não permite ordenação condicional complexa facilmente, a solução mais simples é:
-
-**Opção A (Recomendada):** Remover o limite de 1000 quando `onlyPending` ou `onlyUnknown` estiver ativo
-
-**Opção B:** Fazer múltiplas queries - primeiro os pending/unknown, depois os recentes
-
-### Arquivo a Modificar
-
 | Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/reclassify-events/index.ts` | Mudar a query para processar eventos `pending`/`unknown` primeiro, ou processar todos quando houver filtro ativo |
+| `supabase/functions/reclassify-events/index.ts` | Linha 612: mudar `ascending: true` para `ascending: false` |
 
 ### Mudança Técnica
 
 ```typescript
-// Linha 597-602 - Query atual
-let query = supabase
-  .from("webhook_events")
-  .select("id, source, raw_event, event_type, classification, processing_status")
-  .eq("user_id", user.id);
-
-// Se não tem filtros específicos, priorizar pendentes
-if (!onlyPending && !onlyUnknown) {
-  // Primeiro processar os pending/unknown (até 1000)
-  query = query
-    .or("classification.eq.pending,processing_status.eq.pending")
-    .order("received_at", { ascending: false })
-    .limit(1000);
-} else {
-  // Com filtros, aplicar filtros e aumentar limite
-  if (onlyPending) {
-    query = query.eq("classification", "pending");
-  }
-  if (onlyUnknown) {
-    query = query.eq("event_type", "unknown");
-  }
-  query = query
-    .order("received_at", { ascending: false })
-    .limit(5000); // Aumentar limite quando tem filtro
-}
-```
-
-### Alternativa Mais Simples
-
-Mudar a ordenação padrão para priorizar `classification = 'pending'` primeiro:
-
-```typescript
-// Ordenar para que pending venham primeiro
+// Linha 609-614 - DE:
 query = query
-  .order("classification", { ascending: true }) // 'pending' < 'identified' alfabeticamente
+  .order("classification", { ascending: true })  // ❌ ERRADO
+  .order("received_at", { ascending: false })
+  .limit(1000);
+
+// PARA:
+query = query
+  .order("classification", { ascending: false })  // ✅ CORRETO: 'pending' > 'identified'
   .order("received_at", { ascending: false })
   .limit(1000);
 ```
 
 ### Resultado Esperado
 
-Ao clicar "Reclassificar Tudo":
-- Os 39 eventos `unknown/pending` serão processados primeiro
-- Os 26 eventos `identified/pending` também serão corrigidos
-- Resultado: ~65 eventos alterados em vez de 0
+Após a correção, ao clicar "Reclassificar Tudo":
+1. Os 39 eventos `pending/unknown` serão buscados primeiro
+2. A função `classifyEvent` será executada e detectará `READ_BY_ME`
+3. Os eventos serão atualizados para `read_by_me/identified/processed`
+4. O resultado mostrará `reclassified: 39` em vez de `reclassified: 0`
 
