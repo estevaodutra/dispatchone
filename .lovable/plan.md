@@ -1,94 +1,122 @@
 
 
-## Correção: Adicionar Client-Token ao Z-API
+## Alteração: Enviar Validação via Webhook n8n
 
-### Problema Identificado
+### Visão Geral
 
-O Z-API retorna erro 400: `"your client-token is not configured"` porque a API requer um header `Client-Token` para autenticação, além do token na URL.
-
-**Estrutura de autenticação do Z-API:**
-- URL: `https://api.z-api.io/instances/{instanceId}/token/{instanceToken}/...`
-- Header obrigatório: `Client-Token: {clientToken}`
-
-### Solução
-
-Precisamos adicionar o campo `external_client_token` à tabela `instances` e incluí-lo nas chamadas à API do Z-API.
+Modificar a Edge Function `phone-validation` para enviar as informações da instância e do número para um webhook n8n, que fará a chamada ao Z-API e retornará o resultado.
 
 ---
 
-### 1. Migração do Banco de Dados
+### Fluxo Atualizado
 
-Adicionar coluna `external_client_token` à tabela `instances`:
-
-```sql
-ALTER TABLE public.instances 
-ADD COLUMN IF NOT EXISTS external_client_token text;
-
-COMMENT ON COLUMN public.instances.external_client_token IS 'Client token for Z-API authentication header';
+```text
+Cliente                     dispatchOne                      n8n Webhook
+   │                             │                              │
+   ├─► POST /phone-validation   │                              │
+   │   { phone: "55119..." }    │                              │
+   │                             │                              │
+   │                             ├─► Buscar instância          │
+   │                             │   conectada no DB           │
+   │                             │                              │
+   │                             ├─► POST webhook ────────────►│
+   │                             │   {                          │
+   │                             │     instance: {...},         │──► Z-API
+   │                             │     phone: "55119..."        │
+   │                             │   }                          │
+   │                             │                              │
+   │                             │◄──── response ───────────────│
+   │                             │                              │
+   │◄──── { exists, phone }     │                              │
 ```
 
 ---
 
-### 2. Atualizar Edge Function phone-validation
+### Alteração no Arquivo
 
 **Arquivo:** `supabase/functions/phone-validation/index.ts`
 
-Modificar a query para incluir o novo campo:
+**Mudanças:**
+1. Substituir a chamada direta ao Z-API por uma chamada POST ao webhook n8n
+2. Enviar payload com dados completos da instância e telefone
 
-```typescript
-const { data: instance } = await supabase
-  .from('instances')
-  .select('id, name, external_instance_id, external_instance_token, external_client_token')
-  .eq('status', 'connected')
-  .eq('user_id', authResult.apiKey.user_id)
-  .limit(1)
-  .maybeSingle();
+---
+
+### Payload Enviado ao Webhook
+
+```json
+{
+  "action": "validation.phone_exists",
+  "instance": {
+    "id": "uuid-da-instancia",
+    "name": "Nome da Instância",
+    "external_instance_id": "INSTANCE_ID_ZAPI",
+    "external_instance_token": "TOKEN_ZAPI"
+  },
+  "phone": "5512983195531"
+}
 ```
 
-Adicionar validação do client token:
+---
+
+### Código da Alteração
 
 ```typescript
-if (!instance.external_client_token) {
+// Substituir o bloco de chamada ao Z-API (linhas 150-182) por:
+
+const webhookUrl = 'https://n8n-n8n.nuwfic.easypanel.host/webhook-test/validation_phone';
+
+console.log(`Sending phone validation to webhook: ${cleanPhone}`);
+
+const webhookPayload = {
+  action: 'validation.phone_exists',
+  instance: {
+    id: instance.id,
+    name: instance.name,
+    external_instance_id: instance.external_instance_id,
+    external_instance_token: instance.external_instance_token
+  },
+  phone: cleanPhone
+};
+
+const webhookResponse = await fetch(webhookUrl, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify(webhookPayload)
+});
+
+if (!webhookResponse.ok) {
+  const errorText = await webhookResponse.text();
+  console.error('Webhook error:', webhookResponse.status, errorText);
   return new Response(
     JSON.stringify({
       success: false,
       error: {
-        code: 'INSTANCE_NOT_CONFIGURED',
-        message: 'A instância não possui Client-Token configurado.'
+        code: 'WEBHOOK_ERROR',
+        message: 'Erro ao consultar o webhook de validação.'
       }
     }),
-    { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
+
+const result = await webhookResponse.json();
+
+console.log('Webhook response:', result);
+
+return new Response(
+  JSON.stringify({
+    success: true,
+    exists: result.exists === true || result.exists === 'true',
+    phone: result.phone || cleanPhone,
+    lid: result.lid || null,
+    instance_used: instance.name
+  }),
+  { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+);
 ```
-
-Incluir o header na chamada ao Z-API:
-
-```typescript
-const zapiResponse = await fetch(zapiUrl, {
-  method: 'GET',
-  headers: {
-    'Content-Type': 'application/json',
-    'Client-Token': instance.external_client_token
-  }
-});
-```
-
----
-
-### 3. Atualizar Interface de Instâncias
-
-**Arquivo:** `src/pages/Instances.tsx` (ou componente de edição)
-
-Adicionar campo para o Client-Token no formulário de configuração da instância.
-
----
-
-### 4. Atualizar Hook useInstances
-
-**Arquivo:** `src/hooks/useInstances.ts`
-
-Incluir `external_client_token` nas operações de create/update.
 
 ---
 
@@ -96,24 +124,14 @@ Incluir `external_client_token` nas operações de create/update.
 
 | Arquivo | Alteração |
 |---------|-----------|
-| Migração SQL | Adicionar coluna `external_client_token` |
-| `supabase/functions/phone-validation/index.ts` | Buscar e enviar Client-Token |
-| `src/pages/Instances.tsx` | Campo para configurar Client-Token |
-| `src/hooks/useInstances.ts` | Incluir novo campo |
-
----
-
-### Configuração Manual Necessária
-
-Após a implementação, o usuário precisará:
-
-1. Acessar o painel do Z-API
-2. Copiar o Client-Token da instância
-3. Colar no campo correspondente na página de Instâncias do dispatchOne
+| `supabase/functions/phone-validation/index.ts` | Substituir chamada Z-API por webhook n8n |
 
 ---
 
 ### Resultado Esperado
 
-O endpoint `/phone-validation` funcionará corretamente após o usuário configurar o Client-Token da sua instância Z-API.
+1. O endpoint `/phone-validation` envia os dados para o webhook n8n
+2. O n8n recebe: instance (id, name, external_instance_id, external_instance_token) e phone
+3. O n8n faz a chamada ao Z-API e retorna o resultado
+4. O dispatchOne repassa a resposta ao cliente
 
