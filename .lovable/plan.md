@@ -1,46 +1,31 @@
 
 
-## Atualizar Webhook URL para Validação de Telefone
+## Correção: Adicionar campo `provider` ao payload
 
-### Alteração
+### Problema Identificado
 
-Substituir a chamada direta ao Z-API por uma chamada POST ao webhook n8n de produção.
+O payload enviado ao webhook n8n está faltando o campo `provider` da instância, que é necessário para identificar qual API usar (z-api, evolution, etc.).
 
----
+### Alteração Necessária
 
-### Arquivo a Modificar
+**Arquivo:** `supabase/functions/phone-validation/index.ts`
 
-**`supabase/functions/phone-validation/index.ts`**
+### Mudanças
 
-Substituir o bloco das linhas 150-193 (chamada ao Z-API) por chamada ao webhook:
-
-**URL do Webhook:** `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent`
-
-**Payload a ser enviado:**
-```json
-{
-  "action": "validation.phone_exists",
-  "instance": {
-    "id": "uuid-da-instancia",
-    "name": "Nome da Instância",
-    "external_instance_id": "INSTANCE_ID_ZAPI",
-    "external_instance_token": "TOKEN_ZAPI"
-  },
-  "phone": "5512983195531"
-}
-```
-
----
-
-### Código da Alteração
+**1. Linha 117 - Adicionar `provider` na query:**
 
 ```typescript
-// Linhas 150-193 serão substituídas por:
+// De:
+.select('id, name, external_instance_id, external_instance_token')
 
-const webhookUrl = 'https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent';
+// Para:
+.select('id, name, provider, external_instance_id, external_instance_token')
+```
 
-console.log(`Sending phone validation to webhook: ${cleanPhone}`);
+**2. Linhas 155-164 - Adicionar `provider` no payload:**
 
+```typescript
+// De:
 const webhookPayload = {
   action: 'validation.phone_exists',
   instance: {
@@ -52,48 +37,39 @@ const webhookPayload = {
   phone: cleanPhone
 };
 
-const webhookResponse = await fetch(webhookUrl, {
-  method: 'POST',
-  headers: {
-    'Content-Type': 'application/json'
+// Para:
+const webhookPayload = {
+  action: 'validation.phone_exists',
+  instance: {
+    id: instance.id,
+    name: instance.name,
+    provider: instance.provider,
+    external_instance_id: instance.external_instance_id,
+    external_instance_token: instance.external_instance_token
   },
-  body: JSON.stringify(webhookPayload)
-});
-
-if (!webhookResponse.ok) {
-  const errorText = await webhookResponse.text();
-  console.error('Webhook error:', webhookResponse.status, errorText);
-  return new Response(
-    JSON.stringify({
-      success: false,
-      error: {
-        code: 'WEBHOOK_ERROR',
-        message: 'Erro ao consultar o webhook de validação.'
-      }
-    }),
-    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-  );
-}
-
-const result = await webhookResponse.json();
-
-console.log('Webhook response:', result);
-
-return new Response(
-  JSON.stringify({
-    success: true,
-    exists: result.exists === true || result.exists === 'true',
-    phone: result.phone || cleanPhone,
-    lid: result.lid || null,
-    instance_used: instance.name
-  }),
-  { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-);
+  phone: cleanPhone
+};
 ```
 
----
+### Payload Resultante
 
-### Resultado
+```json
+{
+  "action": "validation.phone_exists",
+  "instance": {
+    "id": "07bbc66e-02a9-4203-b77a-c2d98370281b",
+    "name": "Mauro",
+    "provider": "z-api",
+    "external_instance_id": "3E249F618B74B1ABEF461664B40E8DC7",
+    "external_instance_token": "39634632AE91F414F083E442"
+  },
+  "phone": "5512983195531"
+}
+```
 
-O endpoint `/phone-validation` enviará os dados da instância e telefone para o webhook n8n de produção, que processará a validação e retornará o resultado.
+### Arquivo a Modificar
+
+| Arquivo | Linhas | Alteração |
+|---------|--------|-----------|
+| `supabase/functions/phone-validation/index.ts` | 117, 159 | Adicionar campo `provider` |
 
