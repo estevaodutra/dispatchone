@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
     // Find a connected instance for this user
     const { data: instance, error: instanceError } = await supabase
       .from('instances')
-      .select('id, name, external_instance_id, external_instance_token')
+      .select('id, name, provider, external_instance_id, external_instance_token')
       .eq('status', 'connected')
       .eq('user_id', authResult.apiKey.user_id)
       .limit(1)
@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
       instance: {
         id: instance.id,
         name: instance.name,
+        provider: instance.provider,
         external_instance_id: instance.external_instance_id,
         external_instance_token: instance.external_instance_token
       },
