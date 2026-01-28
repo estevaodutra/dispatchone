@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.reclassify-events]
 verify_jwt = false
+
+[functions.phone-validation]
+verify_jwt = false
