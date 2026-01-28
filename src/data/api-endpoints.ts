@@ -1655,6 +1655,89 @@ response = requests.post(
         }
       }
     ]
+  },
+  {
+    id: "validation",
+    name: "Validação",
+    description: "Endpoints para validação de contatos WhatsApp",
+    endpoints: [
+      {
+        id: "phone-validation",
+        method: "POST",
+        path: "/phone-validation",
+        description: "Verifica se um número de telefone possui WhatsApp ativo. Utiliza automaticamente uma instância conectada da sua conta para fazer a validação via Z-API.",
+        attributes: [
+          {
+            name: "phone",
+            type: "string",
+            required: true,
+            description: "Número no formato DDI+DDD+Número (ex: 5511999999999). Apenas números, sem espaços ou caracteres especiais."
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/phone-validation" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "phone": "5511999999999"
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/phone-validation',
+  {
+    phone: '5511999999999'
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);
+
+console.log(response.data);
+// { success: true, exists: true, phone: "5511999999999", lid: "123@lid", instance_used: "Minha Instância" }`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/phone-validation',
+    json={
+        'phone': '5511999999999'
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)
+
+print(response.json())
+# { "success": True, "exists": True, "phone": "5511999999999", "lid": "123@lid", "instance_used": "Minha Instância" }`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              exists: true,
+              phone: "5511999999999",
+              lid: "999999999@lid",
+              instance_used: "Nome da Instância"
+            }
+          },
+          error: {
+            code: 503,
+            body: {
+              success: false,
+              error: {
+                code: "NO_CONNECTED_INSTANCE",
+                message: "Nenhuma instância WhatsApp está conectada para fazer a validação."
+              }
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
