@@ -147,39 +147,48 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Call Z-API phone-exists endpoint
-    const zapiUrl = `https://api.z-api.io/instances/${instance.external_instance_id}/token/${instance.external_instance_token}/phone-exists/${cleanPhone}`;
-    
-    console.log(`Calling Z-API for phone validation: ${cleanPhone}`);
+    // Send to n8n webhook for phone validation
+    const webhookUrl = 'https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent';
 
-    const zapiResponse = await fetch(zapiUrl, {
-      method: 'GET',
+    console.log(`Sending phone validation to webhook: ${cleanPhone}`);
+
+    const webhookPayload = {
+      action: 'validation.phone_exists',
+      instance: {
+        id: instance.id,
+        name: instance.name,
+        external_instance_id: instance.external_instance_id,
+        external_instance_token: instance.external_instance_token
+      },
+      phone: cleanPhone
+    };
+
+    const webhookResponse = await fetch(webhookUrl, {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify(webhookPayload)
     });
 
-    if (!zapiResponse.ok) {
-      const errorText = await zapiResponse.text();
-      console.error('Z-API error:', zapiResponse.status, errorText);
+    if (!webhookResponse.ok) {
+      const errorText = await webhookResponse.text();
+      console.error('Webhook error:', webhookResponse.status, errorText);
       return new Response(
         JSON.stringify({
           success: false,
           error: {
-            code: 'PROVIDER_ERROR',
-            message: 'Erro ao consultar o provedor WhatsApp.'
+            code: 'WEBHOOK_ERROR',
+            message: 'Erro ao consultar o webhook de validação.'
           }
         }),
         { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const zapiData = await zapiResponse.json();
-    
-    // Z-API returns the result directly (not array for phone-exists)
-    const result = Array.isArray(zapiData) ? zapiData[0] : zapiData;
+    const result = await webhookResponse.json();
 
-    console.log('Z-API response:', result);
+    console.log('Webhook response:', result);
 
     return new Response(
       JSON.stringify({
