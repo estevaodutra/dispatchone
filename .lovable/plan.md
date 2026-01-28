@@ -1,49 +1,22 @@
 
 
-## Alteração: Enviar Validação via Webhook n8n
+## Atualizar Webhook URL para Validação de Telefone
 
-### Visão Geral
+### Alteração
 
-Modificar a Edge Function `phone-validation` para enviar as informações da instância e do número para um webhook n8n, que fará a chamada ao Z-API e retornará o resultado.
-
----
-
-### Fluxo Atualizado
-
-```text
-Cliente                     dispatchOne                      n8n Webhook
-   │                             │                              │
-   ├─► POST /phone-validation   │                              │
-   │   { phone: "55119..." }    │                              │
-   │                             │                              │
-   │                             ├─► Buscar instância          │
-   │                             │   conectada no DB           │
-   │                             │                              │
-   │                             ├─► POST webhook ────────────►│
-   │                             │   {                          │
-   │                             │     instance: {...},         │──► Z-API
-   │                             │     phone: "55119..."        │
-   │                             │   }                          │
-   │                             │                              │
-   │                             │◄──── response ───────────────│
-   │                             │                              │
-   │◄──── { exists, phone }     │                              │
-```
+Substituir a chamada direta ao Z-API por uma chamada POST ao webhook n8n de produção.
 
 ---
 
-### Alteração no Arquivo
+### Arquivo a Modificar
 
-**Arquivo:** `supabase/functions/phone-validation/index.ts`
+**`supabase/functions/phone-validation/index.ts`**
 
-**Mudanças:**
-1. Substituir a chamada direta ao Z-API por uma chamada POST ao webhook n8n
-2. Enviar payload com dados completos da instância e telefone
+Substituir o bloco das linhas 150-193 (chamada ao Z-API) por chamada ao webhook:
 
----
+**URL do Webhook:** `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent`
 
-### Payload Enviado ao Webhook
-
+**Payload a ser enviado:**
 ```json
 {
   "action": "validation.phone_exists",
@@ -62,9 +35,9 @@ Cliente                     dispatchOne                      n8n Webhook
 ### Código da Alteração
 
 ```typescript
-// Substituir o bloco de chamada ao Z-API (linhas 150-182) por:
+// Linhas 150-193 serão substituídas por:
 
-const webhookUrl = 'https://n8n-n8n.nuwfic.easypanel.host/webhook-test/validation_phone';
+const webhookUrl = 'https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent';
 
 console.log(`Sending phone validation to webhook: ${cleanPhone}`);
 
@@ -120,18 +93,7 @@ return new Response(
 
 ---
 
-### Arquivos a Modificar
+### Resultado
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/functions/phone-validation/index.ts` | Substituir chamada Z-API por webhook n8n |
-
----
-
-### Resultado Esperado
-
-1. O endpoint `/phone-validation` envia os dados para o webhook n8n
-2. O n8n recebe: instance (id, name, external_instance_id, external_instance_token) e phone
-3. O n8n faz a chamada ao Z-API e retorna o resultado
-4. O dispatchOne repassa a resposta ao cliente
+O endpoint `/phone-validation` enviará os dados da instância e telefone para o webhook n8n de produção, que processará a validação e retornará o resultado.
 
