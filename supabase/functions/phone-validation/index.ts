@@ -191,12 +191,15 @@ Deno.serve(async (req) => {
 
     console.log('Webhook response:', result);
 
+    // Se o resultado for um array, pegar o primeiro elemento
+    const data = Array.isArray(result) ? result[0] : result;
+
     return new Response(
       JSON.stringify({
         success: true,
-        exists: result.exists === true || result.exists === 'true',
-        phone: result.phone || cleanPhone,
-        lid: result.lid || null,
+        exists: data?.exists === true || data?.exists === 'true',
+        phone: data?.phone || cleanPhone,
+        lid: data?.lid || null,
         instance_used: instance.name
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
