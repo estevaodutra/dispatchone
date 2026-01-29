@@ -273,7 +273,7 @@ export default function WebhookEvents() {
 
       {/* Info banner */}
       <div className="rounded-lg border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">
-        Os eventos são retidos por 24 horas
+        Os eventos são retidos por 12 horas e limpos automaticamente
       </div>
 
       {/* Stats cards */}
