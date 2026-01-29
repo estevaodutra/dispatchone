@@ -1,99 +1,112 @@
 
+## Diagnóstico: Sequências Agendadas Não Executando
 
-## Limpeza Automática de Eventos de Webhook a cada 12 horas
+### Problema Identificado
 
-### Situação Atual
+A sequência "Funil FN" parou de executar desde 27/01 porque há **execuções órfãs** travadas com status `running` que bloqueiam novos agendamentos.
 
-- **27.158 eventos** acumulados na tabela `webhook_events`
-- Eventos mais antigos desde 26/01/2026
-- Nenhuma limpeza automática implementada
-- A mensagem na UI diz "retidos por 24 horas" mas não há execução real
+#### Evidências:
+1. **10+ execuções "running"** de 27/01 que deveriam ter sido limpas como "orphaned"
+2. **Nenhuma execução registrada** para 28/01 e 29/01
+3. O scheduler está rodando corretamente a cada minuto
+4. A lógica de cleanup existe mas **não está funcionando**
 
-### Solução Proposta
-
-Criar uma rotina de limpeza automática que será executada pelo `pg_cron` a cada 12 horas.
-
----
-
-### Alterações
-
-**1. Criar Migration SQL para o pg_cron job**
-
-```sql
--- Habilitar extensão pg_cron se não estiver habilitada
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- Criar função de limpeza
-CREATE OR REPLACE FUNCTION public.cleanup_webhook_events()
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
-DECLARE
-  deleted_count INTEGER;
-BEGIN
-  -- Deletar eventos com mais de 12 horas
-  DELETE FROM public.webhook_events
-  WHERE received_at < NOW() - INTERVAL '12 hours';
-  
-  GET DIAGNOSTICS deleted_count = ROW_COUNT;
-  
-  RAISE LOG 'Webhook events cleanup: deleted % records', deleted_count;
-END;
-$$;
-
--- Agendar execução a cada 12 horas (00:00 e 12:00 UTC)
-SELECT cron.schedule(
-  'cleanup-webhook-events',
-  '0 0,12 * * *',
-  $$SELECT public.cleanup_webhook_events()$$
-);
-```
-
-**2. Atualizar mensagem na UI**
-
-**Arquivo:** `src/pages/WebhookEvents.tsx` (linha 276)
-
-```tsx
-// De:
-"Os eventos são retidos por 24 horas"
-
-// Para:
-"Os eventos são retidos por 12 horas e limpos automaticamente"
-```
-
----
-
-### Detalhes Técnicos
-
-| Item | Valor |
-|------|-------|
-| Tabela | `webhook_events` |
-| Retenção | 12 horas |
-| Frequência de limpeza | A cada 12h (00:00 e 12:00 UTC) |
-| Método | `pg_cron` com função SQL |
-
-### Fluxo
+#### Fluxo do Problema:
 
 ```text
-┌─────────────────┐     ┌──────────────────────┐
-│  pg_cron        │────▶│ cleanup_webhook_events│
-│  0 0,12 * * *   │     │       function        │
-└─────────────────┘     └───────────┬───────────┘
-                                    │
-                                    ▼
-                        ┌───────────────────────┐
-                        │ DELETE FROM           │
-                        │ webhook_events        │
-                        │ WHERE received_at     │
-                        │ < NOW() - 12 hours    │
-                        └───────────────────────┘
+Scheduler roda → Verifica execuções ativas → Encontra status "running" antigo
+                                                         ↓
+                                              Pula novo agendamento
+                                              (Linha 421-428 do código)
 ```
 
-### Resultado
+### Causa Raiz
 
-- ~27k eventos serão limpos na primeira execução
-- Tabela manterá apenas eventos das últimas 12 horas
-- Redução significativa de carga no banco
-- Estatísticas continuarão funcionando para dados recentes
+A query de UPDATE para limpar orphans não está retornando dados ou falhando silenciosamente. O cliente Supabase na Edge Function pode precisar de configuração explícita para bypassar RLS ou a query pode não estar logando erros.
 
+---
+
+### Solução
+
+**1. Corrigir a lógica de cleanup na Edge Function**
+
+**Arquivo:** `supabase/functions/process-scheduled-messages/index.ts`
+
+Adicionar configuração explícita de auth e melhorar log de erros:
+
+```typescript
+// Linha 235 - Adicionar opções do client
+const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
+```
+
+E melhorar o cleanup com log de erros (linhas 267-282):
+
+```typescript
+// ============= CLEANUP ORPHAN EXECUTIONS =============
+const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+const { data: orphanExecutions, error: orphanError } = await supabase
+  .from("sequence_executions")
+  .update({ 
+    status: "orphaned",
+    error_message: "Cleaned up - stuck as running for >30 minutes",
+    updated_at: new Date().toISOString()
+  })
+  .eq("status", "running")
+  .lt("updated_at", thirtyMinutesAgo)
+  .select("id");
+
+if (orphanError) {
+  console.error(`[Scheduler] Error cleaning orphan executions:`, orphanError);
+} else if (orphanExecutions && orphanExecutions.length > 0) {
+  console.log(`[Scheduler] Cleaned up ${orphanExecutions.length} orphan executions`);
+} else {
+  console.log(`[Scheduler] No orphan executions to cleanup`);
+}
+```
+
+**2. Criar migration para adicionar política RLS para service role (se necessário)**
+
+Adicionar bypass explícito para a service_role:
+
+```sql
+-- Permitir service role fazer UPDATE em todas as execuções
+CREATE POLICY "Service role can manage all sequence_executions" 
+ON sequence_executions
+FOR ALL 
+TO service_role
+USING (true)
+WITH CHECK (true);
+```
+
+**3. Limpar manualmente as execuções órfãs atuais**
+
+Criar uma função auxiliar ou executar via migration:
+
+```sql
+UPDATE sequence_executions 
+SET status = 'orphaned', 
+    error_message = 'Manual cleanup - blocked scheduler'
+WHERE status = 'running' 
+  AND updated_at < NOW() - INTERVAL '30 minutes';
+```
+
+---
+
+### Resumo das Alterações
+
+| Item | Ação |
+|------|------|
+| `process-scheduled-messages/index.ts` | Adicionar config do client + log de erros |
+| Migration SQL | Adicionar política RLS para service_role |
+| Migration SQL | Limpar execuções órfãs existentes |
+
+### Resultado Esperado
+
+- Execuções antigas serão limpas imediatamente
+- Novos agendamentos às 10:00 e 16:00 serão executados
+- Logs mostrarão status da limpeza de orphans
