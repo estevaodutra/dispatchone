@@ -1,64 +1,99 @@
 
 
-## Correção: Tratar resposta do webhook como array
+## Limpeza Automática de Eventos de Webhook a cada 12 horas
 
-### Problema
+### Situação Atual
 
-O webhook n8n retorna um array com o objeto de resposta, mas o código tenta acessar as propriedades diretamente no array, resultando em `undefined`.
+- **27.158 eventos** acumulados na tabela `webhook_events`
+- Eventos mais antigos desde 26/01/2026
+- Nenhuma limpeza automática implementada
+- A mensagem na UI diz "retidos por 24 horas" mas não há execução real
 
-### Arquivo a Modificar
+### Solução Proposta
 
-**`supabase/functions/phone-validation/index.ts`**
+Criar uma rotina de limpeza automática que será executada pelo `pg_cron` a cada 12 horas.
 
-### Alteração (linhas 178-189)
+---
 
-**Código atual:**
-```typescript
-return new Response(
-  JSON.stringify({
-    success: true,
-    exists: result.exists === true || result.exists === 'true',
-    phone: result.phone || cleanPhone,
-    lid: result.lid || null,
-    instance_used: instance.name
-  }),
-  { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+### Alterações
+
+**1. Criar Migration SQL para o pg_cron job**
+
+```sql
+-- Habilitar extensão pg_cron se não estiver habilitada
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+-- Criar função de limpeza
+CREATE OR REPLACE FUNCTION public.cleanup_webhook_events()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  -- Deletar eventos com mais de 12 horas
+  DELETE FROM public.webhook_events
+  WHERE received_at < NOW() - INTERVAL '12 hours';
+  
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  
+  RAISE LOG 'Webhook events cleanup: deleted % records', deleted_count;
+END;
+$$;
+
+-- Agendar execução a cada 12 horas (00:00 e 12:00 UTC)
+SELECT cron.schedule(
+  'cleanup-webhook-events',
+  '0 0,12 * * *',
+  $$SELECT public.cleanup_webhook_events()$$
 );
 ```
 
-**Código corrigido:**
-```typescript
-// Se o resultado for um array, pegar o primeiro elemento
-const data = Array.isArray(result) ? result[0] : result;
+**2. Atualizar mensagem na UI**
 
-return new Response(
-  JSON.stringify({
-    success: true,
-    exists: data?.exists === true || data?.exists === 'true',
-    phone: data?.phone || cleanPhone,
-    lid: data?.lid || null,
-    instance_used: instance.name
-  }),
-  { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-);
+**Arquivo:** `src/pages/WebhookEvents.tsx` (linha 276)
+
+```tsx
+// De:
+"Os eventos são retidos por 24 horas"
+
+// Para:
+"Os eventos são retidos por 12 horas e limpos automaticamente"
 ```
 
-### Resumo
+---
 
-| Problema | Solução |
-|----------|---------|
-| `result` é um array `[{...}]` | Extrair primeiro elemento com `result[0]` |
-| `result.exists` retorna `undefined` | Usar `data?.exists` após extrair |
+### Detalhes Técnicos
 
-### Resultado Esperado
+| Item | Valor |
+|------|-------|
+| Tabela | `webhook_events` |
+| Retenção | 12 horas |
+| Frequência de limpeza | A cada 12h (00:00 e 12:00 UTC) |
+| Método | `pg_cron` com função SQL |
 
-```json
-{
-  "success": true,
-  "exists": true,
-  "phone": "5512982402981",
-  "lid": "171296717553783@lid",
-  "instance_used": "Mauro"
-}
+### Fluxo
+
+```text
+┌─────────────────┐     ┌──────────────────────┐
+│  pg_cron        │────▶│ cleanup_webhook_events│
+│  0 0,12 * * *   │     │       function        │
+└─────────────────┘     └───────────┬───────────┘
+                                    │
+                                    ▼
+                        ┌───────────────────────┐
+                        │ DELETE FROM           │
+                        │ webhook_events        │
+                        │ WHERE received_at     │
+                        │ < NOW() - 12 hours    │
+                        └───────────────────────┘
 ```
+
+### Resultado
+
+- ~27k eventos serão limpos na primeira execução
+- Tabela manterá apenas eventos das últimas 12 horas
+- Redução significativa de carga no banco
+- Estatísticas continuarão funcionando para dados recentes
 
