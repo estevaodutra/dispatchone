@@ -232,7 +232,12 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
 
     // Get current time in Brazil timezone
     const now = new Date();
@@ -266,7 +271,9 @@ Deno.serve(async (req) => {
 
     // ============= CLEANUP ORPHAN EXECUTIONS =============
     const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000).toISOString();
-    const { data: orphanExecutions } = await supabase
+    console.log(`[Scheduler] Checking for orphan executions older than ${thirtyMinutesAgo}`);
+    
+    const { data: orphanExecutions, error: orphanError } = await supabase
       .from("sequence_executions")
       .update({ 
         status: "orphaned",
@@ -277,8 +284,12 @@ Deno.serve(async (req) => {
       .lt("updated_at", thirtyMinutesAgo)
       .select("id");
 
-    if (orphanExecutions && orphanExecutions.length > 0) {
-      console.log(`[Scheduler] Cleaned up ${orphanExecutions.length} orphan executions`);
+    if (orphanError) {
+      console.error(`[Scheduler] Error cleaning orphan executions:`, JSON.stringify(orphanError));
+    } else if (orphanExecutions && orphanExecutions.length > 0) {
+      console.log(`[Scheduler] Cleaned up ${orphanExecutions.length} orphan executions:`, orphanExecutions.map(e => e.id));
+    } else {
+      console.log(`[Scheduler] No orphan executions to cleanup`);
     }
 
     // ============= PROCESS PAUSED EXECUTIONS FIRST =============
