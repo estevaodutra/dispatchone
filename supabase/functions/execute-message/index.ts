@@ -256,9 +256,14 @@ Deno.serve(async (req) => {
     // Check if this is a triggered execution (from poll/webhook) or normal execution
     const isTriggeredExecution = !!triggerContext && !messageId;
 
-    if (!isResumedExecution && !isTriggeredExecution && (!messageId || !campaignId)) {
+    // Check if this is a direct sequence execution (from scheduler with only sequenceId)
+    const isDirectSequenceExecution = !!sequenceId && !messageId && !triggerContext && !isResumedExecution;
+
+    // Validate request parameters
+    // Allow: resumed, triggered, direct sequence (campaignId + sequenceId), or normal (campaignId + messageId)
+    if (!isResumedExecution && !isTriggeredExecution && !isDirectSequenceExecution && (!messageId || !campaignId)) {
       return new Response(
-        JSON.stringify({ error: "messageId and campaignId are required" }),
+        JSON.stringify({ error: "messageId and campaignId are required (or sequenceId for direct execution)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -270,12 +275,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[ExecuteMessage] Starting execution - triggered: ${isTriggeredExecution}, resumed: ${isResumedExecution}, campaign: ${campaignId}, sequence: ${sequenceId}`);
+    console.log(`[ExecuteMessage] Mode: resumed=${isResumedExecution}, triggered=${isTriggeredExecution}, directSequence=${isDirectSequenceExecution}`);
 
-    // Get message details (only if not triggered execution)
+    console.log(`[ExecuteMessage] Starting - campaign: ${campaignId}, sequence: ${sequenceId}, message: ${messageId}`);
+
+    // Get message details (only if not triggered/direct/resumed execution)
     let typedMessage: GroupMessage | null = null;
     
-    if (!isTriggeredExecution && !isResumedExecution && messageId) {
+    if (!isTriggeredExecution && !isResumedExecution && !isDirectSequenceExecution && messageId) {
       const { data: message, error: messageError } = await supabase
         .from("group_messages")
         .select("*")

@@ -1020,6 +1020,57 @@ export type Database = {
           },
         ]
       }
+      scheduled_sequence_executions: {
+        Row: {
+          campaign_id: string
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          scheduled_date: string
+          scheduled_time: string
+          sequence_id: string
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          scheduled_date: string
+          scheduled_time: string
+          sequence_id: string
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          scheduled_date?: string
+          scheduled_time?: string
+          sequence_id?: string
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_sequence_executions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "group_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_sequence_executions_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "message_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_connections: {
         Row: {
           condition_path: string | null
