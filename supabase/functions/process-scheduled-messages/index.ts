@@ -821,6 +821,190 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ============= PROCESS SCHEDULED SEQUENCES (from message_sequences table) =============
+    
+    console.log(`[Scheduler] Checking for scheduled sequences...`);
+    
+    // Fetch all active scheduled sequences
+    const { data: scheduledSequences, error: sequencesError } = await supabase
+      .from("message_sequences")
+      .select(`
+        id,
+        name,
+        user_id,
+        group_campaign_id,
+        trigger_config,
+        active
+      `)
+      .eq("trigger_type", "scheduled")
+      .eq("active", true);
+
+    if (sequencesError) {
+      console.error("[Scheduler] Error fetching scheduled sequences:", sequencesError);
+    } else {
+      console.log(`[Scheduler] Found ${scheduledSequences?.length || 0} active scheduled sequences`);
+      
+      const sequenceResults: Array<{ sequenceId: string; name: string; status: string; error?: string }> = [];
+      
+      for (const sequence of scheduledSequences || []) {
+        try {
+          const triggerConfig = sequence.trigger_config as { days?: number[]; times?: string[] } | null;
+          
+          if (!triggerConfig?.days || !triggerConfig?.times) {
+            console.log(`[Scheduler] Sequence ${sequence.id} (${sequence.name}) has invalid trigger_config, skipping`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "skipped", error: "Invalid config" });
+            continue;
+          }
+          
+          const matchesDay = triggerConfig.days.includes(currentDay);
+          const matchesTime = triggerConfig.times.includes(currentTime);
+          
+          console.log(`[Scheduler] Sequence ${sequence.name}: day ${currentDay} in [${triggerConfig.days.join(",")}]=${matchesDay}, time ${currentTime} in [${triggerConfig.times.join(",")}]=${matchesTime}`);
+          
+          if (!matchesDay || !matchesTime) {
+            continue; // Doesn't match schedule, silently skip
+          }
+          
+          console.log(`[Scheduler] ✅ Sequence ${sequence.name} matches schedule!`);
+          
+          // Check idempotency - already executed today at this time?
+          const { data: existingExecution } = await supabase
+            .from("scheduled_sequence_executions")
+            .select("id")
+            .eq("sequence_id", sequence.id)
+            .eq("scheduled_date", todayDate)
+            .eq("scheduled_time", currentTime)
+            .maybeSingle();
+
+          if (existingExecution) {
+            console.log(`[Scheduler] Sequence ${sequence.name} already executed at ${currentTime} today, skipping`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "skipped", error: "Already executed" });
+            continue;
+          }
+          
+          // Check for active execution (paused or running)
+          const { data: activeExecution } = await supabase
+            .from("sequence_executions")
+            .select("id, status, current_node_index")
+            .eq("sequence_id", sequence.id)
+            .in("status", ["paused", "running"])
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (activeExecution) {
+            console.log(`[Scheduler] Sequence ${sequence.name} has active execution ${activeExecution.id} (${activeExecution.status}), skipping`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "skipped", error: "Active execution in progress" });
+            continue;
+          }
+          
+          // Get campaign to validate status and instance
+          const { data: campaign, error: campaignError } = await supabase
+            .from("group_campaigns")
+            .select(`
+              id,
+              status,
+              instance_id,
+              instances!inner(id, status)
+            `)
+            .eq("id", sequence.group_campaign_id)
+            .single();
+
+          if (campaignError || !campaign) {
+            console.log(`[Scheduler] Campaign not found for sequence ${sequence.name}`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "failed", error: "Campaign not found" });
+            continue;
+          }
+
+          if (campaign.status !== "active") {
+            console.log(`[Scheduler] Campaign for sequence ${sequence.name} is not active (${campaign.status})`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "skipped", error: "Campaign not active" });
+            continue;
+          }
+
+          const instanceData = campaign.instances as unknown as { id: string; status: string };
+          if (instanceData.status !== "connected") {
+            console.log(`[Scheduler] Instance for sequence ${sequence.name} is not connected`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "skipped", error: "Instance not connected" });
+            continue;
+          }
+          
+          // Check if campaign has linked groups
+          const { data: linkedGroups } = await supabase
+            .from("campaign_groups")
+            .select("id")
+            .eq("campaign_id", sequence.group_campaign_id)
+            .limit(1);
+
+          if (!linkedGroups || linkedGroups.length === 0) {
+            console.log(`[Scheduler] No linked groups for sequence ${sequence.name}`);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "skipped", error: "No linked groups" });
+            continue;
+          }
+          
+          // Record execution start (idempotency)
+          await supabase
+            .from("scheduled_sequence_executions")
+            .insert({
+              sequence_id: sequence.id,
+              campaign_id: sequence.group_campaign_id,
+              user_id: sequence.user_id,
+              scheduled_date: todayDate,
+              scheduled_time: currentTime,
+              status: "executing",
+            });
+          
+          console.log(`[Scheduler] 🚀 Triggering sequence ${sequence.name} via execute-message...`);
+          
+          // Call execute-message with sequenceId only (no messageId)
+          const response = await fetch(`${supabaseUrl}/functions/v1/execute-message`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              campaignId: sequence.group_campaign_id,
+              sequenceId: sequence.id,
+              // No messageId, no triggerContext - direct sequence execution
+            }),
+          });
+
+          const responseData = await response.json();
+          
+          // Update execution status
+          await supabase
+            .from("scheduled_sequence_executions")
+            .update({ 
+              status: response.ok ? "executed" : "failed",
+              error_message: response.ok ? null : JSON.stringify(responseData),
+            })
+            .eq("sequence_id", sequence.id)
+            .eq("scheduled_date", todayDate)
+            .eq("scheduled_time", currentTime);
+          
+          if (response.ok) {
+            console.log(`[Scheduler] ✅ Sequence ${sequence.name} triggered successfully:`, responseData);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "triggered" });
+          } else {
+            console.error(`[Scheduler] ❌ Sequence ${sequence.name} trigger failed:`, responseData);
+            sequenceResults.push({ sequenceId: sequence.id, name: sequence.name, status: "failed", error: responseData.error || "Unknown error" });
+          }
+
+        } catch (err) {
+          console.error(`[Scheduler] Error processing sequence ${sequence.id}:`, err);
+          sequenceResults.push({ 
+            sequenceId: sequence.id, 
+            name: sequence.name || "unknown",
+            status: "failed", 
+            error: err instanceof Error ? err.message : "Unknown error" 
+          });
+        }
+      }
+      
+      console.log(`[Scheduler] Scheduled sequences summary:`, sequenceResults);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -830,6 +1014,7 @@ Deno.serve(async (req) => {
         totalMessages: messages?.length || 0,
         matchingMessages: messagesToSend.length,
         pausedExecutionsResumed: pausedExecutions?.length || 0,
+        scheduledSequencesProcessed: scheduledSequences?.length || 0,
         results,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
