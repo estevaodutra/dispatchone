@@ -538,40 +538,49 @@ Deno.serve(async (req) => {
 
           console.log(`[HandlePollResponse] Calling webhook: ${webhookUrl}`);
 
-          // Build complete payload
-          const webhookPayload: Record<string, unknown> = {
-            event: "poll_vote",
-            poll: {
-              id: typedPoll.id,
-              question: typedPoll.question_text,
-              options: typedPoll.options,
-            },
-            vote: {
-              option_index: response.option_index,
-              option_text: response.option_text || typedPoll.options[response.option_index] || "",
-            },
-            respondent: {
-              phone: respondent.phone,
-              name: respondent.name || null,
-              jid: respondent.jid || `${respondent.phone}@s.whatsapp.net`,
-            },
-            group: {
-              jid: group_jid,
-            },
-            campaign_id: typedPoll.campaign_id,
-            sequence_id: typedPoll.sequence_id,
-            node_id: typedPoll.node_id,
-            timestamp: timestamp || new Date().toISOString(),
-          };
+          let webhookPayload: Record<string, unknown>;
 
-          // Optionally include instance data
-          if (actionConfig.config.includeInstance !== false && instance) {
-            webhookPayload.instance = {
-              id: instance.id,
-              name: instance.name,
-              phone: instance.phone || "",
-              provider: instance.provider,
+          // Check if user wants to forward the raw body
+          if (actionConfig.config.forwardRawBody) {
+            // Forward the original request body as-is
+            webhookPayload = body as unknown as Record<string, unknown>;
+            console.log(`[HandlePollResponse] Forwarding raw body`);
+          } else {
+            // Build structured payload
+            webhookPayload = {
+              event: "poll_vote",
+              poll: {
+                id: typedPoll.id,
+                question: typedPoll.question_text,
+                options: typedPoll.options,
+              },
+              vote: {
+                option_index: response.option_index,
+                option_text: response.option_text || typedPoll.options[response.option_index] || "",
+              },
+              respondent: {
+                phone: respondent.phone,
+                name: respondent.name || null,
+                jid: respondent.jid || `${respondent.phone}@s.whatsapp.net`,
+              },
+              group: {
+                jid: group_jid,
+              },
+              campaign_id: typedPoll.campaign_id,
+              sequence_id: typedPoll.sequence_id,
+              node_id: typedPoll.node_id,
+              timestamp: timestamp || new Date().toISOString(),
             };
+
+            // Optionally include instance data
+            if (actionConfig.config.includeInstance !== false && instance) {
+              webhookPayload.instance = {
+                id: instance.id,
+                name: instance.name,
+                phone: instance.phone || "",
+                provider: instance.provider,
+              };
+            }
           }
 
           // Parse custom headers
@@ -595,6 +604,7 @@ Deno.serve(async (req) => {
             status: webhookResponse.status, 
             sent: webhookResponse.ok,
             url: webhookUrl,
+            forwardedRawBody: !!actionConfig.config.forwardRawBody,
           };
           actionSuccess = webhookResponse.ok;
           console.log(`[HandlePollResponse] Webhook called: ${actionSuccess}`);

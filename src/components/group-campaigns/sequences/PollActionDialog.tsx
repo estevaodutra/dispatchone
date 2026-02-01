@@ -583,22 +583,37 @@ export function PollActionDialog({
                     onChange={(e) => updateConfig("webhookUrl", e.target.value)}
                   />
                   <p className="text-xs text-muted-foreground">
-                    O payload completo da resposta será enviado via POST
+                    O payload será enviado via POST para esta URL
                   </p>
                 </div>
 
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <Label>Incluir dados da instância</Label>
+                    <Label>Repassar corpo original</Label>
                     <p className="text-xs text-muted-foreground">
-                      Adiciona informações da instância WhatsApp
+                      Envia o payload original recebido, sem processamento
                     </p>
                   </div>
                   <Switch
-                    checked={(config.includeInstance as boolean) ?? true}
-                    onCheckedChange={(v) => updateConfig("includeInstance", v)}
+                    checked={(config.forwardRawBody as boolean) || false}
+                    onCheckedChange={(v) => updateConfig("forwardRawBody", v)}
                   />
                 </div>
+
+                {!(config.forwardRawBody as boolean) && (
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5">
+                      <Label>Incluir dados da instância</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Adiciona informações da instância WhatsApp
+                      </p>
+                    </div>
+                    <Switch
+                      checked={(config.includeInstance as boolean) ?? true}
+                      onCheckedChange={(v) => updateConfig("includeInstance", v)}
+                    />
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label>Headers customizados (opcional)</Label>
