@@ -644,8 +644,8 @@ Deno.serve(async (req) => {
           // Clone and format config, applying variable replacement
           const formattedConfig = formatNodeConfig(node.config, node.node_type);
           
-          // Replace variables in text fields
-          const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question"];
+          // Replace variables in text fields (including url and filename for dynamic media)
+          const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question", "url", "filename"];
           textFields.forEach((field) => {
             if (typeof formattedConfig[field] === "string") {
               formattedConfig[field] = replaceVariables(formattedConfig[field] as string);
