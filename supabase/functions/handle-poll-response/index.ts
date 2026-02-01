@@ -528,6 +528,79 @@ Deno.serve(async (req) => {
           break;
         }
 
+        case "call_webhook": {
+          const webhookUrl = actionConfig.config.webhookUrl as string;
+          
+          if (!webhookUrl) {
+            actionResult = { error: "No webhook URL configured" };
+            break;
+          }
+
+          console.log(`[HandlePollResponse] Calling webhook: ${webhookUrl}`);
+
+          // Build complete payload
+          const webhookPayload: Record<string, unknown> = {
+            event: "poll_vote",
+            poll: {
+              id: typedPoll.id,
+              question: typedPoll.question_text,
+              options: typedPoll.options,
+            },
+            vote: {
+              option_index: response.option_index,
+              option_text: response.option_text || typedPoll.options[response.option_index] || "",
+            },
+            respondent: {
+              phone: respondent.phone,
+              name: respondent.name || null,
+              jid: respondent.jid || `${respondent.phone}@s.whatsapp.net`,
+            },
+            group: {
+              jid: group_jid,
+            },
+            campaign_id: typedPoll.campaign_id,
+            sequence_id: typedPoll.sequence_id,
+            node_id: typedPoll.node_id,
+            timestamp: timestamp || new Date().toISOString(),
+          };
+
+          // Optionally include instance data
+          if (actionConfig.config.includeInstance !== false && instance) {
+            webhookPayload.instance = {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phone || "",
+              provider: instance.provider,
+            };
+          }
+
+          // Parse custom headers
+          let headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (actionConfig.config.customHeaders) {
+            try {
+              const customHeaders = JSON.parse(actionConfig.config.customHeaders as string);
+              headers = { ...headers, ...customHeaders };
+            } catch (e) {
+              console.warn("[HandlePollResponse] Invalid custom headers JSON");
+            }
+          }
+
+          const webhookResponse = await fetch(webhookUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(webhookPayload),
+          });
+
+          actionResult = { 
+            status: webhookResponse.status, 
+            sent: webhookResponse.ok,
+            url: webhookUrl,
+          };
+          actionSuccess = webhookResponse.ok;
+          console.log(`[HandlePollResponse] Webhook called: ${actionSuccess}`);
+          break;
+        }
+
         default:
           actionResult = { error: `Unknown action type: ${actionConfig.actionType}` };
       }
