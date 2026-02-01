@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Radio, RefreshCw, Download, ChevronLeft, ChevronRight, Search, Copy, Eye, RotateCw, Ban } from "lucide-react";
+import { Radio, RefreshCw, Download, ChevronLeft, ChevronRight, Search, Copy, Eye, RotateCw, Ban, Pencil, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +86,8 @@ export default function WebhookEvents() {
   const [selectedEvent, setSelectedEvent] = useState<WebhookEvent | null>(null);
   const [showClassifyDialog, setShowClassifyDialog] = useState(false);
   const [newEventType, setNewEventType] = useState("");
+  const [isEditingEventType, setIsEditingEventType] = useState(false);
+  const [editedEventType, setEditedEventType] = useState("");
   
   const { instances } = useInstances();
   const { data: stats, refetch: refetchStats } = useWebhookEventStats();
@@ -141,6 +143,17 @@ export default function WebhookEvents() {
       toast({ title: "Classificado", description: "Evento classificado com sucesso" });
       setShowClassifyDialog(false);
       setSelectedEvent(null);
+    }
+  };
+  
+  const handleSaveEventType = async () => {
+    if (selectedEvent && editedEventType && editedEventType !== selectedEvent.eventType) {
+      await classifyMutation.mutateAsync({ id: selectedEvent.id, eventType: editedEventType });
+      toast({ title: "Tipo alterado", description: `Evento reclassificado para "${editedEventType.replace(/_/g, " ")}"` });
+      setIsEditingEventType(false);
+      setSelectedEvent({ ...selectedEvent, eventType: editedEventType, classification: "identified" });
+    } else {
+      setIsEditingEventType(false);
     }
   };
   
@@ -414,7 +427,12 @@ export default function WebhookEvents() {
       </Tabs>
 
       {/* Event Details Dialog */}
-      <Dialog open={!!selectedEvent && !showClassifyDialog} onOpenChange={(open) => !open && setSelectedEvent(null)}>
+      <Dialog open={!!selectedEvent && !showClassifyDialog} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedEvent(null);
+          setIsEditingEventType(false);
+        }
+      }}>
         <DialogContent className="max-w-2xl max-h-[85vh]">
           <DialogHeader>
             <DialogTitle>Detalhes do Evento</DialogTitle>
@@ -432,8 +450,55 @@ export default function WebhookEvents() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-muted-foreground">Tipo:</span>
-                      <div className="mt-1">
-                        <EventTypeBadge eventType={selectedEvent.eventType} />
+                      <div className="mt-1 flex items-center gap-2">
+                        {isEditingEventType ? (
+                          <div className="flex items-center gap-2">
+                            <Select value={editedEventType} onValueChange={setEditedEventType}>
+                              <SelectTrigger className="w-[180px] h-8">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {EVENT_TYPES.filter((t) => t !== "unknown").map((type) => (
+                                  <SelectItem key={type} value={type}>
+                                    {type.replace(/_/g, " ")}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button 
+                              size="icon" 
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={handleSaveEventType}
+                              disabled={classifyMutation.isPending}
+                            >
+                              <Check className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              size="icon" 
+                              variant="ghost"
+                              className="h-8 w-8"
+                              onClick={() => setIsEditingEventType(false)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <>
+                            <EventTypeBadge eventType={selectedEvent.eventType} />
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6"
+                              onClick={() => {
+                                setEditedEventType(selectedEvent.eventType);
+                                setIsEditingEventType(true);
+                              }}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                     <div>
