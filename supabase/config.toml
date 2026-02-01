@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.phone-validation]
 verify_jwt = false
+
+[functions.trigger-sequence]
+verify_jwt = false

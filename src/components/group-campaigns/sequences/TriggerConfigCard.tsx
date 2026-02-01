@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,10 +9,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
   Zap, Users, LogOut, Clock, Keyboard, Webhook, Play,
-  ChevronDown, Plus, X, Copy, Check
+  ChevronDown, Plus, X
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { toast } from "sonner";
+import { WebhookFieldMappings, FieldMapping } from "./WebhookFieldMappings";
 
 export type TriggerType = "member_join" | "member_leave" | "scheduled" | "keyword" | "webhook" | "manual";
 
@@ -30,6 +30,7 @@ export interface TriggerConfig {
   matchType?: "exact" | "contains" | "startsWith";
   caseSensitive?: boolean;
   webhookId?: string;
+  fieldMappings?: FieldMapping[];
 }
 
 interface TriggerConfigCardProps {
@@ -101,22 +102,14 @@ export function TriggerConfigCard({
 }: TriggerConfigCardProps) {
   const [isOpen, setIsOpen] = useState(true);
   const [newTime, setNewTime] = useState("");
-  const [copied, setCopied] = useState(false);
 
   const triggerInfo = TRIGGER_TYPES.find(t => t.value === triggerType) || TRIGGER_TYPES[5];
   const TriggerIcon = triggerInfo.icon;
 
-  // Generate webhook URL
+  // Generate webhook URL pointing to the actual Edge Function
   const webhookUrl = sequenceId 
-    ? `${window.location.origin}/api/trigger-sequence/${triggerConfig.webhookId || sequenceId}`
+    ? `https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/trigger-sequence/${sequenceId}`
     : "";
-
-  const handleCopyWebhook = async () => {
-    await navigator.clipboard.writeText(webhookUrl);
-    setCopied(true);
-    toast.success("URL copiada!");
-    setTimeout(() => setCopied(false), 2000);
-  };
 
   const toggleDay = (day: number) => {
     const currentDays = triggerConfig.days || [];
@@ -423,30 +416,13 @@ export function TriggerConfigCard({
 
             {/* Webhook Config */}
             {triggerType === "webhook" && (
-              <div className="space-y-3 p-3 rounded-lg bg-background border">
-                <div className="space-y-2">
-                  <Label className="text-sm">URL do Webhook</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Use esta URL para disparar a sequência de outra automação
-                  </p>
-                  <div className="flex gap-2">
-                    <Input
-                      readOnly
-                      value={webhookUrl || "Salve a sequência para gerar a URL"}
-                      className="font-mono text-xs"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={handleCopyWebhook}
-                      disabled={!webhookUrl}
-                    >
-                      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                    </Button>
-                  </div>
-                </div>
-              </div>
+              <WebhookFieldMappings
+                fieldMappings={triggerConfig.fieldMappings || []}
+                onFieldMappingsChange={(mappings) =>
+                  onTriggerConfigChange({ ...triggerConfig, fieldMappings: mappings })
+                }
+                webhookUrl={webhookUrl}
+              />
             )}
 
             {/* Manual Config */}
