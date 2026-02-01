@@ -147,6 +147,19 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
   }
   
   // ==========================================
+  // POLL VOTE DETECTION (n8n/Z-API format)
+  // body.pollVote indicates a poll response - MUST CHECK BEFORE status
+  // ==========================================
+  const pollVote = body?.pollVote as Record<string, unknown> | undefined;
+  if (pollVote) {
+    return {
+      eventType: "poll_response",
+      eventSubtype: "pollVote",
+      classification: "identified",
+    };
+  }
+  
+  // ==========================================
   // GROUP NOTIFICATION DETECTION (n8n/Z-API format)
   // body.notification contains group events like GROUP_PARTICIPANT_ADD
   // ==========================================
