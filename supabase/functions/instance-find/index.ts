@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
 
     console.log('Instance found:', foundInstance.id);
 
-    // Return the found instance (excluding sensitive data like external_instance_token)
+    // Return the found instance with all fields including token for consistency
     return new Response(
       JSON.stringify({
         success: true,
@@ -188,6 +188,7 @@ Deno.serve(async (req) => {
           status: foundInstance.status,
           provider: foundInstance.provider,
           externalInstanceId: foundInstance.external_instance_id,
+          externalInstanceToken: foundInstance.external_instance_token,
           createdAt: foundInstance.created_at,
           lastMessageAt: foundInstance.last_message_at,
           messagesCount: foundInstance.messages_count
