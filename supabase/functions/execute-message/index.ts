@@ -31,6 +31,7 @@ interface TriggerContext {
   groupJid: string;
   pollOptionText?: string;
   sendPrivate: boolean;
+  customFields?: Record<string, string>;
 }
 
 interface GroupMessage {
@@ -538,9 +539,18 @@ Deno.serve(async (req) => {
         if (!text) return text;
         let result = text;
         if (triggerContext) {
+          // Built-in variables
           result = result.replace(/\{\{name\}\}/g, triggerContext.respondentName || "");
           result = result.replace(/\{\{phone\}\}/g, triggerContext.respondentPhone || "");
           result = result.replace(/\{\{option\}\}/g, triggerContext.pollOptionText || "");
+          
+          // Custom fields from webhook payload
+          if (triggerContext.customFields) {
+            for (const [key, value] of Object.entries(triggerContext.customFields)) {
+              const regex = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+              result = result.replace(regex, value || "");
+            }
+          }
         }
         return result;
       };
