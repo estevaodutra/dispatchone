@@ -1,95 +1,135 @@
 
-# Plano: Adicionar Opção "Repassar Corpo Original" na Ação Webhook
 
-## Contexto
+# Plano: Adicionar Opção de Alterar Tipo no Dialog de Detalhes do Evento
 
-Atualmente a ação "Acionar Webhook" monta um payload estruturado com dados processados:
-```json
-{
-  "event": "poll_vote",
-  "poll": { ... },
-  "vote": { ... },
-  "respondent": { ... },
-  ...
-}
-```
+## Problema Identificado
 
-O usuário quer ter a opção de simplesmente **repassar o corpo original** da requisição que chegou ao `handle-poll-response` - útil quando o n8n ou outro sistema envia dados extras que precisam ser preservados.
+Na tela de "Detalhes do Evento", o tipo do evento é exibido apenas como um badge informativo. O usuário não consegue alterar o tipo diretamente, exceto se o evento estiver com `classification === "pending"`.
 
----
+No exemplo do usuário, o evento foi classificado incorretamente como "message_received" quando deveria ser "poll_vote" (o payload contém `pollVote`).
 
 ## Solução
 
-Adicionar um toggle "Repassar corpo original" que, quando ativado, envia o payload recebido pelo `handle-poll-response` diretamente para o webhook configurado, sem processamento adicional.
+Transformar o campo "Tipo" em um select editável inline, permitindo que o usuário altere o tipo do evento diretamente no dialog de detalhes, independente da classificação atual.
 
 ---
 
 ## Mudanças Necessárias
 
-### 1. Adicionar Toggle na UI
+### Arquivo: `src/pages/WebhookEvents.tsx`
 
-**Arquivo:** `src/components/group-campaigns/sequences/PollActionDialog.tsx`
+**1. Adicionar estado para controlar edição do tipo:**
 
-Adicionar opção de toggle entre as configurações do `call_webhook` (após linha 588):
+```typescript
+const [isEditingEventType, setIsEditingEventType] = useState(false);
+const [editedEventType, setEditedEventType] = useState("");
+```
+
+**2. Substituir o badge estático por um componente editável:**
+
+Na seção "Informações Gerais" (linhas 432-438), alterar o campo "Tipo" de:
 
 ```tsx
-<div className="flex items-center justify-between">
-  <div className="space-y-0.5">
-    <Label>Repassar corpo original</Label>
-    <p className="text-xs text-muted-foreground">
-      Envia o payload original recebido, sem processamento
-    </p>
+<div>
+  <span className="text-muted-foreground">Tipo:</span>
+  <div className="mt-1">
+    <EventTypeBadge eventType={selectedEvent.eventType} />
   </div>
-  <Switch
-    checked={(config.forwardRawBody as boolean) || false}
-    onCheckedChange={(v) => updateConfig("forwardRawBody", v)}
-  />
 </div>
 ```
 
-### 2. Implementar no Backend
+Para:
 
-**Arquivo:** `supabase/functions/handle-poll-response/index.ts`
+```tsx
+<div>
+  <span className="text-muted-foreground">Tipo:</span>
+  <div className="mt-1 flex items-center gap-2">
+    {isEditingEventType ? (
+      <div className="flex items-center gap-2">
+        <Select value={editedEventType} onValueChange={setEditedEventType}>
+          <SelectTrigger className="w-[180px] h-8">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {EVENT_TYPES.filter((t) => t !== "unknown").map((type) => (
+              <SelectItem key={type} value={type}>
+                {type.replace(/_/g, " ")}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button 
+          size="sm" 
+          variant="ghost"
+          onClick={handleSaveEventType}
+          disabled={classifyMutation.isPending}
+        >
+          <Check className="h-4 w-4" />
+        </Button>
+        <Button 
+          size="sm" 
+          variant="ghost"
+          onClick={() => setIsEditingEventType(false)}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+      </div>
+    ) : (
+      <>
+        <EventTypeBadge eventType={selectedEvent.eventType} />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6"
+          onClick={() => {
+            setEditedEventType(selectedEvent.eventType);
+            setIsEditingEventType(true);
+          }}
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
+      </>
+    )}
+  </div>
+</div>
+```
 
-No case `call_webhook` (linhas 531-602), adicionar lógica para verificar o flag `forwardRawBody`:
+**3. Adicionar função para salvar o novo tipo:**
 
 ```typescript
-case "call_webhook": {
-  const webhookUrl = actionConfig.config.webhookUrl as string;
-  
-  if (!webhookUrl) {
-    actionResult = { error: "No webhook URL configured" };
-    break;
-  }
-
-  console.log(`[HandlePollResponse] Calling webhook: ${webhookUrl}`);
-
-  let webhookPayload: Record<string, unknown>;
-
-  // Check if user wants to forward the raw body
-  if (actionConfig.config.forwardRawBody) {
-    // Forward the original request body as-is
-    webhookPayload = body as Record<string, unknown>;
-    console.log(`[HandlePollResponse] Forwarding raw body`);
+const handleSaveEventType = async () => {
+  if (selectedEvent && editedEventType && editedEventType !== selectedEvent.eventType) {
+    await classifyMutation.mutateAsync({ id: selectedEvent.id, eventType: editedEventType });
+    toast({ title: "Tipo alterado", description: `Evento reclassificado para "${editedEventType.replace(/_/g, " ")}"` });
+    setIsEditingEventType(false);
+    // Update local state to reflect change
+    setSelectedEvent({ ...selectedEvent, eventType: editedEventType, classification: "identified" });
   } else {
-    // Build structured payload (existing logic)
-    webhookPayload = {
-      event: "poll_vote",
-      poll: { ... },
-      vote: { ... },
-      ...
-    };
-    
-    // Include instance if configured
-    if (actionConfig.config.includeInstance !== false && instance) {
-      webhookPayload.instance = { ... };
-    }
+    setIsEditingEventType(false);
   }
+};
+```
 
-  // Parse custom headers (unchanged)
-  let headers: Record<string, string> = { "Content-Type": "application/json" };
-  ...
-}
+**4. Resetar estado ao fechar o dialog:**
+
+Atualizar o handler do dialog para resetar o estado de edição:
+
+```tsx
+<Dialog 
+  open={!!selectedEvent && !showClassifyDialog} 
+  onOpenChange={(open) => {
+    if (!open) {
+      setSelectedEvent(null);
+      setIsEditingEventType(false);
+    }
+  }}
+>
+```
+
+**5. Adicionar imports necessários:**
+
+```typescript
+import { Check, X, Pencil } from "lucide-react";
 ```
 
 ---
@@ -98,31 +138,32 @@ case "call_webhook": {
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/group-campaigns/sequences/PollActionDialog.tsx` | Adicionar toggle `forwardRawBody` na seção call_webhook |
-| `supabase/functions/handle-poll-response/index.ts` | Verificar flag e enviar `body` original quando ativado |
+| `src/pages/WebhookEvents.tsx` | Adicionar estados `isEditingEventType` e `editedEventType` |
+| `src/pages/WebhookEvents.tsx` | Substituir badge estático por select editável inline |
+| `src/pages/WebhookEvents.tsx` | Adicionar função `handleSaveEventType` |
+| `src/pages/WebhookEvents.tsx` | Resetar estado ao fechar dialog |
+| `src/pages/WebhookEvents.tsx` | Adicionar imports `Check`, `X`, `Pencil` |
 
 ---
 
-## Comportamento Esperado
+## Resultado Esperado
 
-| Toggle | O que é enviado |
-|--------|-----------------|
-| **Desativado** (padrão) | Payload estruturado com event, poll, vote, respondent, etc. |
-| **Ativado** | Corpo JSON original da requisição recebida pelo handle-poll-response |
-
----
-
-## Exemplo de Uso
-
-Quando o n8n envia:
-```json
-{
-  "message_id": "xxx",
-  "instance_id": "yyy",
-  "respondent": { "phone": "5511999999999", "name": "João" },
-  "response": { "option_index": 0, "option_text": "Aprovado" },
-  "extra_data": { "order_id": "12345", "amount": 150.00 }
-}
+Antes:
+```
+Tipo: [message received]  (badge estático)
 ```
 
-Com "Repassar corpo original" ativado, o webhook destino recebe exatamente esse mesmo JSON - preservando `extra_data` e qualquer outro campo adicional.
+Depois:
+```
+Tipo: [message received] [✏️]  (badge + ícone de editar)
+      ↓ (ao clicar no ícone)
+Tipo: [▼ poll vote      ] [✓] [✗]  (select + salvar + cancelar)
+```
+
+O usuário poderá:
+1. Ver o tipo atual como badge
+2. Clicar no ícone de lápis para editar
+3. Selecionar o novo tipo no dropdown
+4. Salvar ou cancelar a alteração
+5. Ver a atualização imediata na tela
+
