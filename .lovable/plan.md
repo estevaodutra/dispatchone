@@ -1,225 +1,91 @@
 
-# Plano: Sistema de Mapeamento de Campos para Webhook Externo
+# Correção: Substituição de Variáveis em Campos de URL e Filename
 
-## Visão Geral
+## Problema Identificado
 
-Atualmente, o gatilho "Webhook externo" apenas mostra uma URL para copiar. O sistema precisa ser expandido para:
-
-1. **Criar um endpoint real** (`trigger-sequence`) que recebe webhooks externos
-2. **Permitir mapeamento de campos** do payload recebido para variáveis usáveis nas mensagens
-3. **Expandir a substituição de variáveis** no `execute-message` para suportar campos customizados
-
----
-
-## Como Vai Funcionar
-
-```text
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           FLUXO DO WEBHOOK EXTERNO                          │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  [Sistema Externo]  ──POST──>  [trigger-sequence]  ──>  [execute-message]   │
-│                                                                             │
-│  Payload JSON:                 Mapeamento:              Mensagem Final:     │
-│  {                             user.nome → {{nome}}     "Olá João,          │
-│    "user": {                   user.email → {{email}}    seu email é        │
-│      "nome": "João",           custom.codigo → {{cod}}   joao@mail.com      │
-│      "email": "joao@..."                                 código: ABC123"    │
-│    },                                                                       │
-│    "custom": {                                                              │
-│      "codigo": "ABC123"                                                     │
-│    }                                                                        │
-│  }                                                                          │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Mudanças Necessárias
-
-### 1. Criar Edge Function `trigger-sequence`
-
-**Arquivo:** `supabase/functions/trigger-sequence/index.ts`
-
-Endpoint que receberá webhooks externos e disparará sequências:
-
-- **Rota:** `POST /functions/v1/trigger-sequence/{sequenceId}`
-- **Autenticação:** Sem JWT (público), mas valida que a sequência existe e está ativa
-- **Funcionalidades:**
-  - Recebe qualquer payload JSON
-  - Busca a sequência pelo ID na URL
-  - Extrai os campos mapeados conforme `trigger_config.fieldMappings`
-  - Chama `execute-message` com `triggerContext` contendo os dados extraídos
-
-**Lógica de extração de campos:**
-```javascript
-// Para path como "user.nome", extrai rawPayload.user.nome
-function extractField(payload, path) {
-  return path.split('.').reduce((obj, key) => obj?.[key], payload);
+O payload enviado contém:
+```json
+{
+  "document": "https://...storage.../documento.pdf",
+  "fileName": "ORD-1769828426038_865529AC"
 }
 ```
 
----
+Com os mapeamentos:
+- `document` → `{{document}}`
+- `fileName` → `{{fileName}}`
 
-### 2. Atualizar Interface `TriggerConfig`
+E no nó "Documento" configurado com:
+- URL: `{{document}}`
+- Nome do Arquivo: `{{fileName}}`
 
-**Arquivo:** `src/components/group-campaigns/sequences/TriggerConfigCard.tsx`
-
-Adicionar campo `fieldMappings` no tipo `TriggerConfig`:
+**Porém**, a função `replaceVariables` no `execute-message` só substitui variáveis nos seguintes campos:
 
 ```typescript
-export interface TriggerConfig {
-  // ... campos existentes ...
-  webhookId?: string;
-  fieldMappings?: Array<{
-    sourceField: string;  // Path no payload: "user.name", "data.email"
-    variableName: string; // Nome da variável: "nome", "email"
-  }>;
-}
+const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question"];
 ```
+
+Os campos `url` e `filename` **não estão incluídos** na lista de substituição!
 
 ---
 
-### 3. Criar UI de Mapeamento de Campos
+## Solução
 
-**Arquivo:** `src/components/group-campaigns/sequences/TriggerConfigCard.tsx`
+Adicionar `url` e `filename` à lista de campos onde variáveis são substituídas.
 
-Expandir a seção de "Webhook externo" com:
-
-- Lista de mapeamentos configurados
-- Botão "Adicionar Campo" para criar novo mapeamento
-- Cada item mostra: `Campo no Payload → Variável`
-- Input para "Caminho do campo" (ex: `user.email`, `dados.nome`)
-- Input para "Nome da variável" (ex: `email`, `nome`) 
-- Botão remover para cada mapeamento
-- Tabela de variáveis disponíveis para usar nas mensagens
-
-**Preview da UI:**
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  Mapeamento de Campos                                        │
-├──────────────────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │ user.name         →    {{nome}}                   [X]   │ │
-│  └─────────────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │ user.email        →    {{email}}                  [X]   │ │
-│  └─────────────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────────────┐ │
-│  │ order.id          →    {{pedido}}                 [X]   │ │
-│  └─────────────────────────────────────────────────────────┘ │
-│                                                              │
-│  [+ Adicionar Campo]                                         │
-│                                                              │
-│  ℹ️ Use {{nome}}, {{email}}, {{pedido}} nas mensagens        │
-└──────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 4. Atualizar `execute-message` para Suportar Campos Customizados
+### Mudança Necessária
 
 **Arquivo:** `supabase/functions/execute-message/index.ts`
 
-Expandir o `TriggerContext` e a função `replaceVariables`:
+**Linha ~648** - Adicionar `url` e `filename` ao array `textFields`:
 
 ```typescript
-interface TriggerContext {
-  respondentPhone: string;
-  respondentName: string;
-  respondentJid: string;
-  groupJid: string;
-  pollOptionText?: string;
-  sendPrivate: boolean;
-  // NOVO: Campos customizados do webhook
-  customFields?: Record<string, string>;
-}
+// ANTES:
+const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question"];
 
-const replaceVariables = (text: string): string => {
-  if (!text) return text;
-  let result = text;
-  
-  // Variáveis built-in
-  if (triggerContext) {
-    result = result.replace(/\{\{name\}\}/g, triggerContext.respondentName || "");
-    result = result.replace(/\{\{phone\}\}/g, triggerContext.respondentPhone || "");
-    result = result.replace(/\{\{option\}\}/g, triggerContext.pollOptionText || "");
-    
-    // NOVO: Variáveis customizadas
-    if (triggerContext.customFields) {
-      for (const [key, value] of Object.entries(triggerContext.customFields)) {
-        result = result.replace(new RegExp(`{{${key}}}`, "g"), value || "");
-      }
-    }
-  }
-  return result;
-};
+// DEPOIS:
+const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question", "url", "filename"];
 ```
 
 ---
 
-### 5. Atualizar URL do Webhook na UI
+## Por que isso resolve
 
-**Arquivo:** `src/components/group-campaigns/sequences/TriggerConfigCard.tsx`
-
-Corrigir a URL para apontar para a Edge Function real:
-
-```typescript
-// De:
-const webhookUrl = `${window.location.origin}/api/trigger-sequence/${sequenceId}`;
-
-// Para:
-const webhookUrl = sequenceId 
-  ? `https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/trigger-sequence/${sequenceId}`
-  : "";
-```
+1. O webhook envia `{ "document": "https://...", "fileName": "..." }`
+2. O `trigger-sequence` extrai via `applyFieldMappings` e passa para `execute-message` como:
+   ```javascript
+   customFields: { document: "https://...", fileName: "..." }
+   ```
+3. O `execute-message` processa cada nó, e ao encontrar um nó de documento com:
+   - `config.url = "{{document}}"`
+   - `config.filename = "{{fileName}}"`
+4. Com a correção, `replaceVariables` será chamado para esses campos e substituirá as variáveis
 
 ---
 
-### 6. Adicionar Documentação na UI
+## Impacto
 
-Mostrar exemplo de payload esperado:
+Esta mudança permite usar variáveis dinâmicas em:
+- **URLs de mídia** (documentos, imagens, vídeos, áudios, stickers)
+- **Nomes de arquivos** para documentos
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  📋 Exemplo de Payload                                       │
-├──────────────────────────────────────────────────────────────┤
-│  POST https://...supabase.co/functions/v1/trigger-sequence/  │
-│       {sequence-id}                                          │
-│                                                              │
-│  Content-Type: application/json                              │
-│                                                              │
-│  {                                                           │
-│    "user": {                                                 │
-│      "name": "João Silva",                                   │
-│      "email": "joao@exemplo.com"                             │
-│    },                                                        │
-│    "destination": {                                          │
-│      "phone": "5511999999999"  // opcional                   │
-│    }                                                         │
-│  }                                                           │
-└──────────────────────────────────────────────────────────────┘
-```
+Isso é especialmente útil para:
+- Integração com sistemas externos que geram arquivos dinâmicos
+- Envio de comprovantes, boletos, contratos personalizados
+- Automações onde a URL do arquivo vem de outro sistema
 
 ---
 
-## Resumo dos Arquivos a Modificar
+## Resumo Técnico
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/functions/trigger-sequence/index.ts` | **CRIAR** - Endpoint para receber webhooks externos |
-| `supabase/config.toml` | Adicionar configuração da nova função |
-| `src/components/group-campaigns/sequences/TriggerConfigCard.tsx` | Adicionar UI de mapeamento de campos e corrigir URL |
-| `supabase/functions/execute-message/index.ts` | Expandir `TriggerContext` e `replaceVariables` |
+| Item | Arquivo | Alteração |
+|------|---------|-----------|
+| 1 | `supabase/functions/execute-message/index.ts` | Adicionar `"url", "filename"` ao array `textFields` na linha ~648 |
 
 ---
 
-## Funcionalidades Incluídas
+## Validação Pós-Implementação
 
-1. **Recebimento de webhooks externos** - Qualquer sistema pode disparar sequências
-2. **Mapeamento flexível de campos** - Suporta paths aninhados (`user.profile.name`)
-3. **Variáveis customizadas nas mensagens** - Usar `{{qualquer_nome}}` definido no mapeamento
-4. **Destino opcional** - Pode enviar para todos os grupos ou para um telefone específico
-5. **Documentação inline** - Exemplo de payload na própria UI
-6. **Compatibilidade total** - Mantém as variáveis existentes (`{{name}}`, `{{phone}}`, `{{option}}`)
+1. Enviar POST para `/trigger-sequence/{id}` com payload contendo `document` e `fileName`
+2. Verificar nos logs que o campo `url` no payload enviado ao webhook de mensagens contém a URL real (não `{{document}}`)
+3. Confirmar que o documento é enviado corretamente com o nome de arquivo correto
