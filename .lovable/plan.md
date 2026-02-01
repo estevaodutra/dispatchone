@@ -1,140 +1,97 @@
 
-## O que está acontecendo (por que 14:45 não executou)
+# Plano: Correção do Endpoint `/instances`
 
-Pelo que vi no backend, a sequência **“Funil FN”** está corretamente configurada como **trigger_type = "scheduled"** na tabela `message_sequences`, com:
-- `days: [1,2,3,4,5]`
-- `times: ["10:00","14:45","16:00"]`
-- `active: true`
+## Problemas Identificados
 
-Porém, a função **`process-scheduled-messages` atualmente só processa agendamentos da tabela `group_messages`** (tipo `"scheduled"`), e **não dispara sequências agendadas de `message_sequences`**.
+### 1. Campo `externalInstanceToken` não retornado
+A Edge Function `instances` (linha 178-188) mapeia os campos do banco para camelCase, mas **omite** o campo `external_instance_token`:
 
-Resultado: mesmo com o card mostrando “Agendado 14:45”, **nunca será executado**, porque o scheduler não está “escutando” esse tipo de agendamento.
+```javascript
+// Atual - FALTA o externalInstanceToken
+const mappedInstances = (instances || []).map((inst: any) => ({
+  id: inst.id,
+  name: inst.name,
+  phone: inst.phone,
+  status: inst.status,
+  provider: inst.provider,
+  externalInstanceId: inst.external_instance_id,
+  createdAt: inst.created_at,
+  lastMessageAt: inst.last_message_at,
+  messagesCount: inst.messages_count
+}));
+```
 
-Além disso, mesmo que tentássemos chamar `execute-message` com apenas `sequenceId`, **o `execute-message` hoje bloqueia** (retorna 400) se não houver `messageId`, porque a validação exige `messageId` (exceto quando é “triggered” por poll/webhook).
+### 2. Instâncias excluídas aparecem na API
+Pelo que vejo no banco, há 5 instâncias ativas. O hook `useInstances` usa `delete()` corretamente para remover instâncias. Se uma instância deveria ter sido excluída mas ainda aparece, pode ser:
+- A operação de delete falhou silenciosamente
+- O usuário apenas "desconectou" em vez de deletar
 
-## Objetivo da correção
-
-1) Fazer o scheduler (`process-scheduled-messages`) também:
-- ler sequências `message_sequences` com `trigger_type="scheduled"` e `active=true`
-- checar se bate com **dia/hora do Brasil**
-- disparar a execução via `execute-message`
-
-2) Garantir idempotência (não disparar duas vezes no mesmo minuto) para sequências agendadas.
-
-3) Ajustar o `execute-message` para permitir execução com **`campaignId + sequenceId`** sem precisar de `messageId` ou `triggerContext`.
-
----
-
-## Mudanças planejadas (implementação)
-
-### 1) Corrigir `execute-message` para aceitar `sequenceId` sem `messageId`
-**Arquivo:** `supabase/functions/execute-message/index.ts`
-
-- Ajustar a validação inicial para permitir:
-  - (resumed) `executionId + startFromNodeIndex`
-  - (triggered) `triggerContext` (sem messageId)
-  - (manual/cron) `campaignId + sequenceId` (sem messageId)
-
-**Antes (hoje):**
-- Falha se `messageId` não existir e não for triggered/resumed.
-
-**Depois:**
-- `campaignId` continua obrigatório
-- permitir `sequenceId` como alternativa ao `messageId`
-
-Isso destrava o scheduler para disparar sequências diretamente.
+O sistema está funcionando como projetado: quando o delete é chamado, ele remove permanentemente do banco. Se ainda está no banco, nunca foi excluído.
 
 ---
 
-### 2) Adicionar suporte a “scheduled sequences” no `process-scheduled-messages`
-**Arquivo:** `supabase/functions/process-scheduled-messages/index.ts`
+## Mudanças Propostas
 
-Adicionar um novo bloco (além do bloco atual de `group_messages`), para:
+### 1. Adicionar `externalInstanceToken` na resposta do endpoint `/instances`
 
-1. Buscar sequências agendadas:
-   - `from("message_sequences")`
-   - filtros: `trigger_type = 'scheduled'`, `active = true`
-   - campos necessários: `id`, `name`, `group_campaign_id`, `user_id`, `trigger_config`
+**Arquivo:** `supabase/functions/instances/index.ts`
 
-2. Para cada sequência:
-   - validar `trigger_config.days` e `trigger_config.times`
-   - comparar com `currentDay` e `currentTime` já calculados (America/Sao_Paulo)
+Modificar o mapeamento para incluir o token:
 
-3. Idempotência:
-   - checar se já executou hoje neste horário (ver item 3: nova tabela)
-   - se já existir, logar e pular
+```javascript
+const mappedInstances = (instances || []).map((inst: any) => ({
+  id: inst.id,
+  name: inst.name,
+  phone: inst.phone,
+  status: inst.status,
+  provider: inst.provider,
+  externalInstanceId: inst.external_instance_id,
+  externalInstanceToken: inst.external_instance_token, // NOVO
+  createdAt: inst.created_at,
+  lastMessageAt: inst.last_message_at,
+  messagesCount: inst.messages_count
+}));
+```
 
-4. Proteção contra duplicidade por execução ativa:
-   - checar em `sequence_executions` se há status `paused` ou `running` para a mesma `sequence_id`
-   - se houver, pular (igual já existe para `group_messages`)
+### 2. Atualizar endpoint `instance-find` para retornar token também
 
-5. Disparo:
-   - chamar `execute-message` via `fetch(.../functions/v1/execute-message)` com:
-     - `campaignId: <group_campaign_id>`
-     - `sequenceId: <sequence_id>`
-     - sem `messageId`
-     - sem `triggerContext`
+**Arquivo:** `supabase/functions/instance-find/index.ts`
 
-6. Logs:
-   - logs bem explícitos do tipo:
-     - `[Scheduler] Sequence <id> matches schedule`
-     - `[Scheduler] Sequence <id> already executed at <time>, skipping`
-     - `[Scheduler] Triggering sequence <id> via execute-message`
+O comentário na linha 179 diz "excluding sensitive data like external_instance_token", mas se o endpoint `/instances` retorna, faz sentido manter consistência:
 
----
+```javascript
+instance: {
+  id: foundInstance.id,
+  name: foundInstance.name,
+  phone: foundInstance.phone,
+  status: foundInstance.status,
+  provider: foundInstance.provider,
+  externalInstanceId: foundInstance.external_instance_id,
+  externalInstanceToken: foundInstance.external_instance_token, // NOVO
+  createdAt: foundInstance.created_at,
+  lastMessageAt: foundInstance.last_message_at,
+  messagesCount: foundInstance.messages_count
+}
+```
 
-### 3) Criar tabela de idempotência para sequências agendadas
-Hoje existe `scheduled_message_executions` (para `group_messages`). Vamos criar uma equivalente para sequências.
+### 3. (Opcional) Limpeza manual de dados órfãos
 
-**Nova migration (SQL):**
-- Criar `scheduled_sequence_executions` com:
-  - `id uuid primary key default gen_random_uuid()`
-  - `sequence_id uuid not null references message_sequences(id) on delete cascade`
-  - `campaign_id uuid not null references group_campaigns(id) on delete cascade`
-  - `user_id uuid not null`
-  - `scheduled_date date not null`
-  - `scheduled_time text not null`
-  - `executed_at timestamptz default now()`
-  - `status text default 'executed'` (ou `executing`/`failed`)
-  - `error_message text null`
-  - UNIQUE(`sequence_id`, `scheduled_date`, `scheduled_time`)
-  - índice para lookup
-
-**RLS:**
-- habilitar RLS
-- policy SELECT/INSERT/UPDATE para `auth.uid() = user_id` (para permitir visualização futura no app, se quisermos expor)
-
-Obs.: A função do scheduler usa chave de serviço e não dependerá das policies para funcionar, mas deixar RLS correto ajuda a manter padrão e permite UI depois.
+Se houver instâncias específicas que você quer remover, posso executar um DELETE direto. Caso contrário, o hook `deleteInstance` no frontend está funcionando corretamente.
 
 ---
 
-## Validação / Testes (o que vamos verificar depois de implementar)
+## Resumo Técnico
 
-1) Rodar `process-scheduled-messages` manualmente e verificar nos logs:
-   - que ele lista `message_sequences` scheduled
-   - que ele avalia corretamente `14:45` em `times`
-   - que ele cria registro em `scheduled_sequence_executions`
-   - que ele chama `execute-message` sem erro 400
-
-2) Checar se uma segunda execução no mesmo minuto é bloqueada (idempotência):
-   - log “already executed… skipping”
-
-3) Confirmar que a sequência gera logs em `group_message_logs` (a evidência final de envio).
+| Item | Arquivo | Alteração |
+|------|---------|-----------|
+| 1 | `supabase/functions/instances/index.ts` | Adicionar `externalInstanceToken` no mapeamento |
+| 2 | `supabase/functions/instance-find/index.ts` | Adicionar `externalInstanceToken` na resposta |
 
 ---
 
-## Observações importantes (para evitar novos “não executou”)
-- Se `process-scheduled-messages` continuar rodando e o horário bater, o disparo vai acontecer, mas ainda pode ser “pulado” se:
-  - a campanha estiver `paused/draft` (o scheduler já valida status)
-  - a instância estiver `disconnected`
-  - não houver grupos vinculados na campanha
-  - houver uma execução `running/paused` ainda ativa para a mesma sequência
+## Validação Pós-Implementação
 
-Vamos manter logs claros para diferenciar “não bateu horário” vs “bateu, mas pulou por condição”.
+1. Chamar `GET /instances?page=1&limit=10` e confirmar que `externalInstanceToken` aparece na resposta
+2. Chamar `GET /instance-find?instanceId=<id>` e confirmar consistência
+3. Testar exclusão de instância pelo frontend para garantir que remove do banco
 
----
-
-## Entregáveis
-- Ajuste no `execute-message` para suportar `campaignId + sequenceId` sem `messageId`
-- Ajuste no `process-scheduled-messages` para processar `message_sequences` agendadas
-- Migration criando `scheduled_sequence_executions` + índices + RLS policies
