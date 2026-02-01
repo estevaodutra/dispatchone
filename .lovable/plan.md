@@ -1,78 +1,55 @@
 
-# Correção: Substituição de Variáveis em Campos de URL e Filename
+# Correção: Permitir Quebra de Linha na Pergunta da Enquete
 
 ## Problema Identificado
 
-O payload enviado contém:
-```json
-{
-  "document": "https://...storage.../documento.pdf",
-  "fileName": "ORD-1769828426038_865529AC"
-}
+O campo "Pergunta" da enquete está usando o componente `<Input>`, que é um campo de texto de linha única e não aceita quebras de linha (Enter).
+
+**Código atual (linha 375-379):**
+```tsx
+<Input
+  placeholder="Qual sua preferência?"
+  value={(node.config.question as string) || ""}
+  onChange={(e) => updateConfig("question", e.target.value)}
+  maxLength={255}
+/>
 ```
-
-Com os mapeamentos:
-- `document` → `{{document}}`
-- `fileName` → `{{fileName}}`
-
-E no nó "Documento" configurado com:
-- URL: `{{document}}`
-- Nome do Arquivo: `{{fileName}}`
-
-**Porém**, a função `replaceVariables` no `execute-message` só substitui variáveis nos seguintes campos:
-
-```typescript
-const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question"];
-```
-
-Os campos `url` e `filename` **não estão incluídos** na lista de substituição!
-
----
 
 ## Solução
 
-Adicionar `url` e `filename` à lista de campos onde variáveis são substituídas.
-
-### Mudança Necessária
-
-**Arquivo:** `supabase/functions/execute-message/index.ts`
-
-**Linha ~648** - Adicionar `url` e `filename` ao array `textFields`:
-
-```typescript
-// ANTES:
-const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question"];
-
-// DEPOIS:
-const textFields = ["text", "content", "message", "caption", "title", "description", "footer", "question", "url", "filename"];
-```
+Substituir o `<Input>` por `<Textarea>` para o campo da pergunta, permitindo que o usuário digite textos com múltiplas linhas.
 
 ---
 
-## Por que isso resolve
+## Mudanças Necessárias
 
-1. O webhook envia `{ "document": "https://...", "fileName": "..." }`
-2. O `trigger-sequence` extrai via `applyFieldMappings` e passa para `execute-message` como:
-   ```javascript
-   customFields: { document: "https://...", fileName: "..." }
+### Arquivo: `src/components/group-campaigns/sequences/NodeConfigPanel.tsx`
+
+1. **Adicionar import do Textarea** (se não existir):
+   ```tsx
+   import { Textarea } from "@/components/ui/textarea";
    ```
-3. O `execute-message` processa cada nó, e ao encontrar um nó de documento com:
-   - `config.url = "{{document}}"`
-   - `config.filename = "{{fileName}}"`
-4. Com a correção, `replaceVariables` será chamado para esses campos e substituirá as variáveis
 
----
+2. **Substituir Input por Textarea** (linhas 375-380):
+   ```tsx
+   // DE:
+   <Input
+     placeholder="Qual sua preferência?"
+     value={(node.config.question as string) || ""}
+     onChange={(e) => updateConfig("question", e.target.value)}
+     maxLength={255}
+   />
 
-## Impacto
-
-Esta mudança permite usar variáveis dinâmicas em:
-- **URLs de mídia** (documentos, imagens, vídeos, áudios, stickers)
-- **Nomes de arquivos** para documentos
-
-Isso é especialmente útil para:
-- Integração com sistemas externos que geram arquivos dinâmicos
-- Envio de comprovantes, boletos, contratos personalizados
-- Automações onde a URL do arquivo vem de outro sistema
+   // PARA:
+   <Textarea
+     placeholder="Qual sua preferência?"
+     value={(node.config.question as string) || ""}
+     onChange={(e) => updateConfig("question", e.target.value)}
+     maxLength={255}
+     rows={3}
+     className="resize-none"
+   />
+   ```
 
 ---
 
@@ -80,12 +57,17 @@ Isso é especialmente útil para:
 
 | Item | Arquivo | Alteração |
 |------|---------|-----------|
-| 1 | `supabase/functions/execute-message/index.ts` | Adicionar `"url", "filename"` ao array `textFields` na linha ~648 |
+| 1 | `NodeConfigPanel.tsx` | Adicionar import do `Textarea` |
+| 2 | `NodeConfigPanel.tsx` | Substituir `<Input>` por `<Textarea>` no campo "Pergunta" da enquete |
 
 ---
 
-## Validação Pós-Implementação
+## Resultado Esperado
 
-1. Enviar POST para `/trigger-sequence/{id}` com payload contendo `document` e `fileName`
-2. Verificar nos logs que o campo `url` no payload enviado ao webhook de mensagens contém a URL real (não `{{document}}`)
-3. Confirmar que o documento é enviado corretamente com o nome de arquivo correto
+Após a mudança, o campo "Pergunta" terá 3 linhas de altura e aceitará quebras de linha quando o usuário pressionar Enter. O texto poderá incluir formatação como:
+
+```
+⚠ *NOVO PEDIDO* - {{fileName}}
+
+Selecione o status:
+```
