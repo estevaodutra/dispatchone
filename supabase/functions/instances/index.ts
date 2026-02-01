@@ -182,6 +182,7 @@ Deno.serve(async (req) => {
       status: inst.status,
       provider: inst.provider,
       externalInstanceId: inst.external_instance_id,
+      externalInstanceToken: inst.external_instance_token,
       createdAt: inst.created_at,
       lastMessageAt: inst.last_message_at,
       messagesCount: inst.messages_count
