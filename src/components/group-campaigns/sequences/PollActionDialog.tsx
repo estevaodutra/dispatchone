@@ -32,6 +32,7 @@ import {
   Ban,
   X,
   Plus,
+  Webhook,
 } from "lucide-react";
 import { useSequences } from "@/hooks/useSequences";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
@@ -45,7 +46,8 @@ export type PollActionType =
   | "add_tag"
   | "remove_from_group"
   | "add_to_group"
-  | "notify_admin";
+  | "notify_admin"
+  | "call_webhook";
 
 export interface PollActionConfig {
   actionType: PollActionType;
@@ -70,6 +72,7 @@ const ACTION_TYPES: { value: PollActionType; label: string; icon: React.ElementT
   { value: "remove_from_group", label: "Remover do Grupo", icon: UserMinus, color: "text-red-500" },
   { value: "add_to_group", label: "Adicionar em Outro Grupo", icon: UserPlus, color: "text-purple-500" },
   { value: "notify_admin", label: "Notificar Administrador", icon: Bell, color: "text-orange-500" },
+  { value: "call_webhook", label: "Acionar Webhook", icon: Webhook, color: "text-cyan-500" },
 ];
 
 const DELAY_OPTIONS = [
@@ -565,6 +568,49 @@ export function PollActionDialog({
                   />
                   <p className="text-xs text-muted-foreground">
                     Variáveis: {"{{name}}"}, {"{{phone}}"}, {"{{group}}"}, {"{{option}}"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {actionType === "call_webhook" && (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>URL do Webhook</Label>
+                  <Input
+                    placeholder="https://seu-sistema.com/webhook/poll"
+                    value={(config.webhookUrl as string) || ""}
+                    onChange={(e) => updateConfig("webhookUrl", e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    O payload completo da resposta será enviado via POST
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Incluir dados da instância</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Adiciona informações da instância WhatsApp
+                    </p>
+                  </div>
+                  <Switch
+                    checked={(config.includeInstance as boolean) ?? true}
+                    onCheckedChange={(v) => updateConfig("includeInstance", v)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Headers customizados (opcional)</Label>
+                  <Textarea
+                    placeholder='{"Authorization": "Bearer token"}'
+                    value={(config.customHeaders as string) || ""}
+                    onChange={(e) => updateConfig("customHeaders", e.target.value)}
+                    rows={2}
+                    className="font-mono text-xs"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    JSON com headers adicionais
                   </p>
                 </div>
               </div>
