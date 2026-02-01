@@ -372,11 +372,13 @@ export function NodeConfigPanel({ node, onUpdate, onClose }: NodeConfigPanelProp
             <>
               <div className="space-y-2">
                 <Label>Pergunta</Label>
-                <Input
+                <Textarea
                   placeholder="Qual sua preferência?"
                   value={(node.config.question as string) || ""}
                   onChange={(e) => updateConfig("question", e.target.value)}
                   maxLength={255}
+                  rows={3}
+                  className="resize-none"
                 />
                 <p className="text-xs text-muted-foreground">Máximo 255 caracteres</p>
               </div>
