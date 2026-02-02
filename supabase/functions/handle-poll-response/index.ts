@@ -539,49 +539,53 @@ Deno.serve(async (req) => {
 
           console.log(`[HandlePollResponse] Calling webhook: ${webhookUrl}`);
 
+          // Always build structured base payload with poll + vote + respondent
+          const basePayload: Record<string, unknown> = {
+            event: "poll_vote",
+            poll: {
+              id: typedPoll.id,
+              question: typedPoll.question_text,
+              options: typedPoll.options,
+            },
+            vote: {
+              option_index: response.option_index,
+              option_text: response.option_text || typedPoll.options[response.option_index] || "",
+            },
+            respondent: {
+              phone: respondent.phone,
+              name: respondent.name || null,
+              jid: respondent.jid || `${respondent.phone}@s.whatsapp.net`,
+            },
+            group: {
+              jid: group_jid,
+            },
+            campaign_id: typedPoll.campaign_id,
+            sequence_id: typedPoll.sequence_id,
+            node_id: typedPoll.node_id,
+            timestamp: timestamp || new Date().toISOString(),
+          };
+
+          // Optionally include instance data
+          if (actionConfig.config.includeInstance !== false && instance) {
+            basePayload.instance = {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phone || "",
+              provider: instance.provider,
+            };
+          }
+
           let webhookPayload: Record<string, unknown>;
 
-          // Check if user wants to forward the raw body
-          if (actionConfig.config.forwardRawBody) {
-            // Prefer the original Z-API event if available, otherwise use the request body
-            webhookPayload = body._raw_event || (body as unknown as Record<string, unknown>);
-            console.log(`[HandlePollResponse] Forwarding raw body (from _raw_event: ${!!body._raw_event})`);
-          } else {
-            // Build structured payload
+          // If forwardRawBody is enabled, include raw_event alongside structured data
+          if (actionConfig.config.forwardRawBody && body._raw_event) {
             webhookPayload = {
-              event: "poll_vote",
-              poll: {
-                id: typedPoll.id,
-                question: typedPoll.question_text,
-                options: typedPoll.options,
-              },
-              vote: {
-                option_index: response.option_index,
-                option_text: response.option_text || typedPoll.options[response.option_index] || "",
-              },
-              respondent: {
-                phone: respondent.phone,
-                name: respondent.name || null,
-                jid: respondent.jid || `${respondent.phone}@s.whatsapp.net`,
-              },
-              group: {
-                jid: group_jid,
-              },
-              campaign_id: typedPoll.campaign_id,
-              sequence_id: typedPoll.sequence_id,
-              node_id: typedPoll.node_id,
-              timestamp: timestamp || new Date().toISOString(),
+              ...basePayload,
+              raw_event: body._raw_event,
             };
-
-            // Optionally include instance data
-            if (actionConfig.config.includeInstance !== false && instance) {
-              webhookPayload.instance = {
-                id: instance.id,
-                name: instance.name,
-                phone: instance.phone || "",
-                provider: instance.provider,
-              };
-            }
+            console.log(`[HandlePollResponse] Including raw_event in enriched payload`);
+          } else {
+            webhookPayload = basePayload;
           }
 
           // Parse custom headers
@@ -605,7 +609,7 @@ Deno.serve(async (req) => {
             status: webhookResponse.status, 
             sent: webhookResponse.ok,
             url: webhookUrl,
-            forwardedRawBody: !!actionConfig.config.forwardRawBody,
+            includesRawEvent: !!(actionConfig.config.forwardRawBody && body._raw_event),
           };
           actionSuccess = webhookResponse.ok;
           console.log(`[HandlePollResponse] Webhook called: ${actionSuccess}`);
