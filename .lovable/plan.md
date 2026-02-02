@@ -1,33 +1,32 @@
 
 
-# Plano: Corrigir Classificação de Poll Vote
+# Plano: Acionar Automaticamente Ações de Poll Response
 
 ## Problema Identificado
 
-O payload com `body.pollVote` está sendo classificado como `message_received` porque:
+O evento `42ff3cb2-c0c0-4f15-b829-5db21bfaa351` foi classificado corretamente como `poll_response`, mas a ação de webhook configurada **não foi executada** porque:
 
-1. O payload tem `body.status === "RECEIVED"`
-2. A lógica de status vem **antes** da detecção de `pollVote`
-3. O sistema retorna `message_received` sem verificar se é um voto de enquete
+1. O `webhook-inbound` apenas **salva** o evento no banco de dados
+2. O `handle-poll-response` precisa ser **chamado explicitamente** para processar ações
+3. **Não existe integração automática** entre esses dois componentes
 
-```json
-{
-  "body": {
-    "type": "ReceivedCallback",
-    "status": "RECEIVED",         // ← Detectado primeiro
-    "pollVote": {                  // ← Nunca é verificado
-      "options": [...],
-      "pollMessageId": "..."
-    }
-  }
-}
+### Fluxo Atual (Quebrado)
+```text
+Z-API → webhook-inbound → Salva no DB → FIM ❌
+                                        (ação não executada)
+```
+
+### Fluxo Esperado
+```text
+Z-API → webhook-inbound → Salva no DB → Detecta poll_response → 
+        Chama handle-poll-response → Executa ação configurada ✅
 ```
 
 ---
 
-## Solução
+## Solução Proposta
 
-Adicionar detecção de `body.pollVote` **no início** da função de classificação, junto com as outras detecções de alta prioridade (mídia, notificações de grupo).
+Adicionar lógica no `webhook-inbound` para **chamar automaticamente** o `handle-poll-response` quando um evento `poll_response` é detectado.
 
 ---
 
@@ -35,36 +34,121 @@ Adicionar detecção de `body.pollVote` **no início** da função de classifica
 
 ### 1. Atualizar `webhook-inbound/index.ts`
 
-Adicionar detecção de pollVote **após a detecção de sticker** (linha 147) e **antes** da detecção de notificações de grupo:
+Após salvar o evento com sucesso, adicionar processamento automático para `poll_response`:
 
 ```typescript
+// Após linha 551 (após console.log do event saved)
+
 // ==========================================
-// POLL VOTE DETECTION (n8n/Z-API format)
-// body.pollVote indicates a poll response
+// AUTO-PROCESS POLL RESPONSES
 // ==========================================
-const pollVote = body?.pollVote as Record<string, unknown> | undefined;
-if (pollVote) {
-  return {
-    eventType: "poll_response",
-    eventSubtype: "pollVote",
-    classification: "identified",
-  };
+if (classification.eventType === "poll_response") {
+  try {
+    const body = rawEvent.body as Record<string, unknown> | undefined;
+    const pollVote = body?.pollVote as Record<string, unknown> | undefined;
+    
+    if (pollVote) {
+      const options = pollVote.options as Array<{name: string}> | undefined;
+      const pollMessageId = pollVote.pollMessageId as string;
+      
+      if (pollMessageId && options?.length) {
+        // Extrair dados do respondente
+        const participantPhone = body.participantPhone as string || 
+                                 body.phone?.toString().split("-")[0];
+        const senderName = body.senderName as string || "";
+        const groupJid = body.phone as string || context.chatJid || "";
+        
+        // Buscar poll_message pelo message_id
+        const { data: pollMessage } = await supabase
+          .from("poll_messages")
+          .select("id, options")
+          .or(`message_id.eq.${pollMessageId},zaap_id.eq.${pollMessageId}`)
+          .maybeSingle();
+        
+        if (pollMessage) {
+          // Encontrar o índice da opção votada (fuzzy match)
+          const votedOptionText = options[0]?.name || "";
+          const pollOptions = pollMessage.options as string[];
+          let optionIndex = pollOptions.findIndex(
+            opt => opt.toLowerCase() === votedOptionText.toLowerCase()
+          );
+          
+          // Se não encontrou exato, tentar match parcial
+          if (optionIndex === -1) {
+            optionIndex = pollOptions.findIndex(
+              opt => opt.toLowerCase().includes(votedOptionText.toLowerCase()) ||
+                     votedOptionText.toLowerCase().includes(opt.toLowerCase())
+            );
+          }
+          
+          if (optionIndex >= 0) {
+            // Chamar handle-poll-response
+            const pollPayload = {
+              message_id: pollMessageId,
+              instance_id: instance?.id || "",
+              group_jid: groupJid,
+              respondent: {
+                phone: participantPhone,
+                name: senderName,
+                jid: `${participantPhone}@s.whatsapp.net`,
+              },
+              response: {
+                option_index: optionIndex,
+                option_text: votedOptionText,
+              },
+              timestamp: new Date().toISOString(),
+              _raw_event: rawEvent, // Para forwardRawBody
+            };
+            
+            // Invocar handle-poll-response via HTTP interno
+            const pollResponse = await fetch(
+              `${supabaseUrl}/functions/v1/handle-poll-response`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify(pollPayload),
+              }
+            );
+            
+            const pollResult = await pollResponse.json();
+            console.log(`[webhook-inbound] Auto-processed poll response: ${JSON.stringify(pollResult)}`);
+            
+            // Atualizar processing_result
+            await supabase
+              .from("webhook_events")
+              .update({
+                processing_result: pollResult,
+                processed_at: new Date().toISOString(),
+              })
+              .eq("id", insertedEvent.id);
+          }
+        }
+      }
+    }
+  } catch (pollError) {
+    console.error("[webhook-inbound] Error auto-processing poll:", pollError);
+    // Não falha a requisição, apenas loga o erro
+  }
 }
 ```
 
-### 2. Atualizar `reclassify-events/index.ts`
+### 2. Atualizar `handle-poll-response/index.ts`
 
-Adicionar a mesma lógica de detecção na função duplicada (após linha 140):
+Adicionar suporte para receber o `_raw_event` para uso no `forwardRawBody`:
 
 ```typescript
-// POLL VOTE DETECTION
-const pollVote = body?.pollVote as Record<string, unknown> | undefined;
-if (pollVote) {
-  return {
-    eventType: "poll_response",
-    eventSubtype: "pollVote",
-    classification: "identified",
-  };
+// Na interface PollResponseRequest, adicionar:
+interface PollResponseRequest {
+  // ... campos existentes ...
+  _raw_event?: Record<string, unknown>; // Payload original do Z-API
+}
+
+// Na lógica de call_webhook, usar _raw_event quando forwardRawBody é true
+if (actionConfig.config.forwardRawBody && body._raw_event) {
+  webhookPayload = body._raw_event;
 }
 ```
 
@@ -74,41 +158,44 @@ if (pollVote) {
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/webhook-inbound/index.ts` | Adicionar detecção de `body.pollVote` → `poll_response` |
-| `supabase/functions/reclassify-events/index.ts` | Adicionar mesma detecção na lógica duplicada |
+| `webhook-inbound/index.ts` | Adicionar auto-processamento de `poll_response` → chama `handle-poll-response` |
+| `handle-poll-response/index.ts` | Adicionar suporte a `_raw_event` para `forwardRawBody` |
 
 ---
 
-## Fluxo de Classificação Atualizado
+## Fluxo de Processamento Atualizado
 
 ```text
-classifyZApiEvent(rawEvent)
-  ↓
-[1] Mídia (image, video, audio, document, sticker)
-  ↓
-[2] Poll Vote (body.pollVote) ← NOVO
-  ↓
-[3] Notificações de Grupo (body.notification)
-  ↓
-[4] Mapeamento Direto (ZAPI_EVENT_MAP)
-  ↓
-[5] Reaction (body.reaction)
-  ↓
-[6] Status (PLAYED, RECEIVED, READ, READ_BY_ME)
-  ↓
-[7] Texto (body.text.message)
-  ↓
-[8] unknown
+Z-API envia evento com pollVote
+        ↓
+webhook-inbound recebe
+        ↓
+classifica como poll_response
+        ↓
+salva no webhook_events
+        ↓
+detecta classification.eventType === "poll_response"
+        ↓
+extrai dados do pollVote (options, pollMessageId)
+        ↓
+busca poll_messages por message_id
+        ↓
+calcula option_index via fuzzy match
+        ↓
+chama handle-poll-response internamente
+        ↓
+handle-poll-response executa ação configurada (webhook, sequence, etc)
+        ↓
+atualiza processing_result no webhook_events
 ```
 
 ---
 
 ## Resultado Esperado
 
-Payloads com `body.pollVote` serão classificados como:
-- `event_type`: `poll_response`
-- `event_subtype`: `pollVote`
-- `classification`: `identified`
-
-Após a implementação, usar "Reclassificar Tudo" para reprocessar eventos existentes.
+Após implementação:
+- Eventos com `body.pollVote` serão automaticamente processados
+- Ações configuradas (webhook, sequence, DM) serão executadas
+- O `processing_result` mostrará o resultado da execução
+- O `forwardRawBody` passará o payload original do Z-API
 
