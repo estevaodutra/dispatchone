@@ -1,201 +1,175 @@
 
 
-# Plano: Acionar Automaticamente Ações de Poll Response
+# Plano: Endpoint para Consultar Conteúdo por MessageId
 
-## Problema Identificado
+## Objetivo
 
-O evento `42ff3cb2-c0c0-4f15-b829-5db21bfaa351` foi classificado corretamente como `poll_response`, mas a ação de webhook configurada **não foi executada** porque:
-
-1. O `webhook-inbound` apenas **salva** o evento no banco de dados
-2. O `handle-poll-response` precisa ser **chamado explicitamente** para processar ações
-3. **Não existe integração automática** entre esses dois componentes
-
-### Fluxo Atual (Quebrado)
-```text
-Z-API → webhook-inbound → Salva no DB → FIM ❌
-                                        (ação não executada)
-```
-
-### Fluxo Esperado
-```text
-Z-API → webhook-inbound → Salva no DB → Detecta poll_response → 
-        Chama handle-poll-response → Executa ação configurada ✅
-```
+Criar um novo endpoint `GET /message-content` que permite consultar o conteúdo de uma mensagem/evento baseado no `messageId` do WhatsApp. Isso é útil para sistemas externos que recebem apenas o messageId e precisam acessar o conteúdo completo.
 
 ---
 
-## Solução Proposta
+## Visão Geral
 
-Adicionar lógica no `webhook-inbound` para **chamar automaticamente** o `handle-poll-response` quando um evento `poll_response` é detectado.
+O endpoint consultará a tabela `webhook_events` pelo campo `message_id` e retornará o conteúdo estruturado da mensagem, incluindo texto, mídia, ou dados de enquete.
 
 ---
 
 ## Mudanças Necessárias
 
-### 1. Atualizar `webhook-inbound/index.ts`
+### 1. Criar Edge Function `message-content`
 
-Após salvar o evento com sucesso, adicionar processamento automático para `poll_response`:
+Criar `supabase/functions/message-content/index.ts`:
+
+- Aceita `GET` com query parameter `messageId`
+- Requer autenticação via Bearer token
+- Busca na tabela `webhook_events` pelo `message_id`
+- Extrai e estrutura o conteúdo do `raw_event`
+
+**Campos retornados:**
+- `event_id`: UUID do evento
+- `message_id`: ID original do WhatsApp
+- `event_type`: Tipo do evento (text_message, image_message, etc.)
+- `chat_jid`: JID do chat
+- `sender_phone`: Telefone do remetente
+- `sender_name`: Nome do remetente
+- `content`: Conteúdo estruturado baseado no tipo
+  - Para texto: `{ text: "..." }`
+  - Para imagem: `{ imageUrl: "...", caption: "...", mimeType: "..." }`
+  - Para áudio/vídeo: `{ mediaUrl: "...", mimeType: "..." }`
+  - Para poll_response: `{ pollMessageId: "...", options: [...] }`
+- `timestamp`: Data/hora do evento
+- `raw_event`: Payload original completo (opcional via query param `include_raw=true`)
+
+### 2. Atualizar `supabase/config.toml`
+
+Adicionar configuração:
+```toml
+[functions.message-content]
+verify_jwt = false
+```
+
+### 3. Adicionar Documentação em `src/data/api-endpoints.ts`
+
+Criar nova categoria "Consultas" ou adicionar ao final dos endpoints:
 
 ```typescript
-// Após linha 551 (após console.log do event saved)
-
-// ==========================================
-// AUTO-PROCESS POLL RESPONSES
-// ==========================================
-if (classification.eventType === "poll_response") {
-  try {
-    const body = rawEvent.body as Record<string, unknown> | undefined;
-    const pollVote = body?.pollVote as Record<string, unknown> | undefined;
-    
-    if (pollVote) {
-      const options = pollVote.options as Array<{name: string}> | undefined;
-      const pollMessageId = pollVote.pollMessageId as string;
-      
-      if (pollMessageId && options?.length) {
-        // Extrair dados do respondente
-        const participantPhone = body.participantPhone as string || 
-                                 body.phone?.toString().split("-")[0];
-        const senderName = body.senderName as string || "";
-        const groupJid = body.phone as string || context.chatJid || "";
-        
-        // Buscar poll_message pelo message_id
-        const { data: pollMessage } = await supabase
-          .from("poll_messages")
-          .select("id, options")
-          .or(`message_id.eq.${pollMessageId},zaap_id.eq.${pollMessageId}`)
-          .maybeSingle();
-        
-        if (pollMessage) {
-          // Encontrar o índice da opção votada (fuzzy match)
-          const votedOptionText = options[0]?.name || "";
-          const pollOptions = pollMessage.options as string[];
-          let optionIndex = pollOptions.findIndex(
-            opt => opt.toLowerCase() === votedOptionText.toLowerCase()
-          );
-          
-          // Se não encontrou exato, tentar match parcial
-          if (optionIndex === -1) {
-            optionIndex = pollOptions.findIndex(
-              opt => opt.toLowerCase().includes(votedOptionText.toLowerCase()) ||
-                     votedOptionText.toLowerCase().includes(opt.toLowerCase())
-            );
-          }
-          
-          if (optionIndex >= 0) {
-            // Chamar handle-poll-response
-            const pollPayload = {
-              message_id: pollMessageId,
-              instance_id: instance?.id || "",
-              group_jid: groupJid,
-              respondent: {
-                phone: participantPhone,
-                name: senderName,
-                jid: `${participantPhone}@s.whatsapp.net`,
-              },
-              response: {
-                option_index: optionIndex,
-                option_text: votedOptionText,
-              },
-              timestamp: new Date().toISOString(),
-              _raw_event: rawEvent, // Para forwardRawBody
-            };
-            
-            // Invocar handle-poll-response via HTTP interno
-            const pollResponse = await fetch(
-              `${supabaseUrl}/functions/v1/handle-poll-response`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "Authorization": `Bearer ${supabaseServiceKey}`,
-                },
-                body: JSON.stringify(pollPayload),
-              }
-            );
-            
-            const pollResult = await pollResponse.json();
-            console.log(`[webhook-inbound] Auto-processed poll response: ${JSON.stringify(pollResult)}`);
-            
-            // Atualizar processing_result
-            await supabase
-              .from("webhook_events")
-              .update({
-                processing_result: pollResult,
-                processed_at: new Date().toISOString(),
-              })
-              .eq("id", insertedEvent.id);
-          }
-        }
-      }
+{
+  id: "queries",
+  name: "Consultas",
+  description: "Endpoints para consultar dados de mensagens e eventos",
+  endpoints: [
+    {
+      id: "message-content",
+      method: "GET",
+      path: "/message-content",
+      description: "Consulta o conteúdo de uma mensagem pelo messageId do WhatsApp",
+      // ... atributos, exemplos, respostas
     }
-  } catch (pollError) {
-    console.error("[webhook-inbound] Error auto-processing poll:", pollError);
-    // Não falha a requisição, apenas loga o erro
+  ]
+}
+```
+
+### 4. Atualizar `ApiSidebar.tsx`
+
+Adicionar ícone para a nova categoria:
+```typescript
+const categoryIcons: Record<string, React.ReactNode> = {
+  // ... existentes
+  queries: <Search className="h-4 w-4" />,
+};
+```
+
+---
+
+## Detalhes Técnicos
+
+### Edge Function `message-content/index.ts`
+
+```typescript
+// Estrutura básica
+Deno.serve(async (req) => {
+  // 1. Validar autenticação via validate-api-key
+  // 2. Extrair messageId da URL
+  // 3. Buscar em webhook_events por message_id
+  // 4. Extrair conteúdo do raw_event baseado no event_type
+  // 5. Retornar dados estruturados
+});
+```
+
+### Lógica de Extração de Conteúdo
+
+```typescript
+function extractContent(eventType: string, rawEvent: object) {
+  const body = rawEvent.body;
+  
+  switch(eventType) {
+    case "text_message":
+      return { text: body.text?.message || body.message };
+    case "image_message":
+      return { 
+        imageUrl: body.image?.imageUrl || body.photo,
+        caption: body.image?.caption,
+        mimeType: body.image?.mimeType
+      };
+    case "poll_response":
+      return {
+        pollMessageId: body.pollVote?.pollMessageId,
+        options: body.pollVote?.options
+      };
+    // ... outros tipos
   }
 }
 ```
 
-### 2. Atualizar `handle-poll-response/index.ts`
+---
 
-Adicionar suporte para receber o `_raw_event` para uso no `forwardRawBody`:
+## Exemplo de Uso
 
-```typescript
-// Na interface PollResponseRequest, adicionar:
-interface PollResponseRequest {
-  // ... campos existentes ...
-  _raw_event?: Record<string, unknown>; // Payload original do Z-API
+### Request
+```bash
+curl -X GET "https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/message-content?messageId=3EB0191BA58CF690D254A1" \
+  -H "Authorization: Bearer YOUR_API_TOKEN"
+```
+
+### Response (sucesso)
+```json
+{
+  "success": true,
+  "data": {
+    "event_id": "42ff3cb2-c0c0-4f15-b829-5db21bfaa351",
+    "message_id": "3EB0191BA58CF690D254A1",
+    "event_type": "poll_response",
+    "chat_jid": "120363376787776025-group",
+    "sender_phone": "5512982402981",
+    "sender_name": "João Silva",
+    "content": {
+      "pollMessageId": "3EB0191BA58CF690D254A1",
+      "options": [{ "name": "Recebido, em separação" }]
+    },
+    "timestamp": "2025-01-27T21:42:11.000Z"
+  }
 }
+```
 
-// Na lógica de call_webhook, usar _raw_event quando forwardRawBody é true
-if (actionConfig.config.forwardRawBody && body._raw_event) {
-  webhookPayload = body._raw_event;
+### Response (não encontrado)
+```json
+{
+  "success": false,
+  "error": {
+    "code": "MESSAGE_NOT_FOUND",
+    "message": "Nenhuma mensagem encontrada com o messageId informado"
+  }
 }
 ```
 
 ---
 
-## Resumo Técnico
+## Resumo de Arquivos
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `webhook-inbound/index.ts` | Adicionar auto-processamento de `poll_response` → chama `handle-poll-response` |
-| `handle-poll-response/index.ts` | Adicionar suporte a `_raw_event` para `forwardRawBody` |
-
----
-
-## Fluxo de Processamento Atualizado
-
-```text
-Z-API envia evento com pollVote
-        ↓
-webhook-inbound recebe
-        ↓
-classifica como poll_response
-        ↓
-salva no webhook_events
-        ↓
-detecta classification.eventType === "poll_response"
-        ↓
-extrai dados do pollVote (options, pollMessageId)
-        ↓
-busca poll_messages por message_id
-        ↓
-calcula option_index via fuzzy match
-        ↓
-chama handle-poll-response internamente
-        ↓
-handle-poll-response executa ação configurada (webhook, sequence, etc)
-        ↓
-atualiza processing_result no webhook_events
-```
-
----
-
-## Resultado Esperado
-
-Após implementação:
-- Eventos com `body.pollVote` serão automaticamente processados
-- Ações configuradas (webhook, sequence, DM) serão executadas
-- O `processing_result` mostrará o resultado da execução
-- O `forwardRawBody` passará o payload original do Z-API
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/message-content/index.ts` | Criar nova Edge Function |
+| `supabase/config.toml` | Adicionar configuração da função |
+| `src/data/api-endpoints.ts` | Adicionar documentação do endpoint |
+| `src/components/api-docs/ApiSidebar.tsx` | Adicionar ícone da categoria |
 
