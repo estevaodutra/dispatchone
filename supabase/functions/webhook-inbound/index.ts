@@ -550,12 +550,127 @@ Deno.serve(async (req) => {
 
     console.log(`[webhook-inbound] Event saved with ID: ${insertedEvent.id}`);
 
+    // ==========================================
+    // AUTO-PROCESS POLL RESPONSES
+    // ==========================================
+    let pollProcessingResult: Record<string, unknown> | null = null;
+    
+    if (classification.eventType === "poll_response") {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        
+        const body = rawEvent.body as Record<string, unknown> | undefined;
+        const pollVote = body?.pollVote as Record<string, unknown> | undefined;
+        
+        if (pollVote) {
+          const options = pollVote.options as Array<{name: string}> | undefined;
+          const pollMessageId = pollVote.pollMessageId as string;
+          
+          if (pollMessageId && options?.length) {
+            // Extract respondent data (body is guaranteed to exist if pollVote exists)
+            const participantPhone = (body?.participantPhone as string) || 
+                                     String(body?.phone || "").split("-")[0];
+            const senderName = (body?.senderName as string) || (body?.pushName as string) || "";
+            const groupJid = (body?.phone as string) || context.chatJid || "";
+            
+            console.log(`[webhook-inbound] Auto-processing poll vote from ${participantPhone} for message ${pollMessageId}`);
+            
+            // Find poll_message by message_id or zaap_id
+            const { data: pollMessage } = await supabase
+              .from("poll_messages")
+              .select("id, options, instance_id")
+              .or(`message_id.eq.${pollMessageId},zaap_id.eq.${pollMessageId}`)
+              .maybeSingle();
+            
+            if (pollMessage) {
+              // Find the voted option index (fuzzy match)
+              const votedOptionText = options[0]?.name || "";
+              const pollOptions = pollMessage.options as string[];
+              let optionIndex = pollOptions.findIndex(
+                opt => opt.toLowerCase() === votedOptionText.toLowerCase()
+              );
+              
+              // Fallback to partial match
+              if (optionIndex === -1) {
+                optionIndex = pollOptions.findIndex(
+                  opt => opt.toLowerCase().includes(votedOptionText.toLowerCase()) ||
+                         votedOptionText.toLowerCase().includes(opt.toLowerCase())
+                );
+              }
+              
+              if (optionIndex >= 0) {
+                // Build payload for handle-poll-response
+                const pollPayload = {
+                  message_id: pollMessageId,
+                  instance_id: pollMessage.instance_id || instance?.id || "",
+                  group_jid: groupJid,
+                  respondent: {
+                    phone: participantPhone,
+                    name: senderName,
+                    jid: `${participantPhone}@s.whatsapp.net`,
+                  },
+                  response: {
+                    option_index: optionIndex,
+                    option_text: votedOptionText,
+                  },
+                  timestamp: new Date().toISOString(),
+                  _raw_event: rawEvent, // Original Z-API payload for forwardRawBody
+                };
+                
+                // Invoke handle-poll-response
+                const pollResponse = await fetch(
+                  `${supabaseUrl}/functions/v1/handle-poll-response`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      "Authorization": `Bearer ${supabaseServiceKey}`,
+                    },
+                    body: JSON.stringify(pollPayload),
+                  }
+                );
+                
+                pollProcessingResult = await pollResponse.json();
+                console.log(`[webhook-inbound] Auto-processed poll response: ${JSON.stringify(pollProcessingResult)}`);
+                
+                // Update webhook_events with processing result
+                await supabase
+                  .from("webhook_events")
+                  .update({
+                    processing_result: pollProcessingResult,
+                    processing_status: "processed",
+                    processed_at: new Date().toISOString(),
+                  })
+                  .eq("id", insertedEvent.id);
+              } else {
+                console.log(`[webhook-inbound] Could not match voted option "${votedOptionText}" to poll options`);
+              }
+            } else {
+              console.log(`[webhook-inbound] Poll message not found for message_id: ${pollMessageId}`);
+            }
+          }
+        }
+      } catch (pollError) {
+        console.error("[webhook-inbound] Error auto-processing poll:", pollError);
+        // Don't fail the request, just log the error
+        await supabase
+          .from("webhook_events")
+          .update({
+            processing_error: pollError instanceof Error ? pollError.message : "Unknown error",
+            processing_status: "error",
+          })
+          .eq("id", insertedEvent.id);
+      }
+    }
+
     return new Response(
       JSON.stringify({
       success: true,
       event_id: insertedEvent.id,
       event_type: classification.eventType,
       classification: classification.classification,
+      poll_processing: pollProcessingResult,
     }),
     { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );

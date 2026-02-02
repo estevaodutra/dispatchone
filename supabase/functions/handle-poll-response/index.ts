@@ -25,6 +25,7 @@ interface PollResponseRequest {
     option_text: string;
   };
   timestamp: string;
+  _raw_event?: Record<string, unknown>; // Original Z-API payload for forwardRawBody
 }
 
 interface PollMessage {
@@ -542,9 +543,9 @@ Deno.serve(async (req) => {
 
           // Check if user wants to forward the raw body
           if (actionConfig.config.forwardRawBody) {
-            // Forward the original request body as-is
-            webhookPayload = body as unknown as Record<string, unknown>;
-            console.log(`[HandlePollResponse] Forwarding raw body`);
+            // Prefer the original Z-API event if available, otherwise use the request body
+            webhookPayload = body._raw_event || (body as unknown as Record<string, unknown>);
+            console.log(`[HandlePollResponse] Forwarding raw body (from _raw_event: ${!!body._raw_event})`);
           } else {
             // Build structured payload
             webhookPayload = {
