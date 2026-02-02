@@ -1738,6 +1738,103 @@ print(response.json())
         }
       }
     ]
+  },
+  {
+    id: "queries",
+    name: "Consultas",
+    description: "Endpoints para consultar dados de mensagens e eventos",
+    endpoints: [
+      {
+        id: "message-content",
+        method: "GET",
+        path: "/message-content",
+        description: "Consulta o conteúdo de uma mensagem pelo messageId do WhatsApp. Retorna dados estruturados incluindo texto, mídia, enquete, localização, etc.",
+        attributes: [
+          {
+            name: "messageId",
+            type: "string",
+            required: true,
+            description: "ID da mensagem do WhatsApp (ex: 3EB0191BA58CF690D254A1)"
+          },
+          {
+            name: "include_raw",
+            type: "boolean",
+            required: false,
+            description: "Se true, inclui o payload original completo (raw_event) na resposta"
+          }
+        ],
+        examples: {
+          curl: `curl -X GET "${API_BASE_URL}/message-content?messageId=3EB0191BA58CF690D254A1" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN"`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.get(
+  '${API_BASE_URL}/message-content',
+  {
+    params: {
+      messageId: '3EB0191BA58CF690D254A1',
+      include_raw: false
+    },
+    headers: {
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);
+
+console.log(response.data);
+// { success: true, data: { event_id: "...", message_id: "...", content: { text: "..." } } }`,
+          python: `import requests
+
+response = requests.get(
+    '${API_BASE_URL}/message-content',
+    params={
+        'messageId': '3EB0191BA58CF690D254A1',
+        'include_raw': False
+    },
+    headers={
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)
+
+print(response.json())
+# { "success": True, "data": { "event_id": "...", "message_id": "...", "content": { "text": "..." } } }`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              data: {
+                event_id: "42ff3cb2-c0c0-4f15-b829-5db21bfaa351",
+                message_id: "3EB0191BA58CF690D254A1",
+                event_type: "poll_response",
+                event_subtype: null,
+                chat_jid: "120363376787776025@g.us",
+                chat_name: "Grupo Exemplo",
+                chat_type: "group",
+                sender_phone: "5511999999999",
+                sender_name: "João Silva",
+                content: {
+                  pollMessageId: "3EB0191BA58CF690D254A1",
+                  options: [{ name: "Opção selecionada" }]
+                },
+                timestamp: "2025-01-27T21:42:11.000Z"
+              }
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: {
+                code: "MESSAGE_NOT_FOUND",
+                message: "Nenhuma mensagem encontrada com o messageId informado."
+              }
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
