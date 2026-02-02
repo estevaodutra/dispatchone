@@ -35,3 +35,9 @@ verify_jwt = false
 
 [functions.trigger-sequence]
 verify_jwt = false
+
+[functions.cleanup-webhook-events]
+verify_jwt = false
+
+[functions.message-content]
+verify_jwt = false
