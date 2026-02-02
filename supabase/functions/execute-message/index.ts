@@ -747,11 +747,18 @@ Deno.serve(async (req) => {
               
               // If this is a poll node and send was successful, register in poll_messages (only for group sends)
               if (node.node_type === "poll" && (zaapId || externalMessageId) && !dest.isPrivate) {
-                const pollConfig = node.config as Record<string, unknown>;
-                const pollOptions = (pollConfig.options as string[]) || [];
-                const optionActions = (pollConfig.optionActions as Record<string, unknown>) || {};
+                // Use formattedConfig which has variables already replaced (not node.config which has templates)
+                const pollQuestion = (formattedConfig.question as string) || (formattedConfig.title as string) || "";
                 
-                console.log(`[ExecuteMessage] Registering poll in poll_messages table`);
+                // Also replace variables in options array
+                const rawOptions = (formattedConfig.options as string[]) || [];
+                const pollOptions = rawOptions.map(opt => typeof opt === 'string' ? replaceVariables(opt) : opt);
+                
+                // option_actions still comes from original config (they are action configs, not text)
+                const optionActions = ((node.config as Record<string, unknown>).optionActions as Record<string, unknown>) || {};
+                
+                console.log(`[ExecuteMessage] Registering poll in poll_messages table with resolved values`);
+                console.log(`[ExecuteMessage] Poll question: ${pollQuestion.substring(0, 100)}...`);
                 
                 const { error: pollInsertError } = await supabase
                   .from("poll_messages")
@@ -764,7 +771,7 @@ Deno.serve(async (req) => {
                     campaign_id: typedCampaign.id,
                     group_jid: dest.group_jid,
                     instance_id: instance.id,
-                    question_text: (pollConfig.question as string) || (pollConfig.title as string) || "",
+                    question_text: pollQuestion,
                     options: pollOptions,
                     option_actions: optionActions,
                     sent_at: new Date().toISOString(),
