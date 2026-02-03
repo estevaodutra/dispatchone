@@ -50,11 +50,15 @@ export function useSequenceLogs(campaignId?: string) {
   const query = useQuery({
     queryKey: ["sequence-logs", campaignId],
     queryFn: async () => {
+      // 72-hour retention filter
+      const cutoffDate = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+      
       let queryBuilder = supabase
         .from("group_message_logs")
         .select("*")
+        .gte("sent_at", cutoffDate)
         .order("sent_at", { ascending: false })
-        .limit(500);
+        .limit(1000);
 
       if (campaignId) {
         queryBuilder = queryBuilder.eq("group_campaign_id", campaignId);

@@ -41,13 +41,11 @@ export function AppSidebar() {
     { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
     { title: t("nav.campaigns"), url: "/campaigns", icon: Megaphone },
     { title: t("nav.phoneNumbers"), url: "/numbers", icon: Phone },
-    { title: t("nav.dispatchLogs"), url: "/logs", icon: FileText },
+    { title: t("nav.logs") || "Logs", url: "/logs", icon: FileText },
   ];
 
   const systemNavItems = [
     { title: t("nav.instances"), url: "/instances", icon: MessageSquare },
-    { title: t("nav.apiLogs"), url: "/api-logs", icon: Activity },
-    { title: "Logs de Envio", url: "/sequence-logs", icon: SendHorizontal },
     { title: t("nav.webhookEvents") || "Eventos", url: "/events", icon: Radio },
     { title: t("nav.alerts"), url: "/alerts", icon: Bell },
     { title: t("nav.billing"), url: "/billing", icon: CreditCard },

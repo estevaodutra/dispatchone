@@ -16,14 +16,12 @@ import Dashboard from "./pages/Dashboard";
 import Campaigns from "./pages/Campaigns";
 import GroupCampaigns from "./pages/GroupCampaigns";
 import PhoneNumbers from "./pages/PhoneNumbers";
-import DispatchLogs from "./pages/DispatchLogs";
+import Logs from "./pages/Logs";
 import Instances from "./pages/Instances";
 import Alerts from "./pages/Alerts";
 import Billing from "./pages/Billing";
 import Settings from "./pages/Settings";
 import ApiDocs from "./pages/ApiDocs";
-import ApiLogs from "./pages/ApiLogs";
-import SequenceLogs from "./pages/SequenceLogs";
 import WebhookEvents from "./pages/WebhookEvents";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
@@ -83,7 +81,7 @@ const App = () => {
                     element={
                       <ProtectedRoute>
                         <AppLayout>
-                          <DispatchLogs />
+                          <Logs />
                         </AppLayout>
                       </ProtectedRoute>
                     }
@@ -94,26 +92,6 @@ const App = () => {
                       <ProtectedRoute>
                         <AppLayout>
                           <Instances />
-                        </AppLayout>
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/api-logs"
-                    element={
-                      <ProtectedRoute>
-                        <AppLayout>
-                          <ApiLogs />
-                        </AppLayout>
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
-                    path="/sequence-logs"
-                    element={
-                      <ProtectedRoute>
-                        <AppLayout>
-                          <SequenceLogs />
                         </AppLayout>
                       </ProtectedRoute>
                     }

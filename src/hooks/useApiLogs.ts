@@ -53,11 +53,15 @@ export function useApiLogs() {
   const { data: logs = [], isLoading, refetch } = useQuery({
     queryKey: ["api-logs"],
     queryFn: async () => {
+      // 72-hour retention filter
+      const cutoffDate = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
+      
       const { data, error } = await supabase
         .from("api_logs")
         .select("*")
+        .gte("created_at", cutoffDate)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(1000);
 
       if (error) throw error;
 
