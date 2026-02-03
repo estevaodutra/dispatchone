@@ -1,251 +1,150 @@
 
+# Plano: Corrigir Erro 500 no Endpoint phone-validation
 
-# Plano: Unificar Logs em Página Única com Abas
+## Problema Identificado
 
-## Objetivo
+Analisando os dados do banco, encontrei a causa raiz do erro 500:
 
-Consolidar as páginas de logs (Sequence Logs + API Logs) em uma única página `/logs` com navegação por abas, paginação adequada e retenção de 72 horas.
+### Situacao Atual
+
+A API key usada na requisição (`pk_live_a36b6b60a9bbc625521cac798...`) está registrada no banco, porém com `user_id: NULL`:
+
+```
+| API Key Name | user_id                              | Instâncias Vinculadas |
+|--------------|--------------------------------------|----------------------|
+| N8N          | 3b6be6fe-4c64-4570-8b62-ae5362bc56af | 2 instâncias         |
+| N8N V2       | NULL                                 | 0 instâncias         |
+| N8N (antiga) | NULL                                 | 0 instâncias         |
+```
+
+### Fluxo do Erro
+
+1. A requisição chega com uma API key válida
+2. A validação de API key passa (token existe e não está revogado)
+3. O código tenta buscar instâncias com `.eq('user_id', authResult.apiKey.user_id)`
+4. Quando `user_id` é `null`, a query se comporta de forma inesperada ou falha
+5. O catch genérico retorna "Erro interno ao validar número" (500)
 
 ---
 
-## Visão Geral da Arquitetura
+## Solução Proposta
 
-```text
-/logs (página única)
-├── Aba "Logs de Envios" (group_message_logs)
-│   └── Logs de mensagens de sequências/campanhas
-├── Aba "Logs da API" (api_logs)
-│   └── Logs de chamadas à API (request/response)
-└── Componente de Paginação compartilhado
-```
+Adicionar validação explícita para `user_id` nulo após a autenticação da API key:
 
----
+### Mudanças no Arquivo: `supabase/functions/phone-validation/index.ts`
 
-## Mudanças Necessárias
-
-### 1. Criar Nova Página Unificada
-
-**Arquivo:** `src/pages/Logs.tsx`
-
-Criar página unificada que:
-- Usa o componente `Tabs` do Radix UI
-- Contém duas abas: "Logs de Envio" e "Logs da API"
-- Exibe banner de retenção de 72 horas
-- Implementa paginação no frontend (50 itens por página)
-
-**Estrutura:**
 ```typescript
-<Tabs defaultValue="dispatch">
-  <TabsList>
-    <TabsTrigger value="dispatch">Logs de Envio</TabsTrigger>
-    <TabsTrigger value="api">Logs da API</TabsTrigger>
-  </TabsList>
-  
-  <TabsContent value="dispatch">
-    {/* Conteúdo atual de SequenceLogs */}
-    <DataTableWithPagination ... />
-  </TabsContent>
-  
-  <TabsContent value="api">
-    {/* Conteúdo atual de ApiLogs */}
-    <DataTableWithPagination ... />
-  </TabsContent>
-</Tabs>
-```
-
-### 2. Criar Componente DataTableWithPagination
-
-**Arquivo:** `src/components/dispatch/DataTableWithPagination.tsx`
-
-Componente que encapsula o DataTable existente e adiciona:
-- Estado de página atual
-- Cálculo de páginas totais
-- Navegação entre páginas
-- Opção de itens por página (25, 50, 100)
-
-**Props:**
-```typescript
-interface DataTableWithPaginationProps<T> {
-  columns: Column<T>[];
-  data: T[];
-  keyExtractor: (item: T) => string;
-  onRowClick?: (item: T) => void;
-  itemsPerPageOptions?: number[];
-  defaultItemsPerPage?: number;
+// Após a validação da API key (linha 86), adicionar verificação:
+if (!authResult.apiKey.user_id) {
+  console.error('API key has no user_id associated:', authResult.apiKey.id);
+  return new Response(
+    JSON.stringify({
+      success: false,
+      error: { 
+        code: 'API_KEY_NOT_LINKED', 
+        message: 'Esta API key não está vinculada a um usuário. Regenere a chave no painel.' 
+      }
+    }),
+    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 ```
 
-### 3. Atualizar Hooks para Retenção de 72h
+### Melhorias Adicionais
 
-**Arquivo:** `src/hooks/useSequenceLogs.ts`
+1. **Adicionar logs mais detalhados** para facilitar debug futuro
+2. **Validar cada etapa** antes de prosseguir para evitar erros silenciosos
+3. **Retornar mensagens de erro específicas** em vez do genérico "Erro interno"
 
-Adicionar filtro de data para trazer apenas logs das últimas 72 horas:
+---
+
+## Mudanças Técnicas
+
+### Arquivo: `supabase/functions/phone-validation/index.ts`
+
+**Linha 86-87** (após validação da API key):
 ```typescript
-const cutoffDate = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-
-queryBuilder = queryBuilder
-  .gte("sent_at", cutoffDate)
-  .order("sent_at", { ascending: false })
-  .limit(1000); // Aumentar limite para suportar paginação
-```
-
-**Arquivo:** `src/hooks/useApiLogs.ts`
-
-Mesma lógica de 72 horas:
-```typescript
-const cutoffDate = new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString();
-
-queryBuilder = queryBuilder
-  .gte("created_at", cutoffDate)
-  .order("created_at", { ascending: false })
-  .limit(1000);
-```
-
-### 4. Criar Edge Function de Cleanup
-
-**Arquivo:** `supabase/functions/cleanup-logs/index.ts`
-
-Nova função para limpar logs com mais de 72 horas:
-- Deleta registros de `group_message_logs` onde `sent_at < 72h`
-- Deleta registros de `api_logs` onde `created_at < 72h`
-- Retorna contagem de registros deletados
-
-### 5. Configurar Edge Function
-
-**Arquivo:** `supabase/config.toml`
-
-```toml
-[functions.cleanup-logs]
-verify_jwt = false
-```
-
-### 6. Atualizar Rotas e Sidebar
-
-**Arquivo:** `src/App.tsx`
-
-- Remover rotas `/api-logs` e `/sequence-logs`
-- Manter rota `/logs` apontando para nova página unificada
-
-**Arquivo:** `src/components/layout/AppSidebar.tsx`
-
-- Remover entrada "Logs de Envio" (`/sequence-logs`)
-- Remover entrada "Logs da API" (`/api-logs`)
-- Manter "Logs de Despacho" (`/logs`) com nome atualizado para "Logs"
-
-### 7. Atualizar i18n
-
-**Arquivo:** `src/i18n/locales/pt.ts` (e equivalentes)
-
-Adicionar novas chaves:
-```typescript
-logs: {
-  title: "Logs",
-  description: "Monitore envios e chamadas da API (retenção de 72h)",
-  retentionInfo: "Logs são mantidos por 72 horas",
-  tabDispatch: "Logs de Envio",
-  tabApi: "Logs da API",
-  itemsPerPage: "Itens por página",
-  showingPage: "Página {current} de {total}",
+// Verificar se a API key tem user_id associado
+if (!authResult.apiKey.user_id) {
+  console.error('[phone-validation] API key without user_id:', authResult.apiKey.id);
+  return new Response(
+    JSON.stringify({
+      success: false,
+      error: { 
+        code: 'API_KEY_NOT_LINKED', 
+        message: 'Esta API key não está vinculada a um usuário. Regenere a chave no painel.' 
+      }
+    }),
+    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
 }
 ```
 
-### 8. Remover Páginas Antigas
-
-**Arquivos a remover:**
-- `src/pages/SequenceLogs.tsx`
-- `src/pages/ApiLogs.tsx`
-- `src/pages/DispatchLogs.tsx`
-
----
-
-## Estrutura de Paginação
-
-A paginação será implementada no frontend:
-
+**Linhas 114-134** (melhorar logging da busca de instância):
 ```typescript
-// Estado
-const [currentPage, setCurrentPage] = useState(1);
-const [itemsPerPage, setItemsPerPage] = useState(50);
+console.log(`[phone-validation] Looking for instance for user: ${authResult.apiKey.user_id}`);
 
-// Cálculo
-const totalPages = Math.ceil(data.length / itemsPerPage);
-const startIndex = (currentPage - 1) * itemsPerPage;
-const paginatedData = data.slice(startIndex, startIndex + itemsPerPage);
+const { data: instance, error: instanceError } = await supabase
+  .from('instances')
+  .select('id, name, provider, external_instance_id, external_instance_token')
+  .eq('status', 'connected')
+  .eq('user_id', authResult.apiKey.user_id)
+  .limit(1)
+  .maybeSingle();
 
-// UI
-<div className="flex items-center justify-between">
-  <Select value={itemsPerPage.toString()} onValueChange={(v) => setItemsPerPage(Number(v))}>
-    <SelectItem value="25">25</SelectItem>
-    <SelectItem value="50">50</SelectItem>
-    <SelectItem value="100">100</SelectItem>
-  </Select>
-  
-  <Pagination>
-    <PaginationPrevious onClick={() => setCurrentPage(p => Math.max(1, p - 1))} />
-    {/* Números de página */}
-    <PaginationNext onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} />
-  </Pagination>
-</div>
+if (instanceError) {
+  console.error('[phone-validation] Error fetching instance:', instanceError);
+  return new Response(
+    JSON.stringify({
+      success: false,
+      error: { code: 'DB_ERROR', message: 'Erro ao buscar instância conectada.' }
+    }),
+    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+  );
+}
+
+if (!instance) {
+  console.log('[phone-validation] No connected instance found for user:', authResult.apiKey.user_id);
+  // ... resto do código existente
+}
 ```
 
 ---
 
-## Comparação Antes/Depois
+## Ação Adicional Recomendada
 
-| Aspecto | Antes | Depois |
-|---------|-------|--------|
-| Páginas | 3 páginas separadas | 1 página com abas |
-| Navegação | `/logs`, `/sequence-logs`, `/api-logs` | `/logs` única |
-| Retenção | 24h (API) / Sem limite (Envios) | 72h para ambos |
-| Paginação | Sem paginação | 25/50/100 itens por página |
-| Cleanup | Apenas webhook_events | + group_message_logs + api_logs |
+Corrigir as API keys existentes que não têm `user_id`:
+
+```sql
+-- Verificar API keys sem user_id
+SELECT id, name, user_id, created_at 
+FROM api_keys 
+WHERE user_id IS NULL;
+
+-- Opção 1: Deletar as chaves órfãs (recomendado)
+DELETE FROM api_keys WHERE user_id IS NULL;
+
+-- Opção 2: Vincular a um usuário existente
+UPDATE api_keys 
+SET user_id = '3b6be6fe-4c64-4570-8b62-ae5362bc56af' 
+WHERE id IN ('515bdfe5-d22a-441b-8539-cad0a0fe2d46', '2bdde9e4-5e6b-4115-9ba4-01649d5e8924');
+```
 
 ---
 
-## Fluxo Visual
+## Resultado Esperado
 
-```text
-Sidebar: [Logs] 
-           │
-           ▼
-┌─────────────────────────────────────────────┐
-│ Logs                                        │
-│ Monitore envios e chamadas da API           │
-├─────────────────────────────────────────────┤
-│ ⓘ Logs são mantidos por 72 horas           │
-├─────────────────────────────────────────────┤
-│ [Logs de Envio]  [Logs da API]              │
-├─────────────────────────────────────────────┤
-│ ┌─────────────────────────────────────────┐ │
-│ │ Filtros + Busca + Estatísticas         │ │
-│ ├─────────────────────────────────────────┤ │
-│ │ Tabela de Dados                        │ │
-│ │ ...                                    │ │
-│ ├─────────────────────────────────────────┤ │
-│ │ [25▼] Página 1 de 10 [<] [1] [2] [>]  │ │
-│ └─────────────────────────────────────────┘ │
-└─────────────────────────────────────────────┘
-```
+### Antes
+- Requisição com API key sem user_id: Erro 500 genérico
+
+### Depois
+- Requisição com API key sem user_id: Erro 403 com mensagem clara "API key não está vinculada a um usuário"
+- Logs detalhados para debug rápido
 
 ---
 
 ## Resumo de Arquivos
 
-| Arquivo | Ação |
-|---------|------|
-| `src/pages/Logs.tsx` | Criar (nova página unificada) |
-| `src/components/dispatch/DataTableWithPagination.tsx` | Criar (componente com paginação) |
-| `src/hooks/useSequenceLogs.ts` | Modificar (filtro 72h + limite 1000) |
-| `src/hooks/useApiLogs.ts` | Modificar (filtro 72h + limite 1000) |
-| `supabase/functions/cleanup-logs/index.ts` | Criar (cleanup de 72h) |
-| `supabase/config.toml` | Modificar (adicionar função cleanup-logs) |
-| `src/App.tsx` | Modificar (remover rotas antigas) |
-| `src/components/layout/AppSidebar.tsx` | Modificar (simplificar menu) |
-| `src/components/dispatch/index.ts` | Modificar (exportar novo componente) |
-| `src/i18n/locales/pt.ts` | Modificar (adicionar traduções) |
-| `src/i18n/locales/en.ts` | Modificar (adicionar traduções) |
-| `src/i18n/locales/es.ts` | Modificar (adicionar traduções) |
-| `src/pages/SequenceLogs.tsx` | Remover |
-| `src/pages/ApiLogs.tsx` | Remover |
-| `src/pages/DispatchLogs.tsx` | Remover |
-
+| Arquivo | Alteração |
+|---------|-----------|
+| `supabase/functions/phone-validation/index.ts` | Adicionar validação de user_id + melhorar logs |
