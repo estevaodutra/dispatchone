@@ -201,9 +201,42 @@ Deno.serve(async (req) => {
       );
     }
 
-    const result = await webhookResponse.json();
+    // Ler resposta como texto primeiro para debug
+    const responseText = await webhookResponse.text();
+    console.log('[phone-validation] Webhook raw response:', responseText);
 
-    console.log('Webhook response:', result);
+    // Tentar parsear JSON, tratar resposta vazia
+    let result: any = null;
+    if (responseText && responseText.trim()) {
+      try {
+        result = JSON.parse(responseText);
+        console.log('[phone-validation] Webhook parsed response:', result);
+      } catch (parseError) {
+        console.error('[phone-validation] Failed to parse webhook response:', parseError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: {
+              code: 'WEBHOOK_PARSE_ERROR',
+              message: 'Resposta do webhook em formato inválido.'
+            }
+          }),
+          { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    } else {
+      console.warn('[phone-validation] Webhook returned empty response');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: {
+            code: 'WEBHOOK_EMPTY_RESPONSE',
+            message: 'O webhook de validação retornou uma resposta vazia. Verifique a configuração do n8n.'
+          }
+        }),
+        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Se o resultado for um array, pegar o primeiro elemento
     const data = Array.isArray(result) ? result[0] : result;
