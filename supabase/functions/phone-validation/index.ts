@@ -111,17 +111,31 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Find a connected instance for this user
+    // Find ANY connected instance available in the system
+    console.log('[phone-validation] Looking for any connected instance...');
+
     const { data: instance, error: instanceError } = await supabase
       .from('instances')
       .select('id, name, provider, external_instance_id, external_instance_token')
       .eq('status', 'connected')
-      .eq('user_id', authResult.apiKey.user_id)
+      .not('external_instance_id', 'is', null)
+      .not('external_instance_token', 'is', null)
       .limit(1)
       .maybeSingle();
 
-    if (instanceError || !instance) {
-      console.log('No connected instance found for user:', authResult.apiKey.user_id);
+    if (instanceError) {
+      console.error('[phone-validation] Error fetching instance:', instanceError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: { code: 'DB_ERROR', message: 'Erro ao buscar instância conectada.' }
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (!instance) {
+      console.log('[phone-validation] No connected instance available in the system');
       return new Response(
         JSON.stringify({
           success: false,
