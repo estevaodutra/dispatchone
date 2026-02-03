@@ -1,106 +1,166 @@
 
 
-# Plano: Limpar Instâncias Fictícias do Banco de Dados
+# Plano: Implementar Logging de Chamadas da API
 
 ## Problema Identificado
 
-O banco de dados contém instâncias de teste com credenciais fictícias que estão sendo selecionadas pela Edge Function:
+A tabela `api_logs` está vazia porque **nenhuma Edge Function está gravando logs** de chamadas da API. O sistema possui:
 
-### Instâncias Fictícias (a remover)
-| ID | Nome | external_instance_id | Status |
-|----|------|---------------------|--------|
-| `f07ad525-ab6d-4e48-99c1-28209b9353ea` | WhatsApp Suporte | `ext_uvw456` | connected |
-| `7bbec8f1-4256-4655-baa4-074e5658564f` | WhatsApp Vendas | `ext_xyz789` | disconnected |
-| `df80f647-922a-424e-b659-7f69521f2fe7` | d | token fictício | disconnected |
+1. A tabela `api_logs` com a estrutura correta
+2. O hook `useApiLogs` para ler os dados
+3. A página `/logs` com aba "Logs da API" para exibir os dados
+4. A Edge Function `cleanup-logs` para limpar logs antigos
 
-### Instâncias Reais (manter)
-| ID | Nome | external_instance_id | Status |
-|----|------|---------------------|--------|
-| `07bbc66e-02a9-4203-b77a-c2d98370281b` | Mauro | `3E249F618B74B1ABEF461664B40E8DC7` | connected |
-| `843aaaca-5b9b-4126-8b3f-4c2391cf85a4` | Tablet Estevão | `3E2538077560F1BDA48C1664B40E8DC7` | connected |
-
-## Causa Raiz
-
-A query atual na Edge Function busca qualquer instância conectada com credenciais preenchidas:
-
-```typescript
-const { data: instance } = await supabase
-  .from('instances')
-  .select('...')
-  .eq('status', 'connected')
-  .not('external_instance_id', 'is', null)
-  .not('external_instance_token', 'is', null)
-  .limit(1)
-  .maybeSingle();
-```
-
-A instância "WhatsApp Suporte" satisfaz todos os critérios, mesmo com dados fictícios.
+**O que está faltando:** Código nas Edge Functions para inserir registros na tabela `api_logs`.
 
 ---
 
-## Solução
+## Arquitetura Proposta
 
-### Opção 1: Limpar Dados Fictícios (Recomendado)
+Criar um utilitário de logging reutilizável e integrá-lo nas Edge Functions que expõem a API pública.
 
-Executar uma migração SQL para deletar as instâncias de teste:
+---
 
-```sql
--- Deletar instâncias com credenciais fictícias
-DELETE FROM instances 
-WHERE external_instance_id IN ('ext_uvw456', 'ext_xyz789')
-   OR external_instance_token IN ('token_def456', 'token_ghi789', 'token_abc123');
-```
+## Mudanças Técnicas
 
-**IDs a serem removidos:**
-- `f07ad525-ab6d-4e48-99c1-28209b9353ea`
-- `7bbec8f1-4256-4655-baa4-074e5658564f`
-- `df80f647-922a-424e-b659-7f69521f2fe7`
+### 1. Adicionar Logging na Edge Function `phone-validation`
 
-### Opção 2: Filtro Adicional na Edge Function
+**Arquivo:** `supabase/functions/phone-validation/index.ts`
 
-Adicionar validação para rejeitar credenciais que parecem fictícias:
+Adicionar função auxiliar para gravar logs e chamá-la antes de cada resposta:
 
 ```typescript
-// Após buscar a instância, validar credenciais
-if (instance.external_instance_id.startsWith('ext_') || 
-    instance.external_instance_token.startsWith('token_')) {
-  console.error('[phone-validation] Instance has mock credentials');
-  return new Response(
-    JSON.stringify({
-      success: false,
-      error: {
-        code: 'INSTANCE_MOCK_CREDENTIALS',
-        message: 'A instância encontrada possui credenciais de teste.'
-      }
-    }),
-    { status: 503, ... }
-  );
+// Função para registrar log da API
+async function logApiCall(
+  supabase: any,
+  params: {
+    method: string;
+    endpoint: string;
+    statusCode: number;
+    responseTimeMs: number;
+    userId?: string;
+    apiKeyId?: string;
+    ipAddress?: string;
+    requestBody?: object;
+    responseBody?: object;
+    errorMessage?: string;
+  }
+) {
+  try {
+    await supabase.from('api_logs').insert({
+      method: params.method,
+      endpoint: params.endpoint,
+      status_code: params.statusCode,
+      response_time_ms: params.responseTimeMs,
+      user_id: params.userId,
+      api_key_id: params.apiKeyId,
+      ip_address: params.ipAddress,
+      request_body: params.requestBody,
+      response_body: params.responseBody,
+      error_message: params.errorMessage,
+    });
+  } catch (error) {
+    console.error('[api-log] Failed to log API call:', error);
+  }
 }
 ```
 
+**Integração no fluxo:**
+- Capturar timestamp de início da requisição
+- Extrair IP do header `x-forwarded-for` ou `x-real-ip`
+- Chamar `logApiCall()` antes de retornar cada Response
+
+### 2. Adicionar Logging na Edge Function `message-content`
+
+**Arquivo:** `supabase/functions/message-content/index.ts`
+
+Mesmo padrão de logging.
+
+### 3. Adicionar Logging na Edge Function `validate-api-key`
+
+**Arquivo:** `supabase/functions/validate-api-key/index.ts`
+
+Mesmo padrão de logging.
+
 ---
 
-## Recomendação
+## Edge Functions a Atualizar
 
-**Opção 1 é a melhor escolha** - limpar os dados fictícios resolve o problema na raiz e evita processamento desnecessário.
+| Função | Endpoint | Prioridade |
+|--------|----------|------------|
+| `phone-validation` | `/phone-validation` | Alta |
+| `message-content` | `/message-content` | Alta |
+| `validate-api-key` | `/validate-api-key` | Média |
 
 ---
 
-## Ações
+## Exemplo de Implementação Completa
 
-| Ação | Descrição |
-|------|-----------|
-| 1. Migração SQL | Deletar instâncias fictícias do banco |
-| 2. Verificação | Confirmar que apenas instâncias reais permanecem |
-| 3. Teste | Validar que phone-validation usa instância correta |
+```typescript
+// No início do handler
+const startTime = Date.now();
+const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
+               || req.headers.get('x-real-ip') 
+               || 'unknown';
+
+// Antes de cada return Response
+const responseTime = Date.now() - startTime;
+await logApiCall(supabase, {
+  method: req.method,
+  endpoint: '/phone-validation',
+  statusCode: 200,
+  responseTimeMs: responseTime,
+  userId: authResult.apiKey?.user_id,
+  apiKeyId: authResult.apiKey?.id,
+  ipAddress,
+  requestBody: { phone },
+  responseBody: { success: true, exists: true },
+});
+
+return new Response(...);
+```
+
+---
+
+## Dados Capturados por Chamada
+
+| Campo | Descrição |
+|-------|-----------|
+| `method` | GET, POST, PUT, DELETE |
+| `endpoint` | Caminho da função (ex: `/phone-validation`) |
+| `status_code` | Código HTTP da resposta |
+| `response_time_ms` | Tempo de processamento em milissegundos |
+| `user_id` | ID do usuário dono da API key |
+| `api_key_id` | ID da API key usada |
+| `ip_address` | IP de origem da requisição |
+| `request_body` | Corpo da requisição (sanitizado) |
+| `response_body` | Corpo da resposta (resumido) |
+| `error_message` | Mensagem de erro, se houver |
+
+---
+
+## Considerações de Segurança
+
+1. **Não logar dados sensíveis** - Omitir tokens e senhas do request_body
+2. **Truncar payloads grandes** - Limitar tamanho do response_body
+3. **Usar service role** - O insert é feito com a service role key para garantir permissão
 
 ---
 
 ## Resultado Esperado
 
-Após a limpeza, a Edge Function irá selecionar automaticamente uma das instâncias reais:
-- **Mauro** (`3E249F618B74B1ABEF461664B40E8DC7`)
-- **Tablet Estevão** (`3E2538077560F1BDA48C1664B40E8DC7`)
+Após a implementação:
+- Cada chamada às Edge Functions será registrada na tabela `api_logs`
+- A página de Logs mostrará dados reais na aba "Logs da API"
+- Os logs serão automaticamente limpos após 72 horas pela função `cleanup-logs`
 
-O payload enviado ao webhook n8n terá credenciais reais do Z-API.
+---
+
+## Arquivos a Modificar
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `supabase/functions/phone-validation/index.ts` | Adicionar logging de API |
+| `supabase/functions/message-content/index.ts` | Adicionar logging de API |
+| `supabase/functions/validate-api-key/index.ts` | Adicionar logging de API |
 
