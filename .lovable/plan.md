@@ -1,107 +1,146 @@
 
 
-# Plano: Corrigir phone-validation para usar Instancia Global
+# Plano: Corrigir Tratamento de Resposta Vazia do Webhook
 
 ## Problema Identificado
 
-O endpoint atualmente filtra instancias pelo `user_id` da API key:
+Os logs da Edge Function mostram o erro real:
 
-```typescript
-// Linha 119 - PROBLEMA
-.eq('user_id', authResult.apiKey.user_id)
+```
+ERROR Error validating phone: SyntaxError: Unexpected end of JSON input
 ```
 
-Quando a API key nao tem `user_id` vinculado, a query falha e retorna erro 500.
+### Fluxo Atual
 
-## Solucao
-
-Remover o filtro por `user_id` e buscar **qualquer instancia conectada** disponivel no sistema.
+1. A instância é encontrada corretamente
+2. O webhook n8n é chamado com sucesso
+3. O webhook retorna status 200, mas com **corpo vazio**
+4. `await webhookResponse.json()` (linha 204) falha porque não há JSON para parsear
+5. O erro é capturado no catch genérico e retorna "Erro interno ao validar número"
 
 ---
 
-## Mudancas Tecnicas
+## Solução
+
+Adicionar tratamento robusto para respostas vazias ou não-JSON do webhook.
+
+---
+
+## Mudanças Técnicas
 
 ### Arquivo: `supabase/functions/phone-validation/index.ts`
 
-**Linha 114-121** - Alterar a query para buscar qualquer instancia conectada:
+**Linhas 204-209** - Adicionar tratamento seguro para JSON:
 
-### Antes (incorreto)
+### Antes (problemático)
 ```typescript
-// Find a connected instance for this user
-const { data: instance, error: instanceError } = await supabase
-  .from('instances')
-  .select('id, name, provider, external_instance_id, external_instance_token')
-  .eq('status', 'connected')
-  .eq('user_id', authResult.apiKey.user_id)  // ❌ Filtro desnecessário
-  .limit(1)
-  .maybeSingle();
+const result = await webhookResponse.json();
+
+console.log('Webhook response:', result);
+
+// Se o resultado for um array, pegar o primeiro elemento
+const data = Array.isArray(result) ? result[0] : result;
 ```
 
-### Depois (correto)
+### Depois (robusto)
 ```typescript
-// Find ANY connected instance available in the system
-console.log('[phone-validation] Looking for any connected instance...');
+// Ler resposta como texto primeiro para debug
+const responseText = await webhookResponse.text();
+console.log('[phone-validation] Webhook raw response:', responseText);
 
-const { data: instance, error: instanceError } = await supabase
-  .from('instances')
-  .select('id, name, provider, external_instance_id, external_instance_token')
-  .eq('status', 'connected')
-  .not('external_instance_id', 'is', null)  // Garantir que tem credenciais
-  .not('external_instance_token', 'is', null)
-  .limit(1)
-  .maybeSingle();
-
-if (instanceError) {
-  console.error('[phone-validation] Error fetching instance:', instanceError);
+// Tentar parsear JSON, tratar resposta vazia
+let result: any = null;
+if (responseText && responseText.trim()) {
+  try {
+    result = JSON.parse(responseText);
+    console.log('[phone-validation] Webhook parsed response:', result);
+  } catch (parseError) {
+    console.error('[phone-validation] Failed to parse webhook response:', parseError);
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: {
+          code: 'WEBHOOK_PARSE_ERROR',
+          message: 'Resposta do webhook em formato inválido.'
+        }
+      }),
+      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+} else {
+  console.warn('[phone-validation] Webhook returned empty response');
   return new Response(
     JSON.stringify({
       success: false,
-      error: { code: 'DB_ERROR', message: 'Erro ao buscar instancia conectada.' }
+      error: {
+        code: 'WEBHOOK_EMPTY_RESPONSE',
+        message: 'O webhook de validação retornou uma resposta vazia. Verifique a configuração do n8n.'
+      }
     }),
-    { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
 }
 
-if (!instance) {
-  console.log('[phone-validation] No connected instance found in the system');
-  // ... resto do codigo existente
-}
-```
-
-**Linha 124** - Atualizar mensagem de log:
-
-```typescript
-// Antes
-console.log('No connected instance found for user:', authResult.apiKey.user_id);
-
-// Depois
-console.log('[phone-validation] No connected instance available in the system');
+// Se o resultado for um array, pegar o primeiro elemento
+const data = Array.isArray(result) ? result[0] : result;
 ```
 
 ---
 
-## Beneficios
+## Melhorias Adicionais
 
-1. **API keys sem user_id funcionam** - Nao precisa de vinculacao
-2. **Maior disponibilidade** - Qualquer instancia conectada pode ser usada
-3. **Menos pontos de falha** - Remove dependencia de user_id
-4. **Melhor logging** - Identifica problemas mais facilmente
+1. **Logging detalhado** - Registrar a resposta bruta do webhook para debug
+2. **Tratamento de resposta vazia** - Retornar erro específico (502 com código `WEBHOOK_EMPTY_RESPONSE`)
+3. **Tratamento de JSON inválido** - Retornar erro específico (502 com código `WEBHOOK_PARSE_ERROR`)
+4. **Mensagens claras** - Indicar que o problema está no webhook n8n
 
 ---
 
 ## Resultado Esperado
 
-| Cenario | Antes | Depois |
+| Cenário | Antes | Depois |
 |---------|-------|--------|
-| API key sem user_id | Erro 500 | Funciona (usa qualquer instancia) |
-| API key com user_id | Funciona | Funciona (ignora user_id) |
-| Sem instancia conectada | Erro 503 | Erro 503 (mesmo comportamento) |
+| Webhook retorna vazio | Erro 500 genérico | Erro 502 "Resposta vazia" |
+| Webhook retorna JSON inválido | Erro 500 genérico | Erro 502 "Formato inválido" |
+| Webhook retorna JSON válido | Funciona | Funciona |
+| Webhook offline | Erro 502 | Erro 502 (mesmo) |
+
+---
+
+## Logs Esperados
+
+Com a correção, os logs mostrarão:
+
+```
+[phone-validation] Looking for any connected instance...
+Sending phone validation to webhook: 5548996078227
+[phone-validation] Webhook raw response: ""
+[phone-validation] Webhook returned empty response
+```
+
+Isso facilitará identificar que o problema está no webhook n8n, não no código.
+
+---
+
+## Nota sobre o Webhook n8n
+
+O webhook `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` precisa ser configurado para retornar uma resposta JSON válida. Por exemplo:
+
+```json
+{
+  "exists": true,
+  "phone": "5548996078227",
+  "lid": "opcional_lid"
+}
+```
+
+Verifique se o workflow no n8n está retornando dados corretamente no nó de resposta (Respond to Webhook).
 
 ---
 
 ## Resumo de Arquivos
 
-| Arquivo | Alteracao |
+| Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/phone-validation/index.ts` | Remover filtro user_id + melhorar logs |
+| `supabase/functions/phone-validation/index.ts` | Tratar resposta vazia/inválida do webhook |
 
