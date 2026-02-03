@@ -1,146 +1,106 @@
 
 
-# Plano: Corrigir Tratamento de Resposta Vazia do Webhook
+# Plano: Limpar Instâncias Fictícias do Banco de Dados
 
 ## Problema Identificado
 
-Os logs da Edge Function mostram o erro real:
+O banco de dados contém instâncias de teste com credenciais fictícias que estão sendo selecionadas pela Edge Function:
 
+### Instâncias Fictícias (a remover)
+| ID | Nome | external_instance_id | Status |
+|----|------|---------------------|--------|
+| `f07ad525-ab6d-4e48-99c1-28209b9353ea` | WhatsApp Suporte | `ext_uvw456` | connected |
+| `7bbec8f1-4256-4655-baa4-074e5658564f` | WhatsApp Vendas | `ext_xyz789` | disconnected |
+| `df80f647-922a-424e-b659-7f69521f2fe7` | d | token fictício | disconnected |
+
+### Instâncias Reais (manter)
+| ID | Nome | external_instance_id | Status |
+|----|------|---------------------|--------|
+| `07bbc66e-02a9-4203-b77a-c2d98370281b` | Mauro | `3E249F618B74B1ABEF461664B40E8DC7` | connected |
+| `843aaaca-5b9b-4126-8b3f-4c2391cf85a4` | Tablet Estevão | `3E2538077560F1BDA48C1664B40E8DC7` | connected |
+
+## Causa Raiz
+
+A query atual na Edge Function busca qualquer instância conectada com credenciais preenchidas:
+
+```typescript
+const { data: instance } = await supabase
+  .from('instances')
+  .select('...')
+  .eq('status', 'connected')
+  .not('external_instance_id', 'is', null)
+  .not('external_instance_token', 'is', null)
+  .limit(1)
+  .maybeSingle();
 ```
-ERROR Error validating phone: SyntaxError: Unexpected end of JSON input
-```
 
-### Fluxo Atual
-
-1. A instância é encontrada corretamente
-2. O webhook n8n é chamado com sucesso
-3. O webhook retorna status 200, mas com **corpo vazio**
-4. `await webhookResponse.json()` (linha 204) falha porque não há JSON para parsear
-5. O erro é capturado no catch genérico e retorna "Erro interno ao validar número"
+A instância "WhatsApp Suporte" satisfaz todos os critérios, mesmo com dados fictícios.
 
 ---
 
 ## Solução
 
-Adicionar tratamento robusto para respostas vazias ou não-JSON do webhook.
+### Opção 1: Limpar Dados Fictícios (Recomendado)
 
----
+Executar uma migração SQL para deletar as instâncias de teste:
 
-## Mudanças Técnicas
-
-### Arquivo: `supabase/functions/phone-validation/index.ts`
-
-**Linhas 204-209** - Adicionar tratamento seguro para JSON:
-
-### Antes (problemático)
-```typescript
-const result = await webhookResponse.json();
-
-console.log('Webhook response:', result);
-
-// Se o resultado for um array, pegar o primeiro elemento
-const data = Array.isArray(result) ? result[0] : result;
+```sql
+-- Deletar instâncias com credenciais fictícias
+DELETE FROM instances 
+WHERE external_instance_id IN ('ext_uvw456', 'ext_xyz789')
+   OR external_instance_token IN ('token_def456', 'token_ghi789', 'token_abc123');
 ```
 
-### Depois (robusto)
-```typescript
-// Ler resposta como texto primeiro para debug
-const responseText = await webhookResponse.text();
-console.log('[phone-validation] Webhook raw response:', responseText);
+**IDs a serem removidos:**
+- `f07ad525-ab6d-4e48-99c1-28209b9353ea`
+- `7bbec8f1-4256-4655-baa4-074e5658564f`
+- `df80f647-922a-424e-b659-7f69521f2fe7`
 
-// Tentar parsear JSON, tratar resposta vazia
-let result: any = null;
-if (responseText && responseText.trim()) {
-  try {
-    result = JSON.parse(responseText);
-    console.log('[phone-validation] Webhook parsed response:', result);
-  } catch (parseError) {
-    console.error('[phone-validation] Failed to parse webhook response:', parseError);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: {
-          code: 'WEBHOOK_PARSE_ERROR',
-          message: 'Resposta do webhook em formato inválido.'
-        }
-      }),
-      { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-} else {
-  console.warn('[phone-validation] Webhook returned empty response');
+### Opção 2: Filtro Adicional na Edge Function
+
+Adicionar validação para rejeitar credenciais que parecem fictícias:
+
+```typescript
+// Após buscar a instância, validar credenciais
+if (instance.external_instance_id.startsWith('ext_') || 
+    instance.external_instance_token.startsWith('token_')) {
+  console.error('[phone-validation] Instance has mock credentials');
   return new Response(
     JSON.stringify({
       success: false,
       error: {
-        code: 'WEBHOOK_EMPTY_RESPONSE',
-        message: 'O webhook de validação retornou uma resposta vazia. Verifique a configuração do n8n.'
+        code: 'INSTANCE_MOCK_CREDENTIALS',
+        message: 'A instância encontrada possui credenciais de teste.'
       }
     }),
-    { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    { status: 503, ... }
   );
 }
-
-// Se o resultado for um array, pegar o primeiro elemento
-const data = Array.isArray(result) ? result[0] : result;
 ```
 
 ---
 
-## Melhorias Adicionais
+## Recomendação
 
-1. **Logging detalhado** - Registrar a resposta bruta do webhook para debug
-2. **Tratamento de resposta vazia** - Retornar erro específico (502 com código `WEBHOOK_EMPTY_RESPONSE`)
-3. **Tratamento de JSON inválido** - Retornar erro específico (502 com código `WEBHOOK_PARSE_ERROR`)
-4. **Mensagens claras** - Indicar que o problema está no webhook n8n
+**Opção 1 é a melhor escolha** - limpar os dados fictícios resolve o problema na raiz e evita processamento desnecessário.
+
+---
+
+## Ações
+
+| Ação | Descrição |
+|------|-----------|
+| 1. Migração SQL | Deletar instâncias fictícias do banco |
+| 2. Verificação | Confirmar que apenas instâncias reais permanecem |
+| 3. Teste | Validar que phone-validation usa instância correta |
 
 ---
 
 ## Resultado Esperado
 
-| Cenário | Antes | Depois |
-|---------|-------|--------|
-| Webhook retorna vazio | Erro 500 genérico | Erro 502 "Resposta vazia" |
-| Webhook retorna JSON inválido | Erro 500 genérico | Erro 502 "Formato inválido" |
-| Webhook retorna JSON válido | Funciona | Funciona |
-| Webhook offline | Erro 502 | Erro 502 (mesmo) |
+Após a limpeza, a Edge Function irá selecionar automaticamente uma das instâncias reais:
+- **Mauro** (`3E249F618B74B1ABEF461664B40E8DC7`)
+- **Tablet Estevão** (`3E2538077560F1BDA48C1664B40E8DC7`)
 
----
-
-## Logs Esperados
-
-Com a correção, os logs mostrarão:
-
-```
-[phone-validation] Looking for any connected instance...
-Sending phone validation to webhook: 5548996078227
-[phone-validation] Webhook raw response: ""
-[phone-validation] Webhook returned empty response
-```
-
-Isso facilitará identificar que o problema está no webhook n8n, não no código.
-
----
-
-## Nota sobre o Webhook n8n
-
-O webhook `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` precisa ser configurado para retornar uma resposta JSON válida. Por exemplo:
-
-```json
-{
-  "exists": true,
-  "phone": "5548996078227",
-  "lid": "opcional_lid"
-}
-```
-
-Verifique se o workflow no n8n está retornando dados corretamente no nó de resposta (Respond to Webhook).
-
----
-
-## Resumo de Arquivos
-
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/functions/phone-validation/index.ts` | Tratar resposta vazia/inválida do webhook |
+O payload enviado ao webhook n8n terá credenciais reais do Z-API.
 
