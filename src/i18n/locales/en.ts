@@ -5,6 +5,7 @@ export const en = {
     campaigns: "Campaigns",
     groupCampaigns: "Group Campaigns",
     phoneNumbers: "Phone Numbers",
+    logs: "Logs",
     dispatchLogs: "Dispatch Logs",
     instances: "Instances",
     apiLogs: "API Logs",
@@ -515,8 +516,8 @@ export const en = {
   // API Logs
   apiLogs: {
     title: "API Logs",
-    description: "Monitor API calls and performance (24h retention)",
-    retentionInfo: "Logs are retained for 24 hours",
+    description: "Monitor API calls and performance (72h retention)",
+    retentionInfo: "Logs are retained for 72 hours",
     totalCalls: "Total Calls",
     successRate: "Success Rate",
     avgResponseTime: "Avg Response Time",
@@ -537,6 +538,17 @@ export const en = {
     method: "Method",
     responseTime: "Response Time",
     apiKey: "API Key",
+  },
+
+  // Unified Logs Page
+  logs: {
+    title: "Logs",
+    description: "Monitor dispatches and API calls (72h retention)",
+    retentionInfo: "Logs are retained for 72 hours",
+    tabDispatch: "Dispatch Logs",
+    tabApi: "API Logs",
+    itemsPerPage: "Items per page",
+    showingPage: "Page {current} of {total}",
   },
 
   // Group Campaigns

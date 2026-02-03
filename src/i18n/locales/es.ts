@@ -5,6 +5,7 @@ export const es = {
     campaigns: "Campañas",
     groupCampaigns: "Campañas de Grupos",
     phoneNumbers: "Números",
+    logs: "Logs",
     dispatchLogs: "Registros de Envío",
     instances: "Instancias",
     apiLogs: "Logs de API",
@@ -515,8 +516,8 @@ export const es = {
   // API Logs
   apiLogs: {
     title: "Logs de API",
-    description: "Monitoree llamadas y rendimiento de la API (retención de 24h)",
-    retentionInfo: "Los logs se retienen por 24 horas",
+    description: "Monitoree llamadas y rendimiento de la API (retención de 72h)",
+    retentionInfo: "Los logs se retienen por 72 horas",
     totalCalls: "Total de Llamadas",
     successRate: "Tasa de Éxito",
     avgResponseTime: "Tiempo Promedio de Respuesta",
@@ -537,6 +538,17 @@ export const es = {
     method: "Método",
     responseTime: "Tiempo de Respuesta",
     apiKey: "Clave API",
+  },
+
+  // Unified Logs Page
+  logs: {
+    title: "Logs",
+    description: "Monitoree envíos y llamadas a la API (retención de 72h)",
+    retentionInfo: "Los logs se retienen por 72 horas",
+    tabDispatch: "Logs de Envío",
+    tabApi: "Logs de API",
+    itemsPerPage: "Ítems por página",
+    showingPage: "Página {current} de {total}",
   },
 
   // Campañas de Grupos
