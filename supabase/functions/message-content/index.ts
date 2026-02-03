@@ -23,6 +23,40 @@ interface MessageContent {
   stickerUrl?: string;
 }
 
+// Log API call to database
+async function logApiCall(
+  supabase: any,
+  params: {
+    method: string;
+    endpoint: string;
+    statusCode: number;
+    responseTimeMs: number;
+    userId?: string;
+    apiKeyId?: string;
+    ipAddress?: string;
+    requestBody?: object;
+    responseBody?: object;
+    errorMessage?: string;
+  }
+) {
+  try {
+    await supabase.from('api_logs').insert({
+      method: params.method,
+      endpoint: params.endpoint,
+      status_code: params.statusCode,
+      response_time_ms: params.responseTimeMs,
+      user_id: params.userId,
+      api_key_id: params.apiKeyId,
+      ip_address: params.ipAddress,
+      request_body: params.requestBody,
+      response_body: params.responseBody,
+      error_message: params.errorMessage,
+    });
+  } catch (error) {
+    console.error('[api-log] Failed to log API call:', error);
+  }
+}
+
 function extractContent(eventType: string, rawEvent: Record<string, unknown>): MessageContent {
   const body = rawEvent.body as Record<string, unknown> | undefined;
   if (!body) return {};
@@ -113,41 +147,66 @@ function extractContent(eventType: string, rawEvent: Record<string, unknown>): M
 }
 
 Deno.serve(async (req) => {
+  const startTime = Date.now();
+  const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
+                 || req.headers.get('x-real-ip') 
+                 || 'unknown';
+
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
   // Only allow GET requests
   if (req.method !== 'GET') {
+    const responseBody = {
+      success: false,
+      error: {
+        code: 'METHOD_NOT_ALLOWED',
+        message: 'Apenas requisições GET são permitidas.'
+      }
+    };
+    await logApiCall(supabase, {
+      method: req.method,
+      endpoint: '/message-content',
+      statusCode: 405,
+      responseTimeMs: Date.now() - startTime,
+      ipAddress,
+      responseBody,
+      errorMessage: 'Method not allowed',
+    });
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: {
-          code: 'METHOD_NOT_ALLOWED',
-          message: 'Apenas requisições GET são permitidas.'
-        }
-      }),
+      JSON.stringify(responseBody),
       { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
     // Validate API key via validate-api-key function
     const authHeader = req.headers.get('Authorization');
     if (!authHeader?.startsWith('Bearer ')) {
+      const responseBody = {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'Token de autenticação ausente ou inválido.'
+        }
+      };
+      await logApiCall(supabase, {
+        method: req.method,
+        endpoint: '/message-content',
+        statusCode: 401,
+        responseTimeMs: Date.now() - startTime,
+        ipAddress,
+        responseBody,
+        errorMessage: 'Missing auth header',
+      });
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'Token de autenticação ausente ou inválido.'
-          }
-        }),
+        JSON.stringify(responseBody),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -163,14 +222,24 @@ Deno.serve(async (req) => {
 
     const validateResult = await validateResponse.json();
     if (!validateResult.valid) {
+      const responseBody = {
+        success: false,
+        error: validateResult.error || {
+          code: 'INVALID_API_KEY',
+          message: 'API key inválida.'
+        }
+      };
+      await logApiCall(supabase, {
+        method: req.method,
+        endpoint: '/message-content',
+        statusCode: 401,
+        responseTimeMs: Date.now() - startTime,
+        ipAddress,
+        responseBody,
+        errorMessage: validateResult.error?.message || 'Invalid API key',
+      });
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: validateResult.error || {
-            code: 'INVALID_API_KEY',
-            message: 'API key inválida.'
-          }
-        }),
+        JSON.stringify(responseBody),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -181,14 +250,27 @@ Deno.serve(async (req) => {
     const includeRaw = url.searchParams.get('include_raw') === 'true';
 
     if (!messageId) {
+      const responseBody = {
+        success: false,
+        error: {
+          code: 'MISSING_MESSAGE_ID',
+          message: 'O parâmetro messageId é obrigatório.'
+        }
+      };
+      await logApiCall(supabase, {
+        method: req.method,
+        endpoint: '/message-content',
+        statusCode: 400,
+        responseTimeMs: Date.now() - startTime,
+        userId: validateResult.apiKey?.id ? undefined : undefined,
+        apiKeyId: validateResult.apiKey?.id,
+        ipAddress,
+        requestBody: { messageId: null },
+        responseBody,
+        errorMessage: 'Missing messageId',
+      });
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            code: 'MISSING_MESSAGE_ID',
-            message: 'O parâmetro messageId é obrigatório.'
-          }
-        }),
+        JSON.stringify(responseBody),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -204,28 +286,52 @@ Deno.serve(async (req) => {
 
     if (queryError) {
       console.error('[message-content] Query error:', queryError);
+      const responseBody = {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Erro ao consultar o banco de dados.'
+        }
+      };
+      await logApiCall(supabase, {
+        method: req.method,
+        endpoint: '/message-content',
+        statusCode: 500,
+        responseTimeMs: Date.now() - startTime,
+        apiKeyId: validateResult.apiKey?.id,
+        ipAddress,
+        requestBody: { messageId },
+        responseBody,
+        errorMessage: queryError.message,
+      });
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            code: 'DATABASE_ERROR',
-            message: 'Erro ao consultar o banco de dados.'
-          }
-        }),
+        JSON.stringify(responseBody),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     if (!event) {
       console.log(`[message-content] Message not found: ${messageId}`);
+      const responseBody = {
+        success: false,
+        error: {
+          code: 'MESSAGE_NOT_FOUND',
+          message: 'Nenhuma mensagem encontrada com o messageId informado.'
+        }
+      };
+      await logApiCall(supabase, {
+        method: req.method,
+        endpoint: '/message-content',
+        statusCode: 404,
+        responseTimeMs: Date.now() - startTime,
+        apiKeyId: validateResult.apiKey?.id,
+        ipAddress,
+        requestBody: { messageId },
+        responseBody,
+        errorMessage: 'Message not found',
+      });
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: {
-            code: 'MESSAGE_NOT_FOUND',
-            message: 'Nenhuma mensagem encontrada com o messageId informado.'
-          }
-        }),
+        JSON.stringify(responseBody),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -255,24 +361,47 @@ Deno.serve(async (req) => {
 
     console.log(`[message-content] Found event: ${event.id} (type: ${event.event_type})`);
 
+    const responseBody = {
+      success: true,
+      data: responseData
+    };
+
+    await logApiCall(supabase, {
+      method: req.method,
+      endpoint: '/message-content',
+      statusCode: 200,
+      responseTimeMs: Date.now() - startTime,
+      apiKeyId: validateResult.apiKey?.id,
+      ipAddress,
+      requestBody: { messageId },
+      responseBody: { success: true, event_type: event.event_type },
+    });
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        data: responseData
-      }),
+      JSON.stringify(responseBody),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('[message-content] Unexpected error:', error);
+    const responseBody = {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Erro interno do servidor.'
+      }
+    };
+    await logApiCall(supabase, {
+      method: req.method,
+      endpoint: '/message-content',
+      statusCode: 500,
+      responseTimeMs: Date.now() - startTime,
+      ipAddress,
+      responseBody,
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    });
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: {
-          code: 'INTERNAL_ERROR',
-          message: 'Erro interno do servidor.'
-        }
-      }),
+      JSON.stringify(responseBody),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
