@@ -1,22 +1,20 @@
 
-# Plano: Habilitar Campanhas de Ligacao
+# Plano: Categorias da Documentacao Fechadas por Padrao
 
-Remover a marcacao "Em breve" da opcao de Campanhas de Ligacao em todos os locais da interface.
+Alterar o estado inicial do sidebar da documentacao da API para que todas as categorias de endpoints fiquem fechadas por padrao.
 
 ---
 
-## Arquivos a Modificar
+## Alteracao
 
-| Arquivo | Linha | Alteracao |
-|---------|-------|-----------|
-| `src/components/layout/AppSidebar.tsx` | 72 | Remover `comingSoon: true` do item "Ligacao" |
-| `src/pages/campaigns/CampaignsHub.tsx` | 112 | Remover prop `comingSoon` do card "Ligacao" |
-| `src/components/campaigns/NewCampaignDialog.tsx` | 73 | Mudar `enabled: false` para `enabled: true` |
+| Arquivo | Linha | De | Para |
+|---------|-------|----|------|
+| `src/components/api-docs/ApiSidebar.tsx` | 23-25 | `useState<string[]>(apiEndpoints.map(cat => cat.id))` | `useState<string[]>([])` |
 
 ---
 
 ## Resultado
 
-- Menu lateral: "Ligacao" aparecera sem opacidade reduzida e sem label "Em breve"
-- Hub de campanhas: Card "Ligacao" sera clicavel e navegara para a pagina
-- Dialog nova campanha: Opcao "Ligacao" estara habilitada para selecao
+- Ao abrir a pagina `/api-docs`, todas as categorias de endpoints (Mensagens, Instancia, Webhooks, etc.) estarao fechadas
+- Usuario pode clicar em cada categoria para expandir e ver os endpoints
+- Interface mais limpa e organizada, similar a screenshot de referencia
