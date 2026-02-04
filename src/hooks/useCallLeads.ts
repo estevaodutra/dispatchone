@@ -233,14 +233,14 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
   const completeCallMutation = useMutation({
     mutationFn: async ({ leadId, actionId, notes }: {
       leadId: string;
-      actionId: string;
+      actionId?: string;
       notes?: string;
     }) => {
       const { error } = await (supabase as any)
         .from("call_leads")
         .update({
           status: "completed",
-          result_action_id: actionId,
+          result_action_id: actionId || null,
           result_notes: notes || null,
           last_attempt_at: new Date().toISOString(),
         })
@@ -251,6 +251,64 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      toast({ title: "Ligação concluída", description: "Resultado registrado com sucesso." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const completeLeadMutation = useMutation({
+    mutationFn: async ({
+      leadId,
+      actionId,
+      notes,
+      durationSeconds,
+      scriptPath,
+    }: {
+      leadId: string;
+      actionId?: string;
+      notes?: string;
+      durationSeconds?: number;
+      scriptPath?: string[];
+    }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // Update lead status
+      const { error: updateError } = await (supabase as any)
+        .from("call_leads")
+        .update({
+          status: "completed",
+          result_action_id: actionId || null,
+          result_notes: notes || null,
+          last_attempt_at: new Date().toISOString(),
+        })
+        .eq("id", leadId);
+
+      if (updateError) throw updateError;
+
+      // Create call log
+      const { error: logError } = await (supabase as any)
+        .from("call_logs")
+        .insert({
+          campaign_id: campaignId,
+          lead_id: leadId,
+          user_id: user.id,
+          action_id: actionId || null,
+          notes: notes || null,
+          duration_seconds: durationSeconds || 0,
+          script_path: scriptPath || [],
+          started_at: new Date(Date.now() - (durationSeconds || 0) * 1000).toISOString(),
+          ended_at: new Date().toISOString(),
+        });
+
+      if (logError) throw logError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["call_logs", campaignId] });
       toast({ title: "Ligação concluída", description: "Resultado registrado com sucesso." });
     },
     onError: (error: Error) => {
@@ -286,6 +344,7 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     addLeadsBatch: addLeadsBatchMutation.mutateAsync,
     updateLead: updateLeadMutation.mutateAsync,
     completeCall: completeCallMutation.mutateAsync,
+    completeLead: completeLeadMutation.mutateAsync,
     deleteLead: deleteLeadMutation.mutateAsync,
     isAdding: addLeadMutation.isPending,
   };
