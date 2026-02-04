@@ -526,6 +526,74 @@ Deno.serve(async (req) => {
       console.error('[call-dial] Failed to update lead status:', updateLeadError);
     }
 
+    // ==================== WEBHOOK INTEGRATION ====================
+    console.log('[call-dial] Checking for webhook configuration');
+    
+    const { data: webhookConfig } = await supabase
+      .from('webhook_configs')
+      .select('url, is_active')
+      .eq('user_id', userId)
+      .eq('category', 'calls')
+      .maybeSingle();
+
+    // Build standardized webhook payload
+    const webhookPayload = {
+      action: 'call.dial',
+      call: {
+        id: callLog.id,
+        status: 'dialing'
+      },
+      campaign: {
+        id: campaign.id,
+        name: campaign.name
+      },
+      lead: {
+        id: lead.id,
+        phone: lead.phone,
+        name: lead.name || lead_name || null
+      },
+      operator: {
+        id: operator.id,
+        name: operator.operator_name,
+        extension: operator.extension
+      }
+    };
+
+    // Call webhook if configured and active
+    let webhookResult: { called: boolean; url?: string; status?: number; response?: string; error?: string; reason?: string } = { 
+      called: false, 
+      reason: 'no_webhook_configured' 
+    };
+
+    if (webhookConfig?.is_active && webhookConfig?.url) {
+      console.log('[call-dial] Calling webhook:', webhookConfig.url);
+      try {
+        const webhookResponse = await fetch(webhookConfig.url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(webhookPayload)
+        });
+        
+        const webhookData = await webhookResponse.text();
+        webhookResult = {
+          called: true,
+          url: webhookConfig.url,
+          status: webhookResponse.status,
+          response: webhookData
+        };
+        console.log('[call-dial] Webhook response:', webhookResult);
+      } catch (error) {
+        console.error('[call-dial] Webhook error:', error);
+        webhookResult = {
+          called: true,
+          url: webhookConfig.url,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        };
+      }
+    } else {
+      console.log('[call-dial] No active webhook configured for calls category');
+    }
+
     // ==================== SUCCESS RESPONSE ====================
     const responseBody = {
       success: true,
@@ -544,7 +612,8 @@ Deno.serve(async (req) => {
         id: operator.id,
         name: operator.operator_name,
         extension: operator.extension
-      }
+      },
+      webhook: webhookResult
     };
 
     console.log('[call-dial] Success:', responseBody);
@@ -558,7 +627,7 @@ Deno.serve(async (req) => {
       apiKeyId,
       ipAddress,
       requestBody,
-      responseBody: { success: true, call_id: callLog.id },
+      responseBody: { success: true, call_id: callLog.id, webhook: { called: webhookResult.called } },
     });
 
     return new Response(JSON.stringify(responseBody), {
