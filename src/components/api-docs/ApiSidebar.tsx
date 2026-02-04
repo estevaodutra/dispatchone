@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { apiEndpoints, EndpointCategory } from "@/data/api-endpoints";
-import { BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone } from "lucide-react";
+import { BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone, ChevronRight } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface ApiSidebarProps {
   activeSection: string;
   activeCategory: string;
   onSectionClick: (sectionId: string) => void;
   onCategoryClick: (categoryId: string) => void;
+  onEndpointClick?: (categoryId: string, endpointId: string) => void;
 }
 
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -22,7 +24,24 @@ const categoryIcons: Record<string, React.ReactNode> = {
   calls: <Phone className="h-4 w-4" />,
 };
 
-export function ApiSidebar({ activeSection, activeCategory, onSectionClick, onCategoryClick }: ApiSidebarProps) {
+const methodColors: Record<string, string> = {
+  GET: "text-green-500",
+  POST: "text-blue-500",
+  PUT: "text-amber-500",
+  DELETE: "text-red-500",
+};
+
+export function ApiSidebar({ activeSection, activeCategory, onSectionClick, onCategoryClick, onEndpointClick }: ApiSidebarProps) {
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
+
+  const toggleCategory = (categoryId: string) => {
+    setExpandedCategories(prev =>
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
   const handleClick = (sectionId: string) => {
     onSectionClick(sectionId);
     const element = document.getElementById(sectionId);
@@ -33,6 +52,11 @@ export function ApiSidebar({ activeSection, activeCategory, onSectionClick, onCa
 
   const handleCategoryClick = (categoryId: string) => {
     onCategoryClick(categoryId);
+  };
+
+  const handleEndpointClick = (categoryId: string, endpointId: string) => {
+    onCategoryClick(categoryId);
+    onEndpointClick?.(categoryId, endpointId);
   };
 
   return (
@@ -89,21 +113,49 @@ export function ApiSidebar({ activeSection, activeCategory, onSectionClick, onCa
               </span>
             </div>
 
-            {/* Categories - now as direct links */}
+            {/* Categories with collapsible endpoints */}
             {apiEndpoints.map((category) => (
-              <button
+              <Collapsible
                 key={category.id}
-                onClick={() => handleCategoryClick(category.id)}
-                className={cn(
-                  "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left",
-                  activeCategory === category.id
-                    ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                )}
+                open={expandedCategories.includes(category.id)}
+                onOpenChange={() => toggleCategory(category.id)}
               >
-                {categoryIcons[category.id]}
-                <span>{category.name}</span>
-              </button>
+                <CollapsibleTrigger asChild>
+                  <button
+                    className={cn(
+                      "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left group",
+                      activeCategory === category.id
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                    )}
+                  >
+                    <ChevronRight 
+                      className={cn(
+                        "h-3 w-3 transition-transform duration-200",
+                        expandedCategories.includes(category.id) && "rotate-90"
+                      )} 
+                    />
+                    {categoryIcons[category.id]}
+                    <span className="flex-1">{category.name}</span>
+                  </button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div className="ml-4 pl-3 border-l border-border space-y-0.5 py-1">
+                    {category.endpoints.map((endpoint) => (
+                      <button
+                        key={endpoint.id}
+                        onClick={() => handleEndpointClick(category.id, endpoint.id)}
+                        className="w-full flex items-center gap-1.5 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 rounded transition-colors text-left"
+                      >
+                        <span className={cn("font-mono text-[10px] font-semibold", methodColors[endpoint.method])}>
+                          {endpoint.method}
+                        </span>
+                        <span className="font-mono truncate">{endpoint.path}</span>
+                      </button>
+                    ))}
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             ))}
 
             {/* Errors */}
