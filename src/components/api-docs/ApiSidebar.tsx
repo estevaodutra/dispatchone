@@ -20,9 +20,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
 };
 
 export function ApiSidebar({ activeSection, onSectionClick }: ApiSidebarProps) {
-  const [expandedCategories, setExpandedCategories] = useState<string[]>(
-    apiEndpoints.map(cat => cat.id)
-  );
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
 
   const toggleCategory = (categoryId: string) => {
     setExpandedCategories(prev =>
