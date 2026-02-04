@@ -1,30 +1,36 @@
 
-# Plano: Paginação na Documentação da API
+# Plano: Exibir Uma Categoria por Vez na Documentação da API
 
-Adicionar paginação dentro de cada categoria de endpoints para evitar scroll infinito e organizar melhor a documentação.
+Modificar a estrutura da documentação para exibir apenas a categoria selecionada, eliminando o scroll longo entre múltiplas categorias.
 
 ---
 
-## Contexto Atual
+## Problema Atual
 
-A página de documentação da API (`/api-docs`) exibe todas as categorias e seus endpoints em uma única página com scroll longo:
+A página exibe **todas as 8 categorias** verticalmente, causando scroll excessivo mesmo com paginação interna:
 
 | Categoria | Endpoints |
 |-----------|-----------|
-| Mensagens | 8 endpoints |
-| Instância | 3 endpoints |
-| Webhooks | 4 endpoints |
-| Respostas de Enquetes | 1 endpoint |
-| Webhooks (Recebimento) | 1 endpoint |
-| Validação | 1 endpoint |
-| Consultas | 1 endpoint |
-| Ligações | 2 endpoints |
+| Mensagens | 8 |
+| Instância | 3 |
+| Webhooks | 4 |
+| Respostas de Enquetes | 1 |
+| Webhooks (Recebimento) | 1 |
+| Validação | 1 |
+| Consultas | 1 |
+| Ligações | 2 |
+
+**Total**: ~21 endpoints visíveis simultaneamente (com paginação = 8 categorias × ~3 endpoints)
 
 ---
 
-## Solução
+## Solução Proposta
 
-Criar um componente `CategorySection` que exibe os endpoints de cada categoria com paginação interna (3 endpoints por página).
+Implementar navegação por tabs onde o usuário vê **apenas uma categoria por vez**:
+
+1. **Seções fixas** (sempre visíveis no topo): Introdução, Autenticação, Configurar Webhooks
+2. **Tabs de categorias**: Mensagens | Instância | Webhooks | Enquetes | Inbound | Validação | Consultas | Ligações
+3. **Seção fixa no final**: Erros e Tipos de Eventos
 
 ---
 
@@ -32,135 +38,108 @@ Criar um componente `CategorySection` que exibe os endpoints de cada categoria c
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/api-docs/CategorySection.tsx` | Novo componente com paginação por categoria |
-| `src/pages/ApiDocs.tsx` | Usar o novo CategorySection |
-| `src/components/api-docs/index.ts` | Exportar novo componente |
+| `src/pages/ApiDocs.tsx` | Adicionar estado para categoria ativa e usar Tabs |
+| `src/components/api-docs/ApiSidebar.tsx` | Sincronizar com categoria selecionada |
+| (opcional) Remover scroll listener para categorias
 
 ---
 
-## 1. Novo Componente CategorySection
-
-Componente que encapsula uma categoria com seus endpoints e paginação:
-
-```typescript
-// src/components/api-docs/CategorySection.tsx
-interface CategorySectionProps {
-  category: EndpointCategory;
-  endpointsPerPage?: number; // default: 3
-}
-
-export function CategorySection({ category, endpointsPerPage = 3 }) {
-  const [currentPage, setCurrentPage] = useState(1);
-  
-  // Calcular endpoints da página atual
-  const totalPages = Math.ceil(category.endpoints.length / endpointsPerPage);
-  const startIndex = (currentPage - 1) * endpointsPerPage;
-  const paginatedEndpoints = category.endpoints.slice(startIndex, startIndex + endpointsPerPage);
-  
-  return (
-    <section id={category.id}>
-      {/* Header da categoria */}
-      <div className="border-b border-border pb-4 mb-6">
-        <h2>{category.name}</h2>
-        <p>{category.description}</p>
-        {/* Indicador de página */}
-        <span>{category.endpoints.length} endpoints</span>
-      </div>
-      
-      {/* Endpoints paginados */}
-      {paginatedEndpoints.map(endpoint => (
-        <EndpointSection key={endpoint.id} endpoint={endpoint} />
-      ))}
-      
-      {/* Paginação (se houver mais de 1 página) */}
-      {totalPages > 1 && (
-        <Pagination>
-          <PaginationPrevious />
-          <PaginationContent>
-            {/* Números das páginas */}
-          </PaginationContent>
-          <PaginationNext />
-        </Pagination>
-      )}
-    </section>
-  );
-}
-```
-
----
-
-## 2. Atualizar ApiDocs.tsx
-
-Substituir o loop atual que exibe todos os endpoints por uso do novo componente:
-
-```typescript
-// Antes (scroll infinito)
-{apiEndpoints.map((category) => (
-  <div key={category.id}>
-    <h2>{category.name}</h2>
-    {category.endpoints.map((endpoint) => (
-      <EndpointSection key={endpoint.id} endpoint={endpoint} />
-    ))}
-  </div>
-))}
-
-// Depois (paginado)
-{apiEndpoints.map((category) => (
-  <CategorySection 
-    key={category.id} 
-    category={category} 
-    endpointsPerPage={3} 
-  />
-))}
-```
-
----
-
-## 3. Comportamento da Paginação
-
-- **3 endpoints por página** (configurável)
-- Categorias com 1-3 endpoints: sem paginação
-- Categorias com 4+ endpoints: paginação aparece
-- Ao trocar de página, scroll suave para o topo da categoria
-- Indicador visual mostrando "Página X de Y"
-
----
-
-## Layout Visual
+## Layout Visual Proposto
 
 ```text
-┌─────────────────────────────────────────────────┐
-│  Mensagens                                      │
-│  Endpoints para envio de mensagens (8 total)   │
-├─────────────────────────────────────────────────┤
-│  ┌─────────────────────────────────────────┐   │
-│  │ POST /send-text                          │   │
-│  │ Envia uma mensagem de texto...           │   │
-│  └─────────────────────────────────────────┘   │
-│                                                 │
-│  ┌─────────────────────────────────────────┐   │
-│  │ POST /send-media                         │   │
-│  │ Envia uma imagem, vídeo ou áudio...      │   │
-│  └─────────────────────────────────────────┘   │
-│                                                 │
-│  ┌─────────────────────────────────────────┐   │
-│  │ POST /send-document                      │   │
-│  │ Envia um documento...                    │   │
-│  └─────────────────────────────────────────┘   │
-│                                                 │
-│  ┌─────────────────────────────────────────┐   │
-│  │  ◄ Anterior    1  2  3    Próximo ►     │   │
-│  └─────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  [Sidebar]     │  API Reference                             │
+│                │                                             │
+│  ● Introdução  │  ┌─────────────────────────────────────┐   │
+│  ● Autenticação│  │ Introdução                          │   │
+│  ● Webhooks    │  │ Bem-vindo à API...                  │   │
+│                │  └─────────────────────────────────────┘   │
+│  ─ Endpoints ─ │                                             │
+│  ▸ Mensagens   │  ┌─────────────────────────────────────┐   │
+│    Instância   │  │ Autenticação                        │   │
+│    Webhooks    │  │ Bearer token...                     │   │
+│    ...         │  └─────────────────────────────────────┘   │
+│                │                                             │
+│  ● Erros       │  ┌─────────────────────────────────────┐   │
+│  ● Eventos     │  │ Endpoints                           │   │
+│                │  ├─────────────────────────────────────┤   │
+│                │  │ [Mensagens][Instância][Webhooks]... │   │
+│                │  ├─────────────────────────────────────┤   │
+│                │  │                                     │   │
+│                │  │  POST /send-text                    │   │
+│                │  │  ...                                │   │
+│                │  │                                     │   │
+│                │  │  ◄ Anterior    1  2  3    ►         │   │
+│                │  │                                     │   │
+│                │  └─────────────────────────────────────┘   │
+│                │                                             │
+│                │  ┌─────────────────────────────────────┐   │
+│                │  │ Erros / Eventos                     │   │
+│                │  └─────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Resumo
+## Implementação Técnica
 
-| Item | Descrição |
-|------|-----------|
-| Endpoints por página | 3 (configurável) |
-| Categorias afetadas | Mensagens (8), Webhooks (4) |
-| Categorias sem paginação | Demais (1-3 endpoints) |
-| Scroll | Suave para topo da categoria ao paginar |
+### 1. Estado para Categoria Ativa
+
+```typescript
+// ApiDocs.tsx
+const [activeCategory, setActiveCategory] = useState(apiEndpoints[0].id);
+```
+
+### 2. Componente de Tabs para Categorias
+
+Usar o componente `Tabs` existente do shadcn/ui para alternar entre categorias:
+
+```typescript
+<Tabs value={activeCategory} onValueChange={setActiveCategory}>
+  <TabsList className="flex flex-wrap gap-1 h-auto p-1">
+    {apiEndpoints.map((category) => (
+      <TabsTrigger key={category.id} value={category.id}>
+        {category.name}
+      </TabsTrigger>
+    ))}
+  </TabsList>
+  
+  {apiEndpoints.map((category) => (
+    <TabsContent key={category.id} value={category.id}>
+      <CategorySection category={category} endpointsPerPage={3} />
+    </TabsContent>
+  ))}
+</Tabs>
+```
+
+### 3. Sincronizar Sidebar
+
+Atualizar a sidebar para destacar a categoria ativa e permitir navegação direta:
+
+```typescript
+// Quando clicar em uma categoria na sidebar
+const handleCategoryClick = (categoryId: string) => {
+  setActiveCategory(categoryId);
+  // Scroll para a seção de endpoints
+};
+```
+
+---
+
+## Benefícios
+
+| Antes | Depois |
+|-------|--------|
+| Scroll de ~12.000px | Scroll de ~2.000px |
+| 8 categorias visíveis | 1 categoria por vez |
+| Difícil navegação | Tabs claras e intuitivas |
+| Paginação + scroll entre categorias | Apenas paginação interna |
+
+---
+
+## Resumo das Mudanças
+
+1. **Manter** seções fixas (Introdução, Autenticação, Webhook Config, Erros, Eventos)
+2. **Substituir** loop de categorias por componente `Tabs`
+3. **Exibir** apenas a categoria selecionada com sua paginação interna
+4. **Sincronizar** sidebar com a tab ativa
