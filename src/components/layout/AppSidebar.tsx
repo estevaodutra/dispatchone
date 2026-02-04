@@ -69,7 +69,7 @@ export function AppSidebar() {
     ],
     telefonia: [
       { title: "URA", url: "/campaigns/telefonia/ura", icon: Bot, comingSoon: true },
-      { title: "Ligação", url: "/campaigns/telefonia/ligacao", icon: PhoneCall, comingSoon: true },
+      { title: "Ligação", url: "/campaigns/telefonia/ligacao", icon: PhoneCall },
     ],
   };
 
