@@ -3,18 +3,23 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { LanguageProvider } from "@/i18n";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout";
-import { CampaignsLayout } from "@/components/layout/CampaignsLayout";
 
 // Pages
 import Dashboard from "./pages/Dashboard";
-import Campaigns from "./pages/Campaigns";
-import GroupCampaigns from "./pages/GroupCampaigns";
+import {
+  CampaignsHub,
+  DispatchCampaigns,
+  GroupCampaignsPage,
+  PirateCampaigns,
+  URACampaigns,
+  CallCampaigns,
+} from "./pages/campaigns";
 import PhoneNumbers from "./pages/PhoneNumbers";
 import Logs from "./pages/Logs";
 import Instances from "./pages/Instances";
@@ -53,19 +58,28 @@ const App = () => {
                       </ProtectedRoute>
                     }
                   />
+                  
+                  {/* Campaigns routes */}
                   <Route
                     path="/campaigns"
                     element={
                       <ProtectedRoute>
                         <AppLayout>
-                          <CampaignsLayout />
+                          <Outlet />
                         </AppLayout>
                       </ProtectedRoute>
                     }
                   >
-                    <Route index element={<Campaigns />} />
-                    <Route path="groups" element={<GroupCampaigns />} />
+                    <Route index element={<CampaignsHub />} />
+                    {/* WhatsApp */}
+                    <Route path="whatsapp/despacho" element={<DispatchCampaigns />} />
+                    <Route path="whatsapp/grupos" element={<GroupCampaignsPage />} />
+                    <Route path="whatsapp/pirata" element={<PirateCampaigns />} />
+                    {/* Telefonia */}
+                    <Route path="telefonia/ura" element={<URACampaigns />} />
+                    <Route path="telefonia/ligacao" element={<CallCampaigns />} />
                   </Route>
+                  
                   <Route
                     path="/numbers"
                     element={
