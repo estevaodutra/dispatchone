@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { apiEndpoints, EndpointCategory } from "@/data/api-endpoints";
-import { ChevronDown, ChevronRight, BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ApiSidebarProps {
@@ -17,6 +17,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   "webhooks-inbound": <Radio className="h-4 w-4" />,
   validation: <CheckCircle className="h-4 w-4" />,
   queries: <Search className="h-4 w-4" />,
+  calls: <Phone className="h-4 w-4" />,
 };
 
 export function ApiSidebar({ activeSection, onSectionClick }: ApiSidebarProps) {
