@@ -1,64 +1,157 @@
 
 
-# Plano: Adicionar Icone na Categoria "Ligacoes" do Sidebar
+# Plano: Armazenar ID Externo da Ligação (API4com)
 
-A categoria de endpoints "Ligacoes" (id: `calls`) nao possui icone no menu lateral da documentacao da API porque o mapeamento de icones nao inclui essa categoria.
+Modificar o sistema para capturar e armazenar o ID retornado pelo webhook do n8n/API4com, permitindo identificar a ligação quando ela for desligada.
 
 ---
 
-## Problema
+## Contexto
 
-O arquivo `src/components/api-docs/ApiSidebar.tsx` tem um mapeamento de icones na linha 12-20:
-
-```typescript
-const categoryIcons: Record<string, React.ReactNode> = {
-  messages: <MessageSquare className="h-4 w-4" />,
-  instance: <Server className="h-4 w-4" />,
-  webhooks: <Webhook className="h-4 w-4" />,
-  "poll-responses": <Vote className="h-4 w-4" />,
-  "webhooks-inbound": <Radio className="h-4 w-4" />,
-  validation: <CheckCircle className="h-4 w-4" />,
-  queries: <Search className="h-4 w-4" />,
-  // FALTA: calls
-};
+Quando o webhook é acionado, a resposta esperada é:
+```json
+[
+  {
+    "id": "0548b46f-326a-472e-aa02-06c53269c361",
+    "message": "successfull"
+  }
+]
 ```
 
-A categoria `calls` (Ligacoes) foi adicionada recentemente mas o icone nao foi incluido no mapeamento.
+O campo `id` é o identificador da ligação na API4com. Este ID precisa ser armazenado no `call_logs` para que, quando a ligação for desligada, seja possível identificar qual registro atualizar.
 
 ---
 
-## Alteracao
+## Alterações Necessárias
 
-| Arquivo | Alteracao |
-|---------|-----------|
-| `src/components/api-docs/ApiSidebar.tsx` | Importar icone `Phone` e adicionar ao mapeamento |
+| Arquivo/Recurso | Alteração |
+|-----------------|-----------|
+| **Banco de dados** | Adicionar coluna `external_call_id` na tabela `call_logs` |
+| **`supabase/functions/call-dial/index.ts`** | Parsear resposta do webhook e salvar o ID externo |
+| **`src/hooks/useCallLogs.ts`** | Incluir campo `externalCallId` no modelo |
 
 ---
 
-## Codigo
+## 1. Migração do Banco de Dados
 
-1. **Adicionar import do icone Phone:**
-```typescript
-import { ..., Phone } from "lucide-react";
-```
+```sql
+ALTER TABLE call_logs 
+ADD COLUMN external_call_id text;
 
-2. **Adicionar ao mapeamento de icones:**
-```typescript
-const categoryIcons: Record<string, React.ReactNode> = {
-  messages: <MessageSquare className="h-4 w-4" />,
-  instance: <Server className="h-4 w-4" />,
-  webhooks: <Webhook className="h-4 w-4" />,
-  "poll-responses": <Vote className="h-4 w-4" />,
-  "webhooks-inbound": <Radio className="h-4 w-4" />,
-  validation: <CheckCircle className="h-4 w-4" />,
-  queries: <Search className="h-4 w-4" />,
-  calls: <Phone className="h-4 w-4" />,  // ADICIONAR
-};
+-- Índice para busca rápida quando a ligação for desligada
+CREATE INDEX idx_call_logs_external_call_id 
+ON call_logs(external_call_id) 
+WHERE external_call_id IS NOT NULL;
 ```
 
 ---
 
-## Resultado
+## 2. Modificar Edge Function `call-dial`
 
-A categoria "Ligacoes" passara a exibir o icone de telefone (Phone) no menu lateral, mantendo consistencia visual com as demais categorias.
+Após chamar o webhook com sucesso, parsear a resposta JSON e extrair o `id`:
+
+```typescript
+// Após receber resposta do webhook (linha 577)
+const webhookData = await webhookResponse.text();
+let externalCallId: string | null = null;
+
+// Tentar parsear resposta e extrair ID externo
+try {
+  const parsedResponse = JSON.parse(webhookData);
+  // Resposta é um array: [{ id: "...", message: "..." }]
+  if (Array.isArray(parsedResponse) && parsedResponse[0]?.id) {
+    externalCallId = parsedResponse[0].id;
+    console.log('[call-dial] External call ID received:', externalCallId);
+    
+    // Atualizar call_log com o ID externo
+    await supabase
+      .from('call_logs')
+      .update({ external_call_id: externalCallId })
+      .eq('id', callLog.id);
+  }
+} catch (parseError) {
+  console.log('[call-dial] Could not parse webhook response as JSON');
+}
+```
+
+---
+
+## 3. Atualizar Hook `useCallLogs`
+
+Adicionar o novo campo ao modelo:
+
+```typescript
+export interface CallLog {
+  // ... campos existentes
+  externalCallId: string | null;
+}
+
+interface DbCallLog {
+  // ... campos existentes
+  external_call_id: string | null;
+}
+
+const transformDbToFrontend = (db: DbCallLog): CallLog => ({
+  // ... campos existentes
+  externalCallId: db.external_call_id,
+});
+```
+
+---
+
+## Fluxo Atualizado
+
+```text
+[POST /call-dial]
+      |
+      v
+[Cria registro em call_logs]
+      |
+      v
+[Chama webhook API4com]
+      |
+      v
+[Parseia resposta: { id: "xxx", message: "successfull" }]
+      |
+      v
+[Atualiza call_logs.external_call_id = "xxx"]
+      |
+      v
+[Retorna resposta com external_call_id]
+```
+
+---
+
+## Uso Futuro
+
+Quando a ligação for desligada (evento de hangup), o sistema poderá:
+
+```sql
+-- Buscar ligação pelo ID externo
+UPDATE call_logs 
+SET ended_at = NOW(), 
+    duration_seconds = EXTRACT(EPOCH FROM (NOW() - started_at))
+WHERE external_call_id = '0548b46f-326a-472e-aa02-06c53269c361';
+```
+
+---
+
+## Resposta Atualizada (201)
+
+```json
+{
+  "success": true,
+  "call_id": "uuid-interno",
+  "external_call_id": "0548b46f-326a-472e-aa02-06c53269c361",
+  "status": "dialing",
+  "campaign": { ... },
+  "lead": { ... },
+  "operator": { ... },
+  "webhook": {
+    "called": true,
+    "url": "https://n8n.../webhook/calls",
+    "status": 200
+  }
+}
+```
 
