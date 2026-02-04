@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { PageHeader } from "@/components/dispatch";
-import { ApiSidebar, EndpointSection, WebhookConfigSection } from "@/components/api-docs";
+import { ApiSidebar, CategorySection, WebhookConfigSection } from "@/components/api-docs";
 import { apiEndpoints, eventTypes } from "@/data/api-endpoints";
 import { useLanguage } from "@/i18n";
 import { Button } from "@/components/ui/button";
@@ -190,17 +190,13 @@ const ApiDocs = () => {
             <WebhookConfigSection />
           </section>
 
-          {/* Endpoints */}
+          {/* Endpoints por categoria com paginação */}
           {apiEndpoints.map((category) => (
-            <div key={category.id} className="space-y-6">
-              <div className="border-b border-border pb-4">
-                <h2 className="text-xl font-bold text-foreground">{category.name}</h2>
-                <p className="text-sm text-muted-foreground mt-1">{category.description}</p>
-              </div>
-              {category.endpoints.map((endpoint) => (
-                <EndpointSection key={endpoint.id} endpoint={endpoint} />
-              ))}
-            </div>
+            <CategorySection 
+              key={category.id} 
+              category={category} 
+              endpointsPerPage={3}
+            />
           ))}
 
           {/* Errors */}
