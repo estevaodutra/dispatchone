@@ -1,166 +1,332 @@
 
+# Plano: Reorganizar Tela de Campanhas com Canais WhatsApp e Telefonia
 
-# Plano: Implementar Logging de Chamadas da API
+## Visao Geral
 
-## Problema Identificado
-
-A tabela `api_logs` está vazia porque **nenhuma Edge Function está gravando logs** de chamadas da API. O sistema possui:
-
-1. A tabela `api_logs` com a estrutura correta
-2. O hook `useApiLogs` para ler os dados
-3. A página `/logs` com aba "Logs da API" para exibir os dados
-4. A Edge Function `cleanup-logs` para limpar logs antigos
-
-**O que está faltando:** Código nas Edge Functions para inserir registros na tabela `api_logs`.
+Transformar a atual estrutura de abas (Despacho/Grupos) em uma nova interface baseada em cards organizados por canal de comunicacao, suportando 5 tipos de campanha em 2 canais.
 
 ---
 
-## Arquitetura Proposta
+## Arquitetura Atual vs Nova
 
-Criar um utilitário de logging reutilizável e integrá-lo nas Edge Functions que expõem a API pública.
+```text
+ATUAL:
+/campaigns (CampaignsLayout com abas)
+  ├── index -> Campaigns.tsx (Despacho)
+  └── /groups -> GroupCampaigns.tsx
+
+NOVA:
+/campaigns (CampaignsHub - cards por canal)
+  ├── /whatsapp/despacho -> DispatchCampaigns.tsx
+  ├── /whatsapp/grupos -> GroupCampaigns.tsx
+  ├── /whatsapp/pirata -> PirateCampaigns.tsx (placeholder)
+  ├── /telefonia/ura -> URACampaigns.tsx (placeholder)
+  └── /telefonia/ligacao -> CallCampaigns.tsx (placeholder)
+```
 
 ---
 
-## Mudanças Técnicas
+## Mudancas Necessarias
 
-### 1. Adicionar Logging na Edge Function `phone-validation`
+### 1. Banco de Dados
 
-**Arquivo:** `supabase/functions/phone-validation/index.ts`
+Adicionar campos `campaign_type` na tabela `campaigns`:
 
-Adicionar função auxiliar para gravar logs e chamá-la antes de cada resposta:
+```sql
+ALTER TABLE campaigns 
+ADD COLUMN campaign_type text NOT NULL DEFAULT 'despacho';
+```
+
+**Valores de campaign_type:**
+- `despacho`
+- `pirata`
+- `ura`
+- `ligacao`
+
+> Nota: Campanhas de grupos ja existem em tabela separada `group_campaigns`, entao nao precisam de campo adicional.
+
+---
+
+### 2. Componentes Novos
+
+#### 2.1 CampaignsHub.tsx (Nova Tela Principal)
+
+Tela principal com cards organizados por canal:
+
+**Estrutura:**
+- Header: Titulo + Botao "Nova Campanha"
+- Secao WhatsApp com 3 cards (Despacho, Grupos, Pirata)
+- Secao Telefonia com 2 cards (URA, Ligacao)
+
+**Dados de cada card:**
+- Icone representativo
+- Nome do tipo
+- Contagem de campanhas ativas (fetch do banco)
+
+**Cores dos cards:**
+| Tipo | Cor |
+|------|-----|
+| Despacho | Azul (blue-500) |
+| Grupos | Verde (green-500) |
+| Pirata | Roxo (purple-500) |
+| URA | Laranja (orange-500) |
+| Ligacao | Vermelho (red-500) |
+
+#### 2.2 CampaignTypeCard.tsx
+
+Card reutilizavel para cada tipo de campanha:
 
 ```typescript
-// Função para registrar log da API
-async function logApiCall(
-  supabase: any,
-  params: {
-    method: string;
-    endpoint: string;
-    statusCode: number;
-    responseTimeMs: number;
-    userId?: string;
-    apiKeyId?: string;
-    ipAddress?: string;
-    requestBody?: object;
-    responseBody?: object;
-    errorMessage?: string;
-  }
-) {
-  try {
-    await supabase.from('api_logs').insert({
-      method: params.method,
-      endpoint: params.endpoint,
-      status_code: params.statusCode,
-      response_time_ms: params.responseTimeMs,
-      user_id: params.userId,
-      api_key_id: params.apiKeyId,
-      ip_address: params.ipAddress,
-      request_body: params.requestBody,
-      response_body: params.responseBody,
-      error_message: params.errorMessage,
-    });
-  } catch (error) {
-    console.error('[api-log] Failed to log API call:', error);
-  }
+interface CampaignTypeCardProps {
+  icon: LucideIcon;
+  title: string;
+  activeCount: number;
+  color: string;
+  href: string;
 }
 ```
 
-**Integração no fluxo:**
-- Capturar timestamp de início da requisição
-- Extrair IP do header `x-forwarded-for` ou `x-real-ip`
-- Chamar `logApiCall()` antes de retornar cada Response
+#### 2.3 NewCampaignDialog.tsx
 
-### 2. Adicionar Logging na Edge Function `message-content`
+Modal para selecao do tipo de campanha ao criar nova:
 
-**Arquivo:** `supabase/functions/message-content/index.ts`
+- Agrupado por canal (WhatsApp / Telefonia)
+- Cards selecionaveis com icone + nome + descricao
+- Ao selecionar, navega para formulario de criacao do tipo
 
-Mesmo padrão de logging.
+#### 2.4 CampaignListLayout.tsx
 
-### 3. Adicionar Logging na Edge Function `validate-api-key`
+Layout compartilhado para listas de campanhas por tipo:
 
-**Arquivo:** `supabase/functions/validate-api-key/index.ts`
-
-Mesmo padrão de logging.
-
----
-
-## Edge Functions a Atualizar
-
-| Função | Endpoint | Prioridade |
-|--------|----------|------------|
-| `phone-validation` | `/phone-validation` | Alta |
-| `message-content` | `/message-content` | Alta |
-| `validate-api-key` | `/validate-api-key` | Média |
+- Breadcrumb: Campanhas > Canal > Tipo
+- Header com titulo e botao de criacao
+- Cards de metricas (Total, Em Execucao, Concluidas)
+- Filtros (busca + status)
+- Tabela/lista de campanhas
 
 ---
 
-## Exemplo de Implementação Completa
+### 3. Paginas Placeholder
 
-```typescript
-// No início do handler
-const startTime = Date.now();
-const ipAddress = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() 
-               || req.headers.get('x-real-ip') 
-               || 'unknown';
+Criar paginas placeholder para tipos futuros:
 
-// Antes de cada return Response
-const responseTime = Date.now() - startTime;
-await logApiCall(supabase, {
-  method: req.method,
-  endpoint: '/phone-validation',
-  statusCode: 200,
-  responseTimeMs: responseTime,
-  userId: authResult.apiKey?.user_id,
-  apiKeyId: authResult.apiKey?.id,
-  ipAddress,
-  requestBody: { phone },
-  responseBody: { success: true, exists: true },
-});
+- `src/pages/campaigns/PirateCampaigns.tsx`
+- `src/pages/campaigns/URACampaigns.tsx`
+- `src/pages/campaigns/CallCampaigns.tsx`
 
-return new Response(...);
+Cada uma exibe estado vazio com mensagem "Em breve" ate implementacao completa.
+
+---
+
+### 4. Reorganizacao de Arquivos
+
+**Estrutura proposta:**
+
+```text
+src/pages/
+├── campaigns/
+│   ├── CampaignsHub.tsx (nova - tela principal)
+│   ├── DispatchCampaigns.tsx (renomeado de Campaigns.tsx)
+│   ├── GroupCampaigns.tsx (movido)
+│   ├── PirateCampaigns.tsx (novo - placeholder)
+│   ├── URACampaigns.tsx (novo - placeholder)
+│   └── CallCampaigns.tsx (novo - placeholder)
+
+src/components/campaigns/
+├── CampaignTypeCard.tsx (novo)
+├── NewCampaignDialog.tsx (novo)
+├── CampaignListLayout.tsx (novo)
+└── CampaignBreadcrumb.tsx (novo)
 ```
 
 ---
 
-## Dados Capturados por Chamada
+### 5. Rotas (App.tsx)
 
-| Campo | Descrição |
-|-------|-----------|
-| `method` | GET, POST, PUT, DELETE |
-| `endpoint` | Caminho da função (ex: `/phone-validation`) |
-| `status_code` | Código HTTP da resposta |
-| `response_time_ms` | Tempo de processamento em milissegundos |
-| `user_id` | ID do usuário dono da API key |
-| `api_key_id` | ID da API key usada |
-| `ip_address` | IP de origem da requisição |
-| `request_body` | Corpo da requisição (sanitizado) |
-| `response_body` | Corpo da resposta (resumido) |
-| `error_message` | Mensagem de erro, se houver |
+Atualizar sistema de rotas:
 
----
-
-## Considerações de Segurança
-
-1. **Não logar dados sensíveis** - Omitir tokens e senhas do request_body
-2. **Truncar payloads grandes** - Limitar tamanho do response_body
-3. **Usar service role** - O insert é feito com a service role key para garantir permissão
+```typescript
+// Campanhas
+<Route path="/campaigns" element={<AppLayout><Outlet /></AppLayout>}>
+  <Route index element={<CampaignsHub />} />
+  
+  {/* WhatsApp */}
+  <Route path="whatsapp/despacho" element={<DispatchCampaigns />} />
+  <Route path="whatsapp/grupos" element={<GroupCampaignsPage />} />
+  <Route path="whatsapp/pirata" element={<PirateCampaigns />} />
+  
+  {/* Telefonia */}
+  <Route path="telefonia/ura" element={<URACampaigns />} />
+  <Route path="telefonia/ligacao" element={<CallCampaigns />} />
+</Route>
+```
 
 ---
 
-## Resultado Esperado
+### 6. Menu Lateral (AppSidebar.tsx)
 
-Após a implementação:
-- Cada chamada às Edge Functions será registrada na tabela `api_logs`
-- A página de Logs mostrará dados reais na aba "Logs da API"
-- Os logs serão automaticamente limpos após 72 horas pela função `cleanup-logs`
+Transformar item "Campanhas" em menu expansivel com submenus:
+
+**Componentes necessarios:**
+- Usar `Collapsible` + `SidebarMenuSub` + `SidebarMenuSubButton`
+- Estado de expansao controlado
+
+**Estrutura do menu:**
+
+```typescript
+{
+  title: "Campanhas",
+  url: "/campaigns",
+  icon: Megaphone,
+  children: [
+    {
+      title: "WhatsApp",
+      icon: MessageSquare,
+      children: [
+        { title: "Despacho", url: "/campaigns/whatsapp/despacho" },
+        { title: "Grupos", url: "/campaigns/whatsapp/grupos" },
+        { title: "Pirata", url: "/campaigns/whatsapp/pirata" },
+      ]
+    },
+    {
+      title: "Telefonia",
+      icon: Phone,
+      children: [
+        { title: "URA", url: "/campaigns/telefonia/ura" },
+        { title: "Ligacao", url: "/campaigns/telefonia/ligacao" },
+      ]
+    }
+  ]
+}
+```
+
+**Comportamento:**
+- Clicar em "Campanhas" vai para `/campaigns` (CampaignsHub)
+- Seta expande/colapsa submenus
+- Submenus destacam rota ativa
 
 ---
 
-## Arquivos a Modificar
+### 7. Hooks
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `supabase/functions/phone-validation/index.ts` | Adicionar logging de API |
-| `supabase/functions/message-content/index.ts` | Adicionar logging de API |
-| `supabase/functions/validate-api-key/index.ts` | Adicionar logging de API |
+#### 7.1 Atualizar useCampaigns.ts
 
+Adicionar suporte a `campaign_type`:
+
+```typescript
+export interface Campaign {
+  // ... existentes
+  campaignType: "despacho" | "pirata" | "ura" | "ligacao";
+}
+
+// Query com filtro opcional por tipo
+useCampaigns(campaignType?: string)
+```
+
+#### 7.2 useCampaignStats.ts (novo)
+
+Hook para buscar contagens por tipo para os cards:
+
+```typescript
+export function useCampaignStats() {
+  // Retorna contagem de campanhas ativas por tipo
+  return {
+    despacho: { active: 12, total: 45 },
+    grupos: { active: 5, total: 23 },
+    pirata: { active: 0, total: 0 },
+    ura: { active: 0, total: 0 },
+    ligacao: { active: 0, total: 0 },
+  };
+}
+```
+
+---
+
+### 8. Internacionalizacao (i18n)
+
+Adicionar novas chaves em pt.ts:
+
+```typescript
+campaigns: {
+  // ... existentes
+  hub: {
+    title: "Campanhas",
+    description: "Gerencie suas campanhas de envio",
+    newCampaign: "Nova Campanha",
+  },
+  channels: {
+    whatsapp: "WhatsApp",
+    telefonia: "Telefonia",
+  },
+  types: {
+    despacho: {
+      title: "Despacho",
+      description: "Disparo de mensagens em massa para lista de contatos",
+    },
+    grupos: {
+      title: "Grupos",
+      description: "Gestao de grupos com sequencias e automacoes",
+    },
+    pirata: {
+      title: "Pirata",
+      description: "Campanha especial",
+    },
+    ura: {
+      title: "URA",
+      description: "Fluxo de audio interativo com DTMF",
+    },
+    ligacao: {
+      title: "Ligacao",
+      description: "Chamadas de voz automaticas",
+    },
+  },
+  activeCount: "{{count}} ativas",
+  comingSoon: "Em breve",
+}
+```
+
+---
+
+## Resumo de Arquivos
+
+| Acao | Arquivo | Descricao |
+|------|---------|-----------|
+| Migrar | SQL | Adicionar campo campaign_type |
+| Criar | CampaignsHub.tsx | Tela principal com cards |
+| Criar | CampaignTypeCard.tsx | Componente de card |
+| Criar | NewCampaignDialog.tsx | Modal de nova campanha |
+| Criar | CampaignListLayout.tsx | Layout de lista por tipo |
+| Criar | CampaignBreadcrumb.tsx | Navegacao breadcrumb |
+| Mover | Campaigns.tsx -> DispatchCampaigns.tsx | Renomear/mover |
+| Mover | GroupCampaigns.tsx | Mover para subpasta |
+| Criar | PirateCampaigns.tsx | Placeholder |
+| Criar | URACampaigns.tsx | Placeholder |
+| Criar | CallCampaigns.tsx | Placeholder |
+| Editar | App.tsx | Novas rotas |
+| Editar | AppSidebar.tsx | Menu expansivel |
+| Editar | useCampaigns.ts | Suporte a tipo |
+| Criar | useCampaignStats.ts | Contagens por tipo |
+| Editar | pt.ts, en.ts, es.ts | Novas traducoes |
+
+---
+
+## Ordem de Implementacao
+
+1. **Banco de Dados** - Migracao SQL para adicionar campo
+2. **Componentes Base** - CampaignTypeCard, CampaignBreadcrumb
+3. **CampaignsHub** - Nova tela principal
+4. **Rotas** - Atualizar App.tsx
+5. **Reorganizar Paginas** - Mover/renomear arquivos existentes
+6. **Paginas Placeholder** - Pirata, URA, Ligacao
+7. **Menu Lateral** - AppSidebar com submenus
+8. **Hooks** - useCampaignStats e atualizar useCampaigns
+9. **i18n** - Adicionar traducoes
+10. **NewCampaignDialog** - Modal de criacao
+
+---
+
+## Compatibilidade
+
+- Campanhas existentes na tabela `campaigns` receberao `campaign_type = 'despacho'` por default
+- Campanhas de grupos continuam na tabela `group_campaigns` separada
+- Nenhum dado sera perdido
