@@ -1,240 +1,79 @@
 
 
-# Plano: Integrar Webhook de Ligacoes no Endpoint call-dial
+# Plano: Adicionar Icones nas Categorias de Webhook
 
-Modificar o endpoint `call-dial` existente para chamar o webhook configurado na categoria "Ligacoes" (calls) apos registrar a ligacao no banco, permitindo que o n8n dispare a ligacao via API4com.
-
----
-
-## Visao Geral
-
-O endpoint `call-dial` ja:
-- Valida API Key
-- Busca campanha por nome
-- Busca/cria lead
-- Busca operador ativo
-- Cria registro em `call_logs`
-- Atualiza status do lead
-
-Falta adicionar:
-- Buscar webhook configurado na categoria "calls"
-- Chamar o webhook com payload padronizado
-- Retornar resultado do webhook na resposta
+Adicionar icones visuais para cada categoria de webhook na secao "Configurar Webhooks" da documentacao da API, melhorando a identificacao visual.
 
 ---
 
-## Alteracoes
+## Alteracao
 
 | Arquivo | Alteracao |
 |---------|-----------|
-| `supabase/functions/call-dial/index.ts` | Adicionar busca e chamada do webhook de ligacoes |
+| `src/components/api-docs/WebhookConfigSection.tsx` | Adicionar mapeamento de icones e exibi-los antes do nome da categoria |
 
 ---
 
-## Logica a Adicionar (apos criar call_log)
+## Icones por Categoria
 
-```text
-[Apos criar call_log]
-      |
-      v
-[Buscar webhook_configs onde category = "calls"]
-      |
-      v
-[Webhook ativo?]
-      |--- Sim: Chamar webhook com payload padronizado
-      |         └── Registrar resultado no response
-      |--- Nao: Logar que nenhum webhook esta configurado
-      |
-      v
-[Retornar resposta com dados do webhook]
-```
-
----
-
-## Payload do Webhook
-
-```json
-{
-  "action": "call.dial",
-  "call": {
-    "id": "uuid-da-ligacao",
-    "status": "dialing"
-  },
-  "campaign": {
-    "id": "uuid-da-campanha",
-    "name": "FN | Carrinho Abandonado"
-  },
-  "lead": {
-    "id": "uuid-do-lead",
-    "phone": "5512983195531",
-    "name": "Ebonocleiton"
-  },
-  "operator": {
-    "id": "uuid-do-operador",
-    "name": "Joao Silva",
-    "extension": "1001"
-  }
-}
-```
-
----
-
-## Resposta Atualizada (201)
-
-```json
-{
-  "success": true,
-  "call_id": "uuid-da-ligacao",
-  "status": "dialing",
-  "campaign": { ... },
-  "lead": { ... },
-  "operator": { ... },
-  "webhook": {
-    "called": true,
-    "url": "https://n8n.../webhook/calls",
-    "status": 200,
-    "response": { ... }
-  }
-}
-```
-
-Ou se nao houver webhook:
-
-```json
-{
-  "success": true,
-  ...
-  "webhook": {
-    "called": false,
-    "reason": "no_webhook_configured"
-  }
-}
-```
+| Categoria | Icone (Lucide) |
+|-----------|----------------|
+| messages | `MessageSquare` |
+| instance | `Server` |
+| groups | `Users` |
+| calls | `Phone` |
+| contacts | `Contact` |
+| chat | `MessagesSquare` |
+| profile | `User` |
+| webhooks | `Webhook` |
+| utilities | `Wrench` |
 
 ---
 
 ## Codigo a Adicionar
 
-Apos a linha 510 (apos criar call_log), adicionar:
-
-1. **Buscar configuracao de webhook:**
+1. **Importar icones do lucide-react:**
 ```typescript
-const { data: webhookConfig } = await supabase
-  .from('webhook_configs')
-  .select('url, is_active')
-  .eq('user_id', userId)
-  .eq('category', 'calls')
-  .maybeSingle();
+import { Phone, MessageSquare, Server, Users, Contact, MessagesSquare, User, Wrench } from "lucide-react";
 ```
 
-2. **Construir payload padronizado:**
+2. **Criar mapeamento de icones:**
 ```typescript
-const webhookPayload = {
-  action: 'call.dial',
-  call: {
-    id: callLog.id,
-    status: 'dialing'
-  },
-  campaign: {
-    id: campaign.id,
-    name: campaign.name
-  },
-  lead: {
-    id: lead.id,
-    phone: lead.phone,
-    name: lead.name || lead_name || null
-  },
-  operator: {
-    id: operator.id,
-    name: operator.operator_name,
-    extension: operator.extension
-  }
+const categoryIcons: Record<string, React.ReactNode> = {
+  messages: <MessageSquare className="h-4 w-4" />,
+  instance: <Server className="h-4 w-4" />,
+  groups: <Users className="h-4 w-4" />,
+  calls: <Phone className="h-4 w-4" />,
+  contacts: <Contact className="h-4 w-4" />,
+  chat: <MessagesSquare className="h-4 w-4" />,
+  profile: <User className="h-4 w-4" />,
+  webhooks: <Webhook className="h-4 w-4" />,
+  utilities: <Wrench className="h-4 w-4" />,
 };
 ```
 
-3. **Chamar webhook se configurado:**
+3. **Adicionar icone antes do nome da categoria:**
 ```typescript
-let webhookResult = { called: false, reason: 'no_webhook_configured' };
-
-if (webhookConfig?.is_active && webhookConfig?.url) {
-  try {
-    const webhookResponse = await fetch(webhookConfig.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(webhookPayload)
-    });
-    
-    const webhookData = await webhookResponse.text();
-    webhookResult = {
-      called: true,
-      url: webhookConfig.url,
-      status: webhookResponse.status,
-      response: webhookData
-    };
-  } catch (error) {
-    webhookResult = {
-      called: true,
-      url: webhookConfig.url,
-      error: error.message
-    };
-  }
-}
-```
-
-4. **Incluir resultado na resposta:**
-```typescript
-const responseBody = {
-  success: true,
-  call_id: callLog.id,
-  status: 'dialing',
-  campaign: { ... },
-  lead: { ... },
-  operator: { ... },
-  webhook: webhookResult
-};
+<div className="flex items-center gap-2">
+  {categoryIcons[category.id]}
+  <span className="font-medium text-foreground">{category.name}</span>
+  ...
+</div>
 ```
 
 ---
 
-## Fluxo Completo Atualizado
+## Resultado Visual
 
-```text
-[POST /call-dial]
-      |
-      v
-[Valida API Key]
-      |
-      v
-[Busca campanha por nome]
-      |
-      v
-[Busca/cria lead]
-      |
-      v
-[Busca operador ativo]
-      |
-      v
-[Cria registro em call_logs]
-      |
-      v
-[Atualiza status do lead]
-      |
-      v
-[Busca webhook da categoria "calls"]
-      |
-      v
-[Chama webhook API4com se configurado]
-      |
-      v
-[Retorna resposta com dados da ligacao + resultado do webhook]
-```
+Cada categoria exibira um icone representativo ao lado esquerdo do nome:
 
----
-
-## Observacoes
-
-- Se o webhook nao estiver configurado, a ligacao ainda e registrada no banco
-- O resultado do webhook e incluido na resposta para visibilidade
-- O n8n recebe o payload e faz a chamada real para a API4com
-- Erros no webhook nao impedem o sucesso da operacao (fail-safe)
+- Mensagens (icone de mensagem)
+- Instancia (icone de servidor)
+- Grupos (icone de usuarios)
+- **Ligacoes (icone de telefone)**
+- Contatos (icone de contato)
+- Conversas (icone de mensagens)
+- Perfil (icone de usuario)
+- Webhooks (icone de webhook)
+- Utilitarios (icone de ferramenta)
 
