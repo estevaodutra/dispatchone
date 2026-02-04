@@ -7,6 +7,7 @@ export interface Campaign {
   id: string;
   name: string;
   channel: "whatsapp" | "voice";
+  campaignType: "despacho" | "pirata" | "ura" | "ligacao";
   status: "draft" | "running" | "paused" | "completed" | "terminated";
   sent: number;
   total: number;
@@ -18,6 +19,7 @@ interface DbCampaign {
   id: string;
   name: string;
   channel: string;
+  campaign_type: string | null;
   status: string | null;
   sent: number | null;
   total: number | null;
@@ -31,6 +33,7 @@ function transformDbToFrontend(dbCampaign: DbCampaign): Campaign {
     id: dbCampaign.id,
     name: dbCampaign.name,
     channel: (dbCampaign.channel || "whatsapp") as Campaign["channel"],
+    campaignType: (dbCampaign.campaign_type || "despacho") as Campaign["campaignType"],
     status: (dbCampaign.status || "draft") as Campaign["status"],
     sent: dbCampaign.sent || 0,
     total: dbCampaign.total || 0,

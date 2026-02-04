@@ -171,6 +171,7 @@ export type Database = {
       }
       campaigns: {
         Row: {
+          campaign_type: string
           channel: string
           created_at: string | null
           id: string
@@ -182,6 +183,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          campaign_type?: string
           channel?: string
           created_at?: string | null
           id?: string
@@ -193,6 +195,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          campaign_type?: string
           channel?: string
           created_at?: string | null
           id?: string
