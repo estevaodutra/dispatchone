@@ -13,6 +13,8 @@ export interface CallLog {
   notes: string | null;
   scriptPath: unknown[];
   createdAt: string;
+  externalCallId: string | null;
+  callStatus: string | null;
 }
 
 interface DbCallLog {
@@ -28,6 +30,8 @@ interface DbCallLog {
   notes: string | null;
   script_path: unknown[] | null;
   created_at: string | null;
+  external_call_id: string | null;
+  call_status: string | null;
 }
 
 const transformDbToFrontend = (db: DbCallLog): CallLog => ({
@@ -42,6 +46,8 @@ const transformDbToFrontend = (db: DbCallLog): CallLog => ({
   notes: db.notes,
   scriptPath: db.script_path || [],
   createdAt: db.created_at || new Date().toISOString(),
+  externalCallId: db.external_call_id,
+  callStatus: db.call_status,
 });
 
 export interface CallLogStats {

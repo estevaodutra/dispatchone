@@ -582,6 +582,27 @@ Deno.serve(async (req) => {
           response: webhookData
         };
         console.log('[call-dial] Webhook response:', webhookResult);
+
+        // Parse response and extract external call ID
+        // Expected format: [{ "id": "uuid", "message": "successfull" }]
+        try {
+          const parsedResponse = JSON.parse(webhookData);
+          if (Array.isArray(parsedResponse) && parsedResponse[0]?.id) {
+            const externalCallId = parsedResponse[0].id;
+            console.log('[call-dial] External call ID received:', externalCallId);
+            
+            // Update call_log with external ID and status
+            await supabase
+              .from('call_logs')
+              .update({ 
+                external_call_id: externalCallId,
+                call_status: 'dialing'
+              })
+              .eq('id', callLog.id);
+          }
+        } catch (parseError) {
+          console.log('[call-dial] Could not parse webhook response as JSON');
+        }
       } catch (error) {
         console.error('[call-dial] Webhook error:', error);
         webhookResult = {
