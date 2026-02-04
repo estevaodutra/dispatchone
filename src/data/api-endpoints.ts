@@ -1835,6 +1835,111 @@ print(response.json())
         }
       }
     ]
+  },
+  {
+    id: "calls",
+    name: "Ligações",
+    description: "Endpoints para campanhas de ligação telefônica",
+    endpoints: [
+      {
+        id: "call-dial",
+        method: "POST",
+        path: "/call-dial",
+        description: "Inicia uma ligação telefônica para um lead de uma campanha. O endpoint busca a campanha pelo nome, valida o lead e registra a ligação no sistema.",
+        attributes: [
+          {
+            name: "campaign_name",
+            type: "string",
+            required: true,
+            description: "Nome exato da campanha de ligação"
+          },
+          {
+            name: "lead_phone",
+            type: "string",
+            required: true,
+            description: "Telefone do lead com DDI (mínimo 10 dígitos, ex: 5512983195531)"
+          },
+          {
+            name: "lead_name",
+            type: "string",
+            required: false,
+            description: "Nome do lead para identificação"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/call-dial" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "campaign_name": "FN | Carrinho Abandonado",
+    "lead_phone": "5512983195531",
+    "lead_name": "Ebonocleiton"
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/call-dial',
+  {
+    campaign_name: 'FN | Carrinho Abandonado',
+    lead_phone: '5512983195531',
+    lead_name: 'Ebonocleiton'
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/call-dial',
+    json={
+        'campaign_name': 'FN | Carrinho Abandonado',
+        'lead_phone': '5512983195531',
+        'lead_name': 'Ebonocleiton'
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 201,
+            body: {
+              success: true,
+              call_id: "uuid-da-ligacao",
+              status: "dialing",
+              campaign: {
+                id: "uuid-da-campanha",
+                name: "FN | Carrinho Abandonado"
+              },
+              lead: {
+                id: "uuid-do-lead",
+                phone: "5512983195531",
+                name: "Ebonocleiton"
+              },
+              operator: {
+                id: "uuid-do-operador",
+                name: "João Silva",
+                extension: "1001"
+              }
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: "campaign_not_found",
+              message: "Campanha 'FN | Carrinho Abandonado' não encontrada"
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
