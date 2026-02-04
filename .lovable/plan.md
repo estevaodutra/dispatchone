@@ -1,219 +1,166 @@
 
+# Plano: Paginação na Documentação da API
 
-# Plano: Endpoint para Atualizar Status de Ligação
-
-Criar um novo endpoint `POST /call-status` que permite atualizar ou criar registros de ligação com status específicos, capturando o `external_call_id` para sincronização com a API4com.
+Adicionar paginação dentro de cada categoria de endpoints para evitar scroll infinito e organizar melhor a documentação.
 
 ---
 
-## Status Suportados
+## Contexto Atual
 
-| Status | Descrição |
-|--------|-----------|
-| `dialing` | Ligando (padrão quando a ligação é iniciada com sucesso) |
-| `ended` | Encerrado (quando a ligação é desligada) |
-| `error` | Erro (quando ocorre falha na ligação) |
+A página de documentação da API (`/api-docs`) exibe todas as categorias e seus endpoints em uma única página com scroll longo:
+
+| Categoria | Endpoints |
+|-----------|-----------|
+| Mensagens | 8 endpoints |
+| Instância | 3 endpoints |
+| Webhooks | 4 endpoints |
+| Respostas de Enquetes | 1 endpoint |
+| Webhooks (Recebimento) | 1 endpoint |
+| Validação | 1 endpoint |
+| Consultas | 1 endpoint |
+| Ligações | 2 endpoints |
+
+---
+
+## Solução
+
+Criar um componente `CategorySection` que exibe os endpoints de cada categoria com paginação interna (3 endpoints por página).
 
 ---
 
 ## Alterações Necessárias
 
-| Recurso | Alteração |
+| Arquivo | Alteração |
 |---------|-----------|
-| **Banco de dados** | Adicionar coluna `external_call_id` e `call_status` na tabela `call_logs` |
-| **`supabase/functions/call-status/index.ts`** | Nova edge function para atualizar/criar status |
-| **`src/data/api-endpoints.ts`** | Documentar novo endpoint na categoria "Ligações" |
-| **`src/hooks/useCallLogs.ts`** | Adicionar campos ao modelo |
+| `src/components/api-docs/CategorySection.tsx` | Novo componente com paginação por categoria |
+| `src/pages/ApiDocs.tsx` | Usar o novo CategorySection |
+| `src/components/api-docs/index.ts` | Exportar novo componente |
 
 ---
 
-## 1. Migração do Banco de Dados
+## 1. Novo Componente CategorySection
 
-```sql
--- Adicionar coluna para ID externo da ligação (API4com)
-ALTER TABLE call_logs ADD COLUMN external_call_id text;
-
--- Adicionar coluna para status da ligação
-ALTER TABLE call_logs ADD COLUMN call_status text DEFAULT 'dialing';
-
--- Índice para busca rápida pelo ID externo
-CREATE INDEX idx_call_logs_external_call_id 
-ON call_logs(external_call_id) 
-WHERE external_call_id IS NOT NULL;
-```
-
----
-
-## 2. Nova Edge Function `call-status`
-
-**Endpoint:** `POST /call-status`
-
-**Request Body:**
-```json
-{
-  "external_call_id": "0548b46f-326a-472e-aa02-06c53269c361",
-  "status": "ended",
-  "campaign_name": "FN | Carrinho Abandonado",
-  "lead_phone": "5512983195531",
-  "lead_name": "Ebonocleiton",
-  "duration_seconds": 120,
-  "error_message": null
-}
-```
-
-**Lógica:**
-
-1. Validar API key (mesmo padrão do `call-dial`)
-2. Se `external_call_id` existir, buscar registro existente pelo ID externo
-3. Se não encontrar e tiver `campaign_name` + `lead_phone`:
-   - Buscar campanha pelo nome
-   - Criar novo registro de ligação
-4. Atualizar status da ligação:
-   - `dialing`: Define `started_at` se não existir
-   - `ended`: Define `ended_at` e calcula `duration_seconds`
-   - `error`: Define `error_message` e `ended_at`
-5. Retornar dados atualizados
-
-**Responses:**
-
-```json
-// 200 - Atualizado com sucesso
-{
-  "success": true,
-  "call_id": "uuid-interno",
-  "external_call_id": "0548b46f-326a-472e-aa02-06c53269c361",
-  "status": "ended",
-  "duration_seconds": 120
-}
-
-// 201 - Criado novo registro
-{
-  "success": true,
-  "call_id": "uuid-novo",
-  "external_call_id": "0548b46f-326a-472e-aa02-06c53269c361",
-  "status": "dialing",
-  "created": true
-}
-
-// 404 - Ligação não encontrada (sem dados para criar)
-{
-  "success": false,
-  "error": "call_not_found",
-  "message": "Ligação não encontrada e dados insuficientes para criar"
-}
-```
-
----
-
-## 3. Atualizar `call-dial` 
-
-Modificar para capturar o `external_call_id` da resposta do webhook:
+Componente que encapsula uma categoria com seus endpoints e paginação:
 
 ```typescript
-// Após chamar webhook com sucesso
-const webhookData = await webhookResponse.text();
-try {
-  const parsed = JSON.parse(webhookData);
-  // [{ "id": "...", "message": "successfull" }]
-  if (Array.isArray(parsed) && parsed[0]?.id) {
-    await supabase
-      .from('call_logs')
-      .update({ 
-        external_call_id: parsed[0].id,
-        call_status: 'dialing'
-      })
-      .eq('id', callLog.id);
-  }
-} catch (e) {
-  console.log('[call-dial] Could not parse webhook response');
+// src/components/api-docs/CategorySection.tsx
+interface CategorySectionProps {
+  category: EndpointCategory;
+  endpointsPerPage?: number; // default: 3
+}
+
+export function CategorySection({ category, endpointsPerPage = 3 }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Calcular endpoints da página atual
+  const totalPages = Math.ceil(category.endpoints.length / endpointsPerPage);
+  const startIndex = (currentPage - 1) * endpointsPerPage;
+  const paginatedEndpoints = category.endpoints.slice(startIndex, startIndex + endpointsPerPage);
+  
+  return (
+    <section id={category.id}>
+      {/* Header da categoria */}
+      <div className="border-b border-border pb-4 mb-6">
+        <h2>{category.name}</h2>
+        <p>{category.description}</p>
+        {/* Indicador de página */}
+        <span>{category.endpoints.length} endpoints</span>
+      </div>
+      
+      {/* Endpoints paginados */}
+      {paginatedEndpoints.map(endpoint => (
+        <EndpointSection key={endpoint.id} endpoint={endpoint} />
+      ))}
+      
+      {/* Paginação (se houver mais de 1 página) */}
+      {totalPages > 1 && (
+        <Pagination>
+          <PaginationPrevious />
+          <PaginationContent>
+            {/* Números das páginas */}
+          </PaginationContent>
+          <PaginationNext />
+        </Pagination>
+      )}
+    </section>
+  );
 }
 ```
 
 ---
 
-## 4. Documentação da API
+## 2. Atualizar ApiDocs.tsx
 
-Adicionar à categoria "Ligações" em `api-endpoints.ts`:
+Substituir o loop atual que exibe todos os endpoints por uso do novo componente:
 
 ```typescript
-{
-  id: "call-status",
-  method: "POST",
-  path: "/call-status",
-  description: "Atualiza o status de uma ligação telefônica. Se a ligação não existir pelo external_call_id, pode criar um novo registro se informar campaign_name e lead_phone.",
-  attributes: [
-    { name: "external_call_id", type: "string", required: true, description: "ID externo da ligação (retornado pela API4com)" },
-    { name: "status", type: "string", required: true, description: "Status da ligação: 'dialing', 'ended' ou 'error'" },
-    { name: "campaign_name", type: "string", required: false, description: "Nome da campanha (obrigatório para criar nova ligação)" },
-    { name: "lead_phone", type: "string", required: false, description: "Telefone do lead (obrigatório para criar nova ligação)" },
-    { name: "lead_name", type: "string", required: false, description: "Nome do lead" },
-    { name: "duration_seconds", type: "number", required: false, description: "Duração da ligação em segundos" },
-    { name: "error_message", type: "string", required: false, description: "Mensagem de erro (quando status é 'error')" }
-  ]
-}
+// Antes (scroll infinito)
+{apiEndpoints.map((category) => (
+  <div key={category.id}>
+    <h2>{category.name}</h2>
+    {category.endpoints.map((endpoint) => (
+      <EndpointSection key={endpoint.id} endpoint={endpoint} />
+    ))}
+  </div>
+))}
+
+// Depois (paginado)
+{apiEndpoints.map((category) => (
+  <CategorySection 
+    key={category.id} 
+    category={category} 
+    endpointsPerPage={3} 
+  />
+))}
 ```
 
 ---
 
-## 5. Atualizar Hook Frontend
+## 3. Comportamento da Paginação
 
-```typescript
-export interface CallLog {
-  // ... campos existentes
-  externalCallId: string | null;
-  callStatus: string | null;
-}
-
-interface DbCallLog {
-  // ... campos existentes
-  external_call_id: string | null;
-  call_status: string | null;
-}
-```
+- **3 endpoints por página** (configurável)
+- Categorias com 1-3 endpoints: sem paginação
+- Categorias com 4+ endpoints: paginação aparece
+- Ao trocar de página, scroll suave para o topo da categoria
+- Indicador visual mostrando "Página X de Y"
 
 ---
 
-## Fluxo Completo
+## Layout Visual
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                    FLUXO DE LIGAÇÃO                         │
-└─────────────────────────────────────────────────────────────┘
-
-[n8n/API4com]                    [Dispatch One]
-     │                                 │
-     │  POST /call-dial                │
-     │  { campaign_name, lead_phone }  │
-     │ ─────────────────────────────►  │
-     │                                 │ Cria call_log
-     │                                 │ Chama webhook API4com
-     │ ◄───────────────────────────────│
-     │  { id: "ext-123", ... }         │
-     │                                 │ Salva external_call_id
-     │                                 │
-     │  ... Ligação em andamento ...   │
-     │                                 │
-     │  POST /call-status              │
-     │  { external_call_id: "ext-123", │
-     │    status: "ended",             │
-     │    duration_seconds: 180 }      │
-     │ ─────────────────────────────►  │
-     │                                 │ Atualiza call_log
-     │ ◄───────────────────────────────│
-     │  { success: true }              │
-     │                                 │
-─────┴─────────────────────────────────┴──────────────────────
-
-[Ligação não iniciada pelo Dispatch]
-
-     │  POST /call-status              │
-     │  { external_call_id: "ext-456", │
-     │    status: "dialing",           │
-     │    campaign_name: "Campanha X", │
-     │    lead_phone: "551199999999" } │
-     │ ─────────────────────────────►  │
-     │                                 │ Cria novo call_log
-     │ ◄───────────────────────────────│
-     │  { success: true, created: true}│
+┌─────────────────────────────────────────────────┐
+│  Mensagens                                      │
+│  Endpoints para envio de mensagens (8 total)   │
+├─────────────────────────────────────────────────┤
+│  ┌─────────────────────────────────────────┐   │
+│  │ POST /send-text                          │   │
+│  │ Envia uma mensagem de texto...           │   │
+│  └─────────────────────────────────────────┘   │
+│                                                 │
+│  ┌─────────────────────────────────────────┐   │
+│  │ POST /send-media                         │   │
+│  │ Envia uma imagem, vídeo ou áudio...      │   │
+│  └─────────────────────────────────────────┘   │
+│                                                 │
+│  ┌─────────────────────────────────────────┐   │
+│  │ POST /send-document                      │   │
+│  │ Envia um documento...                    │   │
+│  └─────────────────────────────────────────┘   │
+│                                                 │
+│  ┌─────────────────────────────────────────┐   │
+│  │  ◄ Anterior    1  2  3    Próximo ►     │   │
+│  └─────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────┘
 ```
 
+---
+
+## Resumo
+
+| Item | Descrição |
+|------|-----------|
+| Endpoints por página | 3 (configurável) |
+| Categorias afetadas | Mensagens (8), Webhooks (4) |
+| Categorias sem paginação | Demais (1-3 endpoints) |
+| Scroll | Suave para topo da categoria ao paginar |
