@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { PageHeader } from "@/components/dispatch";
 import { ApiSidebar, CategorySection, WebhookConfigSection } from "@/components/api-docs";
 import { apiEndpoints, eventTypes } from "@/data/api-endpoints";
 import { useLanguage } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Copy, 
@@ -21,9 +22,22 @@ const ApiDocs = () => {
   const { t } = useLanguage();
   const { toast } = useToast();
   const [activeSection, setActiveSection] = useState("introduction");
+  const [activeCategory, setActiveCategory] = useState(apiEndpoints[0]?.id || "messages");
   const [copied, setCopied] = useState<string | null>(null);
+  const endpointsSectionRef = useRef<HTMLDivElement>(null);
 
   const baseUrl = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1`;
+
+  const handleCategoryChange = (categoryId: string) => {
+    setActiveCategory(categoryId);
+    setActiveSection(categoryId);
+  };
+
+  const handleSidebarCategoryClick = (categoryId: string) => {
+    setActiveCategory(categoryId);
+    setActiveSection(categoryId);
+    endpointsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
   const copyToClipboard = async (text: string, key: string) => {
     try {
@@ -83,7 +97,9 @@ const ApiDocs = () => {
       <div className="flex gap-8 px-6 py-8 max-w-[1400px] mx-auto">
         <ApiSidebar 
           activeSection={activeSection} 
-          onSectionClick={setActiveSection} 
+          activeCategory={activeCategory}
+          onSectionClick={setActiveSection}
+          onCategoryClick={handleSidebarCategoryClick}
         />
 
         <main className="flex-1 min-w-0 space-y-12">
@@ -190,14 +206,41 @@ const ApiDocs = () => {
             <WebhookConfigSection />
           </section>
 
-          {/* Endpoints por categoria com paginação */}
-          {apiEndpoints.map((category) => (
-            <CategorySection 
-              key={category.id} 
-              category={category} 
-              endpointsPerPage={3}
-            />
-          ))}
+          {/* Endpoints por categoria com Tabs */}
+          <div ref={endpointsSectionRef} id="endpoints" className="scroll-mt-20">
+            <Card className="border-border">
+              <CardHeader className="pb-4">
+                <CardTitle className="flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-primary" />
+                  Endpoints
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Tabs value={activeCategory} onValueChange={handleCategoryChange}>
+                  <TabsList className="flex flex-wrap gap-1 h-auto p-1 bg-muted/50 mb-6">
+                    {apiEndpoints.map((category) => (
+                      <TabsTrigger 
+                        key={category.id} 
+                        value={category.id}
+                        className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                      >
+                        {category.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                  
+                  {apiEndpoints.map((category) => (
+                    <TabsContent key={category.id} value={category.id} className="mt-0">
+                      <CategorySection 
+                        category={category} 
+                        endpointsPerPage={3}
+                      />
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </CardContent>
+            </Card>
+          </div>
 
           {/* Errors */}
           <section id="errors" className="scroll-mt-20">

@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { apiEndpoints, EndpointCategory } from "@/data/api-endpoints";
-import { ChevronDown, ChevronRight, BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone } from "lucide-react";
+import { BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface ApiSidebarProps {
   activeSection: string;
+  activeCategory: string;
   onSectionClick: (sectionId: string) => void;
+  onCategoryClick: (categoryId: string) => void;
 }
 
 const categoryIcons: Record<string, React.ReactNode> = {
@@ -20,23 +22,17 @@ const categoryIcons: Record<string, React.ReactNode> = {
   calls: <Phone className="h-4 w-4" />,
 };
 
-export function ApiSidebar({ activeSection, onSectionClick }: ApiSidebarProps) {
-  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
-
-  const toggleCategory = (categoryId: string) => {
-    setExpandedCategories(prev =>
-      prev.includes(categoryId)
-        ? prev.filter(id => id !== categoryId)
-        : [...prev, categoryId]
-    );
-  };
-
+export function ApiSidebar({ activeSection, activeCategory, onSectionClick, onCategoryClick }: ApiSidebarProps) {
   const handleClick = (sectionId: string) => {
     onSectionClick(sectionId);
     const element = document.getElementById(sectionId);
     if (element) {
       element.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  };
+
+  const handleCategoryClick = (categoryId: string) => {
+    onCategoryClick(categoryId);
   };
 
   return (
@@ -93,52 +89,21 @@ export function ApiSidebar({ activeSection, onSectionClick }: ApiSidebarProps) {
               </span>
             </div>
 
-            {/* Categories */}
+            {/* Categories - now as direct links */}
             {apiEndpoints.map((category) => (
-              <div key={category.id}>
-                <button
-                  onClick={() => toggleCategory(category.id)}
-                  className="w-full flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors text-left text-muted-foreground hover:bg-muted hover:text-foreground"
-                >
-                  <div className="flex items-center gap-2">
-                    {categoryIcons[category.id]}
-                    <span>{category.name}</span>
-                  </div>
-                  {expandedCategories.includes(category.id) ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </button>
-
-                {expandedCategories.includes(category.id) && (
-                  <div className="ml-4 pl-2 border-l border-border space-y-0.5">
-                    {category.endpoints.map((endpoint) => (
-                      <button
-                        key={endpoint.id}
-                        onClick={() => handleClick(endpoint.id)}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors text-left",
-                          activeSection === endpoint.id
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                        )}
-                      >
-                        <span className={cn(
-                          "font-mono text-[10px] font-bold px-1.5 py-0.5 rounded",
-                          endpoint.method === "GET" && "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-                          endpoint.method === "POST" && "bg-green-500/15 text-green-600 dark:text-green-400",
-                          endpoint.method === "PUT" && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
-                          endpoint.method === "DELETE" && "bg-red-500/15 text-red-600 dark:text-red-400"
-                        )}>
-                          {endpoint.method}
-                        </span>
-                        <span className="font-mono text-xs truncate">{endpoint.path}</span>
-                      </button>
-                    ))}
-                  </div>
+              <button
+                key={category.id}
+                onClick={() => handleCategoryClick(category.id)}
+                className={cn(
+                  "w-full flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors text-left",
+                  activeCategory === category.id
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
-              </div>
+              >
+                {categoryIcons[category.id]}
+                <span>{category.name}</span>
+              </button>
             ))}
 
             {/* Errors */}
