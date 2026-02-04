@@ -70,7 +70,7 @@ const campaignTypes = {
       icon: PhoneCall,
       href: "/campaigns/telefonia/ligacao",
       colorClass: "bg-red-500",
-      enabled: false,
+      enabled: true,
     },
   ],
 };

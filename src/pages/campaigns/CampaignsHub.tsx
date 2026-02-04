@@ -109,7 +109,6 @@ export default function CampaignsHub() {
             activeCount={stats?.ligacao.active || 0}
             colorClass="bg-red-500"
             href="/campaigns/telefonia/ligacao"
-            comingSoon
           />
         </div>
       </section>
