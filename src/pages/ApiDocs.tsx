@@ -216,19 +216,7 @@ const ApiDocs = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs value={activeCategory} onValueChange={handleCategoryChange}>
-                  <TabsList className="flex flex-wrap gap-1 h-auto p-1 bg-muted/50 mb-6">
-                    {apiEndpoints.map((category) => (
-                      <TabsTrigger 
-                        key={category.id} 
-                        value={category.id}
-                        className="text-xs sm:text-sm data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                      >
-                        {category.name}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                  
+              <Tabs value={activeCategory} onValueChange={handleCategoryChange}>
                   {apiEndpoints.map((category) => (
                     <TabsContent key={category.id} value={category.id} className="mt-0">
                       <CategorySection 
