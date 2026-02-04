@@ -139,6 +139,301 @@ export type Database = {
           },
         ]
       }
+      call_campaign_operators: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          extension: string | null
+          id: string
+          is_active: boolean | null
+          operator_name: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          extension?: string | null
+          id?: string
+          is_active?: boolean | null
+          operator_name?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          extension?: string | null
+          id?: string
+          is_active?: boolean | null
+          operator_name?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_campaign_operators_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_campaigns: {
+        Row: {
+          api4com_config: Json | null
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          api4com_config?: Json | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          api4com_config?: Json | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      call_leads: {
+        Row: {
+          assigned_operator_id: string | null
+          attempts: number | null
+          campaign_id: string
+          created_at: string | null
+          custom_fields: Json | null
+          email: string | null
+          id: string
+          last_attempt_at: string | null
+          name: string | null
+          phone: string
+          result_action_id: string | null
+          result_notes: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_operator_id?: string | null
+          attempts?: number | null
+          campaign_id: string
+          created_at?: string | null
+          custom_fields?: Json | null
+          email?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          name?: string | null
+          phone: string
+          result_action_id?: string | null
+          result_notes?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_operator_id?: string | null
+          attempts?: number | null
+          campaign_id?: string
+          created_at?: string | null
+          custom_fields?: Json | null
+          email?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          name?: string | null
+          phone?: string
+          result_action_id?: string | null
+          result_notes?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_leads_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_leads_result_action_id_fkey"
+            columns: ["result_action_id"]
+            isOneToOne: false
+            referencedRelation: "call_script_actions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_logs: {
+        Row: {
+          action_id: string | null
+          campaign_id: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          lead_id: string | null
+          notes: string | null
+          operator_id: string | null
+          script_path: Json | null
+          started_at: string | null
+          user_id: string
+        }
+        Insert: {
+          action_id?: string | null
+          campaign_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          operator_id?: string | null
+          script_path?: Json | null
+          started_at?: string | null
+          user_id: string
+        }
+        Update: {
+          action_id?: string | null
+          campaign_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          lead_id?: string | null
+          notes?: string | null
+          operator_id?: string | null
+          script_path?: Json | null
+          started_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_action_id_fkey"
+            columns: ["action_id"]
+            isOneToOne: false
+            referencedRelation: "call_script_actions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "call_leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_script_actions: {
+        Row: {
+          action_config: Json | null
+          action_type: string
+          campaign_id: string
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          name: string
+          sort_order: number | null
+          user_id: string
+        }
+        Insert: {
+          action_config?: Json | null
+          action_type: string
+          campaign_id: string
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+          user_id: string
+        }
+        Update: {
+          action_config?: Json | null
+          action_type?: string
+          campaign_id?: string
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_script_actions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      call_scripts: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          edges: Json
+          id: string
+          name: string
+          nodes: Json
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          edges?: Json
+          id?: string
+          name?: string
+          nodes?: Json
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          edges?: Json
+          id?: string
+          name?: string
+          nodes?: Json
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_scripts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       campaign_groups: {
         Row: {
           added_at: string | null
