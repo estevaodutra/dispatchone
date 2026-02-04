@@ -17,10 +17,29 @@ import {
   Play, 
   Save,
   RotateCcw,
-  ExternalLink
+  Phone,
+  MessageSquare,
+  Server,
+  Users,
+  Contact,
+  MessagesSquare,
+  User,
+  Wrench
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+
+const categoryIcons: Record<string, React.ReactNode> = {
+  messages: <MessageSquare className="h-4 w-4 text-primary" />,
+  instance: <Server className="h-4 w-4 text-primary" />,
+  groups: <Users className="h-4 w-4 text-primary" />,
+  calls: <Phone className="h-4 w-4 text-primary" />,
+  contacts: <Contact className="h-4 w-4 text-primary" />,
+  chat: <MessagesSquare className="h-4 w-4 text-primary" />,
+  profile: <User className="h-4 w-4 text-primary" />,
+  webhooks: <Webhook className="h-4 w-4 text-primary" />,
+  utilities: <Wrench className="h-4 w-4 text-primary" />,
+};
 
 export function WebhookConfigSection() {
   const { toast } = useToast();
@@ -144,6 +163,7 @@ export function WebhookConfigSection() {
                         )}
                         <div>
                           <div className="flex items-center gap-2">
+                            {categoryIcons[category.id]}
                             <span className="font-medium text-foreground">{category.name}</span>
                             {hasUrl && (
                               <Badge variant={isActive ? "default" : "secondary"} className="text-xs">
