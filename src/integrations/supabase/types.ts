@@ -282,10 +282,12 @@ export type Database = {
       call_logs: {
         Row: {
           action_id: string | null
+          call_status: string | null
           campaign_id: string | null
           created_at: string | null
           duration_seconds: number | null
           ended_at: string | null
+          external_call_id: string | null
           id: string
           lead_id: string | null
           notes: string | null
@@ -296,10 +298,12 @@ export type Database = {
         }
         Insert: {
           action_id?: string | null
+          call_status?: string | null
           campaign_id?: string | null
           created_at?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
+          external_call_id?: string | null
           id?: string
           lead_id?: string | null
           notes?: string | null
@@ -310,10 +314,12 @@ export type Database = {
         }
         Update: {
           action_id?: string | null
+          call_status?: string | null
           campaign_id?: string | null
           created_at?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
+          external_call_id?: string | null
           id?: string
           lead_id?: string | null
           notes?: string | null

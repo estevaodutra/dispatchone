@@ -1938,6 +1938,116 @@ response = requests.post(
             }
           }
         }
+      },
+      {
+        id: "call-status",
+        method: "POST",
+        path: "/call-status",
+        description: "Atualiza o status de uma ligação telefônica. Se a ligação não existir pelo external_call_id, pode criar um novo registro se informar campaign_name e lead_phone.",
+        attributes: [
+          {
+            name: "external_call_id",
+            type: "string",
+            required: true,
+            description: "ID externo da ligação (retornado pela API4com)"
+          },
+          {
+            name: "status",
+            type: "string",
+            required: true,
+            description: "Status da ligação: 'dialing', 'ended' ou 'error'"
+          },
+          {
+            name: "campaign_name",
+            type: "string",
+            required: false,
+            description: "Nome da campanha (obrigatório para criar nova ligação)"
+          },
+          {
+            name: "lead_phone",
+            type: "string",
+            required: false,
+            description: "Telefone do lead (obrigatório para criar nova ligação)"
+          },
+          {
+            name: "lead_name",
+            type: "string",
+            required: false,
+            description: "Nome do lead"
+          },
+          {
+            name: "duration_seconds",
+            type: "number",
+            required: false,
+            description: "Duração da ligação em segundos"
+          },
+          {
+            name: "error_message",
+            type: "string",
+            required: false,
+            description: "Mensagem de erro (quando status é 'error')"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/call-status" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "external_call_id": "0548b46f-326a-472e-aa02-06c53269c361",
+    "status": "ended",
+    "duration_seconds": 120
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/call-status',
+  {
+    external_call_id: '0548b46f-326a-472e-aa02-06c53269c361',
+    status: 'ended',
+    duration_seconds: 120
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/call-status',
+    json={
+        'external_call_id': '0548b46f-326a-472e-aa02-06c53269c361',
+        'status': 'ended',
+        'duration_seconds': 120
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              call_id: "uuid-interno",
+              external_call_id: "0548b46f-326a-472e-aa02-06c53269c361",
+              status: "ended",
+              duration_seconds: 120
+            }
+          },
+          error: {
+            code: 404,
+            body: {
+              success: false,
+              error: "call_not_found",
+              message: "Ligação não encontrada e dados insuficientes para criar"
+            }
+          }
+        }
       }
     ]
   }
