@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCallLeads, CallLeadStatus } from "@/hooks/useCallLeads";
+import { useCallActions, CallActionType } from "@/hooks/useCallActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,9 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone } from "lucide-react";
+import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCard } from "@/components/dispatch";
+import { format } from "date-fns";
+import type { CallLead } from "@/hooks/useCallLeads";
 
 interface LeadsTabProps {
   campaignId: string;
@@ -55,14 +58,24 @@ const statusColors: Record<CallLeadStatus, string> = {
   failed: "bg-red-100 text-red-800",
 };
 
+const actionTypeLabels: Record<CallActionType, string> = {
+  start_sequence: "Iniciar Sequência",
+  add_tag: "Adicionar Tag",
+  update_status: "Atualizar Status",
+  webhook: "Webhook",
+  none: "Nenhuma Ação",
+};
+
 export function LeadsTab({ campaignId }: LeadsTabProps) {
   const [statusFilter, setStatusFilter] = useState<CallLeadStatus | undefined>();
   const { leads, stats, isLoading, addLead, deleteLead, isAdding } = useCallLeads(
     campaignId,
     statusFilter
   );
+  const { actions } = useCallActions(campaignId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newLead, setNewLead] = useState({ phone: "", name: "", email: "" });
+  const [selectedLead, setSelectedLead] = useState<CallLead | null>(null);
 
   const handleAddLead = async () => {
     if (!newLead.phone.trim()) return;
@@ -162,33 +175,44 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Telefone</TableHead>
+                  <TableHead>Data/Hora</TableHead>
                   <TableHead>Nome</TableHead>
+                  <TableHead>Telefone</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Tentativas</TableHead>
-                  <TableHead className="w-[80px]">Ações</TableHead>
+                  <TableHead className="w-[100px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {leads.map((lead) => (
                   <TableRow key={lead.id}>
-                    <TableCell className="font-medium">{lead.phone}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {format(new Date(lead.createdAt), "dd/MM/yyyy HH:mm")}
+                    </TableCell>
                     <TableCell>{lead.name || "-"}</TableCell>
+                    <TableCell className="font-medium">{lead.phone}</TableCell>
                     <TableCell>
                       <Badge className={statusColors[lead.status]}>
                         {statusLabels[lead.status]}
                       </Badge>
                     </TableCell>
-                    <TableCell>{lead.attempts}</TableCell>
                     <TableCell>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => deleteLead(lead.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setSelectedLead(lead)}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => deleteLead(lead.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -241,6 +265,106 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
               {isAdding ? "Adicionando..." : "Adicionar"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Lead</DialogTitle>
+          </DialogHeader>
+          {selectedLead && (
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-muted-foreground text-xs">Nome</Label>
+                  <p className="font-medium">{selectedLead.name || "-"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Telefone</Label>
+                  <p className="font-medium">{selectedLead.phone}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">E-mail</Label>
+                  <p className="font-medium">{selectedLead.email || "-"}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Status</Label>
+                  <div className="mt-1">
+                    <Badge className={statusColors[selectedLead.status]}>
+                      {statusLabels[selectedLead.status]}
+                    </Badge>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Data de Criação</Label>
+                  <p className="font-medium">{format(new Date(selectedLead.createdAt), "dd/MM/yyyy HH:mm")}</p>
+                </div>
+                <div>
+                  <Label className="text-muted-foreground text-xs">Última Tentativa</Label>
+                  <p className="font-medium">
+                    {selectedLead.lastAttemptAt 
+                      ? format(new Date(selectedLead.lastAttemptAt), "dd/MM/yyyy HH:mm") 
+                      : "-"}
+                  </p>
+                </div>
+              </div>
+
+              {selectedLead.resultActionId && (
+                <div>
+                  <Label className="text-muted-foreground text-xs">Resultado da Ligação</Label>
+                  {(() => {
+                    const resultAction = actions.find(a => a.id === selectedLead.resultActionId);
+                    return resultAction ? (
+                      <div className="flex items-center gap-2 mt-1">
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: resultAction.color }} 
+                        />
+                        <span className="font-medium">{resultAction.name}</span>
+                      </div>
+                    ) : (
+                      <p className="font-medium">Ação não encontrada</p>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {selectedLead.resultNotes && (
+                <div>
+                  <Label className="text-muted-foreground text-xs">Notas</Label>
+                  <p className="font-medium mt-1 p-2 bg-muted rounded text-sm">
+                    {selectedLead.resultNotes}
+                  </p>
+                </div>
+              )}
+
+              <div>
+                <Label className="text-muted-foreground text-xs">Ações Configuradas na Campanha</Label>
+                {actions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground mt-2">Nenhuma ação configurada</p>
+                ) : (
+                  <div className="space-y-2 mt-2">
+                    {actions.map((action) => (
+                      <div 
+                        key={action.id} 
+                        className="flex items-center gap-2 p-2 rounded border"
+                      >
+                        <div 
+                          className="w-3 h-3 rounded-full shrink-0" 
+                          style={{ backgroundColor: action.color }} 
+                        />
+                        <span className="font-medium">{action.name}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {actionTypeLabels[action.actionType]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>
