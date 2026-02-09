@@ -434,7 +434,7 @@ function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction 
               )}
               {category === "in_progress" && (
                 <Badge className="gap-1 bg-blue-500 text-white">
-                  <Phone className="h-3 w-3" /> Em ligação
+                  <Phone className="h-3 w-3" /> {entry.callStatus === "answered" ? "Atendida" : "Em ligação"}
                 </Badge>
               )}
               {category === "completed" && (
@@ -445,13 +445,20 @@ function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction 
               )}
               {category === "failed" && (
                 <Badge variant="destructive" className="gap-1">
-                  <AlertTriangle className="h-3 w-3" /> {entry.callStatus === "no_answer" ? "Não atendeu" : entry.callStatus === "busy" ? "Ocupado" : "Falhou"}
+                  <AlertTriangle className="h-3 w-3" /> {
+                    entry.callStatus === "busy" ? "Ocupado" :
+                    entry.callStatus === "not_found" ? "Número não encontrado" :
+                    entry.callStatus === "voicemail" ? "Caixa Postal" :
+                    entry.callStatus === "timeout" ? "Tempo Expirado" :
+                    entry.callStatus === "no_answer" ? "Não atendeu" :
+                    "Falhou"
+                  }
                   {entry.leadAttempts > 0 && ` • ${entry.leadAttempts} tentativa${entry.leadAttempts > 1 ? "s" : ""}`}
                 </Badge>
               )}
               {category === "cancelled" && (
                 <Badge variant="outline" className="gap-1 text-muted-foreground">
-                  <XCircle className="h-3 w-3" /> Cancelada
+                  <XCircle className="h-3 w-3" /> {entry.callStatus === "cancelled" ? "Cancelamento da Ligação" : "Cancelada"}
                 </Badge>
               )}
               {entry.scheduledFor && (

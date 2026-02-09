@@ -1955,7 +1955,7 @@ response = requests.post(
             name: "status",
             type: "string",
             required: true,
-            description: "Status da ligação: 'dialing', 'ended' ou 'error'"
+            description: "Status da ligação: 'dialing', 'answered', 'ended', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout' ou 'error'"
           },
           {
             name: "campaign_name",
@@ -1985,7 +1985,7 @@ response = requests.post(
             name: "error_message",
             type: "string",
             required: false,
-            description: "Mensagem de erro (quando status é 'error')"
+            description: "Mensagem de erro (quando status é 'error', 'not_found', 'voicemail' ou 'timeout')"
           }
         ],
         examples: {
