@@ -1998,6 +1998,12 @@ response = requests.post(
             type: "string",
             required: false,
             description: "Mensagem de erro (quando status é 'error', 'not_found', 'voicemail' ou 'timeout')"
+          },
+          {
+            name: "audio_url",
+            type: "string",
+            required: false,
+            description: "URL da gravação da chamada (facultativo)"
           }
         ],
         examples: {
@@ -2007,7 +2013,8 @@ response = requests.post(
   -d '{
     "external_call_id": "0548b46f-326a-472e-aa02-06c53269c361",
     "status": "ended",
-    "duration_seconds": 120
+    "duration_seconds": 120,
+    "audio_url": "https://example.com/recordings/call-123.mp3"
   }'`,
           nodejs: `const axios = require('axios');
 
@@ -2016,7 +2023,8 @@ const response = await axios.post(
   {
     external_call_id: '0548b46f-326a-472e-aa02-06c53269c361',
     status: 'ended',
-    duration_seconds: 120
+    duration_seconds: 120,
+    audio_url: 'https://example.com/recordings/call-123.mp3'
   },
   {
     headers: {
@@ -2032,7 +2040,8 @@ response = requests.post(
     json={
         'external_call_id': '0548b46f-326a-472e-aa02-06c53269c361',
         'status': 'ended',
-        'duration_seconds': 120
+        'duration_seconds': 120,
+        'audio_url': 'https://example.com/recordings/call-123.mp3'
     },
     headers={
         'Content-Type': 'application/json',

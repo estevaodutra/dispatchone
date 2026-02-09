@@ -596,6 +596,15 @@ function ActionDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {entry.audioUrl && (
+          <div className="mb-4 rounded-lg border border-border bg-muted/30 p-3">
+            <p className="text-xs font-medium text-muted-foreground mb-2">🎧 Gravação da chamada</p>
+            <audio controls className="w-full h-8" src={entry.audioUrl} preload="none">
+              Seu navegador não suporta o player de áudio.
+            </audio>
+          </div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="script" disabled={!hasScript}>

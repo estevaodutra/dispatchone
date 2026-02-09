@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
   try {
     // Parse request body
     requestBody = await req.json();
-    const { external_call_id, status, campaign_name, lead_phone, lead_name, duration_seconds, error_message } = requestBody;
+    const { external_call_id, status, campaign_name, lead_phone, lead_name, duration_seconds, error_message, audio_url } = requestBody;
 
     console.log('[call-status] Request received:', { external_call_id, status, campaign_name, lead_phone });
 
@@ -422,6 +422,7 @@ Deno.serve(async (req) => {
           external_call_id,
           call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','answered':'answered','ended':'completed','busy':'busy','not_found':'not_found','voicemail':'voicemail','cancelled':'cancelled','timeout':'timeout','error':'failed' }; return m[status] || status; })(),
           started_at: status === 'dialing' ? new Date().toISOString() : null,
+          ...(audio_url ? { audio_url } : {}),
         })
         .select('id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status')
         .single();
@@ -453,6 +454,7 @@ Deno.serve(async (req) => {
 
     const updateData: any = {
       call_status: mappedStatus,
+      ...(audio_url ? { audio_url } : {}),
     };
 
     // Handle status-specific updates
