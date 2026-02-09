@@ -11,6 +11,7 @@ export interface CallScriptNode {
   id: string;
   type: "start" | "speech" | "question" | "note" | "end";
   data: {
+    label?: string;
     text?: string;
     options?: ScriptOption[];
   };
