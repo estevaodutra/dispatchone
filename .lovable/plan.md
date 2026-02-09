@@ -1,63 +1,36 @@
 
 
-# Mostrar operador no painel e acionar webhook ao iniciar ligacao
+# Corrigir query do Painel de Ligacoes -- relacionamento ausente
 
-## Resumo
+## Problema
 
-Adicionar o nome do operador em cada card de ligacao, permitir trocar o operador, e fazer o botao "Iniciar Ligacao" acionar o webhook de telefonia (categoria "calls") em vez de apenas atualizar o status no banco.
+A query do painel esta retornando erro 400 porque tenta fazer um join entre `call_logs` e `call_campaign_operators`, mas nao existe uma foreign key entre essas tabelas. O PostgREST exige foreign keys para joins automaticos.
 
-## Alteracoes
-
-### 1. Hook `src/hooks/useCallPanel.ts`
-
-**Incluir dados do operador na query:**
-- Adicionar join com `call_campaign_operators(operator_name, extension)` na query select
-- Adicionar campos `operatorName: string | null` e `operatorExtension: string | null` na interface `CallPanelEntry`
-- Atualizar `DbCallLogJoined` e `transformEntry` para mapear os novos campos
-
-**Adicionar mutacao `updateOperator`:**
-- Nova mutacao que atualiza o `operator_id` no `call_logs` e tambem o `assigned_operator_id` no `call_leads`
-
-**Alterar `dialNow` para acionar webhook:**
-- Em vez de apenas atualizar o status para "ready", a mutacao vai:
-  1. Buscar os dados necessarios (campanha, lead, operador, webhook_config)
-  2. Atualizar o status do call_log para "dialing"
-  3. Chamar o webhook configurado na categoria "calls" com o payload padrao
-  4. Se o webhook retornar um `id`, salvar como `external_call_id`
-  5. Em caso de falha no webhook, manter status "ready" e mostrar erro
-
-### 2. Componente `src/pages/CallPanel.tsx`
-
-**No CallCard:**
-- Adicionar linha mostrando o nome do operador (icone Headset + nome + ramal) abaixo das informacoes do lead
-- Adicionar botao de edicao (icone de lapis) ao lado do nome do operador, visivel apenas para cards com status "scheduled" ou "ready"
-
-**Dialogo de troca de operador:**
-- Novo estado `editOperatorEntry` para controlar o dialogo
-- Select com lista de operadores ativos da campanha (usando `useCallOperators`)
-- Botao de confirmar que chama `updateOperator`
-
-**No botao "Iniciar Ligacao":**
-- Manter o comportamento visual, mas agora o `onDialNow` executa a logica completa com webhook
-
-### 3. Detalhes tecnicos
-
-A logica do webhook no `dialNow` sera feita diretamente no frontend (via hook), consultando a tabela `webhook_configs` para a categoria "calls" e fazendo o `fetch` ao URL configurado. O payload seguira o mesmo formato do endpoint `call-dial`:
-
-```text
-{
-  action: "call.dial",
-  call: { id, status, scheduled_for },
-  campaign: { id, name },
-  lead: { id, phone, name },
-  operator: { id, name, extension }
-}
+**Erro exato:**
+```
+Could not find a relationship between 'call_logs' and 'call_campaign_operators' in the schema cache
 ```
 
-Se nenhum webhook estiver configurado, o sistema apenas atualiza o status para "ready" como antes.
+## Solucao
 
-### Arquivos modificados
+Duas alteracoes necessarias:
 
-- `src/hooks/useCallPanel.ts` -- join do operador, mutacao updateOperator, dialNow com webhook
-- `src/pages/CallPanel.tsx` -- exibir operador no card, dialogo de troca, integrar novas funcoes
+### 1. Banco de dados -- adicionar foreign key
+
+Criar uma foreign key de `call_logs.operator_id` para `call_campaign_operators.id`:
+
+```sql
+ALTER TABLE public.call_logs
+  ADD CONSTRAINT call_logs_operator_id_fkey
+  FOREIGN KEY (operator_id)
+  REFERENCES public.call_campaign_operators(id);
+```
+
+### 2. Verificar foreign keys de lead_id e campaign_id
+
+Confirmar que `call_logs.lead_id` referencia `call_leads.id` e `call_logs.campaign_id` referencia `call_campaigns.id`. Se alguma estiver faltando, adicionar tambem na mesma migracao.
+
+## Resultado
+
+Apos a foreign key ser criada, o PostgREST reconhece o relacionamento e o join `call_campaign_operators(operator_name, extension)` volta a funcionar. Os registros serao exibidos normalmente no painel.
 
