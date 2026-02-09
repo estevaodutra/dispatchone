@@ -1,37 +1,29 @@
 
-# Adicionar status padrao "Atendeu / Nao Atendeu" no no de Inicio
+# Adicionar botao de detalhes para ligacoes concluidas
 
 ## Problema
 
-No Passo 1 (no de "Inicio"), o operador ve apenas o botao "Proximo" sem nenhuma indicacao de status da ligacao. O usuario quer que o operador registre imediatamente se o contato atendeu ou nao antes de prosseguir.
+Ligacoes com status "Concluida" nao exibem nenhum botao de acao no card, impossibilitando o operador de visualizar detalhes como roteiro, notas e acao registrada.
 
-## Solucao
+## Alteracao
 
-Substituir o botao "Proximo" no no de tipo `start` por dois botoes de status: **Atendeu** (verde) e **Nao Atendeu** (vermelho). 
+### `src/pages/CallPanel.tsx` - CallCard
 
-- "Atendeu" avanca para o proximo no do roteiro (comportamento atual do "Proximo").
-- "Nao Atendeu" pula direto para o no de fim e aciona o callback `onReachEnd`, levando o operador para a aba de acoes.
+Adicionar um bloco para `category === "completed"` na secao de acoes (apos o bloco de `failed`, linha 522), com um botao para abrir o dialogo de detalhes:
 
-## Alteracoes
+- Botao com icone `Target` (mesmo padrao dos outros status) que chama `onAction(entry)` para abrir o ActionDialog.
+- O ActionDialog ja funciona para ligacoes concluidas, pois carrega roteiro e acoes normalmente.
 
-### `src/components/call-campaigns/operator/InlineScriptRunner.tsx`
+### Codigo
 
-- Importar icones `Phone` e `PhoneOff` do lucide-react.
-- No bloco que renderiza o botao "Proximo" (linhas 151-156), adicionar condicao especifica para `currentNode.type === "start"`:
-  - Renderizar dois botoes lado a lado em vez do "Proximo":
-    - **Atendeu**: icone `Phone`, fundo verde, chama `handleNext()` (avanca normalmente).
-    - **Nao Atendeu**: icone `PhoneOff`, variante destructive/outline vermelha, navega direto para o no `end` e dispara `onReachEnd`.
-- Para os demais tipos (`speech`, `note`), manter o botao "Proximo" como esta.
+Apos a linha 521 (`{category === "failed" && (...)}`), adicionar:
 
-### Detalhes tecnicos
-
-```text
--- No de Inicio (atual) --
-[Proximo]
-
--- No de Inicio (novo) --
-[Atendeu]  [Nao Atendeu]
+```typescript
+{category === "completed" && (
+  <Button variant="outline" size="sm" onClick={() => onAction(entry)}>
+    <Target className="h-3.5 w-3.5 mr-1" /> Detalhes
+  </Button>
+)}
 ```
 
-- Para "Nao Atendeu", localizar o no de tipo `end` no array de nos e navegar diretamente para ele.
-- Se nao existir no `end`, chamar `onReachEnd` diretamente.
+Isso permite que o operador abra o dialogo mesmo em ligacoes ja concluidas, podendo ver o roteiro e as acoes registradas.
