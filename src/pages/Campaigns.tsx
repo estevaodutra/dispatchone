@@ -170,7 +170,7 @@ export default function Campaigns() {
   if (isLoading) {
     return (
       <div className="space-y-8 animate-fade-in">
-        <PageHeader title="Campanhas" description="Crie e gerencie suas campanhas de despacho" />
+        <PageHeader title="Campanhas" description="Crie e gerencie suas campanhas de disparos" />
         <div className="grid gap-4 md:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-24" />
@@ -271,7 +271,7 @@ export default function Campaigns() {
           <DialogHeader>
             <DialogTitle>Criar Nova Campanha</DialogTitle>
             <DialogDescription>
-              Configure uma nova campanha de despacho para WhatsApp ou Voz.
+              Configure uma nova campanha de disparos para WhatsApp ou Voz.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

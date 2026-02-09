@@ -60,7 +60,7 @@ export default function CampaignsHub() {
         <div className="grid gap-4 md:grid-cols-3">
           <CampaignTypeCard
             icon={SendHorizontal}
-            title="Despacho"
+            title="Disparos"
             description="Disparo de mensagens em massa para lista de contatos"
             activeCount={stats?.despacho.active || 0}
             colorClass="bg-blue-500"

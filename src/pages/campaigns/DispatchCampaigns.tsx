@@ -171,7 +171,7 @@ export default function DispatchCampaigns() {
   if (isLoading) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <CampaignBreadcrumb channel="whatsapp" type="Despacho" />
+        <CampaignBreadcrumb channel="whatsapp" type="Disparos" />
         <div className="grid gap-4 md:grid-cols-3">
           {[1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-24" />
@@ -184,11 +184,11 @@ export default function DispatchCampaigns() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <CampaignBreadcrumb channel="whatsapp" type="Despacho" />
+      <CampaignBreadcrumb channel="whatsapp" type="Disparos" />
       
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold">Campanhas de Despacho</h1>
+          <h1 className="text-2xl font-bold">Campanhas de Disparos</h1>
           <p className="text-muted-foreground">Disparo de mensagens em massa para lista de contatos</p>
         </div>
         <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
@@ -278,7 +278,7 @@ export default function DispatchCampaigns() {
           <DialogHeader>
             <DialogTitle>Criar Nova Campanha</DialogTitle>
             <DialogDescription>
-              Configure uma nova campanha de despacho para WhatsApp ou Voz.
+              Configure uma nova campanha de disparos para WhatsApp ou Voz.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
