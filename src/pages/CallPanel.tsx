@@ -40,6 +40,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Timer,
+  FileText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -578,6 +579,17 @@ function ActionDialog({
             )}
           </DialogDescription>
         </DialogHeader>
+
+        {entry.campaignId && entry.leadId && (
+          <Button
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => window.open(`/call/script/${entry.campaignId}/${entry.leadId}`, '_blank')}
+          >
+            <FileText className="h-4 w-4" />
+            Abrir Roteiro
+          </Button>
+        )}
 
         <div className="space-y-3 max-h-[50vh] overflow-y-auto">
           {isLoading ? (
