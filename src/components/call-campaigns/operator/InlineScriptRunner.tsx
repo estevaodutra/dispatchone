@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { MessageSquare, HelpCircle, StickyNote, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { MessageSquare, HelpCircle, StickyNote, CheckCircle, XCircle, Loader2, Phone, PhoneOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -148,8 +148,27 @@ export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScr
             </div>
           )}
 
-          {/* Next button for non-question, non-end nodes */}
-          {currentNode.type !== "question" && currentNode.type !== "end" && edges.length > 0 && (
+          {/* Start node: Atendeu / Não Atendeu */}
+          {currentNode.type === "start" && edges.length > 0 && (
+            <div className="flex gap-2 mt-3">
+              <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white" onClick={() => handleNext()}>
+                <Phone className="mr-1 h-4 w-4" /> Atendeu
+              </Button>
+              <Button size="sm" variant="destructive" onClick={() => {
+                const endNode = script?.nodes.find((n) => n.type === "end");
+                if (endNode) {
+                  setCurrentNodeId(endNode.id);
+                  setScriptPath((prev) => [...prev, endNode.id]);
+                }
+                onReachEnd?.();
+              }}>
+                <PhoneOff className="mr-1 h-4 w-4" /> Não Atendeu
+              </Button>
+            </div>
+          )}
+
+          {/* Next button for non-question, non-end, non-start nodes */}
+          {currentNode.type !== "question" && currentNode.type !== "end" && currentNode.type !== "start" && edges.length > 0 && (
             <Button size="sm" className="mt-3" onClick={() => handleNext()}>
               Próximo
             </Button>
