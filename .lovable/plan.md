@@ -1,32 +1,46 @@
 
-
-# Fix: Remover bloqueio de lead concluido no call-dial
+# Fix: Status "ended" nao mapeado para "completed" no call_logs
 
 ## Problema
 
-O endpoint `POST /call-dial` rejeita chamadas para leads com status `completed`, retornando erro 400 `lead_already_completed`. O comportamento desejado e que o endpoint execute a discagem independentemente do status atual do lead.
+O endpoint `POST /call-status` recebe `status: "ended"` do provedor externo e grava esse valor diretamente no campo `call_status` da tabela `call_logs`. Porem, o painel (CallPanel) espera o valor `"completed"` para ligacoes encerradas com sucesso.
+
+O lead e atualizado corretamente para `"completed"` (linha 483-484), mas o `call_logs` fica com `"ended"`, que nao esta em nenhum grupo de status do frontend e acaba aparecendo como "falha".
 
 ## Solucao
 
-Remover o bloco de validacao de status `completed` (linhas 376-399) no arquivo `supabase/functions/call-dial/index.ts`.
+No arquivo `supabase/functions/call-status/index.ts`, mapear o status antes de gravar no banco:
 
-O check de `calling` (linhas 401-424) sera mantido, pois faz sentido impedir chamadas duplicadas simultaneas.
-
-Apos remover o bloqueio, o lead existente com status `completed` sera reutilizado normalmente: seu status sera atualizado para `calling` e uma nova entrada em `call_logs` sera criada.
+- `"ended"` deve virar `"completed"` no `call_status` do call_logs
+- `"error"` deve virar `"failed"`
+- `"dialing"` permanece como esta
 
 ## Alteracao
 
-### Arquivo: `supabase/functions/call-dial/index.ts`
+### Arquivo: `supabase/functions/call-status/index.ts`
 
-Remover as linhas 376-399 que contem:
+Na linha 440-442, adicionar mapeamento de status:
 
 ```text
-if (existingLead.status === 'completed') {
-  // ... todo o bloco de rejeicao
-}
+Antes:
+  const updateData: any = {
+    call_status: status,
+  };
+
+Depois:
+  // Mapear status do provedor para status interno
+  const statusMap: Record<string, string> = {
+    'dialing': 'dialing',
+    'ended': 'completed',
+    'error': 'failed',
+  };
+  const mappedStatus = statusMap[status] || status;
+
+  const updateData: any = {
+    call_status: mappedStatus,
+  };
 ```
 
-Manter o check de `calling` logo abaixo, que continua valido.
+Tambem atualizar a linha 423 (quando cria um novo call_log) para usar o mesmo mapeamento, e as linhas 482-487 (update de lead status) para usar `mappedStatus` em vez de `status`.
 
-Nenhuma outra alteracao necessaria -- a funcao sera reimplantada automaticamente.
-
+A funcao sera reimplantada automaticamente apos a alteracao.
