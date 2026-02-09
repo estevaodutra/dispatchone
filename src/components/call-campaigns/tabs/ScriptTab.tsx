@@ -1,20 +1,27 @@
 import { useState } from "react";
-import { useCallScript, CallScriptNode } from "@/hooks/useCallScript";
+import { useCallScript, CallScriptNode, ScriptOption } from "@/hooks/useCallScript";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Circle,
   MessageSquare,
   HelpCircle,
   StickyNote,
   XCircle,
-  Plus,
   Save,
   Trash2,
   GripVertical,
+  Plus,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -30,6 +37,14 @@ const nodeTypeConfig = {
   end: { icon: XCircle, color: "bg-red-100 text-red-800", label: "Fim" },
 };
 
+/** Normalise legacy string[] options to ScriptOption[] */
+const normaliseOptions = (opts: unknown): ScriptOption[] | undefined => {
+  if (!opts || !Array.isArray(opts)) return undefined;
+  return opts.map((o) =>
+    typeof o === "string" ? { text: o } : (o as ScriptOption)
+  );
+};
+
 export function ScriptTab({ campaignId }: ScriptTabProps) {
   const { script, isLoading, saveScript, isSaving } = useCallScript(campaignId);
   const [nodes, setNodes] = useState<CallScriptNode[]>([]);
@@ -39,13 +54,21 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
   // Initialize nodes from script
   useState(() => {
     if (script?.nodes) {
-      setNodes([...script.nodes].sort((a, b) => a.order - b.order));
+      setNodes(
+        [...script.nodes]
+          .sort((a, b) => a.order - b.order)
+          .map((n) => ({ ...n, data: { ...n.data, options: normaliseOptions(n.data.options) } }))
+      );
     }
   });
 
   // Update local state when script loads
   if (script && nodes.length === 0 && script.nodes.length > 0) {
-    setNodes([...script.nodes].sort((a, b) => a.order - b.order));
+    setNodes(
+      [...script.nodes]
+        .sort((a, b) => a.order - b.order)
+        .map((n) => ({ ...n, data: { ...n.data, options: normaliseOptions(n.data.options) } }))
+    );
   }
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
@@ -57,13 +80,11 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
       data: { text: "" },
       order: nodes.length,
     };
-    
-    // Insert before the last node (end) if it exists
+
     const endIndex = nodes.findIndex((n) => n.type === "end");
     if (endIndex > -1 && type !== "end") {
       const newNodes = [...nodes];
       newNodes.splice(endIndex, 0, newNode);
-      // Reorder
       newNodes.forEach((n, i) => (n.order = i));
       setNodes(newNodes);
     } else {
@@ -84,8 +105,8 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
 
   const handleDeleteNode = (id: string) => {
     const node = nodes.find((n) => n.id === id);
-    if (node?.type === "start" || node?.type === "end") return; // Cannot delete start/end
-    
+    if (node?.type === "start" || node?.type === "end") return;
+
     setNodes(nodes.filter((n) => n.id !== id));
     setHasChanges(true);
     if (selectedNodeId === id) setSelectedNodeId(null);
@@ -93,13 +114,21 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
 
   const handleSave = async () => {
     if (!script) return;
-    
-    // Generate edges based on node order
-    const edges = nodes.slice(0, -1).map((node, i) => ({
-      id: `edge-${i}`,
-      source: node.id,
-      target: nodes[i + 1].id,
-    }));
+
+    const edges: { id: string; source: string; target: string; label?: string }[] = [];
+
+    nodes.forEach((node, i) => {
+      if (node.type === "question" && node.data.options?.length) {
+        node.data.options.forEach((opt, oi) => {
+          const target = opt.targetNodeId || (i + 1 < nodes.length ? nodes[i + 1].id : undefined);
+          if (target) {
+            edges.push({ id: `edge-${node.id}-${oi}`, source: node.id, target, label: opt.text });
+          }
+        });
+      } else if (i + 1 < nodes.length) {
+        edges.push({ id: `edge-${i}`, source: node.id, target: nodes[i + 1].id });
+      }
+    });
 
     await saveScript({ nodes, edges });
     setHasChanges(false);
@@ -154,7 +183,7 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
             const config = nodeTypeConfig[node.type];
             const Icon = config.icon;
             const isSelected = selectedNodeId === node.id;
-            
+
             return (
               <div
                 key={node.id}
@@ -203,60 +232,13 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
                   {nodeTypeConfig[selectedNode.type].label}
                 </Badge>
               </div>
-              
+
               {selectedNode.type === "question" ? (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Pergunta</label>
-                    <Textarea
-                      value={selectedNode.data.text || ""}
-                      onChange={(e) =>
-                        handleUpdateNode(selectedNode.id, { text: e.target.value })
-                      }
-                      placeholder="Digite a pergunta..."
-                      rows={3}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Opções de Resposta</label>
-                    {(selectedNode.data.options || []).map((opt, i) => (
-                      <div key={i} className="flex gap-2">
-                        <Input
-                          value={opt}
-                          onChange={(e) => {
-                            const newOptions = [...(selectedNode.data.options || [])];
-                            newOptions[i] = e.target.value;
-                            handleUpdateNode(selectedNode.id, { options: newOptions });
-                          }}
-                          placeholder={`Opção ${i + 1}`}
-                        />
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => {
-                            const newOptions = (selectedNode.data.options || []).filter(
-                              (_, idx) => idx !== i
-                            );
-                            handleUpdateNode(selectedNode.id, { options: newOptions });
-                          }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        const newOptions = [...(selectedNode.data.options || []), ""];
-                        handleUpdateNode(selectedNode.id, { options: newOptions });
-                      }}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Adicionar Opção
-                    </Button>
-                  </div>
-                </>
+                <QuestionConfig
+                  node={selectedNode}
+                  allNodes={nodes}
+                  onUpdate={handleUpdateNode}
+                />
               ) : (
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Texto</label>
@@ -286,5 +268,92 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* ── Question Config sub-component ── */
+
+function QuestionConfig({
+  node,
+  allNodes,
+  onUpdate,
+}: {
+  node: CallScriptNode;
+  allNodes: CallScriptNode[];
+  onUpdate: (id: string, updates: Partial<CallScriptNode["data"]>) => void;
+}) {
+  const options = node.data.options || [];
+  const targetableNodes = allNodes.filter((n) => n.id !== node.id);
+
+  const updateOption = (index: number, patch: Partial<ScriptOption>) => {
+    const newOptions = [...options];
+    newOptions[index] = { ...newOptions[index], ...patch };
+    onUpdate(node.id, { options: newOptions });
+  };
+
+  const removeOption = (index: number) => {
+    onUpdate(node.id, { options: options.filter((_, i) => i !== index) });
+  };
+
+  const addOption = () => {
+    onUpdate(node.id, { options: [...options, { text: "" }] });
+  };
+
+  return (
+    <>
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Pergunta</label>
+        <Textarea
+          value={node.data.text || ""}
+          onChange={(e) => onUpdate(node.id, { text: e.target.value })}
+          placeholder="Digite a pergunta..."
+          rows={3}
+        />
+      </div>
+      <div className="space-y-3">
+        <label className="text-sm font-medium">Opções de Resposta</label>
+        {options.map((opt, i) => (
+          <div key={i} className="space-y-1.5">
+            <div className="flex gap-2">
+              <Input
+                value={opt.text}
+                onChange={(e) => updateOption(i, { text: e.target.value })}
+                placeholder={`Opção ${i + 1}`}
+                className="flex-1"
+              />
+              <Button variant="ghost" size="icon" onClick={() => removeOption(i)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+            <Select
+              value={opt.targetNodeId || "__next__"}
+              onValueChange={(v) =>
+                updateOption(i, { targetNodeId: v === "__next__" ? undefined : v })
+              }
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Direcionar para..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__next__">Próximo (padrão)</SelectItem>
+                {targetableNodes.map((n) => {
+                  const cfg = nodeTypeConfig[n.type];
+                  const snippet = (n.data.text || "").slice(0, 30);
+                  return (
+                    <SelectItem key={n.id} value={n.id}>
+                      {cfg.label} – {snippet || "(vazio)"}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+        ))}
+        <Button variant="outline" size="sm" onClick={addOption}>
+          <Plus className="mr-2 h-4 w-4" />
+          Adicionar Opção
+        </Button>
+      </div>
+    </>
   );
 }

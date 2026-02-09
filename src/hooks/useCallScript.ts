@@ -2,12 +2,17 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+export interface ScriptOption {
+  text: string;
+  targetNodeId?: string;
+}
+
 export interface CallScriptNode {
   id: string;
   type: "start" | "speech" | "question" | "note" | "end";
   data: {
     text?: string;
-    options?: string[];
+    options?: ScriptOption[];
   };
   order: number;
 }
