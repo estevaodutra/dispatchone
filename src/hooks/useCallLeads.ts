@@ -4,6 +4,69 @@ import { useToast } from "@/hooks/use-toast";
 
 export type CallLeadStatus = "pending" | "calling" | "in_progress" | "completed" | "no_answer" | "busy" | "failed";
 
+async function executeActionAutomation(
+  actionType: string,
+  config: Record<string, unknown>,
+  leadId: string,
+  campaignId: string,
+) {
+  try {
+    switch (actionType) {
+      case "start_sequence": {
+        const sequenceId = config.sequenceId as string;
+        if (!sequenceId) break;
+        // Fetch lead data for the sequence trigger
+        const { data: lead } = await (supabase as any)
+          .from("call_leads")
+          .select("*")
+          .eq("id", leadId)
+          .single();
+        await supabase.functions.invoke(`trigger-sequence/${sequenceId}`, {
+          body: { lead, campaignId },
+        });
+        break;
+      }
+      case "add_tag": {
+        const tag = config.tag as string;
+        if (!tag) break;
+        const { data: lead } = await (supabase as any)
+          .from("call_leads")
+          .select("custom_fields")
+          .eq("id", leadId)
+          .single();
+        const currentFields = (lead?.custom_fields as Record<string, unknown>) || {};
+        const currentTags = Array.isArray(currentFields.tags) ? currentFields.tags : [];
+        if (!currentTags.includes(tag)) {
+          await (supabase as any)
+            .from("call_leads")
+            .update({ custom_fields: { ...currentFields, tags: [...currentTags, tag] } })
+            .eq("id", leadId);
+        }
+        break;
+      }
+      case "webhook": {
+        const url = config.url as string;
+        if (!url) break;
+        const { data: lead } = await (supabase as any)
+          .from("call_leads")
+          .select("*")
+          .eq("id", leadId)
+          .single();
+        await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ lead, campaignId, actionType }),
+        }).catch(() => {/* silent fail for webhook */});
+        break;
+      }
+      // update_status is handled inline (lead status already set)
+      // none: no-op
+    }
+  } catch (err) {
+    console.error("Action automation error:", err);
+  }
+}
+
 export interface CallLead {
   id: string;
   campaignId: string;
@@ -275,11 +338,27 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not authenticated");
 
+      // Fetch action config if actionId provided
+      let actionData: { action_type: string; action_config: Record<string, unknown> | null } | null = null;
+      if (actionId) {
+        const { data } = await (supabase as any)
+          .from("call_script_actions")
+          .select("action_type, action_config")
+          .eq("id", actionId)
+          .single();
+        actionData = data;
+      }
+
+      // Determine status based on action config
+      const leadStatus = actionData?.action_type === "update_status" && actionData?.action_config?.status
+        ? String(actionData.action_config.status)
+        : "completed";
+
       // Update lead status
       const { error: updateError } = await (supabase as any)
         .from("call_leads")
         .update({
-          status: "completed",
+          status: leadStatus,
           result_action_id: actionId || null,
           result_notes: notes || null,
           last_attempt_at: new Date().toISOString(),
@@ -304,6 +383,11 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
         });
 
       if (logError) throw logError;
+
+      // Execute action automation
+      if (actionData && actionId) {
+        await executeActionAutomation(actionData.action_type, actionData.action_config || {}, leadId, campaignId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
