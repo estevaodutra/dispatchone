@@ -119,7 +119,7 @@ export const pt = {
     title: "Campanhas",
     description: "Gerencie e monitore suas campanhas de envio",
     tabs: {
-      dispatch: "Despacho",
+      dispatch: "Disparos",
       groups: "Grupos",
     },
     newCampaign: "Nova Campanha",

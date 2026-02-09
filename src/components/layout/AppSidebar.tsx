@@ -64,7 +64,7 @@ export function AppSidebar() {
 
   const campaignSubItems = {
     whatsapp: [
-      { title: "Despacho", url: "/campaigns/whatsapp/despacho", icon: SendHorizontal },
+      { title: "Disparos", url: "/campaigns/whatsapp/despacho", icon: SendHorizontal },
       { title: "Grupos", url: "/campaigns/whatsapp/grupos", icon: Users },
       { title: "Pirata", url: "/campaigns/whatsapp/pirata", icon: Skull, comingSoon: true },
     ],

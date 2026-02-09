@@ -27,7 +27,7 @@ const campaignTypes = {
   whatsapp: [
     {
       id: "despacho",
-      title: "Despacho",
+      title: "Disparos",
       description: "Disparo de mensagens em massa para lista de contatos",
       icon: SendHorizontal,
       href: "/campaigns/whatsapp/despacho",
