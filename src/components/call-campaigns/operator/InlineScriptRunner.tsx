@@ -1,0 +1,161 @@
+import { useState, useEffect, useMemo } from "react";
+import { MessageSquare, HelpCircle, StickyNote, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useCallScript, CallScriptNode, CallScriptEdge } from "@/hooks/useCallScript";
+import { useCallLeads } from "@/hooks/useCallLeads";
+import { cn } from "@/lib/utils";
+
+const nodeTypeConfig = {
+  start: { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50", label: "Início" },
+  speech: { icon: MessageSquare, color: "text-blue-500", bgColor: "bg-blue-50", label: "Fala" },
+  question: { icon: HelpCircle, color: "text-purple-500", bgColor: "bg-purple-50", label: "Pergunta" },
+  note: { icon: StickyNote, color: "text-yellow-500", bgColor: "bg-yellow-50", label: "Nota Interna" },
+  end: { icon: XCircle, color: "text-red-500", bgColor: "bg-red-50", label: "Fim" },
+};
+
+interface InlineScriptRunnerProps {
+  campaignId: string;
+  leadId: string;
+  onReachEnd?: () => void;
+}
+
+export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScriptRunnerProps) {
+  const { script, isLoading: scriptLoading } = useCallScript(campaignId);
+  const { leads } = useCallLeads(campaignId);
+
+  const [currentNodeId, setCurrentNodeId] = useState<string | null>(null);
+  const [scriptPath, setScriptPath] = useState<string[]>([]);
+
+  const lead = useMemo(() => leads.find((l) => l.id === leadId), [leads, leadId]);
+
+  // Find start node and initialize
+  useEffect(() => {
+    if (script && script.nodes.length > 0 && !currentNodeId) {
+      const startNode = script.nodes.find((n) => n.type === "start");
+      if (startNode) {
+        setCurrentNodeId(startNode.id);
+        setScriptPath([startNode.id]);
+      }
+    }
+  }, [script, currentNodeId]);
+
+  const currentNode = useMemo(() => {
+    if (!script || !currentNodeId) return null;
+    return script.nodes.find((n) => n.id === currentNodeId) || null;
+  }, [script, currentNodeId]);
+
+  const getOutgoingEdges = (nodeId: string): CallScriptEdge[] => {
+    if (!script) return [];
+    return script.edges.filter((e) => e.source === nodeId);
+  };
+
+  const handleNext = (targetNodeId?: string) => {
+    if (!script || !currentNodeId) return;
+
+    const edges = getOutgoingEdges(currentNodeId);
+
+    let nextNodeId: string | undefined;
+    if (targetNodeId) {
+      nextNodeId = targetNodeId;
+    } else if (edges.length === 1) {
+      nextNodeId = edges[0].target;
+    }
+
+    if (nextNodeId) {
+      setCurrentNodeId(nextNodeId);
+      setScriptPath((prev) => [...prev, nextNodeId!]);
+
+      // Check if we reached an end node
+      const nextNode = script.nodes.find((n) => n.id === nextNodeId);
+      if (nextNode?.type === "end" && onReachEnd) {
+        onReachEnd();
+      }
+    }
+  };
+
+  const replaceVariables = (text: string): string => {
+    if (!lead) return text;
+    return text
+      .replace(/\{nome\}/g, lead.name || "")
+      .replace(/\{telefone\}/g, lead.phone || "")
+      .replace(/\{email\}/g, lead.email || "");
+  };
+
+  if (scriptLoading) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!script || script.nodes.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground text-sm">
+        Nenhum roteiro configurado para esta campanha.
+      </div>
+    );
+  }
+
+  if (!currentNode) return null;
+
+  const config = nodeTypeConfig[currentNode.type];
+  const Icon = config?.icon || MessageSquare;
+  const edges = getOutgoingEdges(currentNode.id);
+
+  return (
+    <div className="space-y-3">
+      {/* Progress indicator */}
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <Badge variant="outline" className="text-xs">
+          Passo {scriptPath.length}
+        </Badge>
+        {currentNode.type === "end" && (
+          <Badge variant="secondary" className="text-xs text-emerald-600">
+            Roteiro finalizado
+          </Badge>
+        )}
+      </div>
+
+      <Card className={cn("border-2", config.bgColor)}>
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <Icon className={cn("h-5 w-5", config.color)} />
+            <CardTitle className="text-base">{config.label}</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+            {replaceVariables(currentNode.data.text || "")}
+          </p>
+
+          {/* Options for questions */}
+          {currentNode.type === "question" && edges.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {edges.map((edge) => (
+                <Button
+                  key={edge.id}
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start text-left h-auto py-2"
+                  onClick={() => handleNext(edge.target)}
+                >
+                  {edge.label || "Opção"}
+                </Button>
+              ))}
+            </div>
+          )}
+
+          {/* Next button for non-question, non-end nodes */}
+          {currentNode.type !== "question" && currentNode.type !== "end" && edges.length > 0 && (
+            <Button size="sm" className="mt-3" onClick={() => handleNext()}>
+              Próximo
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
