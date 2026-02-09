@@ -23,6 +23,8 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import {
   Clock,
   Phone,
@@ -542,6 +544,8 @@ function ActionDialog({
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
   const [submitting, setSubmitting] = useState(false);
+  const hasScript = !!(entry.campaignId && entry.leadId);
+  const [activeTab, setActiveTab] = useState(hasScript ? "script" : "action");
 
   const handleSelect = async (actionId: string) => {
     setSubmitting(true);
@@ -565,7 +569,7 @@ function ActionDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Registrar Ação</DialogTitle>
           <DialogDescription>
@@ -580,52 +584,70 @@ function ActionDialog({
           </DialogDescription>
         </DialogHeader>
 
-        {entry.campaignId && entry.leadId && (
-          <Button
-            variant="outline"
-            className="w-full gap-2"
-            onClick={() => window.open(`/call/script/${entry.campaignId}/${entry.leadId}`, '_blank')}
-          >
-            <FileText className="h-4 w-4" />
-            Abrir Roteiro
-          </Button>
-        )}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="script" disabled={!hasScript}>
+              <FileText className="h-4 w-4 mr-2" />
+              Roteiro
+            </TabsTrigger>
+            <TabsTrigger value="action">
+              <Target className="h-4 w-4 mr-2" />
+              Ação
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Carregando ações...</p>
-          ) : actions.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Nenhuma ação configurada nesta campanha.</p>
-          ) : (
-            actions.map((action) => (
-              <button
-                key={action.id}
-                disabled={submitting}
-                onClick={() => handleSelect(action.id)}
-                className={cn(
-                  "w-full text-left rounded-lg border p-3 hover:bg-accent transition-colors",
-                  "disabled:opacity-50"
-                )}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="h-3 w-3 rounded-full" style={{ backgroundColor: action.color }} />
-                  <span className="font-medium text-sm">{action.name}</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 ml-5">{getActionDescription(action)}</p>
-              </button>
-            ))
-          )}
-        </div>
+          <TabsContent value="script" className="mt-4">
+            {hasScript ? (
+              <InlineScriptRunner
+                campaignId={entry.campaignId!}
+                leadId={entry.leadId!}
+                onReachEnd={() => setActiveTab("action")}
+              />
+            ) : (
+              <div className="text-center py-8 text-muted-foreground text-sm">
+                Roteiro não disponível para esta ligação.
+              </div>
+            )}
+          </TabsContent>
 
-        <div>
-          <Label className="text-xs">Observações (opcional)</Label>
-          <Textarea
-            value={notes}
-            onChange={(e) => onNotesChange(e.target.value)}
-            placeholder="Notas sobre a ligação..."
-            rows={2}
-          />
-        </div>
+          <TabsContent value="action" className="mt-4">
+            <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+              {isLoading ? (
+                <p className="text-sm text-muted-foreground">Carregando ações...</p>
+              ) : actions.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Nenhuma ação configurada nesta campanha.</p>
+              ) : (
+                actions.map((action) => (
+                  <button
+                    key={action.id}
+                    disabled={submitting}
+                    onClick={() => handleSelect(action.id)}
+                    className={cn(
+                      "w-full text-left rounded-lg border p-3 hover:bg-accent transition-colors",
+                      "disabled:opacity-50"
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: action.color }} />
+                      <span className="font-medium text-sm">{action.name}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 ml-5">{getActionDescription(action)}</p>
+                  </button>
+                ))
+              )}
+            </div>
+
+            <div className="mt-3">
+              <Label className="text-xs">Observações (opcional)</Label>
+              <Textarea
+                value={notes}
+                onChange={(e) => onNotesChange(e.target.value)}
+                placeholder="Notas sobre a ligação..."
+                rows={2}
+              />
+            </div>
+          </TabsContent>
+        </Tabs>
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
