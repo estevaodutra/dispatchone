@@ -359,6 +359,13 @@ export type Database = {
             referencedRelation: "call_leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "call_logs_operator_id_fkey"
+            columns: ["operator_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaign_operators"
+            referencedColumns: ["id"]
+          },
         ]
       }
       call_script_actions: {
