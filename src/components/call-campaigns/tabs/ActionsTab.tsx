@@ -42,6 +42,31 @@ const colorOptions = [
   { value: "#6b7280", label: "Cinza" },
 ];
 
+const statusOptions = [
+  { value: "completed", label: "Concluído" },
+  { value: "failed", label: "Falhou" },
+  { value: "no_answer", label: "Não Atendeu" },
+  { value: "busy", label: "Ocupado" },
+  { value: "pending", label: "Pendente" },
+];
+
+function getConfigSummary(actionType: CallActionType, config: Record<string, unknown>): string | null {
+  switch (actionType) {
+    case "start_sequence":
+      return config.sequenceId ? `Sequência: ${String(config.sequenceId).slice(0, 8)}...` : null;
+    case "add_tag":
+      return config.tag ? `Tag: ${config.tag}` : null;
+    case "update_status": {
+      const opt = statusOptions.find((s) => s.value === config.status);
+      return opt ? `Status: ${opt.label}` : null;
+    }
+    case "webhook":
+      return config.url ? `URL: ${String(config.url).slice(0, 30)}${String(config.url).length > 30 ? "..." : ""}` : null;
+    default:
+      return null;
+  }
+}
+
 export function ActionsTab({ campaignId }: ActionsTabProps) {
   const { actions, isLoading, createAction, updateAction, deleteAction, isCreating } =
     useCallActions(campaignId);
@@ -51,11 +76,12 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
     name: "",
     color: "#10b981",
     actionType: "none" as CallActionType,
+    actionConfig: {} as Record<string, unknown>,
   });
 
   const handleOpenCreate = () => {
     setEditingAction(null);
-    setFormData({ name: "", color: "#10b981", actionType: "none" });
+    setFormData({ name: "", color: "#10b981", actionType: "none", actionConfig: {} });
     setShowDialog(true);
   };
 
@@ -65,8 +91,13 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
       name: action.name,
       color: action.color,
       actionType: action.actionType,
+      actionConfig: { ...action.actionConfig },
     });
     setShowDialog(true);
+  };
+
+  const handleActionTypeChange = (newType: CallActionType) => {
+    setFormData({ ...formData, actionType: newType, actionConfig: {} });
   };
 
   const handleSubmit = async () => {
@@ -79,6 +110,7 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
           name: formData.name,
           color: formData.color,
           actionType: formData.actionType,
+          actionConfig: formData.actionConfig,
         },
       });
     } else {
@@ -86,6 +118,7 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
         name: formData.name,
         color: formData.color,
         actionType: formData.actionType,
+        actionConfig: formData.actionConfig,
       });
     }
     setShowDialog(false);
@@ -129,39 +162,47 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
             <CardTitle>Ações de Resultado ({actions.length})</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {actions.map((action) => (
-              <div
-                key={action.id}
-                className="flex items-center gap-3 p-3 rounded-lg border"
-              >
-                <GripVertical className="h-4 w-4 text-muted-foreground" />
+            {actions.map((action) => {
+              const configSummary = getConfigSummary(action.actionType, action.actionConfig);
+              return (
                 <div
-                  className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: action.color }}
-                />
-                <div className="flex-1">
-                  <p className="font-medium">{action.name}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {actionTypeLabels[action.actionType]}
-                  </p>
+                  key={action.id}
+                  className="flex items-center gap-3 p-3 rounded-lg border"
+                >
+                  <GripVertical className="h-4 w-4 text-muted-foreground" />
+                  <div
+                    className="w-4 h-4 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: action.color }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium">{action.name}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {actionTypeLabels[action.actionType]}
+                    </p>
+                    {configSummary && (
+                      <p className="text-xs text-muted-foreground truncate">
+                        {configSummary}
+                      </p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleOpenEdit(action)}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => deleteAction(action.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => handleOpenEdit(action)}
-                >
-                  <Edit2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => deleteAction(action.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -206,7 +247,7 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
               <Label htmlFor="actionType">Tipo de Ação</Label>
               <Select
                 value={formData.actionType}
-                onValueChange={(v) => setFormData({ ...formData, actionType: v as CallActionType })}
+                onValueChange={(v) => handleActionTypeChange(v as CallActionType)}
               >
                 <SelectTrigger id="actionType">
                   <SelectValue />
@@ -220,6 +261,88 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Dynamic config fields */}
+            {formData.actionType === "start_sequence" && (
+              <div className="grid gap-2">
+                <Label htmlFor="sequenceId">ID da Sequência</Label>
+                <Input
+                  id="sequenceId"
+                  value={(formData.actionConfig.sequenceId as string) || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      actionConfig: { ...formData.actionConfig, sequenceId: e.target.value },
+                    })
+                  }
+                  placeholder="UUID da sequência"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Cole o ID da sequência de grupo que será disparada.
+                </p>
+              </div>
+            )}
+
+            {formData.actionType === "add_tag" && (
+              <div className="grid gap-2">
+                <Label htmlFor="tag">Nome da Tag</Label>
+                <Input
+                  id="tag"
+                  value={(formData.actionConfig.tag as string) || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      actionConfig: { ...formData.actionConfig, tag: e.target.value },
+                    })
+                  }
+                  placeholder="Ex: venda-concluida"
+                />
+              </div>
+            )}
+
+            {formData.actionType === "update_status" && (
+              <div className="grid gap-2">
+                <Label htmlFor="status">Status do Lead</Label>
+                <Select
+                  value={(formData.actionConfig.status as string) || ""}
+                  onValueChange={(v) =>
+                    setFormData({
+                      ...formData,
+                      actionConfig: { ...formData.actionConfig, status: v },
+                    })
+                  }
+                >
+                  <SelectTrigger id="status">
+                    <SelectValue placeholder="Selecione o status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {formData.actionType === "webhook" && (
+              <div className="grid gap-2">
+                <Label htmlFor="webhookUrl">URL do Webhook</Label>
+                <Input
+                  id="webhookUrl"
+                  type="url"
+                  value={(formData.actionConfig.url as string) || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      actionConfig: { ...formData.actionConfig, url: e.target.value },
+                    })
+                  }
+                  placeholder="https://example.com/webhook"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>
