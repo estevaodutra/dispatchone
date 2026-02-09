@@ -1,49 +1,43 @@
 
 
-# Adicionar campo "Nome" aos componentes do roteiro
+# Adicionar botão "Roteiro" no diálogo de Registrar Ação
 
-## Objetivo
+## Problema
 
-Permitir que cada componente (no) do roteiro tenha um nome/label personalizado pelo usuario. Esse nome sera exibido na lista do canvas (coluna "Roteiro") em vez do trecho do texto do conteudo.
+O diálogo "Registrar Ação" no Painel de Ligações mostra apenas as ações configuradas na campanha, mas não oferece acesso ao roteiro (script) da campanha. O operador não consegue abrir o roteiro a partir desse diálogo.
+
+## Solução
+
+Adicionar um botão "Abrir Roteiro" no diálogo de ação que abre a interface de roteiro do operador (`/call/script/:campaignId/:leadId`) em uma nova aba. O botão só aparecerá quando a entrada tiver `campaignId` e `leadId` definidos.
 
 ## Alteracoes
 
-### 1. Modelo de dados (`src/hooks/useCallScript.ts`)
+### 1. `src/pages/CallPanel.tsx` - Componente ActionDialog
 
-Adicionar campo `label` opcional na interface `CallScriptNode.data`:
+- Importar `FileText` do lucide-react (ícone de roteiro)
+- Adicionar um botão "Abrir Roteiro" no topo do diálogo, antes da lista de ações
+- O botão abrirá `/call/script/${entry.campaignId}/${entry.leadId}` em nova aba (`window.open`)
+- Condição de exibição: `entry.campaignId && entry.leadId` (ambos precisam existir)
 
-```text
-data: {
-  label?: string;   // <-- novo
-  text?: string;
-  options?: ScriptOption[];
-}
-```
-
-Nenhuma migracao de banco necessaria pois `nodes` e armazenado como JSONB -- o campo simplesmente sera `undefined` em nos existentes.
-
-### 2. Painel de configuracao (`src/components/call-campaigns/tabs/ScriptTab.tsx`)
-
-- No painel "Configuracao" (coluna direita), adicionar um campo `Input` com label "Nome" acima do campo de texto/pergunta para todos os tipos de no (exceto start e end).
-- Ao editar, chamar `handleUpdateNode(id, { label: value })`.
-
-### 3. Exibicao no canvas
-
-- Na lista de nos (coluna central "Roteiro"), exibir `node.data.label || node.data.text || "(vazio)"` no span truncado.
-- No seletor de destino das opcoes de pergunta (QuestionConfig), exibir `node.data.label || snippet do texto` para facilitar a identificacao do no destino.
-
-### 4. Resumo visual
+### Layout visual do diálogo atualizado
 
 ```text
-Antes:  [Badge Tipo] [trecho do texto...]
-Depois: [Badge Tipo] [nome se houver, senao trecho do texto...]
+Registrar Ação
+  [info do lead / campanha]
+
+  [ Abrir Roteiro ]            <-- NOVO botão
+
+  [Lançamento]                 <-- ações existentes
+  [Outra ação...]
+
+  Observações (opcional)
+  [textarea]
+
+  Cancelar
 ```
 
-No painel de configuracao:
+## Detalhes tecnicos
 
-```text
-[Badge Tipo]
-Nome:     [ Input para o nome do componente ]
-Texto:    [ Textarea para o conteudo ]
-```
-
+- O botão usará `window.open(url, '_blank')` para abrir em nova aba sem perder o contexto do painel
+- Estilo: `variant="outline"` com ícone `FileText`, largura total
+- Só aparece quando `entry.campaignId` e `entry.leadId` estão presentes
