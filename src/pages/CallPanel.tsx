@@ -118,6 +118,7 @@ export default function CallPanel() {
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [, setTick] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const notifiedRef = useRef<Set<string>>(new Set());
 
@@ -152,9 +153,17 @@ export default function CallPanel() {
   }, []);
 
   const requestNotifications = useCallback(async () => {
-    if (typeof Notification === "undefined") return;
-    const perm = await Notification.requestPermission();
-    setNotificationsEnabled(perm === "granted");
+    setSoundEnabled(true);
+    try {
+      if (typeof Notification !== "undefined") {
+        const perm = await Notification.requestPermission();
+        if (perm === "granted") {
+          setNotificationsEnabled(true);
+        }
+      }
+    } catch {
+      // Notification API blocked (e.g. iframe)
+    }
   }, []);
 
   // Alert when call is <= 60s away
@@ -164,7 +173,9 @@ export default function CallPanel() {
       const { seconds, isUrgent } = getTimeRemaining(entry.scheduledFor);
       if (isUrgent && seconds <= 60 && !notifiedRef.current.has(entry.id)) {
         notifiedRef.current.add(entry.id);
-        playAlertSound();
+        if (soundEnabled) {
+          playAlertSound();
+        }
         if (notificationsEnabled && typeof Notification !== "undefined") {
           new Notification("📞 Ligação em instantes", {
             body: `${entry.leadName || "Lead"} - ${formatPhone(entry.leadPhone)}`,
@@ -173,7 +184,7 @@ export default function CallPanel() {
         }
       }
     });
-  }, [entries, notificationsEnabled]);
+  }, [entries, soundEnabled, notificationsEnabled]);
 
   // Handlers
   const handleReschedule = async () => {
@@ -207,15 +218,15 @@ export default function CallPanel() {
           </h1>
           <p className="text-sm text-muted-foreground">Gerencie todas as ligações em tempo real</p>
         </div>
-        {typeof Notification !== "undefined" && Notification.permission !== "granted" && (
+        {!soundEnabled ? (
           <Button variant="outline" size="sm" onClick={requestNotifications}>
             <Bell className="h-4 w-4 mr-2" />
-            Ativar Notificações
+            Ativar Alertas
           </Button>
-        )}
-        {notificationsEnabled && (
-          <Badge variant="secondary" className="gap-1">
-            <Bell className="h-3 w-3" /> Notificações ativas
+        ) : (
+          <Badge variant="secondary" className="gap-1 bg-emerald-100 text-emerald-700 border-emerald-300">
+            <Bell className="h-3 w-3" />
+            {notificationsEnabled ? "Alertas e notificações ativos" : "Alertas sonoros ativos"}
           </Badge>
         )}
       </div>
