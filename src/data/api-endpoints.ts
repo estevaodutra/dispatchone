@@ -11,6 +11,7 @@ export interface Endpoint {
   path: string;
   description: string;
   attributes: Attribute[];
+  statusCodes?: { code: string; description: string }[];
   examples: {
     curl: string;
     nodejs: string;
@@ -1944,6 +1945,14 @@ response = requests.post(
         method: "POST",
         path: "/call-status",
         description: "Atualiza o status de uma ligação telefônica. Se a ligação não existir pelo external_call_id, pode criar um novo registro se informar campaign_name e lead_phone.",
+        statusCodes: [
+          { code: "NORMAL_CLEARING", description: "Atendida" },
+          { code: "USER_BUSY", description: "Ocupado" },
+          { code: "UNALLOCATED_NUMBER", description: "Número não encontrado" },
+          { code: "NUMBER_CHANGED", description: "Caixa postal" },
+          { code: "ORIGINATOR_CANCEL", description: "Cancelamento da ligação" },
+          { code: "ALLOTTED_TIMEOUT", description: "Tempo expirado" },
+        ],
         attributes: [
           {
             name: "external_call_id",

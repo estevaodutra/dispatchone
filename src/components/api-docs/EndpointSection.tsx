@@ -47,6 +47,35 @@ export function EndpointSection({ endpoint }: EndpointSectionProps) {
             <AttributesTable attributes={endpoint.attributes} />
           </div>
 
+          {/* Status Codes */}
+          {endpoint.statusCodes && endpoint.statusCodes.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
+                Códigos Principais
+              </h3>
+              <div className="overflow-x-auto border border-border rounded-lg">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/50">
+                      <th className="text-left py-3 px-4 font-semibold text-foreground">Código</th>
+                      <th className="text-left py-3 px-4 font-semibold text-foreground">Descrição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {endpoint.statusCodes.map((sc, index) => (
+                      <tr key={sc.code} className={index % 2 === 0 ? "bg-muted/30" : ""}>
+                        <td className="py-3 px-4">
+                          <code className="font-mono text-xs bg-muted px-2 py-1 rounded text-primary">{sc.code}</code>
+                        </td>
+                        <td className="py-3 px-4 font-medium text-foreground">{sc.description}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {/* Request Examples */}
           <div>
             <h3 className="text-sm font-semibold text-foreground uppercase tracking-wide mb-4">
