@@ -55,7 +55,7 @@ function isValidPhone(phone: string): boolean {
 }
 
 // Valid call statuses
-const VALID_STATUSES = ['dialing', 'ended', 'error'];
+const VALID_STATUSES = ['dialing', 'answered', 'ended', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout', 'error'];
 
 Deno.serve(async (req) => {
   const startTime = Date.now();
@@ -420,7 +420,7 @@ Deno.serve(async (req) => {
           lead_id: lead.id,
           user_id: userId,
           external_call_id,
-          call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','ended':'completed','error':'failed' }; return m[status] || status; })(),
+          call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','answered':'answered','ended':'completed','busy':'busy','not_found':'not_found','voicemail':'voicemail','cancelled':'cancelled','timeout':'timeout','error':'failed' }; return m[status] || status; })(),
           started_at: status === 'dialing' ? new Date().toISOString() : null,
         })
         .select('id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status')
@@ -440,7 +440,13 @@ Deno.serve(async (req) => {
     // Mapear status do provedor para status interno
     const statusMap: Record<string, string> = {
       'dialing': 'dialing',
+      'answered': 'answered',
       'ended': 'completed',
+      'busy': 'busy',
+      'not_found': 'not_found',
+      'voicemail': 'voicemail',
+      'cancelled': 'cancelled',
+      'timeout': 'timeout',
       'error': 'failed',
     };
     const mappedStatus = statusMap[status] || status;
@@ -454,15 +460,23 @@ Deno.serve(async (req) => {
       if (!callLog.started_at) {
         updateData.started_at = new Date().toISOString();
       }
+    } else if (status === 'answered') {
+      if (!callLog.started_at) {
+        updateData.started_at = new Date().toISOString();
+      }
     } else if (status === 'ended') {
       updateData.ended_at = new Date().toISOString();
       if (duration_seconds !== undefined && duration_seconds !== null) {
         updateData.duration_seconds = duration_seconds;
       } else if (callLog.started_at) {
-        // Calculate duration from started_at
         const startedAt = new Date(callLog.started_at);
         const endedAt = new Date();
         updateData.duration_seconds = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
+      }
+    } else if (['busy', 'not_found', 'voicemail', 'cancelled', 'timeout'].includes(status)) {
+      updateData.ended_at = new Date().toISOString();
+      if (error_message && ['not_found', 'voicemail', 'timeout'].includes(status)) {
+        updateData.notes = error_message;
       }
     } else if (status === 'error') {
       updateData.ended_at = new Date().toISOString();
@@ -490,7 +504,7 @@ Deno.serve(async (req) => {
       let leadStatus = 'calling';
       if (mappedStatus === 'completed') {
         leadStatus = 'completed';
-      } else if (mappedStatus === 'failed') {
+      } else if (['failed', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout'].includes(mappedStatus)) {
         leadStatus = 'failed';
       }
 
