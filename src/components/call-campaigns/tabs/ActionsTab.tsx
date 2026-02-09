@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useCallActions, CallAction, CallActionType } from "@/hooks/useCallActions";
+import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { useSequences } from "@/hooks/useSequences";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -70,6 +72,7 @@ function getConfigSummary(actionType: CallActionType, config: Record<string, unk
 export function ActionsTab({ campaignId }: ActionsTabProps) {
   const { actions, isLoading, createAction, updateAction, deleteAction, isCreating } =
     useCallActions(campaignId);
+  const { campaigns: groupCampaigns } = useGroupCampaigns();
   const [showDialog, setShowDialog] = useState(false);
   const [editingAction, setEditingAction] = useState<CallAction | null>(null);
   const [formData, setFormData] = useState({
@@ -78,6 +81,8 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
     actionType: "none" as CallActionType,
     actionConfig: {} as Record<string, unknown>,
   });
+  const selectedGroupCampaignId = (formData.actionConfig.campaignId as string) || undefined;
+  const { sequences: campaignSequences } = useSequences(selectedGroupCampaignId);
 
   const handleOpenCreate = () => {
     setEditingAction(null);
@@ -264,23 +269,53 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
 
             {/* Dynamic config fields */}
             {formData.actionType === "start_sequence" && (
-              <div className="grid gap-2">
-                <Label htmlFor="sequenceId">ID da Sequência</Label>
-                <Input
-                  id="sequenceId"
-                  value={(formData.actionConfig.sequenceId as string) || ""}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      actionConfig: { ...formData.actionConfig, sequenceId: e.target.value },
-                    })
-                  }
-                  placeholder="UUID da sequência"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Cole o ID da sequência de grupo que será disparada.
-                </p>
-              </div>
+              <>
+                <div className="grid gap-2">
+                  <Label>Campanha de Grupo</Label>
+                  <Select
+                    value={(formData.actionConfig.campaignId as string) || ""}
+                    onValueChange={(v) =>
+                      setFormData({
+                        ...formData,
+                        actionConfig: { campaignId: v, sequenceId: "" },
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a campanha" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {groupCampaigns.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {formData.actionConfig.campaignId && (
+                  <div className="grid gap-2">
+                    <Label>Sequência</Label>
+                    <Select
+                      value={(formData.actionConfig.sequenceId as string) || ""}
+                      onValueChange={(v) =>
+                        setFormData({
+                          ...formData,
+                          actionConfig: { ...formData.actionConfig, sequenceId: v },
+                        })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione a sequência" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {campaignSequences.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </>
             )}
 
             {formData.actionType === "add_tag" && (
