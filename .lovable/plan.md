@@ -1,18 +1,32 @@
 
 
-# Fix: Erro ao adicionar operador na campanha
+# Fix: Remover bloqueio de lead concluido no call-dial
 
 ## Problema
 
-A tabela `call_campaign_operators` possui uma constraint UNIQUE em `(campaign_id, user_id)`. Como `user_id` e o dono da campanha (e nao o operador), essa constraint impede que o mesmo usuario adicione mais de um operador por campanha.
+O endpoint `POST /call-dial` rejeita chamadas para leads com status `completed`, retornando erro 400 `lead_already_completed`. O comportamento desejado e que o endpoint execute a discagem independentemente do status atual do lead.
 
 ## Solucao
 
-Remover a constraint UNIQUE via migracao SQL:
+Remover o bloco de validacao de status `completed` (linhas 376-399) no arquivo `supabase/functions/call-dial/index.ts`.
 
-```sql
-ALTER TABLE call_campaign_operators DROP CONSTRAINT call_campaign_operators_campaign_id_user_id_key;
+O check de `calling` (linhas 401-424) sera mantido, pois faz sentido impedir chamadas duplicadas simultaneas.
+
+Apos remover o bloqueio, o lead existente com status `completed` sera reutilizado normalmente: seu status sera atualizado para `calling` e uma nova entrada em `call_logs` sera criada.
+
+## Alteracao
+
+### Arquivo: `supabase/functions/call-dial/index.ts`
+
+Remover as linhas 376-399 que contem:
+
+```text
+if (existingLead.status === 'completed') {
+  // ... todo o bloco de rejeicao
+}
 ```
 
-Nenhuma alteracao de codigo e necessaria -- apenas a migracao do banco.
+Manter o check de `calling` logo abaixo, que continua valido.
+
+Nenhuma outra alteracao necessaria -- a funcao sera reimplantada automaticamente.
 
