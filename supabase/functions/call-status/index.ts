@@ -420,7 +420,7 @@ Deno.serve(async (req) => {
           lead_id: lead.id,
           user_id: userId,
           external_call_id,
-          call_status: status,
+          call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','ended':'completed','error':'failed' }; return m[status] || status; })(),
           started_at: status === 'dialing' ? new Date().toISOString() : null,
         })
         .select('id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status')
@@ -437,8 +437,16 @@ Deno.serve(async (req) => {
     }
 
     // ==================== UPDATE CALL LOG STATUS ====================
+    // Mapear status do provedor para status interno
+    const statusMap: Record<string, string> = {
+      'dialing': 'dialing',
+      'ended': 'completed',
+      'error': 'failed',
+    };
+    const mappedStatus = statusMap[status] || status;
+
     const updateData: any = {
-      call_status: status,
+      call_status: mappedStatus,
     };
 
     // Handle status-specific updates
@@ -480,9 +488,9 @@ Deno.serve(async (req) => {
     // ==================== UPDATE LEAD STATUS ====================
     if (callLog.lead_id) {
       let leadStatus = 'calling';
-      if (status === 'ended') {
+      if (mappedStatus === 'completed') {
         leadStatus = 'completed';
-      } else if (status === 'error') {
+      } else if (mappedStatus === 'failed') {
         leadStatus = 'failed';
       }
 
