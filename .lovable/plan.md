@@ -1,46 +1,27 @@
 
-# Fix: Status "ended" nao mapeado para "completed" no call_logs
+# Renomear "Despacho" para "Disparos"
 
-## Problema
+Atualizar o rotulo "Despacho" para "Disparos" em todos os pontos da interface onde ele aparece como texto visivel ao usuario.
 
-O endpoint `POST /call-status` recebe `status: "ended"` do provedor externo e grava esse valor diretamente no campo `call_status` da tabela `call_logs`. Porem, o painel (CallPanel) espera o valor `"completed"` para ligacoes encerradas com sucesso.
+## Arquivos a alterar
 
-O lead e atualizado corretamente para `"completed"` (linha 483-484), mas o `call_logs` fica com `"ended"`, que nao esta em nenhum grupo de status do frontend e acaba aparecendo como "falha".
+1. **`src/components/layout/AppSidebar.tsx`** -- Menu lateral: `title: "Despacho"` para `title: "Disparos"`
 
-## Solucao
+2. **`src/pages/campaigns/CampaignsHub.tsx`** -- Card no hub: `title="Despacho"` para `title="Disparos"`
 
-No arquivo `supabase/functions/call-status/index.ts`, mapear o status antes de gravar no banco:
+3. **`src/pages/campaigns/DispatchCampaigns.tsx`** -- Breadcrumb e titulo:
+   - `type="Despacho"` para `type="Disparos"`
+   - `"Campanhas de Despacho"` para `"Campanhas de Disparos"`
+   - `"campanha de despacho"` para `"campanha de disparos"` (descricao do dialog)
 
-- `"ended"` deve virar `"completed"` no `call_status` do call_logs
-- `"error"` deve virar `"failed"`
-- `"dialing"` permanece como esta
+4. **`src/i18n/locales/pt.ts`** -- Traducao PT: `dispatch: "Despacho"` para `dispatch: "Disparos"`
 
-## Alteracao
+5. **`src/i18n/locales/es.ts`** -- Traducao ES: `dispatch: "Despacho"` para `dispatch: "Disparos"`
 
-### Arquivo: `supabase/functions/call-status/index.ts`
+6. **`src/i18n/locales/en.ts`** -- Traducao EN: `dispatch: "Dispatch"` para `dispatch: "Disparos"` (ou manter ingles, dependendo da preferencia)
 
-Na linha 440-442, adicionar mapeamento de status:
+7. **`src/components/campaigns/NewCampaignDialog.tsx`** -- Dialog de nova campanha: `title: "Despacho"` para `title: "Disparos"`
 
-```text
-Antes:
-  const updateData: any = {
-    call_status: status,
-  };
+8. **`src/pages/Campaigns.tsx`** -- Textos descritivos: `"campanhas de despacho"` para `"campanhas de disparos"`
 
-Depois:
-  // Mapear status do provedor para status interno
-  const statusMap: Record<string, string> = {
-    'dialing': 'dialing',
-    'ended': 'completed',
-    'error': 'failed',
-  };
-  const mappedStatus = statusMap[status] || status;
-
-  const updateData: any = {
-    call_status: mappedStatus,
-  };
-```
-
-Tambem atualizar a linha 423 (quando cria um novo call_log) para usar o mesmo mapeamento, e as linhas 482-487 (update de lead status) para usar `mappedStatus` em vez de `status`.
-
-A funcao sera reimplantada automaticamente apos a alteracao.
+Nenhuma alteracao em rotas, nomes de banco de dados ou logica -- apenas rotulos de exibicao.
