@@ -373,31 +373,6 @@ Deno.serve(async (req) => {
 
     if (existingLead) {
       // Check lead status
-      if (existingLead.status === 'completed') {
-        console.log('[call-dial] Lead already completed');
-        const responseBody = {
-          success: false,
-          error: 'lead_already_completed',
-          message: 'Lead já foi concluído nesta campanha'
-        };
-        await logApiCall(supabase, {
-          method: req.method,
-          endpoint: '/call-dial',
-          statusCode: 400,
-          responseTimeMs: Date.now() - startTime,
-          userId,
-          apiKeyId,
-          ipAddress,
-          requestBody,
-          responseBody,
-          errorMessage: 'Lead already completed',
-        });
-        return new Response(JSON.stringify(responseBody), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
       if (existingLead.status === 'calling') {
         console.log('[call-dial] Lead already in call');
         const responseBody = {
