@@ -30,6 +30,7 @@ import ApiDocs from "./pages/ApiDocs";
 import WebhookEvents from "./pages/WebhookEvents";
 import Auth from "./pages/Auth";
 import OperatorScript from "./pages/OperatorScript";
+import CallPanel from "./pages/CallPanel";
 import NotFound from "./pages/NotFound";
 
 const App = () => {
@@ -60,6 +61,17 @@ const App = () => {
                     }
                   />
                   
+                  <Route
+                    path="/painel-ligacoes"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <CallPanel />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+
                   {/* Campaigns routes */}
                   <Route
                     path="/campaigns"

@@ -9,6 +9,7 @@ export interface CallCampaign {
   description: string | null;
   status: "draft" | "active" | "paused" | "completed";
   api4comConfig: Record<string, unknown>;
+  dialDelayMinutes: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -20,6 +21,7 @@ interface DbCallCampaign {
   description: string | null;
   status: string | null;
   api4com_config: Record<string, unknown> | null;
+  dial_delay_minutes: number | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -30,6 +32,7 @@ const transformDbToFrontend = (db: DbCallCampaign): CallCampaign => ({
   description: db.description,
   status: (db.status as CallCampaign["status"]) || "draft",
   api4comConfig: db.api4com_config || {},
+  dialDelayMinutes: db.dial_delay_minutes ?? 10,
   createdAt: db.created_at || new Date().toISOString(),
   updatedAt: db.updated_at || new Date().toISOString(),
 });
@@ -92,6 +95,7 @@ export function useCallCampaigns() {
         description: string;
         status: string;
         api4comConfig: Record<string, unknown>;
+        dialDelayMinutes: number;
       }>;
     }) => {
       const dbUpdates: Record<string, unknown> = {};
@@ -99,6 +103,7 @@ export function useCallCampaigns() {
       if (updates.description !== undefined) dbUpdates.description = updates.description;
       if (updates.status !== undefined) dbUpdates.status = updates.status;
       if (updates.api4comConfig !== undefined) dbUpdates.api4com_config = updates.api4comConfig;
+      if (updates.dialDelayMinutes !== undefined) dbUpdates.dial_delay_minutes = updates.dialDelayMinutes;
 
       const { data, error } = await (supabase as any)
         .from("call_campaigns")

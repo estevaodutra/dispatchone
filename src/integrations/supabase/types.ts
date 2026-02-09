@@ -182,6 +182,7 @@ export type Database = {
           api4com_config: Json | null
           created_at: string | null
           description: string | null
+          dial_delay_minutes: number | null
           id: string
           name: string
           status: string | null
@@ -192,6 +193,7 @@ export type Database = {
           api4com_config?: Json | null
           created_at?: string | null
           description?: string | null
+          dial_delay_minutes?: number | null
           id?: string
           name: string
           status?: string | null
@@ -202,6 +204,7 @@ export type Database = {
           api4com_config?: Json | null
           created_at?: string | null
           description?: string | null
+          dial_delay_minutes?: number | null
           id?: string
           name?: string
           status?: string | null
@@ -292,6 +295,7 @@ export type Database = {
           lead_id: string | null
           notes: string | null
           operator_id: string | null
+          scheduled_for: string | null
           script_path: Json | null
           started_at: string | null
           user_id: string
@@ -308,6 +312,7 @@ export type Database = {
           lead_id?: string | null
           notes?: string | null
           operator_id?: string | null
+          scheduled_for?: string | null
           script_path?: Json | null
           started_at?: string | null
           user_id: string
@@ -324,6 +329,7 @@ export type Database = {
           lead_id?: string | null
           notes?: string | null
           operator_id?: string | null
+          scheduled_for?: string | null
           script_path?: Json | null
           started_at?: string | null
           user_id?: string

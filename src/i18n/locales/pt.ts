@@ -1,7 +1,8 @@
 export const pt = {
   // Navigation
   nav: {
-    dashboard: "Painel",
+    dashboard: "Dashboard",
+    callPanel: "Painel de Ligações",
     campaigns: "Campanhas",
     groupCampaigns: "Campanhas de Grupos",
     phoneNumbers: "Números",
