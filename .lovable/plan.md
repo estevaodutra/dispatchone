@@ -1,41 +1,37 @@
 
+# Adicionar status padrao "Atendeu / Nao Atendeu" no no de Inicio
 
-# Ajustes de Layout no Roteiro Inline e Dialog de Acao
+## Problema
 
-## Problemas identificados
+No Passo 1 (no de "Inicio"), o operador ve apenas o botao "Proximo" sem nenhuma indicacao de status da ligacao. O usuario quer que o operador registre imediatamente se o contato atendeu ou nao antes de prosseguir.
 
-1. **Cores de fundo dos cards do roteiro** -- os backgrounds usam tons claros fixos (`bg-green-50`, `bg-purple-50`, etc.) que criam contraste excessivo dentro do dialog em modo escuro. O texto dentro do card fica escuro sobre fundo claro, destoando do restante da interface.
+## Solucao
 
-2. **Botoes de opcao do roteiro** -- os botoes "outline" das perguntas nao tem contraste suficiente no modo escuro; o fundo branco das opcoes destoa.
+Substituir o botao "Proximo" no no de tipo `start` por dois botoes de status: **Atendeu** (verde) e **Nao Atendeu** (vermelho). 
 
-3. **Espacamento interno** -- o card do roteiro pode ter padding mais generoso para leitura confortavel do texto longo do script.
+- "Atendeu" avanca para o proximo no do roteiro (comportamento atual do "Proximo").
+- "Nao Atendeu" pula direto para o no de fim e aciona o callback `onReachEnd`, levando o operador para a aba de acoes.
 
 ## Alteracoes
 
-### 1. `src/components/call-campaigns/operator/InlineScriptRunner.tsx`
+### `src/components/call-campaigns/operator/InlineScriptRunner.tsx`
 
-**Cores adaptativas para dark mode:**
-- Trocar os `bgColor` fixos por classes que funcionem em ambos os modos:
-  - `bg-green-50` -> `bg-green-50 dark:bg-green-950/30`
-  - `bg-blue-50` -> `bg-blue-50 dark:bg-blue-950/30`
-  - `bg-purple-50` -> `bg-purple-50 dark:bg-purple-950/30`
-  - `bg-yellow-50` -> `bg-yellow-50 dark:bg-yellow-950/30`
-  - `bg-red-50` -> `bg-red-50 dark:bg-red-950/30`
+- Importar icones `Phone` e `PhoneOff` do lucide-react.
+- No bloco que renderiza o botao "Proximo" (linhas 151-156), adicionar condicao especifica para `currentNode.type === "start"`:
+  - Renderizar dois botoes lado a lado em vez do "Proximo":
+    - **Atendeu**: icone `Phone`, fundo verde, chama `handleNext()` (avanca normalmente).
+    - **Nao Atendeu**: icone `PhoneOff`, variante destructive/outline vermelha, navega direto para o no `end` e dispara `onReachEnd`.
+- Para os demais tipos (`speech`, `note`), manter o botao "Proximo" como esta.
 
-**Bordas dos cards:**
-- Adicionar cor de borda compativel com o tipo de no (ex: `border-purple-200 dark:border-purple-800` para pergunta).
+### Detalhes tecnicos
 
-**Botoes de opcao (perguntas):**
-- Adicionar classes `dark:bg-background dark:border-border` para garantir contraste.
+```text
+-- No de Inicio (atual) --
+[Proximo]
 
-**Texto do roteiro:**
-- Garantir que o texto use `text-foreground` para funcionar em ambos os temas.
+-- No de Inicio (novo) --
+[Atendeu]  [Nao Atendeu]
+```
 
-### 2. `src/pages/CallPanel.tsx` - ActionDialog
-
-**Scroll area do roteiro:**
-- Adicionar `max-h-[50vh] overflow-y-auto` ao conteudo da aba "Roteiro" para evitar que scripts longos expandam o dialog excessivamente (mesma abordagem ja usada na aba "Acao").
-
-**Espacamento entre tabs e conteudo:**
-- Manter `mt-4` consistente em ambas as abas (ja esta assim).
-
+- Para "Nao Atendeu", localizar o no de tipo `end` no array de nos e navegar diretamente para ele.
+- Se nao existir no `end`, chamar `onReachEnd` diretamente.
