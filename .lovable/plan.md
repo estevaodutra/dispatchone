@@ -1,39 +1,25 @@
 
-# Adicionar tabela de codigos de status no endpoint call-status
 
-## O que sera feito
+# Corrigir tabela de codigos para usar valores reais do endpoint
 
-Adicionar uma tabela "Codigos Principais" dentro da documentacao do endpoint `/call-status`, exibindo a relacao entre o codigo de status enviado na API e sua descricao em portugues, seguindo o layout da imagem de referencia.
+## Problema
 
-## Alteracoes
+A tabela "Codigos Principais" exibe codigos de telefonia genericos (`NORMAL_CLEARING`, `USER_BUSY`, etc.), mas o endpoint `/call-status` aceita valores diferentes (`answered`, `busy`, `ended`, etc.). A tabela precisa refletir os valores reais aceitos pela API.
 
-### 1. Tipo `Endpoint` (`src/data/api-endpoints.ts`)
+## Alteracao
 
-Adicionar um campo opcional `statusCodes` na interface `Endpoint`:
+### `src/data/api-endpoints.ts` - statusCodes do endpoint call-status
 
-```typescript
-statusCodes?: { code: string; description: string }[];
-```
+Substituir os valores atuais pelos codigos reais aceitos pelo endpoint:
 
-### 2. Dados do endpoint call-status (`src/data/api-endpoints.ts`)
+| Codigo atual (errado) | Codigo correto | Descricao |
+|---|---|---|
+| `NORMAL_CLEARING` | `answered` | Atendida |
+| `USER_BUSY` | `busy` | Ocupado |
+| `UNALLOCATED_NUMBER` | `not_found` | Numero nao encontrado |
+| `NUMBER_CHANGED` | `voicemail` | Caixa postal |
+| `ORIGINATOR_CANCEL` | `cancelled` | Cancelamento da ligacao |
+| `ALLOTTED_TIMEOUT` | `timeout` | Tempo expirado |
 
-Adicionar o array `statusCodes` ao endpoint `call-status` com os seguintes valores:
+Opcionalmente incluir tambem `dialing`, `ended` e `error` para documentar todos os 9 valores aceitos.
 
-| Codigo | Descricao |
-|---|---|
-| `NORMAL_CLEARING` | Atendida |
-| `USER_BUSY` | Ocupado |
-| `UNALLOCATED_NUMBER` | Numero nao encontrado |
-| `NUMBER_CHANGED` | Caixa postal |
-| `ORIGINATOR_CANCEL` | Cancelamento da ligacao |
-| `ALLOTTED_TIMEOUT` | Tempo expirado |
-
-### 3. Componente `EndpointSection` (`src/components/api-docs/EndpointSection.tsx`)
-
-Adicionar um bloco condicional apos a secao de Atributos que renderiza a tabela de codigos quando `endpoint.statusCodes` existir:
-
-- Titulo "Codigos Principais" (h3, mesmo estilo das outras secoes)
-- Tabela com duas colunas: "Codigo" e "Descricao"
-- Codigo exibido em `<code>` com fundo sutil (estilo mono, similar ao da imagem)
-- Descricao em texto normal com negrito
-- Linhas alternadas com fundo `bg-muted/30` para legibilidade
