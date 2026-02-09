@@ -198,7 +198,7 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
                   {config.label}
                 </Badge>
                 <span className="flex-1 text-sm truncate">
-                  {node.data.text || "(vazio)"}
+                  {node.data.label || node.data.text || "(vazio)"}
                 </span>
                 {node.type !== "start" && node.type !== "end" && (
                   <Button
@@ -232,6 +232,19 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
                   {nodeTypeConfig[selectedNode.type].label}
                 </Badge>
               </div>
+
+              {selectedNode.type !== "start" && selectedNode.type !== "end" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Nome</label>
+                  <Input
+                    value={selectedNode.data.label || ""}
+                    onChange={(e) =>
+                      handleUpdateNode(selectedNode.id, { label: e.target.value })
+                    }
+                    placeholder="Nome do componente..."
+                  />
+                </div>
+              )}
 
               {selectedNode.type === "question" ? (
                 <QuestionConfig
@@ -338,10 +351,10 @@ function QuestionConfig({
                 <SelectItem value="__next__">Próximo (padrão)</SelectItem>
                 {targetableNodes.map((n) => {
                   const cfg = nodeTypeConfig[n.type];
-                  const snippet = (n.data.text || "").slice(0, 30);
-                  return (
-                    <SelectItem key={n.id} value={n.id}>
-                      {cfg.label} – {snippet || "(vazio)"}
+                  const snippet = n.data.label || (n.data.text || "").slice(0, 30);
+                      return (
+                        <SelectItem key={n.id} value={n.id}>
+                          {cfg.label} – {snippet || "(vazio)"}
                     </SelectItem>
                   );
                 })}
