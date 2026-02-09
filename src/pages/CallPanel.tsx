@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
+import { useCallOperators } from "@/hooks/useCallOperators";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,8 @@ import {
   AlertTriangle,
   Timer,
   FileText,
+  Headset,
+  Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -133,10 +136,12 @@ export default function CallPanel() {
   const [cancelReason, setCancelReason] = useState("");
   const [actionEntry, setActionEntry] = useState<CallPanelEntry | null>(null);
   const [actionNotes, setActionNotes] = useState("");
+  const [editOperatorEntry, setEditOperatorEntry] = useState<CallPanelEntry | null>(null);
+  const [selectedOperatorId, setSelectedOperatorId] = useState("");
 
   const { campaigns } = useCallCampaigns();
 
-  const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction } = useCallPanel({
+  const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator } = useCallPanel({
     status: statusFilter !== "all" ? statusFilter : undefined,
     campaignId: campaignFilter !== "all" ? campaignFilter : undefined,
     search: searchQuery || undefined,
@@ -293,6 +298,10 @@ export default function CallPanel() {
               onCancel={(e) => setCancelEntry(e)}
               onDialNow={(id) => dialNow(id)}
               onAction={(e) => { setActionEntry(e); setActionNotes(""); }}
+              onEditOperator={(e) => {
+                setEditOperatorEntry(e);
+                setSelectedOperatorId(e.operatorId || "");
+              }}
             />
           ))}
         </div>
@@ -372,6 +381,19 @@ export default function CallPanel() {
           }}
         />
       )}
+
+      {/* Edit Operator Dialog */}
+      <EditOperatorDialog
+        entry={editOperatorEntry}
+        selectedOperatorId={selectedOperatorId}
+        onSelectedChange={setSelectedOperatorId}
+        onClose={() => setEditOperatorEntry(null)}
+        onConfirm={async () => {
+          if (!editOperatorEntry || !selectedOperatorId) return;
+          await updateOperator({ callId: editOperatorEntry.id, operatorId: selectedOperatorId });
+          setEditOperatorEntry(null);
+        }}
+      />
     </div>
   );
 }
@@ -399,9 +421,10 @@ interface CallCardProps {
   onCancel: (entry: CallPanelEntry) => void;
   onDialNow: (id: string) => void;
   onAction: (entry: CallPanelEntry) => void;
+  onEditOperator: (entry: CallPanelEntry) => void;
 }
 
-function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction }: CallCardProps) {
+function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction, onEditOperator }: CallCardProps) {
   const category = getStatusCategory(entry.callStatus);
   const timeInfo = getTimeRemaining(entry.scheduledFor);
 
@@ -481,6 +504,26 @@ function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction 
                 <FolderOpen className="h-3 w-3" /> {entry.campaignName}
               </div>
             )}
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Headset className="h-3 w-3" />
+              {entry.operatorName ? (
+                <span>
+                  {entry.operatorName}
+                  {entry.operatorExtension && <span className="ml-1 text-muted-foreground/70">• R. {entry.operatorExtension}</span>}
+                </span>
+              ) : (
+                <span className="italic">Sem operador</span>
+              )}
+              {["scheduled", "ready"].includes(entry.callStatus) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onEditOperator(entry); }}
+                  className="ml-1 p-0.5 rounded hover:bg-accent transition-colors"
+                  title="Trocar operador"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Right: actions */}
@@ -672,6 +715,74 @@ function ActionDialog({
 
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Edit Operator Dialog ──
+
+function EditOperatorDialog({
+  entry,
+  selectedOperatorId,
+  onSelectedChange,
+  onClose,
+  onConfirm,
+}: {
+  entry: CallPanelEntry | null;
+  selectedOperatorId: string;
+  onSelectedChange: (id: string) => void;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const { operators, isLoading } = useCallOperators(entry?.campaignId || "");
+  const [submitting, setSubmitting] = useState(false);
+  const activeOperators = operators.filter((o) => o.isActive);
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={!!entry} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Trocar Operador</DialogTitle>
+          <DialogDescription>
+            {entry?.leadName} — {formatPhone(entry?.leadPhone || null)}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando operadores...</p>
+          ) : activeOperators.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhum operador ativo nesta campanha.</p>
+          ) : (
+            <Select value={selectedOperatorId} onValueChange={onSelectedChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um operador" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeOperators.map((op) => (
+                  <SelectItem key={op.id} value={op.id}>
+                    {op.operatorName}{op.extension ? ` • R. ${op.extension}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleConfirm} disabled={!selectedOperatorId || submitting}>
+            Confirmar
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

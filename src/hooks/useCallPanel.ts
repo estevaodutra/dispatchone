@@ -11,6 +11,8 @@ export interface CallPanelEntry {
   leadName: string | null;
   leadPhone: string | null;
   operatorId: string | null;
+  operatorName: string | null;
+  operatorExtension: string | null;
   callStatus: string;
   scheduledFor: string | null;
   startedAt: string | null;
@@ -55,6 +57,10 @@ interface DbCallLogJoined {
   call_campaigns: {
     name: string;
   } | null;
+  call_campaign_operators: {
+    operator_name: string | null;
+    extension: string | null;
+  } | null;
 }
 
 const SCHEDULED_STATUSES = ["scheduled", "ready"];
@@ -72,6 +78,8 @@ function transformEntry(db: DbCallLogJoined): CallPanelEntry {
     leadName: db.call_leads?.name || null,
     leadPhone: db.call_leads?.phone || null,
     operatorId: db.operator_id,
+    operatorName: db.call_campaign_operators?.operator_name || null,
+    operatorExtension: db.call_campaign_operators?.extension || null,
     callStatus: db.call_status || "scheduled",
     scheduledFor: db.scheduled_for,
     startedAt: db.started_at,
@@ -101,7 +109,7 @@ export function useCallPanel(filters?: {
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
-        .select("*, call_leads(name, phone, attempts), call_campaigns(name)")
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name), call_campaign_operators(operator_name, extension)")
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -211,17 +219,121 @@ export function useCallPanel(filters?: {
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const dialNowMutation = useMutation({
-    mutationFn: async (callId: string) => {
+  const updateOperatorMutation = useMutation({
+    mutationFn: async ({ callId, operatorId }: { callId: string; operatorId: string }) => {
       const { error } = await (supabase as any)
         .from("call_logs")
-        .update({ scheduled_for: new Date().toISOString(), call_status: "ready" })
+        .update({ operator_id: operatorId })
         .eq("id", callId);
       if (error) throw error;
+
+      const entry = entries.find((e) => e.id === callId);
+      if (entry?.leadId) {
+        await (supabase as any)
+          .from("call_leads")
+          .update({ assigned_operator_id: operatorId })
+          .eq("id", entry.leadId);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
-      toast({ title: "Pronto", description: "Ligação marcada para agora." });
+      toast({ title: "Operador atualizado", description: "Operador da ligação alterado." });
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
+  const dialNowMutation = useMutation({
+    mutationFn: async (callId: string) => {
+      const entry = entries.find((e) => e.id === callId);
+      if (!entry) throw new Error("Ligação não encontrada");
+
+      // Fetch webhook config for "calls" category
+      const { data: webhookConfigs } = await (supabase as any)
+        .from("webhook_configs")
+        .select("*")
+        .eq("category", "calls")
+        .eq("is_active", true)
+        .limit(1);
+
+      const webhookUrl = webhookConfigs?.[0]?.url;
+
+      if (!webhookUrl) {
+        // No webhook configured – just update status to "ready"
+        const { error } = await (supabase as any)
+          .from("call_logs")
+          .update({ scheduled_for: new Date().toISOString(), call_status: "ready" })
+          .eq("id", callId);
+        if (error) throw error;
+        return;
+      }
+
+      // Update status to "dialing"
+      const { error: updateErr } = await (supabase as any)
+        .from("call_logs")
+        .update({ call_status: "dialing", started_at: new Date().toISOString() })
+        .eq("id", callId);
+      if (updateErr) throw updateErr;
+
+      // Build payload
+      const payload = {
+        action: "call.dial",
+        call: {
+          id: entry.id,
+          status: "dialing",
+          scheduled_for: entry.scheduledFor,
+        },
+        campaign: {
+          id: entry.campaignId,
+          name: entry.campaignName,
+        },
+        lead: {
+          id: entry.leadId,
+          phone: entry.leadPhone,
+          name: entry.leadName,
+        },
+        operator: {
+          id: entry.operatorId,
+          name: entry.operatorName,
+          extension: entry.operatorExtension,
+        },
+      };
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Webhook respondeu com status ${response.status}`);
+        }
+
+        // Try to extract external_call_id from response
+        try {
+          const result = await response.json();
+          const externalId = Array.isArray(result) ? result[0]?.id : result?.id;
+          if (externalId) {
+            await (supabase as any)
+              .from("call_logs")
+              .update({ external_call_id: externalId })
+              .eq("id", callId);
+          }
+        } catch {
+          // Response may not be JSON, that's fine
+        }
+      } catch (webhookError: any) {
+        // Revert status to "ready" on webhook failure
+        await (supabase as any)
+          .from("call_logs")
+          .update({ call_status: "ready", started_at: null })
+          .eq("id", callId);
+        throw new Error(`Falha ao acionar webhook: ${webhookError.message}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_panel"] });
+      toast({ title: "Ligação iniciada", description: "Webhook acionado com sucesso." });
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
@@ -258,6 +370,7 @@ export function useCallPanel(filters?: {
     delayCall: delayCallMutation.mutateAsync,
     rescheduleCall: rescheduleCallMutation.mutateAsync,
     cancelCall: cancelCallMutation.mutateAsync,
+    updateOperator: updateOperatorMutation.mutateAsync,
     dialNow: dialNowMutation.mutateAsync,
     registerAction: registerActionMutation.mutateAsync,
   };
