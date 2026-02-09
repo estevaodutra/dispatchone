@@ -1,166 +1,131 @@
 
-# Plano: Atualizar Tabela de Leads
+# Plano: Fazer as Ações Funcionarem
 
-Modificar a tabela de leads para incluir Data/Hora, reordenar colunas, remover Tentativas e adicionar botão de Detalhes.
-
----
-
-## Alterações na Tabela
-
-| Coluna Atual | Nova Configuração |
-|--------------|-------------------|
-| Telefone | Manter |
-| Nome | Manter |
-| Status | Manter |
-| Tentativas | **Remover** |
-| Ações (só delete) | Substituir por **Detalhes** + Delete |
-| - | **Adicionar: Data/Hora** (createdAt) |
+Atualmente, ao selecionar um "Tipo de Ação" (Webhook, Iniciar Sequencia, etc.), apenas o tipo e salvo no banco, mas nao ha campos de configuracao nem logica de execucao. Este plano adiciona campos dinamicos por tipo e a execucao automatica ao finalizar uma ligacao.
 
 ---
 
-## Nova Estrutura da Tabela
+## Problema Atual
 
-| Data/Hora | Nome | Telefone | Status | Ações |
-|-----------|------|----------|--------|-------|
-| 04/02/2026 14:30 | Estevão | 5512982402981 | Concluído | [Detalhes] [🗑] |
-
----
-
-## Implementação
-
-### 1. Importar hook de ações e componentes necessários
-
-```typescript
-import { useCallActions } from "@/hooks/useCallActions";
-import { Eye } from "lucide-react"; // Ícone para detalhes
-import { format } from "date-fns"; // Para formatar data
-```
-
-### 2. Adicionar estado para dialog de detalhes
-
-```typescript
-const { actions } = useCallActions(campaignId);
-const [selectedLead, setSelectedLead] = useState<CallLead | null>(null);
-```
-
-### 3. Atualizar colunas da tabela
-
-```typescript
-<TableHeader>
-  <TableRow>
-    <TableHead>Data/Hora</TableHead>
-    <TableHead>Nome</TableHead>
-    <TableHead>Telefone</TableHead>
-    <TableHead>Status</TableHead>
-    <TableHead className="w-[100px]">Ações</TableHead>
-  </TableRow>
-</TableHeader>
-```
-
-### 4. Atualizar células da tabela
-
-```typescript
-<TableCell className="text-muted-foreground text-sm">
-  {format(new Date(lead.createdAt), "dd/MM/yyyy HH:mm")}
-</TableCell>
-<TableCell>{lead.name || "-"}</TableCell>
-<TableCell className="font-medium">{lead.phone}</TableCell>
-<TableCell>
-  <Badge className={statusColors[lead.status]}>
-    {statusLabels[lead.status]}
-  </Badge>
-</TableCell>
-<TableCell>
-  <div className="flex items-center gap-1">
-    <Button variant="ghost" size="icon" onClick={() => setSelectedLead(lead)}>
-      <Eye className="h-4 w-4" />
-    </Button>
-    <Button variant="ghost" size="icon" onClick={() => deleteLead(lead.id)}>
-      <Trash2 className="h-4 w-4" />
-    </Button>
-  </div>
-</TableCell>
-```
-
-### 5. Dialog de Detalhes do Lead
-
-```typescript
-<Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle>Detalhes do Lead</DialogTitle>
-    </DialogHeader>
-    <div className="space-y-4">
-      {/* Informações do lead */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label>Nome</Label>
-          <p>{selectedLead?.name || "-"}</p>
-        </div>
-        <div>
-          <Label>Telefone</Label>
-          <p>{selectedLead?.phone}</p>
-        </div>
-        <div>
-          <Label>Status</Label>
-          <Badge>{statusLabels[selectedLead?.status]}</Badge>
-        </div>
-        <div>
-          <Label>Data de Criação</Label>
-          <p>{format(new Date(selectedLead?.createdAt), "dd/MM/yyyy HH:mm")}</p>
-        </div>
-      </div>
-
-      {/* Ação selecionada (se houver) */}
-      {selectedLead?.resultActionId && (
-        <div>
-          <Label>Resultado</Label>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: resultAction?.color }} />
-            <span>{resultAction?.name}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Notas (se houver) */}
-      {selectedLead?.resultNotes && (
-        <div>
-          <Label>Notas</Label>
-          <p>{selectedLead.resultNotes}</p>
-        </div>
-      )}
-
-      {/* Lista de ações da campanha */}
-      <div>
-        <Label>Ações Configuradas</Label>
-        <div className="space-y-2 mt-2">
-          {actions.map((action) => (
-            <div key={action.id} className="flex items-center gap-2 p-2 rounded border">
-              <div className="w-3 h-3 rounded-full" style={{ backgroundColor: action.color }} />
-              <span>{action.name}</span>
-              <span className="text-xs text-muted-foreground">
-                ({actionTypeLabels[action.actionType]})
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  </DialogContent>
-</Dialog>
-```
+1. O formulario de criacao/edicao de acoes nao exibe campos de configuracao especificos por tipo
+2. Quando o operador finaliza uma ligacao com uma acao, o sistema apenas salva o `result_action_id` no lead -- nao executa nenhuma automacao
 
 ---
 
-## Arquivo Modificado
+## Parte 1: Campos de Configuracao Dinamicos no Formulario
 
-| Arquivo | Alteração |
+Adicionar campos condicionais no dialog de criacao/edicao de acoes que aparecem conforme o tipo selecionado:
+
+| Tipo de Acao | Campos de Configuracao |
+|---|---|
+| Iniciar Sequencia | Select para escolher uma sequencia existente (do grupo de campanhas) |
+| Adicionar Tag | Input de texto para o nome da tag |
+| Atualizar Status | Select com os status possiveis do lead (pending, completed, failed, etc.) |
+| Webhook | Input para URL do webhook |
+| Apenas Registrar | Nenhum campo adicional |
+
+### Arquivo: `src/components/call-campaigns/tabs/ActionsTab.tsx`
+
+- Adicionar estado `actionConfig` ao `formData`
+- Renderizar campos condicionais baseados em `formData.actionType`
+- Para "Iniciar Sequencia": buscar sequencias disponiveis usando `useSequences` -- sera necessario saber qual `groupCampaignId` usar. Como a campanha de ligacao pode nao estar vinculada a uma campanha de grupo, usaremos um input de texto para o ID da sequencia (ou um select se houver sequencias acessiveis)
+- Salvar a configuracao no campo `actionConfig` da acao
+
+---
+
+## Parte 2: Execucao das Acoes ao Finalizar Ligacao
+
+### Arquivo: `src/hooks/useCallLeads.ts`
+
+Modificar a mutacao `completeLeadMutation` para, apos salvar o resultado:
+
+1. Buscar a acao selecionada (com `action_config`) da tabela `call_script_actions`
+2. Executar a automacao conforme o tipo:
+
+```text
+start_sequence -> Invocar edge function trigger-sequence/{sequenceId}
+add_tag        -> Atualizar custom_fields do lead adicionando a tag
+update_status  -> Atualizar o status do lead para o valor configurado
+webhook        -> Fazer POST para a URL configurada com dados do lead
+none           -> Nada (apenas registro)
+```
+
+### Logica de execucao por tipo:
+
+**start_sequence:**
+- Chamar `supabase.functions.invoke("trigger-sequence/" + sequenceId, { body: leadData })`
+
+**add_tag:**
+- Atualizar `custom_fields` do lead adicionando a tag ao array `tags`
+
+**update_status:**
+- Ja atualiza o status como "completed"; substituir pelo status configurado
+
+**webhook:**
+- `fetch(url, { method: "POST", body: JSON.stringify({ lead, action, campaign }) })`
+
+---
+
+## Parte 3: Exibir Configuracao na Lista de Acoes
+
+### Arquivo: `src/components/call-campaigns/tabs/ActionsTab.tsx`
+
+Na lista de acoes, exibir um resumo da configuracao abaixo do tipo:
+- "Sequencia: {nome}" para start_sequence
+- "Tag: {tag}" para add_tag  
+- "Status: {status}" para update_status
+- "URL: {url}" para webhook
+
+---
+
+## Arquivos Modificados
+
+| Arquivo | Alteracao |
 |---------|-----------|
-| `src/components/call-campaigns/tabs/LeadsTab.tsx` | Atualizar tabela e adicionar dialog de detalhes |
+| `src/components/call-campaigns/tabs/ActionsTab.tsx` | Campos dinamicos no formulario + exibicao de config na lista |
+| `src/hooks/useCallLeads.ts` | Logica de execucao das acoes ao finalizar ligacao |
+| `src/hooks/useCallActions.ts` | Garantir que `actionConfig` seja salvo/retornado corretamente |
 
 ---
 
-## Dependências
+## Detalhes Tecnicos
 
-- `date-fns` (já instalado no projeto)
-- `useCallActions` hook (já existente)
+### Estrutura do `actionConfig` por tipo:
+
+```typescript
+// start_sequence
+{ sequenceId: "uuid-da-sequencia" }
+
+// add_tag
+{ tag: "venda-concluida" }
+
+// update_status
+{ status: "completed" | "failed" | "no_answer" | "busy" }
+
+// webhook
+{ url: "https://example.com/webhook" }
+
+// none
+{}
+```
+
+### Fluxo de Execucao no completeLead:
+
+```text
+Operador clica em acao
+  -> Salva result_action_id + notes no lead
+  -> Cria registro no call_logs
+  -> Busca action_config da acao selecionada
+  -> Switch por action_type:
+       start_sequence -> invoke trigger-sequence
+       add_tag -> update lead custom_fields
+       update_status -> update lead status
+       webhook -> fetch POST
+       none -> noop
+  -> Toast de sucesso/erro
+```
+
+### Dependencias existentes utilizadas:
+- `trigger-sequence` edge function (ja existe)
+- `useCallActions` hook (ja existe)
+- `supabase.functions.invoke` (ja disponivel)
