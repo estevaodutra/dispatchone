@@ -8,11 +8,11 @@ import { useCallLeads } from "@/hooks/useCallLeads";
 import { cn } from "@/lib/utils";
 
 const nodeTypeConfig = {
-  start: { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50", label: "Início" },
-  speech: { icon: MessageSquare, color: "text-blue-500", bgColor: "bg-blue-50", label: "Fala" },
-  question: { icon: HelpCircle, color: "text-purple-500", bgColor: "bg-purple-50", label: "Pergunta" },
-  note: { icon: StickyNote, color: "text-yellow-500", bgColor: "bg-yellow-50", label: "Nota Interna" },
-  end: { icon: XCircle, color: "text-red-500", bgColor: "bg-red-50", label: "Fim" },
+  start: { icon: CheckCircle, color: "text-green-500", bgColor: "bg-green-50 dark:bg-green-950/30", borderColor: "border-green-200 dark:border-green-800", label: "Início" },
+  speech: { icon: MessageSquare, color: "text-blue-500", bgColor: "bg-blue-50 dark:bg-blue-950/30", borderColor: "border-blue-200 dark:border-blue-800", label: "Fala" },
+  question: { icon: HelpCircle, color: "text-purple-500", bgColor: "bg-purple-50 dark:bg-purple-950/30", borderColor: "border-purple-200 dark:border-purple-800", label: "Pergunta" },
+  note: { icon: StickyNote, color: "text-yellow-500", bgColor: "bg-yellow-50 dark:bg-yellow-950/30", borderColor: "border-yellow-200 dark:border-yellow-800", label: "Nota Interna" },
+  end: { icon: XCircle, color: "text-red-500", bgColor: "bg-red-50 dark:bg-red-950/30", borderColor: "border-red-200 dark:border-red-800", label: "Fim" },
 };
 
 interface InlineScriptRunnerProps {
@@ -119,7 +119,7 @@ export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScr
         )}
       </div>
 
-      <Card className={cn("border-2", config.bgColor)}>
+      <Card className={cn("border-2", config.bgColor, config.borderColor)}>
         <CardHeader className="pb-2">
           <div className="flex items-center gap-2">
             <Icon className={cn("h-5 w-5", config.color)} />
@@ -127,7 +127,7 @@ export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScr
           </div>
         </CardHeader>
         <CardContent>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
             {replaceVariables(currentNode.data.text || "")}
           </p>
 
@@ -139,7 +139,7 @@ export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScr
                   key={edge.id}
                   variant="outline"
                   size="sm"
-                  className="w-full justify-start text-left h-auto py-2"
+                  className="w-full justify-start text-left h-auto py-2 dark:bg-background dark:border-border"
                   onClick={() => handleNext(edge.target)}
                 >
                   {edge.label || "Opção"}
