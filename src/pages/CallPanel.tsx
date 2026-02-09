@@ -520,6 +520,11 @@ function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction 
                 </Button>
               </>
             )}
+            {category === "completed" && (
+              <Button variant="outline" size="sm" onClick={() => onAction(entry)}>
+                <Target className="h-3.5 w-3.5 mr-1" /> Detalhes
+              </Button>
+            )}
           </div>
         </div>
       </CardContent>
