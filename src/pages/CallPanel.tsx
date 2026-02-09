@@ -596,7 +596,7 @@ function ActionDialog({
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="script" className="mt-4">
+          <TabsContent value="script" className="mt-4 max-h-[50vh] overflow-y-auto pr-1">
             {hasScript ? (
               <InlineScriptRunner
                 campaignId={entry.campaignId!}
