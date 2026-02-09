@@ -2,6 +2,7 @@ export const en = {
   // Navigation
   nav: {
     dashboard: "Dashboard",
+    callPanel: "Call Panel",
     campaigns: "Campaigns",
     groupCampaigns: "Group Campaigns",
     phoneNumbers: "Phone Numbers",

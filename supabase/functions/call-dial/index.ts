@@ -302,7 +302,7 @@ Deno.serve(async (req) => {
     
     const { data: campaign, error: campaignError } = await supabase
       .from('call_campaigns')
-      .select('id, name, status, user_id')
+      .select('id, name, status, user_id, dial_delay_minutes')
       .eq('name', campaign_name)
       .eq('user_id', userId)
       .single();
@@ -490,6 +490,9 @@ Deno.serve(async (req) => {
     // ==================== CREATE CALL LOG ====================
     console.log('[call-dial] Creating call log');
     
+    const dialDelayMinutes = campaign.dial_delay_minutes || 10;
+    const scheduledFor = new Date(Date.now() + dialDelayMinutes * 60 * 1000).toISOString();
+    
     const { data: callLog, error: callLogError } = await supabase
       .from('call_logs')
       .insert({
@@ -497,6 +500,8 @@ Deno.serve(async (req) => {
         lead_id: lead.id,
         operator_id: operator.id,
         user_id: userId,
+        call_status: 'scheduled',
+        scheduled_for: scheduledFor,
         started_at: new Date().toISOString(),
       })
       .select('id')
@@ -515,7 +520,7 @@ Deno.serve(async (req) => {
     const { error: updateLeadError } = await supabase
       .from('call_leads')
       .update({ 
-        status: 'calling',
+        status: 'scheduled',
         last_attempt_at: new Date().toISOString(),
         attempts: (lead as any).attempts ? (lead as any).attempts + 1 : 1,
         assigned_operator_id: operator.id
@@ -541,7 +546,9 @@ Deno.serve(async (req) => {
       action: 'call.dial',
       call: {
         id: callLog.id,
-        status: 'dialing'
+        status: 'scheduled',
+        scheduled_for: scheduledFor,
+        dial_in_minutes: dialDelayMinutes,
       },
       campaign: {
         id: campaign.id,
@@ -619,7 +626,9 @@ Deno.serve(async (req) => {
     const responseBody = {
       success: true,
       call_id: callLog.id,
-      status: 'dialing',
+      status: 'scheduled',
+      scheduled_for: scheduledFor,
+      dial_in_minutes: dialDelayMinutes,
       campaign: {
         id: campaign.id,
         name: campaign.name

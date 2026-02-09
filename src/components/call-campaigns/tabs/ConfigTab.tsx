@@ -23,6 +23,7 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
   const [name, setName] = useState(campaign.name);
   const [description, setDescription] = useState(campaign.description || "");
   const [status, setStatus] = useState(campaign.status);
+  const [dialDelayMinutes, setDialDelayMinutes] = useState(campaign.dialDelayMinutes);
   const [api4comQueueId, setApi4comQueueId] = useState(
     (campaign.api4comConfig?.queueId as string) || ""
   );
@@ -37,6 +38,7 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
           name,
           description: description || undefined,
           status,
+          dialDelayMinutes,
           api4comConfig: api4comQueueId ? { queueId: api4comQueueId } : {},
         },
       });
@@ -49,6 +51,7 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
     name !== campaign.name ||
     description !== (campaign.description || "") ||
     status !== campaign.status ||
+    dialDelayMinutes !== campaign.dialDelayMinutes ||
     api4comQueueId !== ((campaign.api4comConfig?.queueId as string) || "");
 
   return (
@@ -77,6 +80,22 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
               placeholder="Descrição da campanha..."
               rows={3}
             />
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="dialDelay">Intervalo para Ligação (minutos)</Label>
+            <Input
+              id="dialDelay"
+              type="number"
+              min={1}
+              max={120}
+              value={dialDelayMinutes}
+              onChange={(e) => setDialDelayMinutes(Number(e.target.value) || 10)}
+              placeholder="10"
+            />
+            <p className="text-xs text-muted-foreground">
+              Tempo de espera entre o registro e a execução da ligação.
+            </p>
           </div>
 
           <div className="grid gap-2">
