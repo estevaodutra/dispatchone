@@ -1,29 +1,87 @@
 
-# Adicionar botao de detalhes para ligacoes concluidas
+# Ampliar status do endpoint /call-status e refletir no front-end
 
-## Problema
+## Resumo
 
-Ligacoes com status "Concluida" nao exibem nenhum botao de acao no card, impossibilitando o operador de visualizar detalhes como roteiro, notas e acao registrada.
+Expandir os status aceitos pelo endpoint `POST /call-status` de 3 para 8, e atualizar o front-end (CallPanel e API Docs) para exibir corretamente cada novo status.
 
-## Alteracao
+## Novos status
 
-### `src/pages/CallPanel.tsx` - CallCard
+| Status recebido (API) | Status interno (call_logs) | Label no front-end |
+|---|---|---|
+| `dialing` | `dialing` | Em ligacao |
+| `answered` | `answered` | Atendida |
+| `ended` | `completed` | Concluida |
+| `busy` | `busy` | Ocupado |
+| `not_found` | `not_found` | Numero nao encontrado |
+| `voicemail` | `voicemail` | Caixa Postal |
+| `cancelled` | `cancelled` | Cancelamento da Ligacao |
+| `timeout` | `timeout` | Tempo Expirado |
+| `error` | `failed` | Falhou |
 
-Adicionar um bloco para `category === "completed"` na secao de acoes (apos o bloco de `failed`, linha 522), com um botao para abrir o dialogo de detalhes:
+## Alteracoes
 
-- Botao com icone `Target` (mesmo padrao dos outros status) que chama `onAction(entry)` para abrir o ActionDialog.
-- O ActionDialog ja funciona para ligacoes concluidas, pois carrega roteiro e acoes normalmente.
+### 1. Edge Function `supabase/functions/call-status/index.ts`
 
-### Codigo
+- Atualizar `VALID_STATUSES` para incluir todos os novos valores:
+  ```text
+  ['dialing', 'answered', 'ended', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout', 'error']
+  ```
 
-Apos a linha 521 (`{category === "failed" && (...)}`), adicionar:
+- Atualizar o `statusMap` para mapear cada status recebido para o status interno:
+  ```text
+  dialing -> dialing
+  answered -> answered
+  ended -> completed
+  busy -> busy
+  not_found -> not_found
+  voicemail -> voicemail
+  cancelled -> cancelled
+  timeout -> timeout
+  error -> failed
+  ```
 
-```typescript
-{category === "completed" && (
-  <Button variant="outline" size="sm" onClick={() => onAction(entry)}>
-    <Target className="h-3.5 w-3.5 mr-1" /> Detalhes
-  </Button>
-)}
-```
+- Atualizar a logica de `started_at`/`ended_at`:
+  - `answered`: setar `started_at` se ainda nao existir.
+  - `busy`, `not_found`, `voicemail`, `cancelled`, `timeout`: setar `ended_at` e tratar como encerramento (sem duracao).
+  - `error_message` sera gravado em `notes` para `error`, `not_found`, `voicemail` e `timeout`.
 
-Isso permite que o operador abra o dialogo mesmo em ligacoes ja concluidas, podendo ver o roteiro e as acoes registradas.
+- Atualizar o mapeamento inline usado na criacao de novo call_log (linha ~423) para incluir os novos status.
+
+- Atualizar a logica de lead status para os novos status:
+  - `answered` -> lead fica `calling`
+  - `busy`, `not_found`, `voicemail`, `cancelled`, `timeout` -> lead fica `failed`
+
+### 2. Front-end `src/pages/CallPanel.tsx`
+
+- **`getStatusCategory`**: Adicionar os novos status nas categorias corretas:
+  - `in_progress`: adicionar `answered`
+  - `completed`: manter `completed`
+  - `cancelled`: adicionar `cancelled`
+  - `failed`: adicionar `busy`, `not_found`, `voicemail`, `timeout`
+
+- **Badge de status no `CallCard`**: Expandir o badge de `failed` para exibir labels granulares:
+  ```text
+  busy -> "Ocupado"
+  not_found -> "Numero nao encontrado"
+  voicemail -> "Caixa Postal"
+  timeout -> "Tempo Expirado"
+  no_answer -> "Nao atendeu"  (compatibilidade)
+  fallback -> "Falhou"
+  ```
+
+- Adicionar badge especifico para `answered`:
+  ```text
+  answered -> Badge verde "Atendida"
+  ```
+
+### 3. API Docs `src/data/api-endpoints.ts`
+
+- Atualizar o atributo `status` na descricao do endpoint `call-status`:
+  - Mudar de `"Status da ligacao: 'dialing', 'ended' ou 'error'"` para listar todos os 9 valores aceitos.
+
+- Atualizar os exemplos (curl, nodejs, python) para mostrar um dos novos status como alternativa.
+
+## Detalhes tecnicos
+
+Nenhuma alteracao de banco de dados e necessaria -- a coluna `call_status` da tabela `call_logs` e do tipo `text`, entao aceita qualquer valor sem migracao.
