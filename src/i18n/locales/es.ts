@@ -3,6 +3,7 @@ export const es = {
   nav: {
     dashboard: "Panel",
     callPanel: "Panel de Llamadas",
+    leads: "Leads",
     campaigns: "Campañas",
     groupCampaigns: "Campañas de Grupos",
     phoneNumbers: "Números",

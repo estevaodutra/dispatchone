@@ -12,6 +12,7 @@ import { AppLayout } from "@/components/layout";
 
 // Pages
 import Dashboard from "./pages/Dashboard";
+import Leads from "./pages/Leads";
 import {
   CampaignsHub,
   DispatchCampaigns,
@@ -103,6 +104,16 @@ const App = () => {
                     }
                   />
                   
+                  <Route
+                    path="/leads"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <Leads />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route
                     path="/numbers"
                     element={

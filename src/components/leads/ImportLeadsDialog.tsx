@@ -1,0 +1,221 @@
+import { useState, useRef } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Upload, Download, X, FileText } from "lucide-react";
+
+interface ImportLeadsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onImport: (data: {
+    leads: { name?: string; phone: string; email?: string; tags?: string[] }[];
+    updateExisting: boolean;
+    defaultTags: string[];
+  }) => void;
+  isLoading?: boolean;
+}
+
+type MappingField = "ignore" | "name" | "phone" | "email" | "tags";
+
+export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: ImportLeadsDialogProps) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState("");
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rows, setRows] = useState<string[][]>([]);
+  const [mapping, setMapping] = useState<Record<number, MappingField>>({});
+  const [updateExisting, setUpdateExisting] = useState(true);
+  const [defaultTags, setDefaultTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+
+  const parseCSV = (text: string) => {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return;
+    const hdrs = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+    setHeaders(hdrs);
+    const dataRows = lines.slice(1).map((line) => line.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
+    setRows(dataRows);
+
+    // Auto-map
+    const autoMapping: Record<number, MappingField> = {};
+    hdrs.forEach((h, i) => {
+      const lower = h.toLowerCase();
+      if (lower.includes("nome") || lower.includes("name")) autoMapping[i] = "name";
+      else if (lower.includes("telefone") || lower.includes("phone") || lower.includes("fone")) autoMapping[i] = "phone";
+      else if (lower.includes("email") || lower.includes("e-mail")) autoMapping[i] = "email";
+      else if (lower.includes("tag") || lower.includes("categoria")) autoMapping[i] = "tags";
+      else autoMapping[i] = "ignore";
+    });
+    setMapping(autoMapping);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (ev) => parseCSV(ev.target?.result as string);
+    reader.readAsText(file);
+  };
+
+  const handleImport = () => {
+    const phoneIdx = Object.entries(mapping).find(([, v]) => v === "phone")?.[0];
+    if (phoneIdx === undefined) return;
+
+    const leads = rows
+      .map((row) => {
+        const lead: { name?: string; phone: string; email?: string; tags?: string[] } = { phone: "" };
+        Object.entries(mapping).forEach(([idx, field]) => {
+          const val = row[Number(idx)]?.trim();
+          if (!val) return;
+          if (field === "phone") lead.phone = val;
+          else if (field === "name") lead.name = val;
+          else if (field === "email") lead.email = val;
+          else if (field === "tags") lead.tags = val.split(/[;,]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+        });
+        return lead;
+      })
+      .filter((l) => l.phone);
+
+    onImport({ leads, updateExisting, defaultTags });
+  };
+
+  const downloadTemplate = () => {
+    const csv = "nome,telefone,email,tags\nJoão Silva,5511999999999,joao@email.com,\"cliente,vip\"\nMaria Santos,5511888888888,maria@email.com,lead\n";
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "modelo_leads.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const addTag = () => {
+    const tag = tagInput.trim().toLowerCase();
+    if (tag && !defaultTags.includes(tag)) setDefaultTags([...defaultTags, tag]);
+    setTagInput("");
+  };
+
+  const reset = () => {
+    setFileName(""); setHeaders([]); setRows([]); setMapping({});
+    setUpdateExisting(true); setDefaultTags([]); setTagInput("");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Importar Leads</DialogTitle>
+          <DialogDescription>Importe leads a partir de um arquivo CSV.</DialogDescription>
+        </DialogHeader>
+
+        {!fileName ? (
+          <div className="space-y-4">
+            <div
+              className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+              <p className="text-sm text-muted-foreground">Arraste um arquivo CSV aqui ou clique para selecionar</p>
+              <input ref={fileRef} type="file" accept=".csv" className="hidden" onChange={handleFileChange} />
+            </div>
+            <Button variant="link" size="sm" onClick={downloadTemplate} className="gap-1">
+              <Download className="h-4 w-4" /> Baixar modelo de planilha
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between bg-muted/50 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium">{fileName}</span>
+              </div>
+              <Button variant="ghost" size="sm" onClick={reset}>Remover</Button>
+            </div>
+
+            {/* Column Mapping */}
+            <div>
+              <Label className="text-sm font-medium">Mapeamento de colunas</Label>
+              <div className="space-y-2 mt-2">
+                {headers.map((header, idx) => (
+                  <div key={idx} className="flex items-center gap-3">
+                    <span className="text-sm w-40 truncate text-muted-foreground">{header}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <Select value={mapping[idx] || "ignore"} onValueChange={(v) => setMapping({ ...mapping, [idx]: v as MappingField })}>
+                      <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ignore">Ignorar</SelectItem>
+                        <SelectItem value="name">Nome</SelectItem>
+                        <SelectItem value="phone">Telefone</SelectItem>
+                        <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="tags">Tag</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Preview */}
+            <div>
+              <Label className="text-sm font-medium">Prévia: {rows.length} leads encontrados</Label>
+              <div className="border rounded-lg overflow-auto max-h-40 mt-2">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {headers.map((h, i) => mapping[i] !== "ignore" && <TableHead key={i}>{h}</TableHead>)}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.slice(0, 5).map((row, ri) => (
+                      <TableRow key={ri}>
+                        {row.map((cell, ci) => mapping[ci] !== "ignore" && <TableCell key={ci}>{cell || "—"}</TableCell>)}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+
+            {/* Options */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Checkbox checked={updateExisting} onCheckedChange={(c) => setUpdateExisting(!!c)} id="update" />
+                <label htmlFor="update" className="text-sm">Atualizar leads existentes (mesmo telefone)</label>
+              </div>
+              <div>
+                <Label className="text-sm">Adicionar tag a todos</Label>
+                <div className="flex gap-2 mt-1">
+                  <Input value={tagInput} onChange={(e) => setTagInput(e.target.value)} placeholder="Tag" onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())} />
+                  <Button variant="outline" size="sm" onClick={addTag}>+</Button>
+                </div>
+                {defaultTags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-1">
+                    {defaultTags.map((tag) => (
+                      <Badge key={tag} variant="secondary" className="gap-1">
+                        {tag}
+                        <X className="h-3 w-3 cursor-pointer" onClick={() => setDefaultTags(defaultTags.filter((t) => t !== tag))} />
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => { reset(); onOpenChange(false); }}>Cancelar</Button>
+          <Button onClick={handleImport} disabled={!fileName || rows.length === 0 || isLoading}>
+            {isLoading ? "Importando..." : "Importar"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
