@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Workflow, Trash2, Edit, Rocket, Calendar, Plug, UserPlus } from "lucide-react";
+import { Plus, Workflow, Trash2, Edit, Rocket, Calendar, Plug, UserPlus, Zap } from "lucide-react";
 
 interface DispatchSequenceListProps {
   sequences: DispatchSequence[];
@@ -32,6 +32,7 @@ const TRIGGER_TYPES = [
   { value: "scheduled", label: "Agendado", description: "Disparo em data/hora específica", icon: Calendar },
   { value: "api", label: "Via API", description: "Disparo via API/n8n", icon: Plug },
   { value: "on_add", label: "Ao adicionar contato", description: "Inicia quando contato entra na campanha", icon: UserPlus },
+  { value: "action", label: "Acionador por Ação", description: "Dispara quando uma ação específica é executada", icon: Zap },
 ];
 
 export function DispatchSequenceList({
