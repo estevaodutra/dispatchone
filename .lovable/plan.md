@@ -1,57 +1,37 @@
 
 
-# Distribuicao igualitaria de ligacoes entre operadores
+# Paginacao e Abas de Filtro no Painel de Ligacoes
 
-## Problema
+## O que sera feito
 
-Atualmente, a atribuicao de operadores nos tres pontos do sistema nao distribui as ligacoes de forma equilibrada:
+1. **Substituir o filtro de status (dropdown) por abas clicaveis** -- usando o componente `Tabs`/`TabsTrigger` ja existente no projeto, para navegacao mais rapida e visual entre os status: Todas, Agendadas, Em Andamento, Concluidas, Falhas, Canceladas.
 
-- **Edge Function `call-dial`**: pega sempre o primeiro operador ativo (`.limit(1).single()`)
-- **Edge Function `reschedule-failed-calls`**: escolhe aleatoriamente (`Math.random()`)
-- **Hook `useCallPanel` (dialNow)**: pega o primeiro operador ativo quando redireciona
-
-## Solucao: Round-robin baseado em contagem de call_logs
-
-Em cada ponto de atribuicao, o sistema vai buscar todos os operadores ativos da campanha e selecionar aquele com **menor numero de ligacoes atribuidas** (contagem em `call_logs`). Em caso de empate, seleciona o primeiro da lista (por ordem de criacao).
+2. **Adicionar paginacao de 20 cards por pagina** -- com controles de pagina anterior/proxima e indicador de pagina atual, resetando para pagina 1 ao trocar de aba ou filtro.
 
 ## Alteracoes
 
-### 1. Edge Function `supabase/functions/call-dial/index.ts`
+### Arquivo: `src/pages/CallPanel.tsx`
 
-Substituir a busca simples por operador (linhas 430-436) por uma logica de distribuicao:
+**Filtro de status como abas:**
+- Remover o `Select` de status (linhas 268-278)
+- Adicionar um componente `Tabs` com `TabsList` e `TabsTrigger` para cada categoria de status
+- Cada aba mostra o label e a contagem (ex: "Agendadas (5)")
+- Ao clicar na aba, atualiza o `statusFilter` e reseta a pagina para 1
 
-- Buscar todos os operadores ativos da campanha
-- Para cada operador, contar quantos `call_logs` existem com aquele `operator_id` naquela campanha
-- Selecionar o operador com menor contagem
+**Paginacao:**
+- Adicionar estados `currentPage` (inicia em 1) e constante `ITEMS_PER_PAGE = 20`
+- Calcular `paginatedEntries` com `entries.slice(start, end)`
+- Exibir controles de paginacao abaixo dos cards: botoes Anterior/Proximo e indicador "Pagina X de Y"
+- Resetar `currentPage` para 1 sempre que `statusFilter`, `campaignFilter` ou `searchQuery` mudar
 
-### 2. Edge Function `supabase/functions/reschedule-failed-calls/index.ts`
-
-Substituir a selecao aleatoria (linhas 117-127) pela mesma logica:
-
-- Buscar todos os operadores ativos da campanha
-- Contar `call_logs` por operador naquela campanha
-- Selecionar o de menor contagem
-
-### 3. Hook `src/hooks/useCallPanel.ts` (dialNow mutation)
-
-Substituir a busca do primeiro operador ativo (linhas 268-274) pela logica de distribuicao:
-
-- Buscar todos os operadores ativos da campanha
-- Contar `call_logs` por operador
-- Selecionar o de menor contagem
+**Layout dos filtros:**
+- Manter o campo de busca e o dropdown de campanha na mesma linha
+- As abas de status ficam em uma linha separada abaixo, ocupando toda a largura
 
 ## Detalhes tecnicos
 
-A logica de selecao sera a mesma nos tres pontos. Para as Edge Functions (Deno/Supabase), a implementacao sera:
-
-```text
-1. SELECT * FROM call_campaign_operators WHERE campaign_id = X AND is_active = true
-2. Para cada operador:
-   SELECT count(*) FROM call_logs WHERE operator_id = op.id AND campaign_id = X
-3. Selecionar o operador com menor count
-4. Em caso de empate, manter a ordem de created_at (primeiro cadastrado)
-```
-
-Para o hook do frontend (`useCallPanel.ts`), a mesma logica sera feita via chamadas ao Supabase client.
-
-Nenhuma alteracao de banco de dados e necessaria.
+- Usar `Tabs` de `@/components/ui/tabs` com `value={statusFilter}` e `onValueChange`
+- Valores das abas: `all`, `scheduled`, `in_progress`, `completed`, `failed`, `cancelled`
+- Paginacao implementada no frontend (os dados ja sao carregados do hook)
+- Usar `useEffect` para resetar `currentPage` quando filtros mudam
+- Componentes de paginacao: botoes simples com `ChevronLeft`/`ChevronRight` do lucide-react e texto "X de Y"
