@@ -93,19 +93,30 @@ Deno.serve(async (req) => {
           .limit(1);
 
         if (existing && existing.length > 0) {
-          // Already has a scheduled call, skip
           continue;
         }
 
+        // Fetch active operators for this campaign
+        const { data: activeOperators } = await supabase
+          .from("call_campaign_operators")
+          .select("id")
+          .eq("campaign_id", call.campaign_id)
+          .eq("is_active", true);
+
+        // Pick a random active operator, fallback to original
+        const newOperatorId = activeOperators && activeOperators.length > 0
+          ? activeOperators[Math.floor(Math.random() * activeOperators.length)].id
+          : call.operator_id;
+
         const scheduledFor = generateRandomScheduledFor(nextBusinessDay);
 
-        // Create new scheduled call_log
+        // Create new scheduled call_log with random operator
         const { error: insertError } = await supabase
           .from("call_logs")
           .insert({
             campaign_id: call.campaign_id,
             lead_id: call.lead_id,
-            operator_id: call.operator_id,
+            operator_id: newOperatorId,
             user_id: call.user_id,
             call_status: "scheduled",
             scheduled_for: scheduledFor,
@@ -116,11 +127,11 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Update lead status back to pending
+        // Update lead status and assigned operator
         if (call.lead_id) {
           await supabase
             .from("call_leads")
-            .update({ status: "pending" })
+            .update({ status: "pending", assigned_operator_id: newOperatorId })
             .eq("id", call.lead_id);
         }
 
