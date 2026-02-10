@@ -424,18 +424,17 @@ Deno.serve(async (req) => {
       console.log('[call-dial] Created new lead:', lead.id);
     }
 
-    // ==================== FIND ACTIVE OPERATOR ====================
-    console.log('[call-dial] Searching for active operator in campaign:', campaign.id);
+    // ==================== FIND ACTIVE OPERATOR (round-robin) ====================
+    console.log('[call-dial] Searching for active operators in campaign:', campaign.id);
     
-    const { data: operator, error: operatorError } = await supabase
+    const { data: activeOperators, error: operatorError } = await supabase
       .from('call_campaign_operators')
       .select('id, operator_name, extension')
       .eq('campaign_id', campaign.id)
       .eq('is_active', true)
-      .limit(1)
-      .single();
+      .order('created_at', { ascending: true });
 
-    if (operatorError || !operator) {
+    if (operatorError || !activeOperators || activeOperators.length === 0) {
       console.log('[call-dial] No active operator found:', operatorError?.message);
       const responseBody = {
         success: false,
@@ -458,6 +457,24 @@ Deno.serve(async (req) => {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Select operator with fewest assigned calls (round-robin)
+    let operator = activeOperators[0];
+    if (activeOperators.length > 1) {
+      let minCount = Infinity;
+      for (const op of activeOperators) {
+        const { count } = await supabase
+          .from('call_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('operator_id', op.id)
+          .eq('campaign_id', campaign.id);
+        const c = count || 0;
+        if (c < minCount) {
+          minCount = c;
+          operator = op;
+        }
+      }
     }
 
     console.log('[call-dial] Found operator:', operator.id);

@@ -270,14 +270,29 @@ export function useCallPanel(filters?: {
             .select("id, operator_name, extension")
             .eq("campaign_id", entry.campaignId)
             .eq("is_active", true)
-            .order("created_at", { ascending: true })
-            .limit(1);
+            .order("created_at", { ascending: true });
 
           if (!activeOps || activeOps.length === 0) {
             throw new Error("Nenhum operador ativo disponível nesta campanha");
           }
 
-          const newOp = activeOps[0];
+          // Round-robin: pick operator with fewest calls
+          let newOp = activeOps[0];
+          if (activeOps.length > 1) {
+            let minCount = Infinity;
+            for (const op of activeOps) {
+              const { count } = await (supabase as any)
+                .from("call_logs")
+                .select("*", { count: "exact", head: true })
+                .eq("operator_id", op.id)
+                .eq("campaign_id", entry.campaignId);
+              const c = count || 0;
+              if (c < minCount) {
+                minCount = c;
+                newOp = op;
+              }
+            }
+          }
           effectiveOperator = { id: newOp.id, name: newOp.operator_name, extension: newOp.extension };
           wasRedirected = true;
 

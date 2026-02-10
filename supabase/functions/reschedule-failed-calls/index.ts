@@ -119,12 +119,26 @@ Deno.serve(async (req) => {
           .from("call_campaign_operators")
           .select("id")
           .eq("campaign_id", call.campaign_id)
-          .eq("is_active", true);
+          .eq("is_active", true)
+          .order("created_at", { ascending: true });
 
-        // Pick a random active operator, fallback to original
-        const newOperatorId = activeOperators && activeOperators.length > 0
-          ? activeOperators[Math.floor(Math.random() * activeOperators.length)].id
-          : call.operator_id;
+        // Pick operator with fewest assigned calls (round-robin)
+        let newOperatorId = call.operator_id;
+        if (activeOperators && activeOperators.length > 0) {
+          let minCount = Infinity;
+          for (const op of activeOperators) {
+            const { count } = await supabase
+              .from("call_logs")
+              .select("*", { count: "exact", head: true })
+              .eq("operator_id", op.id)
+              .eq("campaign_id", call.campaign_id);
+            const c = count || 0;
+            if (c < minCount) {
+              minCount = c;
+              newOperatorId = op.id;
+            }
+          }
+        }
 
         const scheduledFor = generateRandomScheduledFor(nextBusinessDay);
 
