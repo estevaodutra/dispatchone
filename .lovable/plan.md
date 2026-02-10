@@ -1,58 +1,52 @@
 
 
-# Adicionar acao padrao "Reagendar" no dialogo de Registrar Acao
+# Verificacao de operador ativo antes de discar
 
 ## Problema
 
-Quando o operador abre o dialogo "Registrar Acao" para uma ligacao, ele so ve as acoes configuradas na campanha. Falta uma opcao rapida de "Reagendar" para quando a pessoa atende mas nao pode falar naquele momento.
+Quando o sistema vai executar uma ligacao (dialNow), ele usa o operador atribuido no card sem verificar se esse operador esta ativo. Se o operador (ex: "mauro - R. 1003") estiver com `is_active = false`, a ligacao sera enviada para um ramal indisponivel.
 
 ## Solucao
 
-Adicionar um botao fixo de "Reagendar" dentro da aba "Acao" do ActionDialog, antes das acoes configuradas da campanha. Ao clicar, fecha o dialogo de acao e abre o dialogo de reagendamento ja existente.
+Antes de disparar o webhook no `dialNowMutation`, consultar a tabela `call_campaign_operators` para verificar se o operador atribuido esta ativo. Se nao estiver, buscar o proximo operador ativo da mesma campanha e reatribuir automaticamente a ligacao.
 
 ## Alteracoes
 
-**Arquivo:** `src/pages/CallPanel.tsx`
+### Arquivo: `src/hooks/useCallPanel.ts`
 
-### 1. ActionDialog - nova prop `onReschedule`
+#### Dentro de `dialNowMutation.mutationFn` (antes de montar o payload)
 
-Adicionar uma prop `onReschedule` ao componente ActionDialog que recebe a entry e aciona o fluxo de reagendamento existente.
+1. Apos encontrar a `entry`, buscar o operador atribuido na tabela `call_campaign_operators`
+2. Se `is_active = false` (ou operador nao encontrado), buscar o primeiro operador ativo da mesma campanha
+3. Se encontrar operador ativo substituto:
+   - Atualizar `call_logs.operator_id` para o novo operador
+   - Atualizar `call_leads.assigned_operator_id` para o novo operador
+   - Usar os dados do novo operador no payload do webhook
+4. Se nenhum operador ativo estiver disponivel, lancar erro: "Nenhum operador ativo disponivel nesta campanha"
 
-### 2. Botao fixo na aba "Acao"
-
-Dentro da TabsContent de "action", antes da lista de acoes da campanha, renderizar um botao estilizado com icone `CalendarClock` e cor azul/amber:
+#### Logica detalhada
 
 ```text
-+------------------------------------------------------+
-|  (icone calendario)  Reagendar                       |
-|  A pessoa nao pode falar agora                       |
-+------------------------------------------------------+
-|  (circulo verde)  Lancamento                         |
-|  Inicia sequencia automatica                         |
-+------------------------------------------------------+
+1. entry = find call by id
+2. if entry.operatorId:
+   a. query call_campaign_operators WHERE id = entry.operatorId
+   b. if operator.is_active == false:
+      - query call_campaign_operators WHERE campaign_id = entry.campaignId AND is_active = true ORDER BY created_at LIMIT 1
+      - if found:
+        - UPDATE call_logs SET operator_id = newOp.id
+        - UPDATE call_leads SET assigned_operator_id = newOp.id (if leadId exists)
+        - use newOp data in payload (name, extension)
+      - if not found:
+        - throw Error("Nenhum operador ativo disponivel")
 ```
 
-### 3. Chamada no componente pai
+#### Payload do webhook atualizado
 
-No CallPanel principal, passar `onReschedule` para o ActionDialog que:
-1. Fecha o dialogo de acao (`setActionEntry(null)`)
-2. Abre o dialogo de reagendamento (`setRescheduleEntry(entry)`) com valores pre-preenchidos
+O campo `operator` no payload usara os dados do operador efetivo (original se ativo, substituto se redirecionado).
 
 ## Detalhe tecnico
 
-- Modificar a interface do ActionDialog adicionando `onReschedule: (entry: CallPanelEntry) => void`
-- No botao de Reagendar, chamar `onReschedule(entry)` ao clicar
-- No CallPanel (linha ~374), passar a prop:
-  ```
-  onReschedule={(e) => {
-    setActionEntry(null);
-    setRescheduleEntry(e);
-    // pre-preencher data/hora +30min
-  }}
-  ```
-- O botao "Reagendar" fica separado visualmente das acoes da campanha com um divisor (Separator)
-
-## Arquivo modificado
-
-- `src/pages/CallPanel.tsx`
+- A verificacao acontece apenas no momento do `dialNow`, nao altera o fluxo de agendamento
+- O toast de sucesso informara se houve redirecionamento: "Ligacao iniciada (operador redirecionado para [nome])"
+- Apenas 1 arquivo modificado: `src/hooks/useCallPanel.ts`
 
