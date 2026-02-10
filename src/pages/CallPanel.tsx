@@ -46,6 +46,8 @@ import {
   FileText,
   Headset,
   Pencil,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -124,6 +126,8 @@ export default function CallPanel() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 20;
   const [, setTick] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -195,13 +199,31 @@ export default function CallPanel() {
     });
   }, [entries, soundEnabled, notificationsEnabled]);
 
+  // Reset page on filter change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, campaignFilter, searchQuery]);
+
+  // Pagination
+  const totalPages = Math.ceil(entries.length / ITEMS_PER_PAGE);
+  const paginatedEntries = entries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Status counts for tabs
+  const statusCounts = {
+    all: entries.length,
+    scheduled: entries.filter(e => getStatusCategory(e.callStatus) === "scheduled").length,
+    in_progress: entries.filter(e => getStatusCategory(e.callStatus) === "in_progress").length,
+    completed: entries.filter(e => getStatusCategory(e.callStatus) === "completed").length,
+    failed: entries.filter(e => getStatusCategory(e.callStatus) === "failed").length,
+    cancelled: entries.filter(e => getStatusCategory(e.callStatus) === "cancelled").length,
+  };
+
   // Handlers
   const handleReschedule = async () => {
     if (!rescheduleEntry || !rescheduleDate || !rescheduleTime) return;
     await rescheduleCall({ callId: rescheduleEntry.id, scheduledFor: new Date(`${rescheduleDate}T${rescheduleTime}`).toISOString() });
     setRescheduleEntry(null);
   };
-
   const handleCancel = async () => {
     if (!cancelEntry) return;
     await cancelCall({ callId: cancelEntry.id, reason: cancelReason || undefined });
@@ -265,27 +287,28 @@ export default function CallPanel() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
-            <SelectItem value="scheduled">Agendadas</SelectItem>
-            <SelectItem value="in_progress">Em Andamento</SelectItem>
-            <SelectItem value="completed">Concluídas</SelectItem>
-            <SelectItem value="failed">Falhas</SelectItem>
-            <SelectItem value="cancelled">Canceladas</SelectItem>
-          </SelectContent>
-        </Select>
       </div>
+
+      {/* Status Tabs */}
+      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
+        <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="all" className="flex-1 min-w-[100px]">Todas ({statusCounts.all})</TabsTrigger>
+          <TabsTrigger value="scheduled" className="flex-1 min-w-[100px]">Agendadas ({statusCounts.scheduled})</TabsTrigger>
+          <TabsTrigger value="in_progress" className="flex-1 min-w-[100px]">Em Andamento ({statusCounts.in_progress})</TabsTrigger>
+          <TabsTrigger value="completed" className="flex-1 min-w-[100px]">Concluídas ({statusCounts.completed})</TabsTrigger>
+          <TabsTrigger value="failed" className="flex-1 min-w-[100px]">Falhas ({statusCounts.failed})</TabsTrigger>
+          <TabsTrigger value="cancelled" className="flex-1 min-w-[100px]">Canceladas ({statusCounts.cancelled})</TabsTrigger>
+        </TabsList>
+      </Tabs>
 
       {/* Call List */}
       {isLoading ? (
         <div className="text-center py-12 text-muted-foreground">Carregando ligações...</div>
-      ) : entries.length === 0 ? (
+      ) : paginatedEntries.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">Nenhuma ligação encontrada.</div>
       ) : (
         <div className="space-y-3">
-          {entries.map((entry) => (
+          {paginatedEntries.map((entry) => (
             <CallCard
               key={entry.id}
               entry={entry}
@@ -305,6 +328,31 @@ export default function CallPanel() {
               }}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-4 pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((p) => p - 1)}
+          >
+            <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Página {currentPage} de {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((p) => p + 1)}
+          >
+            Próxima <ChevronRight className="h-4 w-4 ml-1" />
+          </Button>
         </div>
       )}
 
