@@ -1,35 +1,57 @@
 
-# Corrigir dropdown "Campanha" na aba Acoes das Campanhas de Ligacao
+
+# Distribuicao igualitaria de ligacoes entre operadores
 
 ## Problema
 
-O dropdown "Campanha de Grupo" na aba Acoes (`ActionsTab.tsx`) das Campanhas de Ligacao so lista campanhas de grupo (`useGroupCampaigns`). Ele deveria tambem listar campanhas de disparos (`useDispatchCampaigns`), com segmentacao visual entre os dois tipos.
+Atualmente, a atribuicao de operadores nos tres pontos do sistema nao distribui as ligacoes de forma equilibrada:
 
-## Solucao
+- **Edge Function `call-dial`**: pega sempre o primeiro operador ativo (`.limit(1).single()`)
+- **Edge Function `reschedule-failed-calls`**: escolhe aleatoriamente (`Math.random()`)
+- **Hook `useCallPanel` (dialNow)**: pega o primeiro operador ativo quando redireciona
 
-Modificar o componente `ActionsTab.tsx` para:
+## Solucao: Round-robin baseado em contagem de call_logs
 
-1. Importar `useDispatchCampaigns` alem de `useGroupCampaigns`
-2. Importar `useDispatchSequences` alem de `useSequences`
-3. Renomear o label do dropdown de "Campanha de Grupo" para "Campanha"
-4. Exibir os itens no dropdown agrupados com `SelectGroup` e `SelectLabel`:
-   - **Campanhas de Grupo** - lista as campanhas de grupo
-   - **Campanhas de Disparos** - lista as campanhas de dispatch
-5. Guardar no `actionConfig` o tipo da campanha selecionada (`campaignType: "group" | "dispatch"`) para saber qual hook de sequencias usar
-6. Carregar sequencias do hook correto conforme o tipo selecionado:
-   - Se `campaignType === "group"` -> usar `useSequences(campaignId)`
-   - Se `campaignType === "dispatch"` -> usar `useDispatchSequences(campaignId)`
+Em cada ponto de atribuicao, o sistema vai buscar todos os operadores ativos da campanha e selecionar aquele com **menor numero de ligacoes atribuidas** (contagem em `call_logs`). Em caso de empate, seleciona o primeiro da lista (por ordem de criacao).
 
-## Arquivo modificado
+## Alteracoes
 
-`src/components/call-campaigns/tabs/ActionsTab.tsx`
+### 1. Edge Function `supabase/functions/call-dial/index.ts`
+
+Substituir a busca simples por operador (linhas 430-436) por uma logica de distribuicao:
+
+- Buscar todos os operadores ativos da campanha
+- Para cada operador, contar quantos `call_logs` existem com aquele `operator_id` naquela campanha
+- Selecionar o operador com menor contagem
+
+### 2. Edge Function `supabase/functions/reschedule-failed-calls/index.ts`
+
+Substituir a selecao aleatoria (linhas 117-127) pela mesma logica:
+
+- Buscar todos os operadores ativos da campanha
+- Contar `call_logs` por operador naquela campanha
+- Selecionar o de menor contagem
+
+### 3. Hook `src/hooks/useCallPanel.ts` (dialNow mutation)
+
+Substituir a busca do primeiro operador ativo (linhas 268-274) pela logica de distribuicao:
+
+- Buscar todos os operadores ativos da campanha
+- Contar `call_logs` por operador
+- Selecionar o de menor contagem
 
 ## Detalhes tecnicos
 
-- Adicionar imports: `useDispatchCampaigns`, `useDispatchSequences`, `SelectGroup`, `SelectLabel`
-- Chamar ambos os hooks no componente: `useGroupCampaigns()` e `useDispatchCampaigns()`
-- Chamar ambos os hooks de sequencias: `useSequences(groupCampaignId)` e `useDispatchSequences(dispatchCampaignId)`
-- Determinar qual campaignId passar para cada hook com base no `campaignType` armazenado em `actionConfig`
-- No dropdown, usar `SelectGroup` com `SelectLabel` para separar visualmente os dois grupos
-- Ao selecionar uma campanha, gravar tanto o `campaignId` quanto o `campaignType` no `actionConfig`, e limpar o `sequenceId`
-- No dropdown de sequencias, exibir as sequencias do hook correto conforme o tipo
+A logica de selecao sera a mesma nos tres pontos. Para as Edge Functions (Deno/Supabase), a implementacao sera:
+
+```text
+1. SELECT * FROM call_campaign_operators WHERE campaign_id = X AND is_active = true
+2. Para cada operador:
+   SELECT count(*) FROM call_logs WHERE operator_id = op.id AND campaign_id = X
+3. Selecionar o operador com menor count
+4. Em caso de empate, manter a ordem de created_at (primeiro cadastrado)
+```
+
+Para o hook do frontend (`useCallPanel.ts`), a mesma logica sera feita via chamadas ao Supabase client.
+
+Nenhuma alteracao de banco de dados e necessaria.
