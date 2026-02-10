@@ -1,40 +1,52 @@
 
 
-# Timer em formato HH:mm:ss no Painel do Operador
+# Corrigir formato do timer no Painel de Ligacoes (CallPanel)
 
 ## Resumo
 
-Alterar o timer do header do OperatorScriptView para exibir no formato `HH:mm:ss` em vez de apenas segundos, e adicionar um `setInterval` para que o timer atualize em tempo real a cada segundo.
+O timer "Em 912:02" exibido nos cards de ligacao esta no formato `minutos:segundos`. Precisa ser alterado para `HH:mm:ss`.
 
 ## Alteracao
 
-**Arquivo:** `src/components/call-campaigns/operator/OperatorScriptView.tsx`
+**Arquivo:** `src/pages/CallPanel.tsx`
 
-1. Adicionar um estado `elapsed` (number) que armazena os segundos decorridos
-2. Adicionar um `useEffect` com `setInterval` de 1 segundo que incrementa `elapsed`
-3. Criar funcao `formatElapsed(seconds)` que converte para `HH:mm:ss`
-4. Substituir o calculo inline no Badge pelo valor formatado
+Modificar a funcao `getTimeRemaining` (linhas 67-79) para formatar o tempo restante como `HH:mm:ss`:
 
-### Funcao de formatacao
+- Calcular horas, minutos e segundos a partir de `totalSec`
+- Retornar string no formato `HH:mm:ss` com zero-padding
+
+### Antes
 
 ```text
-function formatElapsed(totalSeconds: number): string {
-  hours   = floor(totalSeconds / 3600)
-  minutes = floor((totalSeconds % 3600) / 60)
-  seconds = totalSeconds % 60
-  return "HH:mm:ss" com zero-padding
-}
+912:02  (minutos:segundos)
 ```
 
-### Resultado visual
+### Depois
 
-Antes: `916:53` (minutos:segundos sem clareza)
-Depois: `00:15:16` (horas:minutos:segundos)
+```text
+15:12:02  (horas:minutos:segundos)
+```
 
-## Detalhes tecnicos
+## Detalhe tecnico
 
-- Remover o calculo inline `Math.floor((new Date().getTime() - startTime.getTime()) / 1000)` do JSX
-- Adicionar `const [elapsed, setElapsed] = useState(0)` 
-- Adicionar `useEffect` com `setInterval(() => setElapsed(...), 1000)` e cleanup no return
-- O intervalo sera limpo automaticamente ao desmontar o componente
+A funcao `getTimeRemaining` sera alterada de:
+
+```text
+min = floor(totalSec / 60)
+sec = totalSec % 60
+text = "min:sec"
+```
+
+Para:
+
+```text
+h = floor(totalSec / 3600)
+m = floor((totalSec % 3600) / 60)
+s = totalSec % 60
+text = "HH:mm:ss"
+```
+
+## Arquivo modificado
+
+- `src/pages/CallPanel.tsx` (funcao `getTimeRemaining`, linhas 67-79)
 
