@@ -152,6 +152,56 @@ export function useDispatchSteps(sequenceId: string | undefined) {
     },
   });
 
+  const saveAllMutation = useMutation({
+    mutationFn: async (stepsToSave: {
+      stepOrder: number;
+      stepType: string;
+      messageType: string | null;
+      messageContent: string | null;
+      messageMediaUrl: string | null;
+      messageButtons: unknown[] | null;
+      delayValue: number | null;
+      delayUnit: string | null;
+    }[]) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !sequenceId) throw new Error("Not authenticated");
+
+      // Delete all existing steps
+      const { error: deleteError } = await supabase
+        .from("dispatch_sequence_steps")
+        .delete()
+        .eq("sequence_id", sequenceId);
+      if (deleteError) throw deleteError;
+
+      if (stepsToSave.length === 0) return;
+
+      // Insert all new steps
+      const { error: insertError } = await supabase
+        .from("dispatch_sequence_steps")
+        .insert(
+          stepsToSave.map(step => ({
+            user_id: user.id,
+            sequence_id: sequenceId,
+            step_order: step.stepOrder,
+            step_type: step.stepType,
+            message_type: step.messageType,
+            message_content: step.messageContent,
+            message_media_url: step.messageMediaUrl,
+            message_buttons: (step.messageButtons || null) as Json,
+            delay_value: step.delayValue,
+            delay_unit: step.delayUnit,
+          }))
+        );
+      if (insertError) throw insertError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dispatch_steps", sequenceId] });
+    },
+    onError: (error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     steps,
     isLoading,
@@ -159,6 +209,8 @@ export function useDispatchSteps(sequenceId: string | undefined) {
     updateStep: updateMutation.mutateAsync,
     deleteStep: deleteMutation.mutateAsync,
     reorderSteps: reorderMutation.mutateAsync,
+    saveAllSteps: saveAllMutation.mutateAsync,
     isCreating: createMutation.isPending,
+    isSaving: saveAllMutation.isPending,
   };
 }
