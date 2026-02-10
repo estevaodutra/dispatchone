@@ -1,52 +1,40 @@
 
-# Reagendamento imediato em 2 horas para falhas antes das 20h
+
+# Timer em formato HH:mm:ss no Painel do Operador
 
 ## Resumo
 
-Atualmente, ligacoes que falham antes das 20h BRT nao sao reagendadas imediatamente -- ficam esperando o cron noturno. A alteracao faz com que **todas as falhas**, independente do horario, sejam reagendadas imediatamente:
-
-- **Antes das 20h**: reagenda para **2 horas depois**, no mesmo dia (desde que o novo horario nao ultrapasse 19h; se ultrapassar, agenda para o proximo dia util entre 9h-19h)
-- **Apos as 20h**: mantem a logica atual (proximo dia util, horario aleatorio 9h-19h)
-
-O limite de 3 tentativas continua valendo em ambos os casos.
+Alterar o timer do header do OperatorScriptView para exibir no formato `HH:mm:ss` em vez de apenas segundos, e adicionar um `setInterval` para que o timer atualize em tempo real a cada segundo.
 
 ## Alteracao
 
-**Arquivo:** `supabase/functions/call-status/index.ts`
+**Arquivo:** `src/components/call-campaigns/operator/OperatorScriptView.tsx`
 
-Modificar o bloco de reagendamento imediato (linhas 519-610):
+1. Adicionar um estado `elapsed` (number) que armazena os segundos decorridos
+2. Adicionar um `useEffect` com `setInterval` de 1 segundo que incrementa `elapsed`
+3. Criar funcao `formatElapsed(seconds)` que converte para `HH:mm:ss`
+4. Substituir o calculo inline no Badge pelo valor formatado
 
-1. Remover a condicao `if (hourBRT >= 20)` que restringe o reagendamento apenas ao horario noturno
-2. Manter a verificacao de status de falha e limite de 3 tentativas
-3. Adicionar logica condicional para calcular o `scheduled_for`:
-   - Se `hourBRT < 20`: agendar para **agora + 2 horas**
-     - Se o horario resultante for >= 19h BRT: agendar para o proximo dia util (9h-19h aleatorio)
-   - Se `hourBRT >= 20`: manter logica atual (proximo dia util, 9h-19h aleatorio)
-
-## Logica de calculo do horario
+### Funcao de formatacao
 
 ```text
-Falha recebida -> horario BRT atual?
-  -> Antes das 20h:
-     -> now + 2h < 19h? -> Agenda para now + 2h (mesmo dia)
-     -> now + 2h >= 19h? -> Agenda para proximo dia util (9h-19h)
-  -> Apos as 20h:
-     -> Agenda para proximo dia util (9h-19h) [logica existente]
+function formatElapsed(totalSeconds: number): string {
+  hours   = floor(totalSeconds / 3600)
+  minutes = floor((totalSeconds % 3600) / 60)
+  seconds = totalSeconds % 60
+  return "HH:mm:ss" com zero-padding
+}
 ```
 
-## Exemplo pratico
+### Resultado visual
 
-- Falha as 14:00 -> reagenda para 16:00 do mesmo dia
-- Falha as 17:30 -> now + 2h = 19:30, ultrapassa 19h -> reagenda proximo dia util
-- Falha as 21:00 -> reagenda proximo dia util (logica atual)
+Antes: `916:53` (minutos:segundos sem clareza)
+Depois: `00:15:16` (horas:minutos:segundos)
 
 ## Detalhes tecnicos
 
-- O bloco `if (hourBRT >= 20)` sera substituido por um bloco que sempre executa (sem condicao de horario)
-- Dentro dele, a diferenca sera apenas no calculo do `scheduledFor`
-- Operador aleatorio e limite de 3 tentativas permanecem iguais
-- O cron noturno (`reschedule-failed-calls`) continua como fallback para casos que nao passaram pelo `call-status`
+- Remover o calculo inline `Math.floor((new Date().getTime() - startTime.getTime()) / 1000)` do JSX
+- Adicionar `const [elapsed, setElapsed] = useState(0)` 
+- Adicionar `useEffect` com `setInterval(() => setElapsed(...), 1000)` e cleanup no return
+- O intervalo sera limpo automaticamente ao desmontar o componente
 
-## Arquivo modificado
-
-- `supabase/functions/call-status/index.ts`
