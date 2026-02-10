@@ -1,32 +1,37 @@
 
-# Corrigir duplicidade de call_logs para o mesmo lead
+# Remover leads duplicados (mesmo telefone na mesma campanha)
 
 ## Problema
 
-A edge function `call-dial` sempre cria um novo registro em `call_logs` sem verificar se ja existe um agendamento ativo (status "scheduled", "ready", "dialing", etc.) para o mesmo lead na mesma campanha. Isso gera cards duplicados no Painel de Ligacoes.
+A duplicidade nao esta nos `call_logs` isoladamente, mas sim nos `call_leads`: existem 2 registros de lead para "Renata" (telefone 5535998451670) e 2 para "Manoel" (telefone 5561982829944) na mesma campanha. Cada lead gera seu proprio `call_log`, resultando em cards duplicados no Painel.
 
 ## Solucao
 
-### 1. Edge Function `call-dial` - Verificar call_log existente antes de criar
+### 1. Migracao SQL para limpar dados existentes
 
-Antes de inserir um novo `call_log` (linha ~465), verificar se ja existe um registro ativo para o mesmo `lead_id` e `campaign_id`:
+Para cada telefone duplicado na mesma campanha:
+- Manter o `call_lead` mais recente (por `created_at`)
+- Deletar os `call_logs` associados aos leads duplicados (os mais antigos)
+- Deletar os `call_leads` duplicados (os mais antigos)
 
-- Buscar `call_logs` onde `lead_id = X`, `campaign_id = Y` e `call_status` esteja em `['scheduled', 'ready', 'dialing', 'ringing', 'answered', 'in_progress']`
-- Se encontrar: **atualizar** o registro existente (novo `scheduled_for`, `operator_id`, resetar `call_status` para `scheduled`) em vez de criar um novo
-- Se nao encontrar: criar normalmente como ja faz
+Ordem de execucao:
+1. Deletar `call_logs` dos leads que serao removidos
+2. Deletar `call_leads` duplicados
 
-### 2. Limpeza dos dados duplicados existentes
+### 2. Prevenir futuros duplicados
 
-Executar uma migracao SQL para remover os `call_logs` duplicados ja existentes, mantendo apenas o mais recente de cada par `lead_id + campaign_id` quando ambos estiverem em status nao-final.
+Adicionar constraint UNIQUE em `call_leads` para `(phone, campaign_id)` para que o banco rejeite insercoes duplicadas no futuro.
 
-```text
-Logica:
-  Para cada (lead_id, campaign_id) com mais de 1 registro em status ativo:
-    - Manter o mais recente (por created_at)
-    - Deletar os demais
-```
+### 3. Atualizar edge function `call-dial`
+
+Adicionar verificacao por **telefone** (alem de `lead_id`) antes de criar novo `call_lead`, usando upsert ou verificacao previa.
+
+## Dados afetados
+
+- Renata (5535998451670): 2 leads, 2 call_logs em "dialing" - sera mantido 1
+- Manoel (5561982829944): 2 leads, 2 call_logs em "dialing" - sera mantido 1
 
 ## Arquivos modificados
 
-- `supabase/functions/call-dial/index.ts` - adicionar verificacao de call_log existente
-- Migracao SQL - limpar duplicados existentes
+- Migracao SQL (limpeza + constraint UNIQUE)
+- `supabase/functions/call-dial/index.ts` (verificacao por telefone)
