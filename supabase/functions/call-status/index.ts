@@ -516,6 +516,99 @@ Deno.serve(async (req) => {
         .eq('id', callLog.lead_id);
     }
 
+    // ==================== IMMEDIATE RESCHEDULING (AFTER 20H BRT) ====================
+    const FAILURE_STATUSES = ['failed', 'busy', 'not_found', 'voicemail', 'timeout'];
+    let rescheduled = false;
+
+    if (FAILURE_STATUSES.includes(mappedStatus) && callLog.lead_id && callLog.campaign_id) {
+      // Check if current time in Brasilia (UTC-3) is >= 20h
+      const nowUtc = new Date();
+      const hourBRT = (nowUtc.getUTCHours() - 3 + 24) % 24;
+
+      if (hourBRT >= 20) {
+        console.log('[call-status] After 20h BRT, checking reschedule limit for lead:', callLog.lead_id);
+
+        // Count previous rescheduled attempts for this lead in this campaign
+        const { count: rescheduleCount } = await supabase
+          .from('call_logs')
+          .select('*', { count: 'exact', head: true })
+          .eq('lead_id', callLog.lead_id)
+          .eq('campaign_id', callLog.campaign_id)
+          .ilike('call_status', '%_rescheduled');
+
+        const currentCount = rescheduleCount || 0;
+
+        if (currentCount >= 3) {
+          console.log(`[call-status] Reschedule limit reached (${currentCount}/3) for lead ${callLog.lead_id}`);
+        } else {
+          console.log(`[call-status] Rescheduling immediately (${currentCount}/3 attempts used)`);
+
+          // Calculate next business day
+          const brasiliaOffset = -3 * 60;
+          const utcMs = nowUtc.getTime() + nowUtc.getTimezoneOffset() * 60000;
+          const brasiliaDate = new Date(utcMs + brasiliaOffset * 60000);
+          const dayOfWeek = brasiliaDate.getDay();
+          let daysToAdd: number;
+          if (dayOfWeek === 5) daysToAdd = 3;
+          else if (dayOfWeek === 6) daysToAdd = 2;
+          else if (dayOfWeek === 0) daysToAdd = 1;
+          else daysToAdd = 1;
+          const nextDay = new Date(brasiliaDate);
+          nextDay.setDate(brasiliaDate.getDate() + daysToAdd);
+
+          // Generate random time between 9h-19h
+          const hour = Math.floor(Math.random() * 10) + 9;
+          const minute = Math.floor(Math.random() * 60);
+          const year = nextDay.getFullYear();
+          const month = String(nextDay.getMonth() + 1).padStart(2, '0');
+          const day = String(nextDay.getDate()).padStart(2, '0');
+          const scheduledFor = `${year}-${month}-${day}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00-03:00`;
+
+          // Pick random active operator
+          const { data: activeOperators } = await supabase
+            .from('call_campaign_operators')
+            .select('id')
+            .eq('campaign_id', callLog.campaign_id)
+            .eq('is_active', true);
+
+          const newOperatorId = activeOperators && activeOperators.length > 0
+            ? activeOperators[Math.floor(Math.random() * activeOperators.length)].id
+            : callLog.operator_id;
+
+          // Create new scheduled call_log
+          const { error: scheduleError } = await supabase
+            .from('call_logs')
+            .insert({
+              campaign_id: callLog.campaign_id,
+              lead_id: callLog.lead_id,
+              operator_id: newOperatorId,
+              user_id: userId,
+              call_status: 'scheduled',
+              scheduled_for: scheduledFor,
+            });
+
+          if (scheduleError) {
+            console.error('[call-status] Failed to create rescheduled call:', scheduleError);
+          } else {
+            // Update lead to pending with new operator
+            await supabase
+              .from('call_leads')
+              .update({ status: 'pending', assigned_operator_id: newOperatorId })
+              .eq('id', callLog.lead_id);
+
+            // Mark original as rescheduled
+            await supabase
+              .from('call_logs')
+              .update({ call_status: `${mappedStatus}_rescheduled` })
+              .eq('id', callLog.id);
+
+            rescheduled = true;
+            console.log(`[call-status] Rescheduled to ${scheduledFor} with operator ${newOperatorId}`);
+          }
+        }
+      }
+    }
+
     // ==================== SUCCESS RESPONSE ====================
     const responseBody = {
       success: true,
@@ -524,6 +617,7 @@ Deno.serve(async (req) => {
       status,
       duration_seconds: updateData.duration_seconds || null,
       ...(isCreated && { created: true }),
+      ...(rescheduled && { rescheduled: true }),
     };
 
     console.log('[call-status] Success:', responseBody);
