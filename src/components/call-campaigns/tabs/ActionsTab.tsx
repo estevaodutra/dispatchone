@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useCallActions, CallAction, CallActionType } from "@/hooks/useCallActions";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
 import { useSequences } from "@/hooks/useSequences";
+import { useDispatchSequences } from "@/hooks/useDispatchSequences";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +18,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -73,6 +77,7 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
   const { actions, isLoading, createAction, updateAction, deleteAction, isCreating } =
     useCallActions(campaignId);
   const { campaigns: groupCampaigns } = useGroupCampaigns();
+  const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
   const [showDialog, setShowDialog] = useState(false);
   const [editingAction, setEditingAction] = useState<CallAction | null>(null);
   const [formData, setFormData] = useState({
@@ -81,8 +86,11 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
     actionType: "none" as CallActionType,
     actionConfig: {} as Record<string, unknown>,
   });
-  const selectedGroupCampaignId = (formData.actionConfig.campaignId as string) || undefined;
-  const { sequences: campaignSequences } = useSequences(selectedGroupCampaignId);
+  const selectedCampaignId = (formData.actionConfig.campaignId as string) || undefined;
+  const selectedCampaignType = (formData.actionConfig.campaignType as string) || undefined;
+  const { sequences: groupSequences } = useSequences(selectedCampaignType === "group" ? selectedCampaignId : undefined);
+  const { sequences: dispatchSequences } = useDispatchSequences(selectedCampaignType === "dispatch" ? selectedCampaignId : undefined);
+  const campaignSequences = selectedCampaignType === "dispatch" ? dispatchSequences : groupSequences;
 
   const handleOpenCreate = () => {
     setEditingAction(null);
@@ -271,23 +279,37 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
             {formData.actionType === "start_sequence" && (
               <>
                 <div className="grid gap-2">
-                  <Label>Campanha de Grupo</Label>
+                  <Label>Campanha</Label>
                   <Select
                     value={(formData.actionConfig.campaignId as string) || ""}
-                    onValueChange={(v) =>
+                    onValueChange={(v) => {
+                      const isGroup = groupCampaigns.some((c) => c.id === v);
                       setFormData({
                         ...formData,
-                        actionConfig: { campaignId: v, sequenceId: "" },
-                      })
-                    }
+                        actionConfig: { campaignId: v, campaignType: isGroup ? "group" : "dispatch", sequenceId: "" },
+                      });
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a campanha" />
                     </SelectTrigger>
                     <SelectContent>
-                      {groupCampaigns.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
+                      {groupCampaigns.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Campanhas de Grupo</SelectLabel>
+                          {groupCampaigns.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {dispatchCampaigns.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Campanhas de Disparos</SelectLabel>
+                          {dispatchCampaigns.map((c) => (
+                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>
