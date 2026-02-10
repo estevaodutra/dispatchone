@@ -47,3 +47,6 @@ verify_jwt = false
 
 [functions.call-dial]
 verify_jwt = false
+
+[functions.reschedule-failed-calls]
+verify_jwt = false
