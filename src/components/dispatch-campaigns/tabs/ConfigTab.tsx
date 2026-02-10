@@ -82,7 +82,7 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
           </div>
           <div className="space-y-2">
             <Label>Status</Label>
-            <Select value={form.status} onValueChange={v => setForm({ ...form, status: v })}>
+            <Select value={form.status} onValueChange={(v: "draft" | "active" | "paused" | "completed") => setForm({ ...form, status: v })}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
