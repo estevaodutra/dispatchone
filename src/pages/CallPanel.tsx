@@ -380,6 +380,13 @@ export default function CallPanel() {
             await registerAction({ callId: actionEntry.id, actionId, notes: actionNotes || undefined });
             setActionEntry(null);
           }}
+          onReschedule={(e) => {
+            setActionEntry(null);
+            setRescheduleEntry(e);
+            const now = new Date();
+            setRescheduleDate(format(now, "yyyy-MM-dd"));
+            setRescheduleTime(format(new Date(now.getTime() + 30 * 60000), "HH:mm"));
+          }}
         />
       )}
 
@@ -591,12 +598,14 @@ function ActionDialog({
   onNotesChange,
   onClose,
   onSelect,
+  onReschedule,
 }: {
   entry: CallPanelEntry;
   notes: string;
   onNotesChange: (v: string) => void;
   onClose: () => void;
   onSelect: (actionId: string) => Promise<void>;
+  onReschedule: (entry: CallPanelEntry) => void;
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
   const [submitting, setSubmitting] = useState(false);
@@ -677,6 +686,18 @@ function ActionDialog({
 
           <TabsContent value="action" className="mt-4">
             <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+              {/* Botão fixo Reagendar */}
+              <button
+                onClick={() => onReschedule(entry)}
+                className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                  <span className="font-medium text-sm">Reagendar</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
+              </button>
+
               {isLoading ? (
                 <p className="text-sm text-muted-foreground">Carregando ações...</p>
               ) : actions.length === 0 ? (
