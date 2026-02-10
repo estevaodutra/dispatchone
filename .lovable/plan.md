@@ -1,52 +1,92 @@
 
+# Unificar o Layout do Construtor de Sequencias de Disparos com o de Grupos
 
-# Adicionar coluna "Campanha" na importacao de leads
+## Problema
 
-## O que sera feito
+O construtor de sequencias das campanhas de Disparos usa um layout simples com cards lineares e modais (AddStepDialog / EditStepDialog), enquanto o de Grupos usa um layout profissional de 3 paineis (paleta de componentes + canvas + painel de configuracao) com drag-and-drop. Os dois precisam seguir o mesmo padrao visual.
 
-Ao importar leads via CSV, o usuario podera mapear uma coluna do arquivo para o campo "campanha", permitindo atribuicao automatica de leads a campanhas existentes. Alem disso, havera uma opcao de selecionar uma campanha padrao para todos os leads importados (similar as tags padrao).
+## Solucao
+
+Substituir o `DispatchSequenceBuilder` atual pelo mesmo layout de 3 paineis usado no `SequenceBuilder` de Grupos, adaptado para o modelo de dados de Disparos. Os gatilhos especificos de Disparos serao mantidos (manual, agendado, via API, ao adicionar contato, acionador por acao).
 
 ## Alteracoes
 
-### 1. `src/components/leads/ImportLeadsDialog.tsx`
+### 1. Criar `src/components/dispatch-campaigns/sequences/DispatchTriggerConfigCard.tsx`
 
-**Adicionar campo de mapeamento "campanha":**
-- Incluir `"campaign"` no tipo `MappingField`: `"ignore" | "name" | "phone" | "email" | "tags" | "campaign"`
-- Adicionar opcao "Campanha" no `Select` de mapeamento de colunas
-- Auto-map: colunas com nome contendo "campanha" ou "campaign" serao mapeadas automaticamente
+Componente de configuracao do gatilho especifico para Disparos, seguindo o mesmo layout visual do `TriggerConfigCard` de Grupos mas com os gatilhos proprios:
+- Manual
+- Agendado (data/hora)
+- Via API (mostra URL do webhook)
+- Ao adicionar contato
+- Acionador por Acao
 
-**Adicionar selector de campanha padrao:**
-- Abaixo das tags padrao, adicionar um `Select` com as campanhas disponiveis (de todos os tipos: despacho, ligacao, grupo, etc.)
-- O usuario pode escolher uma campanha padrao para aplicar a todos os leads importados que nao tenham campanha definida na coluna
+### 2. Criar `src/components/dispatch-campaigns/sequences/DispatchNodeConfigPanel.tsx`
 
-**Atualizar o `handleImport`:**
-- Extrair o valor da coluna mapeada como `campaign` de cada linha
-- Fazer match do nome da campanha com o ID (lookup nas campanhas carregadas)
-- Passar `campaign_id` e `campaign_type` no payload de cada lead
+Painel lateral de configuracao dos nos, seguindo o mesmo padrao do `NodeConfigPanel` de Grupos. Suportara os tipos:
+- Texto (com variaveis {{nome}}, {{telefone}}, {{email}})
+- Imagem, Video, Audio, Documento (com URL de midia)
+- Botoes, Lista (mensagens interativas)
+- Delay (com atalhos rapidos)
 
-**Atualizar a interface de props:**
-- O `onImport` passara a incluir `campaignId?: string` e `campaignType?: string` em cada lead, e `defaultCampaignId?: string` + `defaultCampaignType?: string` nas opcoes
+### 3. Reescrever `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`
 
-**Atualizar o template CSV:**
-- Incluir coluna "campanha" no modelo: `nome,telefone,email,tags,campanha`
+Layout de 3 paineis identico ao de Grupos:
+- **Paleta esquerda**: Componentes arrastáveis organizados por categoria (Mensagens, Midia, Interativo, Fluxo)
+- **Canvas central**: Lista de nos com drag-and-drop para reordenar e inserir
+- **Painel direito**: Configuracao do no selecionado
 
-**Receber campanhas como prop:**
-- Adicionar prop `campaigns` com lista de campanhas disponiveis (id, nome, tipo)
+Mudancas de dados:
+- Usar estado local (localNodes) como o builder de Grupos, em vez de salvar passo a passo
+- Botao "Salvar" persiste todos os nos de uma vez (delete all + insert) via `useDispatchSteps`
+- Incluir TriggerConfigCard no topo (acima dos 3 paineis)
 
-### 2. `src/hooks/useLeads.ts` — mutation `importLeads`
+### 4. Atualizar `src/hooks/useDispatchSteps.ts`
 
-- Atualizar o tipo do parametro para aceitar `campaignId` e `campaignType` por lead
-- Atualizar o tipo para aceitar `defaultCampaignId` e `defaultCampaignType`
-- Na logica de insert, incluir `active_campaign_id` e `active_campaign_type` quando fornecidos (prioridade: valor do lead > valor padrao)
+Adicionar mutation `saveAllSteps` que:
+1. Deleta todos os steps da sequencia
+2. Insere os novos steps de uma vez (mesmo padrao do `saveNodes` de Grupos)
 
-### 3. `src/pages/Leads.tsx`
+Isso permite o fluxo de edicao local com salvamento em batch.
 
-- Importar e usar `useCallCampaigns`, `useDispatchCampaigns` e `useGroupCampaigns` para montar a lista unificada de campanhas
-- Passar a lista como prop para o `ImportLeadsDialog`
-- Atualizar a chamada do `onImport` para incluir os novos campos
+### 5. Remover arquivos obsoletos
 
-## Detalhes tecnicos
+- `src/components/dispatch-campaigns/sequences/AddStepDialog.tsx` -- substituido pela paleta drag-and-drop
+- `src/components/dispatch-campaigns/sequences/EditStepDialog.tsx` -- substituido pelo NodeConfigPanel
+- `src/components/dispatch-campaigns/sequences/StepCard.tsx` -- substituido pelos nos inline no canvas
 
-- A resolucao campanha por nome sera feita no frontend: ao importar, o valor textual da coluna "campanha" sera comparado (case-insensitive) com os nomes das campanhas carregadas. Se encontrar match, usa o `id` e o `type`. Caso contrario, ignora.
-- Campanhas de todos os tipos serao listadas no selector padrao, agrupadas por tipo (Ligacao, Despacho, Grupos).
-- Nenhuma alteracao de banco necessaria -- os campos `active_campaign_id` e `active_campaign_type` ja existem na tabela `leads`.
+## Detalhes Tecnicos
+
+### Mapeamento de tipos (Dispatch vs Grupo)
+
+O builder de Grupos usa `nodeType` direto ("message", "image", "video"...), enquanto o de Disparos usa `stepType` + `messageType`. O novo builder continuara salvando no formato do banco de Disparos (`step_type`, `message_type`), mas internamente usara o mesmo sistema de `nodeType` para renderizacao.
+
+### Conversao de dados
+
+```text
+Leitura do banco:
+  step_type="message", message_type="text"  ->  nodeType="message"
+  step_type="message", message_type="image" ->  nodeType="image"
+  step_type="delay"                         ->  nodeType="delay"
+
+Escrita no banco:
+  nodeType="message" -> step_type="message", message_type="text"
+  nodeType="image"   -> step_type="message", message_type="image"
+  nodeType="delay"   -> step_type="delay"
+```
+
+### Categorias da paleta (adaptadas para Disparos)
+
+- **Mensagens**: Texto
+- **Midia**: Imagem, Video, Audio, Documento
+- **Interativo**: Botoes, Lista
+- **Fluxo**: Delay
+
+(Sem enquete, sticker, localizacao, contato, evento, condicao, notify, webhook -- esses sao especificos de Grupos)
+
+### Salvamento em batch
+
+O `saveAllSteps` no hook seguira o padrao:
+1. `DELETE FROM dispatch_sequence_steps WHERE sequence_id = ?`
+2. `INSERT INTO dispatch_sequence_steps (...) VALUES (...)` para cada no local
+
+Isso elimina a necessidade de gerenciar IDs de nos locais vs remotos.
