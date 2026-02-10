@@ -69,10 +69,11 @@ function getTimeRemaining(scheduledFor: string | null): { text: string; seconds:
   const diff = new Date(scheduledFor).getTime() - Date.now();
   if (diff <= 0) return { text: "AGORA", seconds: 0, isUrgent: true };
   const totalSec = Math.floor(diff / 1000);
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
+  const h = Math.floor(totalSec / 3600).toString().padStart(2, "0");
+  const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, "0");
+  const s = (totalSec % 60).toString().padStart(2, "0");
   return {
-    text: min > 0 ? `${min}:${sec.toString().padStart(2, "0")}` : `0:${sec.toString().padStart(2, "0")}`,
+    text: `${h}:${m}:${s}`,
     seconds: totalSec,
     isUrgent: totalSec <= 60,
   };
