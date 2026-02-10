@@ -582,6 +582,114 @@ export type Database = {
         }
         Relationships: []
       }
+      dispatch_campaign_contacts: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          current_sequence_id: string | null
+          current_step: number
+          id: string
+          lead_id: string | null
+          sequence_completed_at: string | null
+          sequence_started_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          current_sequence_id?: string | null
+          current_step?: number
+          id?: string
+          lead_id?: string | null
+          sequence_completed_at?: string | null
+          sequence_started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          current_sequence_id?: string | null
+          current_step?: number
+          id?: string
+          lead_id?: string | null
+          sequence_completed_at?: string | null
+          sequence_started_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_campaign_contacts_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_campaign_contacts_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_contacts_sequence_fk"
+            columns: ["current_sequence_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_campaigns: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          instance_id: string | null
+          name: string
+          status: string
+          updated_at: string
+          use_exclusive_instance: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          instance_id?: string | null
+          name: string
+          status?: string
+          updated_at?: string
+          use_exclusive_instance?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          instance_id?: string | null
+          name?: string
+          status?: string
+          updated_at?: string
+          use_exclusive_instance?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_campaigns_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       dispatch_logs: {
         Row: {
           campaign_id: string | null
@@ -622,6 +730,179 @@ export type Database = {
             columns: ["instance_id"]
             isOneToOne: false
             referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_sequence_logs: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          delivered_at: string | null
+          error_message: string | null
+          id: string
+          read_at: string | null
+          sent_at: string | null
+          sequence_id: string | null
+          status: string
+          step_id: string | null
+          user_id: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          id?: string
+          read_at?: string | null
+          sent_at?: string | null
+          sequence_id?: string | null
+          status?: string
+          step_id?: string | null
+          user_id: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error_message?: string | null
+          id?: string
+          read_at?: string | null
+          sent_at?: string | null
+          sequence_id?: string | null
+          status?: string
+          step_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_sequence_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_campaign_contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_sequence_logs_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_sequence_logs_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_sequence_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_sequence_steps: {
+        Row: {
+          condition_config: Json | null
+          condition_type: string | null
+          created_at: string
+          delay_unit: string | null
+          delay_value: number | null
+          id: string
+          message_buttons: Json | null
+          message_content: string | null
+          message_media_url: string | null
+          message_type: string | null
+          sequence_id: string
+          step_order: number
+          step_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          condition_config?: Json | null
+          condition_type?: string | null
+          created_at?: string
+          delay_unit?: string | null
+          delay_value?: number | null
+          id?: string
+          message_buttons?: Json | null
+          message_content?: string | null
+          message_media_url?: string | null
+          message_type?: string | null
+          sequence_id: string
+          step_order?: number
+          step_type: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          condition_config?: Json | null
+          condition_type?: string | null
+          created_at?: string
+          delay_unit?: string | null
+          delay_value?: number | null
+          id?: string
+          message_buttons?: Json | null
+          message_content?: string | null
+          message_media_url?: string | null
+          message_type?: string | null
+          sequence_id?: string
+          step_order?: number
+          step_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_sequence_steps_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_sequences: {
+        Row: {
+          campaign_id: string
+          created_at: string
+          description: string | null
+          id: string
+          is_active: boolean
+          name: string
+          trigger_config: Json | null
+          trigger_type: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          trigger_config?: Json | null
+          trigger_type?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          trigger_config?: Json | null
+          trigger_type?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_sequences_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "dispatch_campaigns"
             referencedColumns: ["id"]
           },
         ]
