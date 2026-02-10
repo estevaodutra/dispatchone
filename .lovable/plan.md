@@ -1,76 +1,52 @@
 
-
-# Reagendamento imediato apos falha (apos 20h) com limite de 3 tentativas
+# Reagendamento imediato em 2 horas para falhas antes das 20h
 
 ## Resumo
 
-Duas alteracoes principais:
+Atualmente, ligacoes que falham antes das 20h BRT nao sao reagendadas imediatamente -- ficam esperando o cron noturno. A alteracao faz com que **todas as falhas**, independente do horario, sejam reagendadas imediatamente:
 
-1. **No `call-status`**: quando qualquer ligacao falhar (busy, voicemail, not_found, timeout, error) e o horario for apos 20h (Brasilia), reagendar imediatamente para o proximo dia util com operador aleatorio.
-2. **Limite de 3 reagendamentos**: tanto no `call-status` quanto no `reschedule-failed-calls`, contar quantas vezes o lead ja foi reagendado na campanha e parar apos 3 tentativas.
+- **Antes das 20h**: reagenda para **2 horas depois**, no mesmo dia (desde que o novo horario nao ultrapasse 19h; se ultrapassar, agenda para o proximo dia util entre 9h-19h)
+- **Apos as 20h**: mantem a logica atual (proximo dia util, horario aleatorio 9h-19h)
 
-## Status que disparam reagendamento
+O limite de 3 tentativas continua valendo em ambos os casos.
 
-Todos os status de falha: `busy`, `voicemail`, `not_found`, `timeout`, `error`/`failed`. Nao inclui `cancelled` (cancelamento manual).
+## Alteracao
 
-## Como funciona o limite de 3 tentativas
+**Arquivo:** `supabase/functions/call-status/index.ts`
 
-Antes de reagendar, contar quantos `call_logs` com status `*_rescheduled` existem para o mesmo `lead_id` + `campaign_id`. Se >= 3, nao reagenda mais.
+Modificar o bloco de reagendamento imediato (linhas 519-610):
 
-## Alteracoes
+1. Remover a condicao `if (hourBRT >= 20)` que restringe o reagendamento apenas ao horario noturno
+2. Manter a verificacao de status de falha e limite de 3 tentativas
+3. Adicionar logica condicional para calcular o `scheduled_for`:
+   - Se `hourBRT < 20`: agendar para **agora + 2 horas**
+     - Se o horario resultante for >= 19h BRT: agendar para o proximo dia util (9h-19h aleatorio)
+   - Se `hourBRT >= 20`: manter logica atual (proximo dia util, 9h-19h aleatorio)
 
-### 1. `supabase/functions/call-status/index.ts`
-
-Apos a secao de atualizacao do lead status (linha ~517), adicionar bloco:
-
-- Verificar se `mappedStatus` e um dos status de falha (nao inclui `completed`, `dialing`, `answered`, `cancelled`)
-- Verificar se horario de Brasilia >= 20h
-- Se sim:
-  - Contar reagendamentos anteriores do lead na campanha (status terminando em `_rescheduled`)
-  - Se count >= 3: nao reagenda, loga que atingiu limite
-  - Se count < 3:
-    - Calcular proximo dia util
-    - Gerar horario aleatorio 9h-19h
-    - Buscar operadores ativos e sortear um
-    - Inserir novo `call_log` com status `scheduled`
-    - Atualizar lead para `pending` com novo operador
-    - Marcar call_log original como `{status}_rescheduled`
-- Adicionar campo `rescheduled: true` na resposta quando aplicavel
-
-### 2. `supabase/functions/reschedule-failed-calls/index.ts`
-
-Adicionar a mesma verificacao de limite de 3 tentativas:
-
-- Antes de criar o reagendamento, contar `call_logs` com status `*_rescheduled` para o mesmo `lead_id` + `campaign_id`
-- Se count >= 3: pular esse lead e nao reagendar
-
-## Fluxo
+## Logica de calculo do horario
 
 ```text
-Ligacao falha -> call-status recebe status de falha
-  -> Atualiza call_log e lead normalmente
-  -> Verifica: horario >= 20h BRT?
-     -> SIM:
-        -> Contagem de reagendamentos < 3?
-           -> SIM: Reagenda imediatamente (proximo dia util, 9h-19h, operador aleatorio)
-           -> NAO: Nao reagenda (limite atingido)
-     -> NAO: Nao faz nada (o cron noturno cuidara)
-
-Cron noturno (reschedule-failed-calls):
-  -> Para cada ligacao com falha:
-     -> Contagem de reagendamentos < 3?
-        -> SIM: Reagenda
-        -> NAO: Pula
+Falha recebida -> horario BRT atual?
+  -> Antes das 20h:
+     -> now + 2h < 19h? -> Agenda para now + 2h (mesmo dia)
+     -> now + 2h >= 19h? -> Agenda para proximo dia util (9h-19h)
+  -> Apos as 20h:
+     -> Agenda para proximo dia util (9h-19h) [logica existente]
 ```
+
+## Exemplo pratico
+
+- Falha as 14:00 -> reagenda para 16:00 do mesmo dia
+- Falha as 17:30 -> now + 2h = 19:30, ultrapassa 19h -> reagenda proximo dia util
+- Falha as 21:00 -> reagenda proximo dia util (logica atual)
 
 ## Detalhes tecnicos
 
-- A contagem usa: `SELECT count(*) FROM call_logs WHERE lead_id = X AND campaign_id = Y AND call_status LIKE '%_rescheduled'`
-- As funcoes auxiliares `getNextBusinessDay()` e `generateRandomScheduledFor()` serao duplicadas no `call-status` (mesma logica do `reschedule-failed-calls`)
-- O `call-status` ja usa `service_role`, entao pode acessar `call_campaign_operators` sem problemas
+- O bloco `if (hourBRT >= 20)` sera substituido por um bloco que sempre executa (sem condicao de horario)
+- Dentro dele, a diferenca sera apenas no calculo do `scheduledFor`
+- Operador aleatorio e limite de 3 tentativas permanecem iguais
+- O cron noturno (`reschedule-failed-calls`) continua como fallback para casos que nao passaram pelo `call-status`
 
-## Arquivos modificados
+## Arquivo modificado
 
-- `supabase/functions/call-status/index.ts` - adicionar logica de reagendamento imediato com limite
-- `supabase/functions/reschedule-failed-calls/index.ts` - adicionar verificacao de limite de 3 tentativas
-
+- `supabase/functions/call-status/index.ts`
