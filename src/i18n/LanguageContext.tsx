@@ -1,5 +1,5 @@
 // Language Context - provides i18n support
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import { en } from "./locales/en";
 import { pt } from "./locales/pt";
 import { es } from "./locales/es";
@@ -21,7 +21,7 @@ const translations: Record<Language, Translations> = {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-export function LanguageProvider({ children }: { children: React.ReactNode }) {
+export function LanguageProvider({ children }: { children: ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem("dispatchone-language");
     return (saved as Language) || "en";
