@@ -462,32 +462,67 @@ Deno.serve(async (req) => {
 
     console.log('[call-dial] Found operator:', operator.id);
 
-    // ==================== CREATE CALL LOG ====================
-    console.log('[call-dial] Creating call log');
-    
+    // ==================== CREATE OR UPDATE CALL LOG ====================
     const dialDelayMinutes = campaign.dial_delay_minutes || 10;
     const scheduledFor = new Date(Date.now() + dialDelayMinutes * 60 * 1000).toISOString();
-    
-    const { data: callLog, error: callLogError } = await supabase
-      .from('call_logs')
-      .insert({
-        campaign_id: campaign.id,
-        lead_id: lead.id,
-        operator_id: operator.id,
-        user_id: userId,
-        call_status: 'scheduled',
-        scheduled_for: scheduledFor,
-        started_at: new Date().toISOString(),
-      })
-      .select('id')
-      .single();
 
-    if (callLogError || !callLog) {
-      console.error('[call-dial] Failed to create call log:', callLogError);
-      throw new Error('Failed to create call log');
+    // Check for existing active call_log for same lead + campaign
+    const activeStatuses = ['scheduled', 'ready', 'dialing', 'ringing', 'answered', 'in_progress'];
+    const { data: existingLog } = await supabase
+      .from('call_logs')
+      .select('id')
+      .eq('lead_id', lead.id)
+      .eq('campaign_id', campaign.id)
+      .in('call_status', activeStatuses)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let callLog: { id: string };
+
+    if (existingLog) {
+      // Update existing active call_log instead of creating duplicate
+      console.log('[call-dial] Found existing active call_log, updating:', existingLog.id);
+      const { error: updateError } = await supabase
+        .from('call_logs')
+        .update({
+          operator_id: operator.id,
+          call_status: 'scheduled',
+          scheduled_for: scheduledFor,
+          started_at: new Date().toISOString(),
+        })
+        .eq('id', existingLog.id);
+
+      if (updateError) {
+        console.error('[call-dial] Failed to update call log:', updateError);
+        throw new Error('Failed to update call log');
+      }
+      callLog = { id: existingLog.id };
+    } else {
+      // Create new call_log
+      console.log('[call-dial] Creating new call log');
+      const { data: newLog, error: callLogError } = await supabase
+        .from('call_logs')
+        .insert({
+          campaign_id: campaign.id,
+          lead_id: lead.id,
+          operator_id: operator.id,
+          user_id: userId,
+          call_status: 'scheduled',
+          scheduled_for: scheduledFor,
+          started_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+
+      if (callLogError || !newLog) {
+        console.error('[call-dial] Failed to create call log:', callLogError);
+        throw new Error('Failed to create call log');
+      }
+      callLog = { id: newLog.id };
     }
 
-    console.log('[call-dial] Created call log:', callLog.id);
+    console.log('[call-dial] Call log ready:', callLog.id);
 
     // ==================== UPDATE LEAD STATUS ====================
     console.log('[call-dial] Updating lead status to calling');
