@@ -247,6 +247,47 @@ export function useCallPanel(filters?: {
       const entry = entries.find((e) => e.id === callId);
       if (!entry) throw new Error("Ligação não encontrada");
 
+      // --- Verificação de operador ativo ---
+      let effectiveOperator = {
+        id: entry.operatorId,
+        name: entry.operatorName,
+        extension: entry.operatorExtension,
+      };
+      let wasRedirected = false;
+
+      if (entry.operatorId) {
+        const { data: currentOp } = await (supabase as any)
+          .from("call_campaign_operators")
+          .select("id, operator_name, extension, is_active")
+          .eq("id", entry.operatorId)
+          .maybeSingle();
+
+        const isInactive = !currentOp || currentOp.is_active === false;
+
+        if (isInactive && entry.campaignId) {
+          const { data: activeOps } = await (supabase as any)
+            .from("call_campaign_operators")
+            .select("id, operator_name, extension")
+            .eq("campaign_id", entry.campaignId)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true })
+            .limit(1);
+
+          if (!activeOps || activeOps.length === 0) {
+            throw new Error("Nenhum operador ativo disponível nesta campanha");
+          }
+
+          const newOp = activeOps[0];
+          effectiveOperator = { id: newOp.id, name: newOp.operator_name, extension: newOp.extension };
+          wasRedirected = true;
+
+          await (supabase as any).from("call_logs").update({ operator_id: newOp.id }).eq("id", callId);
+          if (entry.leadId) {
+            await (supabase as any).from("call_leads").update({ assigned_operator_id: newOp.id }).eq("id", entry.leadId);
+          }
+        }
+      }
+
       // Fetch webhook config for "calls" category
       const { data: webhookConfigs } = await (supabase as any)
         .from("webhook_configs")
@@ -258,13 +299,12 @@ export function useCallPanel(filters?: {
       const webhookUrl = webhookConfigs?.[0]?.url;
 
       if (!webhookUrl) {
-        // No webhook configured – just update status to "ready"
         const { error } = await (supabase as any)
           .from("call_logs")
           .update({ scheduled_for: new Date().toISOString(), call_status: "ready" })
           .eq("id", callId);
         if (error) throw error;
-        return;
+        return { wasRedirected, operatorName: effectiveOperator.name };
       }
 
       // Update status to "dialing"
@@ -292,9 +332,9 @@ export function useCallPanel(filters?: {
           name: entry.leadName,
         },
         operator: {
-          id: entry.operatorId,
-          name: entry.operatorName,
-          extension: entry.operatorExtension,
+          id: effectiveOperator.id,
+          name: effectiveOperator.name,
+          extension: effectiveOperator.extension,
         },
       };
 
@@ -330,10 +370,15 @@ export function useCallPanel(filters?: {
           .eq("id", callId);
         throw new Error(`Falha ao acionar webhook: ${webhookError.message}`);
       }
+
+      return { wasRedirected, operatorName: effectiveOperator.name };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
-      toast({ title: "Ligação iniciada", description: "Webhook acionado com sucesso." });
+      const desc = result?.wasRedirected
+        ? `Operador redirecionado para ${result.operatorName}`
+        : "Webhook acionado com sucesso.";
+      toast({ title: "Ligação iniciada", description: desc });
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
