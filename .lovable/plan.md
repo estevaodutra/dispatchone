@@ -1,92 +1,52 @@
 
-# Unificar o Layout do Construtor de Sequencias de Disparos com o de Grupos
 
-## Problema
+# Adicionar aba "Fila" no Painel de Ligacoes
 
-O construtor de sequencias das campanhas de Disparos usa um layout simples com cards lineares e modais (AddStepDialog / EditStepDialog), enquanto o de Grupos usa um layout profissional de 3 paineis (paleta de componentes + canvas + painel de configuracao) com drag-and-drop. Os dois precisam seguir o mesmo padrao visual.
+## O que sera feito
 
-## Solucao
-
-Substituir o `DispatchSequenceBuilder` atual pelo mesmo layout de 3 paineis usado no `SequenceBuilder` de Grupos, adaptado para o modelo de dados de Disparos. Os gatilhos especificos de Disparos serao mantidos (manual, agendado, via API, ao adicionar contato, acionador por acao).
+Adicionar uma nova aba "Fila" no Painel de Ligacoes que lista todas as ligacoes pendentes na fila de execucao (`call_queue`), organizadas por campanha e posicao. Essa aba mostra os leads aguardando para serem discados automaticamente pelo sistema de execucao em fila.
 
 ## Alteracoes
 
-### 1. Criar `src/components/dispatch-campaigns/sequences/DispatchTriggerConfigCard.tsx`
+### 1. Criar hook `useCallQueuePanel`
 
-Componente de configuracao do gatilho especifico para Disparos, seguindo o mesmo layout visual do `TriggerConfigCard` de Grupos mas com os gatilhos proprios:
-- Manual
-- Agendado (data/hora)
-- Via API (mostra URL do webhook)
-- Ao adicionar contato
-- Acionador por Acao
+**Arquivo:** `src/hooks/useCallQueuePanel.ts`
 
-### 2. Criar `src/components/dispatch-campaigns/sequences/DispatchNodeConfigPanel.tsx`
+Hook dedicado para buscar entradas da fila de todas as campanhas do usuario (diferente do `useCallQueue` que e por campanha). Fara um `select` na tabela `call_queue` com joins em `leads` e `call_campaigns` para exibir nome do lead, telefone, nome da campanha, posicao na fila, tentativas e status.
 
-Painel lateral de configuracao dos nos, seguindo o mesmo padrao do `NodeConfigPanel` de Grupos. Suportara os tipos:
-- Texto (com variaveis {{nome}}, {{telefone}}, {{email}})
-- Imagem, Video, Audio, Documento (com URL de midia)
-- Botoes, Lista (mensagens interativas)
-- Delay (com atalhos rapidos)
+### 2. Modificar `src/pages/CallPanel.tsx`
 
-### 3. Reescrever `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`
+**Adicionar aba "Fila" nas tabs de status:**
 
-Layout de 3 paineis identico ao de Grupos:
-- **Paleta esquerda**: Componentes arrastáveis organizados por categoria (Mensagens, Midia, Interativo, Fluxo)
-- **Canvas central**: Lista de nos com drag-and-drop para reordenar e inserir
-- **Painel direito**: Configuracao do no selecionado
+A aba "Fila" sera inserida como a primeira ou ultima aba no `TabsList`, com um contador mostrando quantos leads estao aguardando (status `waiting`).
 
-Mudancas de dados:
-- Usar estado local (localNodes) como o builder de Grupos, em vez de salvar passo a passo
-- Botao "Salvar" persiste todos os nos de uma vez (delete all + insert) via `useDispatchSteps`
-- Incluir TriggerConfigCard no topo (acima dos 3 paineis)
+**Quando a aba "Fila" estiver selecionada:**
 
-### 4. Atualizar `src/hooks/useDispatchSteps.ts`
+Renderizar uma lista de cards (mesmo estilo dos cards atuais) mostrando:
+- Badge "Na Fila" com a posicao (ex: "#3")
+- Nome e telefone do lead
+- Nome da campanha
+- Numero de tentativas anteriores
+- Ultimo resultado (se houver)
+- Botoes de acao: "Discar Agora" (remove da fila e agenda ligacao) e "Remover da Fila"
 
-Adicionar mutation `saveAllSteps` que:
-1. Deleta todos os steps da sequencia
-2. Insere os novos steps de uma vez (mesmo padrao do `saveNodes` de Grupos)
+**Filtros:** O filtro de campanha ja existente tambem se aplicara a aba Fila.
 
-Isso permite o fluxo de edicao local com salvamento em batch.
+### 3. Novo componente `QueueCard`
 
-### 5. Remover arquivos obsoletos
+Componente inline dentro do `CallPanel.tsx` (mesmo padrao do `CallCard` existente) para renderizar cada entrada da fila com:
+- Borda lateral azul (indicando fila)
+- Badge com posicao na fila
+- Info do lead (nome, telefone)
+- Info da campanha
+- Tentativas e ultimo resultado
+- Acoes: Remover da fila
 
-- `src/components/dispatch-campaigns/sequences/AddStepDialog.tsx` -- substituido pela paleta drag-and-drop
-- `src/components/dispatch-campaigns/sequences/EditStepDialog.tsx` -- substituido pelo NodeConfigPanel
-- `src/components/dispatch-campaigns/sequences/StepCard.tsx` -- substituido pelos nos inline no canvas
+## Detalhes tecnicos
 
-## Detalhes Tecnicos
+- O hook `useCallQueuePanel` buscara `call_queue` com `status = 'waiting'` e join em `leads(name, phone, email)` e `call_campaigns(name)`
+- Sem filtro de `campaign_id` fixo (diferente do `useCallQueue` existente) -- busca todas as filas do usuario
+- Polling a cada 10s para manter atualizado
+- A aba Fila nao interfere nas tabs de status existentes -- e uma aba separada com valor `"queue"` no state `statusFilter`
+- Quando `statusFilter === "queue"`, o conteudo principal renderiza a lista de fila em vez dos cards de ligacao
 
-### Mapeamento de tipos (Dispatch vs Grupo)
-
-O builder de Grupos usa `nodeType` direto ("message", "image", "video"...), enquanto o de Disparos usa `stepType` + `messageType`. O novo builder continuara salvando no formato do banco de Disparos (`step_type`, `message_type`), mas internamente usara o mesmo sistema de `nodeType` para renderizacao.
-
-### Conversao de dados
-
-```text
-Leitura do banco:
-  step_type="message", message_type="text"  ->  nodeType="message"
-  step_type="message", message_type="image" ->  nodeType="image"
-  step_type="delay"                         ->  nodeType="delay"
-
-Escrita no banco:
-  nodeType="message" -> step_type="message", message_type="text"
-  nodeType="image"   -> step_type="message", message_type="image"
-  nodeType="delay"   -> step_type="delay"
-```
-
-### Categorias da paleta (adaptadas para Disparos)
-
-- **Mensagens**: Texto
-- **Midia**: Imagem, Video, Audio, Documento
-- **Interativo**: Botoes, Lista
-- **Fluxo**: Delay
-
-(Sem enquete, sticker, localizacao, contato, evento, condicao, notify, webhook -- esses sao especificos de Grupos)
-
-### Salvamento em batch
-
-O `saveAllSteps` no hook seguira o padrao:
-1. `DELETE FROM dispatch_sequence_steps WHERE sequence_id = ?`
-2. `INSERT INTO dispatch_sequence_steps (...) VALUES (...)` para cada no local
-
-Isso elimina a necessidade de gerenciar IDs de nos locais vs remotos.
