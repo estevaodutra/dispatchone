@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useCallOperators, CallOperator } from "@/hooks/useCallOperators";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,17 +22,22 @@ import {
 } from "@/components/ui/table";
 import { Plus, Trash2, User } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OperatorCard } from "../OperatorCard";
+import { OperatorConfigDialog } from "../OperatorConfigDialog";
 
 interface OperatorsTabProps {
   campaignId: string;
+  queueExecutionEnabled?: boolean;
+  queueIntervalSeconds?: number;
 }
 
-export function OperatorsTab({ campaignId }: OperatorsTabProps) {
-  const { operators, isLoading, addOperator, removeOperator, toggleActive, isAdding } =
+export function OperatorsTab({ campaignId, queueExecutionEnabled = false, queueIntervalSeconds = 30 }: OperatorsTabProps) {
+  const { operators, isLoading, addOperator, removeOperator, toggleActive, updateSettings, isAdding } =
     useCallOperators(campaignId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newOperatorName, setNewOperatorName] = useState("");
   const [newExtension, setNewExtension] = useState("");
+  const [configOperator, setConfigOperator] = useState<CallOperator | null>(null);
 
   const handleAddOperator = async () => {
     if (!newOperatorName.trim()) return;
@@ -77,12 +82,26 @@ export function OperatorsTab({ campaignId }: OperatorsTabProps) {
             Adicionar Operador
           </Button>
         </Card>
+      ) : queueExecutionEnabled ? (
+        /* Card-based layout for queue execution mode */
+        <div className="space-y-3">
+          {operators.map((operator) => (
+            <OperatorCard
+              key={operator.id}
+              operator={operator}
+              campaignIntervalSeconds={queueIntervalSeconds}
+              onConfigure={setConfigOperator}
+              onRemove={(id) => removeOperator(id)}
+            />
+          ))}
+        </div>
       ) : (
+        /* Table layout for normal mode */
         <Card>
-          <CardHeader>
-            <CardTitle>Operadores ({operators.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <div className="p-6 pb-0">
+            <h3 className="text-2xl font-semibold leading-none tracking-tight">Operadores ({operators.length})</h3>
+          </div>
+          <div className="p-6 pt-4">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -119,10 +138,11 @@ export function OperatorsTab({ campaignId }: OperatorsTabProps) {
                 ))}
               </TableBody>
             </Table>
-          </CardContent>
+          </div>
         </Card>
       )}
 
+      {/* Add Operator Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent>
           <DialogHeader>
@@ -158,6 +178,14 @@ export function OperatorsTab({ campaignId }: OperatorsTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Operator Config Dialog */}
+      <OperatorConfigDialog
+        operator={configOperator}
+        campaignIntervalSeconds={queueIntervalSeconds}
+        onClose={() => setConfigOperator(null)}
+        onSave={updateSettings}
+      />
     </div>
   );
 }

@@ -31,11 +31,13 @@ import {
 import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCard } from "@/components/dispatch";
+import { QueueControlPanel } from "../QueueControlPanel";
 import { format } from "date-fns";
 import type { CallLead } from "@/hooks/useCallLeads";
 
 interface LeadsTabProps {
   campaignId: string;
+  queueExecutionEnabled?: boolean;
 }
 
 const statusLabels: Record<CallLeadStatus, string> = {
@@ -66,7 +68,7 @@ const actionTypeLabels: Record<CallActionType, string> = {
   none: "Nenhuma Ação",
 };
 
-export function LeadsTab({ campaignId }: LeadsTabProps) {
+export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTabProps) {
   const [statusFilter, setStatusFilter] = useState<CallLeadStatus | undefined>();
   const { leads, stats, isLoading, addLead, deleteLead, isAdding } = useCallLeads(
     campaignId,
@@ -103,28 +105,17 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
 
   return (
     <div className="space-y-6">
+      {/* Queue Control Panel */}
+      {queueExecutionEnabled && (
+        <QueueControlPanel campaignId={campaignId} />
+      )}
+
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
-        <MetricCard
-          title="Total"
-          value={stats.total}
-          icon={UserPlus}
-        />
-        <MetricCard
-          title="Pendentes"
-          value={stats.pending}
-          icon={Clock}
-        />
-        <MetricCard
-          title="Concluídos"
-          value={stats.completed}
-          icon={CheckCircle}
-        />
-        <MetricCard
-          title="Falhas"
-          value={stats.failed}
-          icon={XCircle}
-        />
+        <MetricCard title="Total" value={stats.total} icon={UserPlus} />
+        <MetricCard title="Pendentes" value={stats.pending} icon={Clock} />
+        <MetricCard title="Concluídos" value={stats.completed} icon={CheckCircle} />
+        <MetricCard title="Falhas" value={stats.failed} icon={XCircle} />
       </div>
 
       {/* Actions */}
@@ -139,9 +130,7 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
           <SelectContent>
             <SelectItem value="all">Todos os status</SelectItem>
             {Object.entries(statusLabels).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
+              <SelectItem key={value} value={value}>{label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -197,11 +186,7 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setSelectedLead(lead)}
-                        >
+                        <Button variant="ghost" size="icon" onClick={() => setSelectedLead(lead)}>
                           <Eye className="h-4 w-4" />
                         </Button>
                         <Button
@@ -222,6 +207,7 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
         </Card>
       )}
 
+      {/* Add Lead Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent>
           <DialogHeader>
@@ -258,9 +244,7 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancelar</Button>
             <Button onClick={handleAddLead} disabled={!newLead.phone.trim() || isAdding}>
               {isAdding ? "Adicionando..." : "Adicionar"}
             </Button>
@@ -268,6 +252,7 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
         </DialogContent>
       </Dialog>
 
+      {/* Lead Details Dialog */}
       <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
@@ -303,8 +288,8 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
                 <div>
                   <Label className="text-muted-foreground text-xs">Última Tentativa</Label>
                   <p className="font-medium">
-                    {selectedLead.lastAttemptAt 
-                      ? format(new Date(selectedLead.lastAttemptAt), "dd/MM/yyyy HH:mm") 
+                    {selectedLead.lastAttemptAt
+                      ? format(new Date(selectedLead.lastAttemptAt), "dd/MM/yyyy HH:mm")
                       : "-"}
                   </p>
                 </div>
@@ -317,10 +302,7 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
                     const resultAction = actions.find(a => a.id === selectedLead.resultActionId);
                     return resultAction ? (
                       <div className="flex items-center gap-2 mt-1">
-                        <div 
-                          className="w-3 h-3 rounded-full" 
-                          style={{ backgroundColor: resultAction.color }} 
-                        />
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: resultAction.color }} />
                         <span className="font-medium">{resultAction.name}</span>
                       </div>
                     ) : (
@@ -346,14 +328,8 @@ export function LeadsTab({ campaignId }: LeadsTabProps) {
                 ) : (
                   <div className="space-y-2 mt-2">
                     {actions.map((action) => (
-                      <div 
-                        key={action.id} 
-                        className="flex items-center gap-2 p-2 rounded border"
-                      >
-                        <div 
-                          className="w-3 h-3 rounded-full shrink-0" 
-                          style={{ backgroundColor: action.color }} 
-                        />
+                      <div key={action.id} className="flex items-center gap-2 p-2 rounded border">
+                        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: action.color }} />
                         <span className="font-medium">{action.name}</span>
                         <span className="text-xs text-muted-foreground ml-auto">
                           {actionTypeLabels[action.actionType]}

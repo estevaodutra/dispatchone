@@ -72,7 +72,11 @@ export function CallCampaignDetails({
         </TabsContent>
 
         <TabsContent value="operators" className="mt-6">
-          <OperatorsTab campaignId={campaign.id} />
+          <OperatorsTab
+            campaignId={campaign.id}
+            queueExecutionEnabled={campaign.queueExecutionEnabled}
+            queueIntervalSeconds={campaign.queueIntervalSeconds}
+          />
         </TabsContent>
 
         <TabsContent value="script" className="mt-6">
@@ -84,7 +88,10 @@ export function CallCampaignDetails({
         </TabsContent>
 
         <TabsContent value="leads" className="mt-6">
-          <LeadsTab campaignId={campaign.id} />
+          <LeadsTab
+            campaignId={campaign.id}
+            queueExecutionEnabled={campaign.queueExecutionEnabled}
+          />
         </TabsContent>
 
         <TabsContent value="history" className="mt-6">
