@@ -405,13 +405,13 @@ Deno.serve(async (req) => {
       console.log('[call-dial] Creating new lead');
       const { data: newLead, error: createLeadError } = await supabase
         .from('call_leads')
-        .insert({
+        .upsert({
           campaign_id: campaign.id,
           user_id: userId,
           phone: cleanPhone,
           name: lead_name || null,
           status: 'pending'
-        })
+        }, { onConflict: 'phone,campaign_id' })
         .select('id, phone, name, status')
         .single();
 
