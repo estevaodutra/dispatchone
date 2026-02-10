@@ -96,6 +96,24 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // Check reschedule limit (max 3 attempts)
+        const { count: rescheduleCount } = await supabase
+          .from("call_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("lead_id", call.lead_id)
+          .eq("campaign_id", call.campaign_id)
+          .ilike("call_status", "%_rescheduled");
+
+        if ((rescheduleCount || 0) >= 3) {
+          console.log(`Lead ${call.lead_id}: reschedule limit reached (${rescheduleCount}/3), skipping`);
+          // Mark as rescheduled to avoid re-processing
+          await supabase
+            .from("call_logs")
+            .update({ call_status: `${call.call_status}_rescheduled` })
+            .eq("id", call.id);
+          continue;
+        }
+
         // Fetch active operators for this campaign
         const { data: activeOperators } = await supabase
           .from("call_campaign_operators")
