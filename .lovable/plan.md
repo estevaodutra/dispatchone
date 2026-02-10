@@ -1,37 +1,76 @@
 
 
-# Distribuir reagendamentos aleatoriamente entre operadores ativos
+# Reagendamento imediato apos falha (apos 20h) com limite de 3 tentativas
 
-## Problema atual
+## Resumo
 
-A funcao `reschedule-failed-calls` reutiliza o mesmo `operator_id` da ligacao original. Se o operador estiver inativo ou sobrecarregado, as ligacoes continuam concentradas nele.
+Duas alteracoes principais:
 
-## Solucao
+1. **No `call-status`**: quando qualquer ligacao falhar (busy, voicemail, not_found, timeout, error) e o horario for apos 20h (Brasilia), reagendar imediatamente para o proximo dia util com operador aleatorio.
+2. **Limite de 3 reagendamentos**: tanto no `call-status` quanto no `reschedule-failed-calls`, contar quantas vezes o lead ja foi reagendado na campanha e parar apos 3 tentativas.
 
-Alterar a Edge Function para, antes de inserir cada reagendamento, buscar todos os operadores ativos da campanha (`call_campaign_operators` com `is_active = true`) e sortear um aleatoriamente.
+## Status que disparam reagendamento
 
-## Alteracao
+Todos os status de falha: `busy`, `voicemail`, `not_found`, `timeout`, `error`/`failed`. Nao inclui `cancelled` (cancelamento manual).
 
-**Arquivo:** `supabase/functions/reschedule-failed-calls/index.ts`
+## Como funciona o limite de 3 tentativas
 
-Dentro do loop de cada ligacao com falha, antes de inserir o novo `call_log`:
+Antes de reagendar, contar quantos `call_logs` com status `*_rescheduled` existem para o mesmo `lead_id` + `campaign_id`. Se >= 3, nao reagenda mais.
 
-1. Buscar operadores ativos da campanha:
-   ```
-   SELECT id FROM call_campaign_operators
-   WHERE campaign_id = [campaign_id] AND is_active = true
-   ```
+## Alteracoes
 
-2. Se houver operadores ativos, sortear um aleatoriamente:
-   ```
-   operadores[Math.floor(Math.random() * operadores.length)]
-   ```
+### 1. `supabase/functions/call-status/index.ts`
 
-3. Se nao houver operadores ativos, manter o `operator_id` original como fallback.
+Apos a secao de atualizacao do lead status (linha ~517), adicionar bloco:
 
-4. Usar o operador sorteado no insert do novo `call_log` e tambem atualizar o `assigned_operator_id` do lead.
+- Verificar se `mappedStatus` e um dos status de falha (nao inclui `completed`, `dialing`, `answered`, `cancelled`)
+- Verificar se horario de Brasilia >= 20h
+- Se sim:
+  - Contar reagendamentos anteriores do lead na campanha (status terminando em `_rescheduled`)
+  - Se count >= 3: nao reagenda, loga que atingiu limite
+  - Se count < 3:
+    - Calcular proximo dia util
+    - Gerar horario aleatorio 9h-19h
+    - Buscar operadores ativos e sortear um
+    - Inserir novo `call_log` com status `scheduled`
+    - Atualizar lead para `pending` com novo operador
+    - Marcar call_log original como `{status}_rescheduled`
+- Adicionar campo `rescheduled: true` na resposta quando aplicavel
 
-## Resultado
+### 2. `supabase/functions/reschedule-failed-calls/index.ts`
 
-Cada ligacao reagendada sera atribuida a um operador ativo diferente de forma aleatoria, distribuindo a carga de trabalho entre a equipe.
+Adicionar a mesma verificacao de limite de 3 tentativas:
+
+- Antes de criar o reagendamento, contar `call_logs` com status `*_rescheduled` para o mesmo `lead_id` + `campaign_id`
+- Se count >= 3: pular esse lead e nao reagendar
+
+## Fluxo
+
+```text
+Ligacao falha -> call-status recebe status de falha
+  -> Atualiza call_log e lead normalmente
+  -> Verifica: horario >= 20h BRT?
+     -> SIM:
+        -> Contagem de reagendamentos < 3?
+           -> SIM: Reagenda imediatamente (proximo dia util, 9h-19h, operador aleatorio)
+           -> NAO: Nao reagenda (limite atingido)
+     -> NAO: Nao faz nada (o cron noturno cuidara)
+
+Cron noturno (reschedule-failed-calls):
+  -> Para cada ligacao com falha:
+     -> Contagem de reagendamentos < 3?
+        -> SIM: Reagenda
+        -> NAO: Pula
+```
+
+## Detalhes tecnicos
+
+- A contagem usa: `SELECT count(*) FROM call_logs WHERE lead_id = X AND campaign_id = Y AND call_status LIKE '%_rescheduled'`
+- As funcoes auxiliares `getNextBusinessDay()` e `generateRandomScheduledFor()` serao duplicadas no `call-status` (mesma logica do `reschedule-failed-calls`)
+- O `call-status` ja usa `service_role`, entao pode acessar `call_campaign_operators` sem problemas
+
+## Arquivos modificados
+
+- `supabase/functions/call-status/index.ts` - adicionar logica de reagendamento imediato com limite
+- `supabase/functions/reschedule-failed-calls/index.ts` - adicionar verificacao de limite de 3 tentativas
 
