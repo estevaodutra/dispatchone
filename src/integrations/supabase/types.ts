@@ -368,6 +368,63 @@ export type Database = {
           },
         ]
       }
+      call_queue: {
+        Row: {
+          attempts: number | null
+          campaign_id: string
+          created_at: string | null
+          id: string
+          last_attempt_at: string | null
+          last_result: string | null
+          lead_id: string
+          position: number
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          attempts?: number | null
+          campaign_id: string
+          created_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_result?: string | null
+          lead_id: string
+          position: number
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          attempts?: number | null
+          campaign_id?: string
+          created_at?: string | null
+          id?: string
+          last_attempt_at?: string | null
+          last_result?: string | null
+          lead_id?: string
+          position?: number
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_queue_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_queue_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_script_actions: {
         Row: {
           action_config: Json | null
@@ -1037,6 +1094,110 @@ export type Database = {
           provider?: string
           status?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      lead_campaign_history: {
+        Row: {
+          campaign_id: string
+          campaign_name: string | null
+          campaign_type: string
+          completed_at: string | null
+          id: string
+          lead_id: string
+          notes: string | null
+          result_action: string | null
+          started_at: string | null
+          status: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          campaign_name?: string | null
+          campaign_type: string
+          completed_at?: string | null
+          id?: string
+          lead_id: string
+          notes?: string | null
+          result_action?: string | null
+          started_at?: string | null
+          status?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          campaign_name?: string | null
+          campaign_type?: string
+          completed_at?: string | null
+          id?: string
+          lead_id?: string
+          notes?: string | null
+          result_action?: string | null
+          started_at?: string | null
+          status?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_campaign_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          active_campaign_id: string | null
+          active_campaign_type: string | null
+          created_at: string | null
+          custom_fields: Json | null
+          email: string | null
+          id: string
+          last_contact_at: string | null
+          name: string | null
+          phone: string
+          status: string | null
+          tags: string[] | null
+          total_calls: number | null
+          total_messages: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active_campaign_id?: string | null
+          active_campaign_type?: string | null
+          created_at?: string | null
+          custom_fields?: Json | null
+          email?: string | null
+          id?: string
+          last_contact_at?: string | null
+          name?: string | null
+          phone: string
+          status?: string | null
+          tags?: string[] | null
+          total_calls?: number | null
+          total_messages?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active_campaign_id?: string | null
+          active_campaign_type?: string | null
+          created_at?: string | null
+          custom_fields?: Json | null
+          email?: string | null
+          id?: string
+          last_contact_at?: string | null
+          name?: string | null
+          phone?: string
+          status?: string | null
+          tags?: string[] | null
+          total_calls?: number | null
+          total_messages?: number | null
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }

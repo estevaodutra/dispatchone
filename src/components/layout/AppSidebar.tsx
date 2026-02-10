@@ -58,6 +58,7 @@ export function AppSidebar() {
   const mainNavItems = [
     { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
     { title: t("nav.callPanel"), url: "/painel-ligacoes", icon: PhoneCall },
+    { title: t("nav.leads") || "Leads", url: "/leads", icon: Users },
     { title: t("nav.phoneNumbers"), url: "/numbers", icon: Phone },
     { title: t("nav.logs") || "Logs", url: "/logs", icon: FileText },
   ];

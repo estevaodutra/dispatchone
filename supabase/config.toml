@@ -50,3 +50,9 @@ verify_jwt = false
 
 [functions.reschedule-failed-calls]
 verify_jwt = false
+
+[functions.leads-api]
+verify_jwt = false
+
+[functions.call-queue-api]
+verify_jwt = false
