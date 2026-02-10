@@ -30,6 +30,19 @@ export function OperatorScriptView() {
   const [scriptPath, setScriptPath] = useState<string[]>([]);
   const [startTime] = useState<Date>(new Date());
   const [isCompleting, setIsCompleting] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatElapsed = (totalSeconds: number): string => {
+    const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
+    const s = (totalSeconds % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  };
 
   const lead = useMemo(() => leads.find((l) => l.id === leadId), [leads, leadId]);
 
@@ -153,8 +166,8 @@ export function OperatorScriptView() {
               </div>
             </div>
           </div>
-          <Badge variant="outline">
-            {Math.floor((new Date().getTime() - startTime.getTime()) / 1000)}s
+          <Badge variant="outline" className="font-mono">
+            {formatElapsed(elapsed)}
           </Badge>
         </div>
       </header>
