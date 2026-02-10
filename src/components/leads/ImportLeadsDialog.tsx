@@ -9,20 +9,29 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Upload, Download, X, FileText } from "lucide-react";
 
+export interface CampaignOption {
+  id: string;
+  name: string;
+  type: string;
+}
+
 interface ImportLeadsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onImport: (data: {
-    leads: { name?: string; phone: string; email?: string; tags?: string[] }[];
+    leads: { name?: string; phone: string; email?: string; tags?: string[]; campaignId?: string; campaignType?: string }[];
     updateExisting: boolean;
     defaultTags: string[];
+    defaultCampaignId?: string;
+    defaultCampaignType?: string;
   }) => void;
   isLoading?: boolean;
+  campaigns?: CampaignOption[];
 }
 
-type MappingField = "ignore" | "name" | "phone" | "email" | "tags";
+type MappingField = "ignore" | "name" | "phone" | "email" | "tags" | "campaign";
 
-export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: ImportLeadsDialogProps) {
+export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, campaigns = [] }: ImportLeadsDialogProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState("");
   const [headers, setHeaders] = useState<string[]>([]);
@@ -31,6 +40,18 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
   const [updateExisting, setUpdateExisting] = useState(true);
   const [defaultTags, setDefaultTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
+  const [defaultCampaign, setDefaultCampaign] = useState<string>("none");
+
+  const campaignsByType = {
+    ligacao: campaigns.filter((c) => c.type === "ligacao"),
+    despacho: campaigns.filter((c) => c.type === "despacho"),
+    grupos: campaigns.filter((c) => c.type === "grupos"),
+  };
+
+  const findCampaignByName = (name: string): CampaignOption | undefined => {
+    const lower = name.toLowerCase().trim();
+    return campaigns.find((c) => c.name.toLowerCase() === lower);
+  };
 
   const parseCSV = (text: string) => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
@@ -40,7 +61,6 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
     const dataRows = lines.slice(1).map((line) => line.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
     setRows(dataRows);
 
-    // Auto-map
     const autoMapping: Record<number, MappingField> = {};
     hdrs.forEach((h, i) => {
       const lower = h.toLowerCase();
@@ -48,6 +68,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
       else if (lower.includes("telefone") || lower.includes("phone") || lower.includes("fone")) autoMapping[i] = "phone";
       else if (lower.includes("email") || lower.includes("e-mail")) autoMapping[i] = "email";
       else if (lower.includes("tag") || lower.includes("categoria")) autoMapping[i] = "tags";
+      else if (lower.includes("campanha") || lower.includes("campaign")) autoMapping[i] = "campaign";
       else autoMapping[i] = "ignore";
     });
     setMapping(autoMapping);
@@ -66,9 +87,11 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
     const phoneIdx = Object.entries(mapping).find(([, v]) => v === "phone")?.[0];
     if (phoneIdx === undefined) return;
 
+    const selectedDefault = defaultCampaign !== "none" ? campaigns.find((c) => c.id === defaultCampaign) : undefined;
+
     const leads = rows
       .map((row) => {
-        const lead: { name?: string; phone: string; email?: string; tags?: string[] } = { phone: "" };
+        const lead: { name?: string; phone: string; email?: string; tags?: string[]; campaignId?: string; campaignType?: string } = { phone: "" };
         Object.entries(mapping).forEach(([idx, field]) => {
           const val = row[Number(idx)]?.trim();
           if (!val) return;
@@ -76,16 +99,29 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
           else if (field === "name") lead.name = val;
           else if (field === "email") lead.email = val;
           else if (field === "tags") lead.tags = val.split(/[;,]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+          else if (field === "campaign") {
+            const matched = findCampaignByName(val);
+            if (matched) {
+              lead.campaignId = matched.id;
+              lead.campaignType = matched.type;
+            }
+          }
         });
         return lead;
       })
       .filter((l) => l.phone);
 
-    onImport({ leads, updateExisting, defaultTags });
+    onImport({
+      leads,
+      updateExisting,
+      defaultTags,
+      defaultCampaignId: selectedDefault?.id,
+      defaultCampaignType: selectedDefault?.type,
+    });
   };
 
   const downloadTemplate = () => {
-    const csv = "nome,telefone,email,tags\nJoão Silva,5511999999999,joao@email.com,\"cliente,vip\"\nMaria Santos,5511888888888,maria@email.com,lead\n";
+    const csv = "nome,telefone,email,tags,campanha\nJoão Silva,5511999999999,joao@email.com,\"cliente,vip\",Minha Campanha\nMaria Santos,5511888888888,maria@email.com,lead,\n";
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -104,6 +140,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
   const reset = () => {
     setFileName(""); setHeaders([]); setRows([]); setMapping({});
     setUpdateExisting(true); setDefaultTags([]); setTagInput("");
+    setDefaultCampaign("none");
   };
 
   return (
@@ -154,6 +191,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
                         <SelectItem value="phone">Telefone</SelectItem>
                         <SelectItem value="email">Email</SelectItem>
                         <SelectItem value="tags">Tag</SelectItem>
+                        <SelectItem value="campaign">Campanha</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -205,6 +243,37 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading }: I
                   </div>
                 )}
               </div>
+
+              {/* Default Campaign */}
+              {campaigns.length > 0 && (
+                <div>
+                  <Label className="text-sm">Campanha padrão para todos</Label>
+                  <Select value={defaultCampaign} onValueChange={setDefaultCampaign}>
+                    <SelectTrigger className="mt-1"><SelectValue placeholder="Nenhuma" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Nenhuma</SelectItem>
+                      {campaignsByType.ligacao.length > 0 && (
+                        <>
+                          <SelectItem value="__header_ligacao" disabled className="text-xs font-semibold text-muted-foreground">— Ligação —</SelectItem>
+                          {campaignsByType.ligacao.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </>
+                      )}
+                      {campaignsByType.despacho.length > 0 && (
+                        <>
+                          <SelectItem value="__header_despacho" disabled className="text-xs font-semibold text-muted-foreground">— Despacho —</SelectItem>
+                          {campaignsByType.despacho.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </>
+                      )}
+                      {campaignsByType.grupos.length > 0 && (
+                        <>
+                          <SelectItem value="__header_grupos" disabled className="text-xs font-semibold text-muted-foreground">— Grupos —</SelectItem>
+                          {campaignsByType.grupos.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </div>
           </div>
         )}

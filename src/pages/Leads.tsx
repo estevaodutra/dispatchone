@@ -1,6 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useLeads, Lead, LeadFilters } from "@/hooks/useLeads";
 import { useCallQueue } from "@/hooks/useCallQueue";
+import { useCallCampaigns } from "@/hooks/useCallCampaigns";
+import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
+import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { CampaignOption } from "@/components/leads/ImportLeadsDialog";
 import { PageHeader } from "@/components/dispatch/PageHeader";
 import { MetricCard } from "@/components/dispatch/MetricCard";
 import { Input } from "@/components/ui/input";
@@ -63,6 +67,15 @@ export default function Leads() {
   } = useLeads(filters);
 
   const { addToQueue } = useCallQueue();
+  const { campaigns: callCampaigns } = useCallCampaigns();
+  const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
+  const { campaigns: groupCampaigns } = useGroupCampaigns();
+
+  const allCampaigns = useMemo<CampaignOption[]>(() => [
+    ...callCampaigns.map((c) => ({ id: c.id, name: c.name, type: "ligacao" })),
+    ...dispatchCampaigns.map((c) => ({ id: c.id, name: c.name, type: "despacho" })),
+    ...groupCampaigns.map((c) => ({ id: c.id, name: c.name, type: "grupos" })),
+  ], [callCampaigns, dispatchCampaigns, groupCampaigns]);
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
@@ -271,6 +284,7 @@ export default function Leads() {
         onOpenChange={setImportOpen}
         onImport={(data) => { importLeads.mutate(data); setImportOpen(false); }}
         isLoading={importLeads.isPending}
+        campaigns={allCampaigns}
       />
 
       <AddToQueueDialog

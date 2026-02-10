@@ -174,10 +174,12 @@ export function useLeads(filters: LeadFilters = {}) {
   });
 
   const importLeads = useMutation({
-    mutationFn: async ({ leads, updateExisting, defaultTags }: {
-      leads: { name?: string; phone: string; email?: string; tags?: string[] }[];
+    mutationFn: async ({ leads, updateExisting, defaultTags, defaultCampaignId, defaultCampaignType }: {
+      leads: { name?: string; phone: string; email?: string; tags?: string[]; campaignId?: string; campaignType?: string }[];
       updateExisting: boolean;
       defaultTags: string[];
+      defaultCampaignId?: string;
+      defaultCampaignType?: string;
     }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
@@ -188,21 +190,35 @@ export function useLeads(filters: LeadFilters = {}) {
 
       for (const lead of leads) {
         const tags = Array.from(new Set([...(lead.tags || []), ...defaultTags]));
-        const { error } = await supabase.from("leads").insert({
+        const campaignId = lead.campaignId || defaultCampaignId || null;
+        const campaignType = lead.campaignType || defaultCampaignType || null;
+
+        const insertData: Record<string, unknown> = {
           user_id: user.id,
           name: lead.name || null,
           phone: lead.phone,
           email: lead.email || null,
           tags,
-        });
+        };
+        if (campaignId) {
+          insertData.active_campaign_id = campaignId;
+          insertData.active_campaign_type = campaignType;
+        }
+
+        const { error } = await supabase.from("leads").insert(insertData as any);
 
         if (error) {
           if (error.message.includes("duplicate") && updateExisting) {
-            await supabase.from("leads").update({
+            const updateData: Record<string, unknown> = {
               name: lead.name || undefined,
               email: lead.email || undefined,
               tags,
-            }).eq("phone", lead.phone).eq("user_id", user.id);
+            };
+            if (campaignId) {
+              updateData.active_campaign_id = campaignId;
+              updateData.active_campaign_type = campaignType;
+            }
+            await supabase.from("leads").update(updateData as any).eq("phone", lead.phone).eq("user_id", user.id);
             updated++;
           } else {
             skipped++;
