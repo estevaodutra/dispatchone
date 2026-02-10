@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
+import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,8 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  ListOrdered,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -146,11 +149,15 @@ export default function CallPanel() {
 
   const { campaigns } = useCallCampaigns();
 
+  const isQueueTab = statusFilter === "queue";
+
   const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator } = useCallPanel({
-    status: statusFilter !== "all" ? statusFilter : undefined,
+    status: !isQueueTab && statusFilter !== "all" ? statusFilter : undefined,
     campaignId: campaignFilter !== "all" ? campaignFilter : undefined,
     search: searchQuery || undefined,
   });
+
+  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue } = useCallQueuePanel(campaignFilter);
 
   // 1-second tick for countdowns
   useEffect(() => {
@@ -205,8 +212,13 @@ export default function CallPanel() {
   }, [statusFilter, campaignFilter, searchQuery]);
 
   // Pagination
-  const totalPages = Math.ceil(entries.length / ITEMS_PER_PAGE);
-  const paginatedEntries = entries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const displayEntries = isQueueTab ? [] : entries;
+  const totalPages = Math.ceil(displayEntries.length / ITEMS_PER_PAGE);
+  const paginatedEntries = displayEntries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Queue pagination
+  const queueTotalPages = Math.ceil(queueEntries.length / ITEMS_PER_PAGE);
+  const paginatedQueue = queueEntries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   // Status counts for tabs
   const statusCounts = {
@@ -298,63 +310,73 @@ export default function CallPanel() {
           <TabsTrigger value="completed" className="flex-1 min-w-[100px]">Concluídas ({statusCounts.completed})</TabsTrigger>
           <TabsTrigger value="failed" className="flex-1 min-w-[100px]">Falhas ({statusCounts.failed})</TabsTrigger>
           <TabsTrigger value="cancelled" className="flex-1 min-w-[100px]">Canceladas ({statusCounts.cancelled})</TabsTrigger>
+          <TabsTrigger value="queue" className="flex-1 min-w-[100px] gap-1">
+            <ListOrdered className="h-3.5 w-3.5" /> Fila ({totalWaiting})
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 
-      {/* Call List */}
-      {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">Carregando ligações...</div>
-      ) : paginatedEntries.length === 0 ? (
-        <div className="text-center py-12 text-muted-foreground">Nenhuma ligação encontrada.</div>
+      {/* Queue List */}
+      {isQueueTab ? (
+        queueLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Carregando fila...</div>
+        ) : paginatedQueue.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">Nenhum lead na fila.</div>
+        ) : (
+          <div className="space-y-3">
+            {paginatedQueue.map((qe) => (
+              <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
+            ))}
+          </div>
+        )
       ) : (
-        <div className="space-y-3">
-          {paginatedEntries.map((entry) => (
-            <CallCard
-              key={entry.id}
-              entry={entry}
-              onDelay={(id) => delayCall({ callId: id, minutes: 10 })}
-              onReschedule={(e) => {
-                setRescheduleEntry(e);
-                const now = new Date();
-                setRescheduleDate(format(now, "yyyy-MM-dd"));
-                setRescheduleTime(format(new Date(now.getTime() + 30 * 60000), "HH:mm"));
-              }}
-              onCancel={(e) => setCancelEntry(e)}
-              onDialNow={(id) => dialNow(id)}
-              onAction={(e) => { setActionEntry(e); setActionNotes(""); }}
-              onEditOperator={(e) => {
-                setEditOperatorEntry(e);
-                setSelectedOperatorId(e.operatorId || "");
-              }}
-            />
-          ))}
-        </div>
+        /* Call List */
+        isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Carregando ligações...</div>
+        ) : paginatedEntries.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">Nenhuma ligação encontrada.</div>
+        ) : (
+          <div className="space-y-3">
+            {paginatedEntries.map((entry) => (
+              <CallCard
+                key={entry.id}
+                entry={entry}
+                onDelay={(id) => delayCall({ callId: id, minutes: 10 })}
+                onReschedule={(e) => {
+                  setRescheduleEntry(e);
+                  const now = new Date();
+                  setRescheduleDate(format(now, "yyyy-MM-dd"));
+                  setRescheduleTime(format(new Date(now.getTime() + 30 * 60000), "HH:mm"));
+                }}
+                onCancel={(e) => setCancelEntry(e)}
+                onDialNow={(id) => dialNow(id)}
+                onAction={(e) => { setActionEntry(e); setActionNotes(""); }}
+                onEditOperator={(e) => {
+                  setEditOperatorEntry(e);
+                  setSelectedOperatorId(e.operatorId || "");
+                }}
+              />
+            ))}
+          </div>
+        )
       )}
 
       {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-4 pt-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((p) => p - 1)}
-          >
-            <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Página {currentPage} de {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={currentPage === totalPages}
-            onClick={() => setCurrentPage((p) => p + 1)}
-          >
-            Próxima <ChevronRight className="h-4 w-4 ml-1" />
-          </Button>
-        </div>
-      )}
+      {(() => {
+        const pages = isQueueTab ? queueTotalPages : totalPages;
+        if (pages <= 1) return null;
+        return (
+          <div className="flex items-center justify-center gap-4 pt-2">
+            <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => p - 1)}>
+              <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+            </Button>
+            <span className="text-sm text-muted-foreground">Página {currentPage} de {pages}</span>
+            <Button variant="outline" size="sm" disabled={currentPage === pages} onClick={() => setCurrentPage((p) => p + 1)}>
+              Próxima <ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        );
+      })()}
 
       {/* Reschedule Dialog */}
       <Dialog open={!!rescheduleEntry} onOpenChange={(o) => !o && setRescheduleEntry(null)}>
@@ -856,5 +878,77 @@ function EditOperatorDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Queue Card ──
+
+function QueueCard({ entry, onRemove }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void> }) {
+  const [removing, setRemoving] = useState(false);
+
+  const handleRemove = async () => {
+    setRemoving(true);
+    try {
+      await onRemove(entry.id);
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  const lastResultLabel: Record<string, string> = {
+    no_answer: "Não atendeu",
+    busy: "Ocupado",
+    failed: "Falhou",
+    voicemail: "Caixa postal",
+  };
+
+  return (
+    <Card className="border-l-4 border-l-blue-500">
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+                <ListOrdered className="h-3 w-3" /> #{entry.position}
+              </Badge>
+              {entry.attempts > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {entry.attempts} tentativa{entry.attempts > 1 ? "s" : ""}
+                </Badge>
+              )}
+              {entry.lastResult && (
+                <Badge variant="outline" className="text-xs text-muted-foreground">
+                  {lastResultLabel[entry.lastResult] || entry.lastResult}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-4 text-sm pt-1">
+              <span className="flex items-center gap-1 font-medium">
+                <User className="h-3.5 w-3.5 text-muted-foreground" /> {entry.leadName || "Sem nome"}
+              </span>
+              <span className="flex items-center gap-1 text-muted-foreground">
+                <Phone className="h-3.5 w-3.5" /> {formatPhone(entry.leadPhone)}
+              </span>
+            </div>
+            {entry.campaignName && (
+              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                <FolderOpen className="h-3 w-3" /> {entry.campaignName}
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRemove}
+              disabled={removing}
+              className="gap-1 text-destructive hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Remover
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
