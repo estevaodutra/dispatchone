@@ -385,6 +385,17 @@ export function useCallPanel(filters?: {
 
   const registerActionMutation = useMutation({
     mutationFn: async ({ callId, actionId, notes }: { callId: string; actionId: string; notes?: string }) => {
+      // Check fresh state to prevent duplicate updates
+      const { data: freshLog } = await (supabase as any)
+        .from("call_logs")
+        .select("call_status")
+        .eq("id", callId)
+        .maybeSingle();
+
+      if (freshLog?.call_status === "completed") {
+        return; // Already completed, skip
+      }
+
       const { error } = await (supabase as any)
         .from("call_logs")
         .update({ action_id: actionId, notes: notes || null, call_status: "completed", ended_at: new Date().toISOString() })
@@ -393,10 +404,19 @@ export function useCallPanel(filters?: {
 
       const entry = entries.find((e) => e.id === callId);
       if (entry?.leadId) {
-        await (supabase as any)
+        // Only update lead if not already completed
+        const { data: freshLead } = await (supabase as any)
           .from("call_leads")
-          .update({ status: "completed", result_action_id: actionId, result_notes: notes || null })
-          .eq("id", entry.leadId);
+          .select("status")
+          .eq("id", entry.leadId)
+          .maybeSingle();
+
+        if (freshLead && freshLead.status !== "completed") {
+          await (supabase as any)
+            .from("call_leads")
+            .update({ status: "completed", result_action_id: actionId, result_notes: notes || null })
+            .eq("id", entry.leadId);
+        }
       }
     },
     onSuccess: () => {
