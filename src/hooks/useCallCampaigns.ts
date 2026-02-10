@@ -10,6 +10,9 @@ export interface CallCampaign {
   status: "draft" | "active" | "paused" | "completed";
   api4comConfig: Record<string, unknown>;
   dialDelayMinutes: number;
+  queueExecutionEnabled: boolean;
+  queueIntervalSeconds: number;
+  queueUnavailableBehavior: "wait" | "pause";
   createdAt: string;
   updatedAt: string;
 }
@@ -22,6 +25,9 @@ interface DbCallCampaign {
   status: string | null;
   api4com_config: Record<string, unknown> | null;
   dial_delay_minutes: number | null;
+  queue_execution_enabled: boolean | null;
+  queue_interval_seconds: number | null;
+  queue_unavailable_behavior: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -33,6 +39,9 @@ const transformDbToFrontend = (db: DbCallCampaign): CallCampaign => ({
   status: (db.status as CallCampaign["status"]) || "draft",
   api4comConfig: db.api4com_config || {},
   dialDelayMinutes: db.dial_delay_minutes ?? 10,
+  queueExecutionEnabled: db.queue_execution_enabled ?? false,
+  queueIntervalSeconds: db.queue_interval_seconds ?? 30,
+  queueUnavailableBehavior: (db.queue_unavailable_behavior as "wait" | "pause") || "wait",
   createdAt: db.created_at || new Date().toISOString(),
   updatedAt: db.updated_at || new Date().toISOString(),
 });
@@ -96,6 +105,9 @@ export function useCallCampaigns() {
         status: string;
         api4comConfig: Record<string, unknown>;
         dialDelayMinutes: number;
+        queueExecutionEnabled: boolean;
+        queueIntervalSeconds: number;
+        queueUnavailableBehavior: string;
       }>;
     }) => {
       const dbUpdates: Record<string, unknown> = {};
@@ -104,6 +116,9 @@ export function useCallCampaigns() {
       if (updates.status !== undefined) dbUpdates.status = updates.status;
       if (updates.api4comConfig !== undefined) dbUpdates.api4com_config = updates.api4comConfig;
       if (updates.dialDelayMinutes !== undefined) dbUpdates.dial_delay_minutes = updates.dialDelayMinutes;
+      if (updates.queueExecutionEnabled !== undefined) dbUpdates.queue_execution_enabled = updates.queueExecutionEnabled;
+      if (updates.queueIntervalSeconds !== undefined) dbUpdates.queue_interval_seconds = updates.queueIntervalSeconds;
+      if (updates.queueUnavailableBehavior !== undefined) dbUpdates.queue_unavailable_behavior = updates.queueUnavailableBehavior;
 
       const { data, error } = await (supabase as any)
         .from("call_campaigns")

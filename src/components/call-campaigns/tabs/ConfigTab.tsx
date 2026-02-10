@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { CallCampaign } from "@/hooks/useCallCampaigns";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -27,6 +29,9 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
   const [api4comQueueId, setApi4comQueueId] = useState(
     (campaign.api4comConfig?.queueId as string) || ""
   );
+  const [queueExecutionEnabled, setQueueExecutionEnabled] = useState(campaign.queueExecutionEnabled);
+  const [queueIntervalSeconds, setQueueIntervalSeconds] = useState(campaign.queueIntervalSeconds);
+  const [queueUnavailableBehavior, setQueueUnavailableBehavior] = useState(campaign.queueUnavailableBehavior);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
@@ -40,6 +45,9 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
           status,
           dialDelayMinutes,
           api4comConfig: api4comQueueId ? { queueId: api4comQueueId } : {},
+          queueExecutionEnabled,
+          queueIntervalSeconds,
+          queueUnavailableBehavior,
         },
       });
     } finally {
@@ -52,7 +60,10 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
     description !== (campaign.description || "") ||
     status !== campaign.status ||
     dialDelayMinutes !== campaign.dialDelayMinutes ||
-    api4comQueueId !== ((campaign.api4comConfig?.queueId as string) || "");
+    api4comQueueId !== ((campaign.api4comConfig?.queueId as string) || "") ||
+    queueExecutionEnabled !== campaign.queueExecutionEnabled ||
+    queueIntervalSeconds !== campaign.queueIntervalSeconds ||
+    queueUnavailableBehavior !== campaign.queueUnavailableBehavior;
 
   return (
     <div className="space-y-6">
@@ -113,6 +124,65 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
             </Select>
           </div>
         </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="space-y-1">
+            <CardTitle>Execução em Fila</CardTitle>
+            <CardDescription>
+              Quando habilitado, o sistema executa automaticamente as ligações da fila,
+              uma por vez, respeitando a disponibilidade dos operadores.
+            </CardDescription>
+          </div>
+          <Switch
+            checked={queueExecutionEnabled}
+            onCheckedChange={setQueueExecutionEnabled}
+          />
+        </CardHeader>
+        {queueExecutionEnabled && (
+          <CardContent className="space-y-4 pt-4">
+            <div className="grid gap-2">
+              <Label htmlFor="queueInterval">Intervalo entre Ligações (segundos)</Label>
+              <Input
+                id="queueInterval"
+                type="number"
+                min={5}
+                max={300}
+                value={queueIntervalSeconds}
+                onChange={(e) => setQueueIntervalSeconds(Number(e.target.value) || 30)}
+                placeholder="30"
+              />
+              <p className="text-xs text-muted-foreground">
+                Tempo de espera após encerrar uma ligação antes de iniciar a próxima.
+              </p>
+              <p className="text-xs text-muted-foreground italic">
+                ℹ️ Operadores podem ajustar este tempo individualmente.
+              </p>
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Comportamento quando operador indisponível</Label>
+              <RadioGroup
+                value={queueUnavailableBehavior}
+                onValueChange={(v) => setQueueUnavailableBehavior(v as "wait" | "pause")}
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="wait" id="wait" />
+                  <Label htmlFor="wait" className="font-normal cursor-pointer">
+                    Aguardar operador ficar disponível
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="pause" id="pause" />
+                  <Label htmlFor="pause" className="font-normal cursor-pointer">
+                    Pausar fila até intervenção manual
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       <Card>

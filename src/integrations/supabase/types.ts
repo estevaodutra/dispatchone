@@ -143,28 +143,40 @@ export type Database = {
         Row: {
           campaign_id: string
           created_at: string | null
+          current_call_id: string | null
           extension: string | null
           id: string
           is_active: boolean | null
+          last_call_ended_at: string | null
           operator_name: string | null
+          personal_interval_seconds: number | null
+          status: string | null
           user_id: string
         }
         Insert: {
           campaign_id: string
           created_at?: string | null
+          current_call_id?: string | null
           extension?: string | null
           id?: string
           is_active?: boolean | null
+          last_call_ended_at?: string | null
           operator_name?: string | null
+          personal_interval_seconds?: number | null
+          status?: string | null
           user_id: string
         }
         Update: {
           campaign_id?: string
           created_at?: string | null
+          current_call_id?: string | null
           extension?: string | null
           id?: string
           is_active?: boolean | null
+          last_call_ended_at?: string | null
           operator_name?: string | null
+          personal_interval_seconds?: number | null
+          status?: string | null
           user_id?: string
         }
         Relationships: [
@@ -185,6 +197,9 @@ export type Database = {
           dial_delay_minutes: number | null
           id: string
           name: string
+          queue_execution_enabled: boolean | null
+          queue_interval_seconds: number | null
+          queue_unavailable_behavior: string | null
           status: string | null
           updated_at: string | null
           user_id: string
@@ -196,6 +211,9 @@ export type Database = {
           dial_delay_minutes?: number | null
           id?: string
           name: string
+          queue_execution_enabled?: boolean | null
+          queue_interval_seconds?: number | null
+          queue_unavailable_behavior?: string | null
           status?: string | null
           updated_at?: string | null
           user_id: string
@@ -207,6 +225,9 @@ export type Database = {
           dial_delay_minutes?: number | null
           id?: string
           name?: string
+          queue_execution_enabled?: boolean | null
+          queue_interval_seconds?: number | null
+          queue_unavailable_behavior?: string | null
           status?: string | null
           updated_at?: string | null
           user_id?: string
@@ -1740,6 +1761,59 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      queue_execution_state: {
+        Row: {
+          calls_answered: number | null
+          calls_made: number | null
+          calls_no_answer: number | null
+          campaign_id: string | null
+          created_at: string | null
+          current_position: number | null
+          id: string
+          last_dial_at: string | null
+          session_started_at: string | null
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          calls_answered?: number | null
+          calls_made?: number | null
+          calls_no_answer?: number | null
+          campaign_id?: string | null
+          created_at?: string | null
+          current_position?: number | null
+          id?: string
+          last_dial_at?: string | null
+          session_started_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          calls_answered?: number | null
+          calls_made?: number | null
+          calls_no_answer?: number | null
+          campaign_id?: string | null
+          created_at?: string | null
+          current_position?: number | null
+          id?: string
+          last_dial_at?: string | null
+          session_started_at?: string | null
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "queue_execution_state_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: true
+            referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       scheduled_message_executions: {
         Row: {

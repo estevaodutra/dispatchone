@@ -2,12 +2,18 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
+export type OperatorStatus = "offline" | "available" | "on_call" | "cooldown" | "paused";
+
 export interface CallOperator {
   id: string;
   campaignId: string;
   operatorName: string;
   extension: string | null;
   isActive: boolean;
+  status: OperatorStatus;
+  currentCallId: string | null;
+  personalIntervalSeconds: number | null;
+  lastCallEndedAt: string | null;
   createdAt: string;
 }
 
@@ -18,6 +24,10 @@ interface DbCallOperator {
   operator_name: string;
   extension: string | null;
   is_active: boolean | null;
+  status: string | null;
+  current_call_id: string | null;
+  personal_interval_seconds: number | null;
+  last_call_ended_at: string | null;
   created_at: string | null;
 }
 
@@ -27,6 +37,10 @@ const transformDbToFrontend = (db: DbCallOperator): CallOperator => ({
   operatorName: db.operator_name,
   extension: db.extension,
   isActive: db.is_active ?? true,
+  status: (db.status as OperatorStatus) || "offline",
+  currentCallId: db.current_call_id || null,
+  personalIntervalSeconds: db.personal_interval_seconds || null,
+  lastCallEndedAt: db.last_call_ended_at || null,
   createdAt: db.created_at || new Date().toISOString(),
 });
 
@@ -138,6 +152,39 @@ export function useCallOperators(campaignId: string) {
     },
   });
 
+  const updateSettingsMutation = useMutation({
+    mutationFn: async ({ id, personalIntervalSeconds }: { id: string; personalIntervalSeconds: number | null }) => {
+      const { error } = await (supabase as any)
+        .from("call_campaign_operators")
+        .update({ personal_interval_seconds: personalIntervalSeconds })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_operators", campaignId] });
+      toast({ title: "Atualizado", description: "Configuração do operador atualizada." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      const { error } = await (supabase as any)
+        .from("call_campaign_operators")
+        .update({ status })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_operators", campaignId] });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     operators,
     isLoading,
@@ -146,6 +193,8 @@ export function useCallOperators(campaignId: string) {
     updateOperator: updateOperatorMutation.mutateAsync,
     removeOperator: removeOperatorMutation.mutateAsync,
     toggleActive: toggleActiveMutation.mutateAsync,
+    updateSettings: updateSettingsMutation.mutateAsync,
+    updateOperatorStatus: updateStatusMutation.mutateAsync,
     isAdding: addOperatorMutation.isPending,
   };
 }
