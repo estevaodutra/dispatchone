@@ -43,7 +43,7 @@ const transform = (db: DbQueueState): QueueExecutionState => ({
 export function useQueueExecution(campaignId: string, enabled = true) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { operators } = useCallOperators(campaignId);
+  const { operators } = useCallOperators();
 
   const { data: state, isLoading } = useQuery({
     queryKey: ["queue_execution_state", campaignId],
@@ -72,7 +72,6 @@ export function useQueueExecution(campaignId: string, enabled = true) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
 
-      // Upsert queue state
       const { error } = await (supabase as any)
         .from("queue_execution_state")
         .upsert({

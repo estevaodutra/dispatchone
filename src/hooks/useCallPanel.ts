@@ -57,7 +57,7 @@ interface DbCallLogJoined {
   call_campaigns: {
     name: string;
   } | null;
-  call_campaign_operators: {
+  call_operators: {
     operator_name: string | null;
     extension: string | null;
   } | null;
@@ -78,8 +78,8 @@ function transformEntry(db: DbCallLogJoined): CallPanelEntry {
     leadName: db.call_leads?.name || null,
     leadPhone: db.call_leads?.phone || null,
     operatorId: db.operator_id,
-    operatorName: db.call_campaign_operators?.operator_name || null,
-    operatorExtension: db.call_campaign_operators?.extension || null,
+    operatorName: db.call_operators?.operator_name || null,
+    operatorExtension: db.call_operators?.extension || null,
     callStatus: db.call_status || "scheduled",
     scheduledFor: db.scheduled_for,
     startedAt: db.started_at,
@@ -109,7 +109,7 @@ export function useCallPanel(filters?: {
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
-        .select("*, call_leads(name, phone, attempts), call_campaigns(name), call_campaign_operators(operator_name, extension)")
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name), call_operators(operator_name, extension)")
         .order("created_at", { ascending: false })
         .limit(200);
 
@@ -257,18 +257,18 @@ export function useCallPanel(filters?: {
 
       if (entry.operatorId) {
         const { data: currentOp } = await (supabase as any)
-          .from("call_campaign_operators")
+          .from("call_operators")
           .select("id, operator_name, extension, is_active")
           .eq("id", entry.operatorId)
           .maybeSingle();
 
         const isInactive = !currentOp || currentOp.is_active === false;
 
-        if (isInactive && entry.campaignId) {
+        if (isInactive) {
+          // Fetch all active operators for the user (global)
           const { data: activeOps } = await (supabase as any)
-            .from("call_campaign_operators")
+            .from("call_operators")
             .select("id, operator_name, extension")
-            .eq("campaign_id", entry.campaignId)
             .eq("is_active", true)
             .order("created_at", { ascending: true });
 

@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useCallOperators } from "@/hooks/useCallOperators";
 import { CallCampaign } from "@/hooks/useCallCampaigns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save } from "lucide-react";
+import { Save, Users, Wifi, Phone, ArrowRight } from "lucide-react";
 
 interface ConfigTabProps {
   campaign: CallCampaign;
@@ -22,6 +24,12 @@ interface ConfigTabProps {
 }
 
 export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
+  const navigate = useNavigate();
+  const { operators } = useCallOperators();
+  const activeOperators = operators.filter(o => o.isActive);
+  const availableOperators = operators.filter(o => o.status === "available" && o.isActive);
+  const onCallOperators = operators.filter(o => o.status === "on_call");
+
   const [name, setName] = useState(campaign.name);
   const [description, setDescription] = useState(campaign.description || "");
   const [status, setStatus] = useState(campaign.status);
@@ -202,6 +210,47 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
               Configure o ID da fila para integração com o sistema de telefonia.
             </p>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" /> Operadores Disponíveis
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-3 gap-4">
+            <div className="flex items-center gap-2">
+              <Users className="h-4 w-4 text-muted-foreground" />
+              <div>
+                <p className="text-lg font-bold">{activeOperators.length}</p>
+                <p className="text-xs text-muted-foreground">Total Ativos</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Wifi className="h-4 w-4 text-emerald-500" />
+              <div>
+                <p className="text-lg font-bold">{availableOperators.length}</p>
+                <p className="text-xs text-muted-foreground">Disponíveis</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Phone className="h-4 w-4 text-blue-500" />
+              <div>
+                <p className="text-lg font-bold">{onCallOperators.length}</p>
+                <p className="text-xs text-muted-foreground">Em Ligação</p>
+              </div>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            ℹ️ Os operadores são gerenciados no Painel de Ligações. Todos os operadores ativos participam automaticamente das campanhas.
+          </p>
+          <Button variant="outline" onClick={() => navigate("/painel-ligacoes")}>
+            <Users className="mr-2 h-4 w-4" />
+            Gerenciar Operadores
+            <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
         </CardContent>
       </Card>
 

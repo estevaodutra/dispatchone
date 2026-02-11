@@ -605,9 +605,9 @@ Deno.serve(async (req) => {
 
         // Pick random active operator
         const { data: activeOperators } = await supabase
-          .from('call_campaign_operators')
+          .from('call_operators')
           .select('id')
-          .eq('campaign_id', callLog.campaign_id)
+          .eq('user_id', userId)
           .eq('is_active', true);
 
         const newOperatorId = activeOperators && activeOperators.length > 0

@@ -2,9 +2,8 @@ import { useState } from "react";
 import { CallCampaign } from "@/hooks/useCallCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, Users, FileText, Zap, UserCheck, History } from "lucide-react";
+import { ArrowLeft, Settings, FileText, Zap, UserCheck, History } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
-import { OperatorsTab } from "./tabs/OperatorsTab";
 import { ScriptTab } from "./tabs/ScriptTab";
 import { ActionsTab } from "./tabs/ActionsTab";
 import { LeadsTab } from "./tabs/LeadsTab";
@@ -40,14 +39,10 @@ export function CallCampaignDetails({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="config" className="gap-2">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Configuração</span>
-          </TabsTrigger>
-          <TabsTrigger value="operators" className="gap-2">
-            <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">Operadores</span>
           </TabsTrigger>
           <TabsTrigger value="script" className="gap-2">
             <FileText className="h-4 w-4" />
@@ -69,14 +64,6 @@ export function CallCampaignDetails({
 
         <TabsContent value="config" className="mt-6">
           <ConfigTab campaign={campaign} onUpdate={onUpdate} />
-        </TabsContent>
-
-        <TabsContent value="operators" className="mt-6">
-          <OperatorsTab
-            campaignId={campaign.id}
-            queueExecutionEnabled={campaign.queueExecutionEnabled}
-            queueIntervalSeconds={campaign.queueIntervalSeconds}
-          />
         </TabsContent>
 
         <TabsContent value="script" className="mt-6">
