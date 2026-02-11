@@ -13,6 +13,8 @@ import {
 } from "@/components/ui/select";
 import { Plus, Search, User, Phone, Clock, Pause, Wifi, WifiOff, Settings, Trash2, Users } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { CreateOperatorDialog } from "./CreateOperatorDialog";
 import { EditOperatorDialog } from "./EditOperatorDialog";
@@ -190,10 +192,18 @@ function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: str
 }
 
 function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOperator; onConfigure: (op: CallOperator) => void; onRemove: (id: string) => void }) {
+  const { updateOperatorStatus } = useCallOperators();
   const config = statusConfig[operator.status];
   const answerRate = operator.totalCalls > 0
     ? ((operator.totalCallsAnswered / operator.totalCalls) * 100).toFixed(1)
     : null;
+
+  const isToggleDisabled = !operator.isActive || operator.status === "on_call" || operator.status === "cooldown";
+  const isOnline = operator.status === "available";
+
+  const handleToggle = (checked: boolean) => {
+    updateOperatorStatus({ id: operator.id, status: checked ? "available" : "offline" });
+  };
 
   return (
     <Card className={cn(!operator.isActive && "opacity-60")}>
@@ -236,7 +246,30 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
             </p>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">{isOnline ? "Online" : "Offline"}</span>
+                    <Switch
+                      checked={isOnline}
+                      onCheckedChange={handleToggle}
+                      disabled={isToggleDisabled}
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {isToggleDisabled
+                    ? operator.status === "on_call"
+                      ? "Em ligação — não pode ser alterado"
+                      : operator.status === "cooldown"
+                        ? "Em cooldown — aguarde"
+                        : "Operador inativo"
+                    : isOnline ? "Clique para ficar offline" : "Clique para ficar online"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
             <Button variant="ghost" size="icon" onClick={() => onConfigure(operator)} title="Configurar">
               <Settings className="h-4 w-4" />
             </Button>
