@@ -484,6 +484,7 @@ export default function CallPanel() {
         </TabsContent>
 
         <TabsContent value="calls" className="mt-6">
+          <div className="space-y-6">
 
       {/* Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -493,7 +494,8 @@ export default function CallPanel() {
         <MetricCard icon={<XCircle className="h-5 w-5 text-destructive" />} label="Canceladas / Falhas" value={stats.cancelled + stats.failed} />
       </div>
 
-      {/* Filters */}
+      {/* Filters & Status */}
+      <div className="space-y-3">
       <div className="flex flex-wrap gap-3">
         <Input
           placeholder="🔍 Buscar por nome ou telefone..."
@@ -526,6 +528,7 @@ export default function CallPanel() {
           </TabsTrigger>
         </TabsList>
       </Tabs>
+      </div>
 
       {/* Queue List */}
       {isQueueTab ? (
@@ -886,6 +889,7 @@ export default function CallPanel() {
           setEditOperatorEntry(null);
         }}
       />
+          </div>
         </TabsContent>
       </Tabs>
     </div>
