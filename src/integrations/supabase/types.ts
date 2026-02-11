@@ -139,56 +139,6 @@ export type Database = {
           },
         ]
       }
-      call_campaign_operators: {
-        Row: {
-          campaign_id: string
-          created_at: string | null
-          current_call_id: string | null
-          extension: string | null
-          id: string
-          is_active: boolean | null
-          last_call_ended_at: string | null
-          operator_name: string | null
-          personal_interval_seconds: number | null
-          status: string | null
-          user_id: string
-        }
-        Insert: {
-          campaign_id: string
-          created_at?: string | null
-          current_call_id?: string | null
-          extension?: string | null
-          id?: string
-          is_active?: boolean | null
-          last_call_ended_at?: string | null
-          operator_name?: string | null
-          personal_interval_seconds?: number | null
-          status?: string | null
-          user_id: string
-        }
-        Update: {
-          campaign_id?: string
-          created_at?: string | null
-          current_call_id?: string | null
-          extension?: string | null
-          id?: string
-          is_active?: boolean | null
-          last_call_ended_at?: string | null
-          operator_name?: string | null
-          personal_interval_seconds?: number | null
-          status?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "call_campaign_operators_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "call_campaigns"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       call_campaigns: {
         Row: {
           api4com_config: Json | null
@@ -384,10 +334,61 @@ export type Database = {
             foreignKeyName: "call_logs_operator_id_fkey"
             columns: ["operator_id"]
             isOneToOne: false
-            referencedRelation: "call_campaign_operators"
+            referencedRelation: "call_operators"
             referencedColumns: ["id"]
           },
         ]
+      }
+      call_operators: {
+        Row: {
+          created_at: string | null
+          current_call_id: string | null
+          current_campaign_id: string | null
+          extension: string | null
+          id: string
+          is_active: boolean | null
+          last_call_ended_at: string | null
+          operator_name: string
+          personal_interval_seconds: number | null
+          status: string | null
+          total_calls: number | null
+          total_calls_answered: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          current_call_id?: string | null
+          current_campaign_id?: string | null
+          extension?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_call_ended_at?: string | null
+          operator_name: string
+          personal_interval_seconds?: number | null
+          status?: string | null
+          total_calls?: number | null
+          total_calls_answered?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          current_call_id?: string | null
+          current_campaign_id?: string | null
+          extension?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_call_ended_at?: string | null
+          operator_name?: string
+          personal_interval_seconds?: number | null
+          status?: string | null
+          total_calls?: number | null
+          total_calls_answered?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       call_queue: {
         Row: {

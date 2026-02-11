@@ -428,9 +428,9 @@ Deno.serve(async (req) => {
     console.log('[call-dial] Searching for active operators in campaign:', campaign.id);
     
     const { data: activeOperators, error: operatorError } = await supabase
-      .from('call_campaign_operators')
+      .from('call_operators')
       .select('id, operator_name, extension')
-      .eq('campaign_id', campaign.id)
+      .eq('user_id', userId)
       .eq('is_active', true)
       .order('created_at', { ascending: true });
 

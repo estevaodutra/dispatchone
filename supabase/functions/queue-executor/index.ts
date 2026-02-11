@@ -101,9 +101,9 @@ async function getStatus(supabase: any, campaignId: string, userId: string) {
     .maybeSingle();
 
   const { data: operators } = await supabase
-    .from('call_campaign_operators')
+    .from('call_operators')
     .select('id, operator_name, status, current_call_id, personal_interval_seconds, last_call_ended_at')
-    .eq('campaign_id', campaignId)
+    .eq('user_id', userId)
     .eq('is_active', true);
 
   const { count: queueRemaining } = await supabase
@@ -151,9 +151,9 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 
   // 1. Transition cooldown operators to available
   const { data: cooldownOps } = await supabase
-    .from('call_campaign_operators')
+    .from('call_operators')
     .select('id, last_call_ended_at, personal_interval_seconds')
-    .eq('campaign_id', campaignId)
+    .eq('user_id', userId)
     .eq('status', 'cooldown')
     .eq('is_active', true);
 
@@ -164,7 +164,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
       const endedAt = new Date(op.last_call_ended_at).getTime();
       if (now - endedAt >= opInterval * 1000) {
         await supabase
-          .from('call_campaign_operators')
+          .from('call_operators')
           .update({ status: 'available', current_call_id: null })
           .eq('id', op.id);
       }
@@ -173,9 +173,9 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 
   // 2. Round-robin: fetch ALL active operators in fixed order
   const { data: allActiveOps } = await supabase
-    .from('call_campaign_operators')
+    .from('call_operators')
     .select('id, operator_name, extension, status')
-    .eq('campaign_id', campaignId)
+    .eq('user_id', userId)
     .eq('is_active', true)
     .order('created_at', { ascending: true });
 
@@ -261,8 +261,8 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 
   // Update operator status
   await supabase
-    .from('call_campaign_operators')
-    .update({ status: 'on_call', current_call_id: callLog.id })
+    .from('call_operators')
+    .update({ status: 'on_call', current_call_id: callLog.id, current_campaign_id: campaignId })
     .eq('id', operator.id);
 
   // Update lead status

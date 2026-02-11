@@ -4,6 +4,8 @@ import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
 import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
 import { useCallOperators } from "@/hooks/useCallOperators";
+import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
+import { Users, Settings as SettingsIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,6 +252,8 @@ export default function CallPanel() {
     setRescheduleTime(format(now, "HH:mm"));
   };
 
+  const [panelTab, setPanelTab] = useState("calls");
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -273,6 +277,32 @@ export default function CallPanel() {
           </Badge>
         )}
       </div>
+
+      {/* Panel Tabs */}
+      <Tabs value={panelTab} onValueChange={setPanelTab}>
+        <TabsList>
+          <TabsTrigger value="calls" className="gap-2">
+            <Phone className="h-4 w-4" /> Ligações
+          </TabsTrigger>
+          <TabsTrigger value="operators" className="gap-2">
+            <Users className="h-4 w-4" /> Operadores
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="gap-2">
+            <SettingsIcon className="h-4 w-4" /> Configurações
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="operators" className="mt-6">
+          <OperatorsPanel />
+        </TabsContent>
+
+        <TabsContent value="settings" className="mt-6">
+          <div className="text-center py-12 text-muted-foreground">
+            Configurações gerais de telefonia (em breve)
+          </div>
+        </TabsContent>
+
+        <TabsContent value="calls" className="mt-6">
 
       {/* Metrics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -472,6 +502,8 @@ export default function CallPanel() {
           setEditOperatorEntry(null);
         }}
       />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -828,7 +860,7 @@ function EditOperatorDialog({
   onClose: () => void;
   onConfirm: () => Promise<void>;
 }) {
-  const { operators, isLoading } = useCallOperators(entry?.campaignId || "");
+  const { operators, isLoading } = useCallOperators();
   const [submitting, setSubmitting] = useState(false);
   const activeOperators = operators.filter((o) => o.isActive);
 

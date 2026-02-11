@@ -116,9 +116,9 @@ Deno.serve(async (req) => {
 
         // Fetch active operators for this campaign
         const { data: activeOperators } = await supabase
-          .from("call_campaign_operators")
+          .from("call_operators")
           .select("id")
-          .eq("campaign_id", call.campaign_id)
+          .eq("user_id", call.user_id)
           .eq("is_active", true)
           .order("created_at", { ascending: true });
 
