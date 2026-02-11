@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
@@ -27,7 +27,28 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import {
   Clock,
@@ -53,6 +74,10 @@ import {
   ChevronRight,
   ListOrdered,
   Trash2,
+  Eye,
+  RefreshCw,
+  MoreHorizontal,
+  Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -62,11 +87,12 @@ import { format } from "date-fns";
 function formatPhone(phone: string | null) {
   if (!phone) return "";
   const clean = phone.replace(/\D/g, "");
+  if (clean.length === 13 && clean.startsWith("55")) {
+    const local = clean.slice(2);
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
   if (clean.length === 11) {
     return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
-  }
-  if (clean.length === 13) {
-    return `+${clean.slice(0, 2)} (${clean.slice(2, 4)}) ${clean.slice(4, 9)}-${clean.slice(9)}`;
   }
   return phone;
 }
@@ -86,12 +112,69 @@ function getTimeRemaining(scheduledFor: string | null): { text: string; seconds:
   };
 }
 
+function getElapsedTime(startedAt: string | null): string {
+  if (!startedAt) return "—";
+  const diff = Date.now() - new Date(startedAt).getTime();
+  if (diff < 0) return "00:00";
+  const totalSec = Math.floor(diff / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, "0");
+  const s = (totalSec % 60).toString().padStart(2, "0");
+  return h > 0 ? `${h.toString().padStart(2, "0")}:${m}:${s}` : `${m}:${s}`;
+}
+
 function getStatusCategory(status: string): "scheduled" | "in_progress" | "completed" | "failed" | "cancelled" {
   if (["scheduled", "ready"].includes(status)) return "scheduled";
   if (["dialing", "ringing", "answered", "in_progress"].includes(status)) return "in_progress";
   if (status === "completed") return "completed";
   if (status === "cancelled") return "cancelled";
   return "failed";
+}
+
+// ── Priority Sort ──
+
+function sortByPriority(entries: CallPanelEntry[]): CallPanelEntry[] {
+  const now = Date.now();
+  return [...entries].sort((a, b) => {
+    const catA = getStatusCategory(a.callStatus);
+    const catB = getStatusCategory(b.callStatus);
+
+    const priorityOrder = { in_progress: 0, scheduled: 1, completed: 2, failed: 2, cancelled: 2 };
+    
+    // For scheduled, split into "AGORA" (timer <= 0) vs "Agendada" (timer > 0)
+    const isNowA = catA === "scheduled" && a.scheduledFor && new Date(a.scheduledFor).getTime() <= now;
+    const isNowB = catB === "scheduled" && b.scheduledFor && new Date(b.scheduledFor).getTime() <= now;
+
+    const getPrio = (cat: string, isNow: boolean | null | undefined) => {
+      if (cat === "in_progress") return 0;
+      if (cat === "scheduled" && isNow) return 1;
+      if (cat === "scheduled") return 2;
+      return 3; // completed, failed, cancelled
+    };
+
+    const prioA = getPrio(catA, isNowA);
+    const prioB = getPrio(catB, isNowB);
+
+    if (prioA !== prioB) return prioA - prioB;
+
+    // Same priority group — sub-sort
+    if (prioA === 0) {
+      // in_progress: most recent startedAt first
+      return new Date(b.startedAt || b.createdAt).getTime() - new Date(a.startedAt || a.createdAt).getTime();
+    }
+    if (prioA === 1) {
+      // AGORA: oldest createdAt first
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    }
+    if (prioA === 2) {
+      // Scheduled: smallest timer first
+      const tA = a.scheduledFor ? new Date(a.scheduledFor).getTime() : Infinity;
+      const tB = b.scheduledFor ? new Date(b.scheduledFor).getTime() : Infinity;
+      return tA - tB;
+    }
+    // Finished: most recent first
+    return new Date(b.endedAt || b.createdAt).getTime() - new Date(a.endedAt || a.createdAt).getTime();
+  });
 }
 
 // ── Sound ──
@@ -109,7 +192,6 @@ function playAlertSound() {
     gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.8);
-    // Second beep
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.connect(gain2);
@@ -123,6 +205,78 @@ function playAlertSound() {
   } catch {
     // Audio context not available
   }
+}
+
+// ── Status Badge Component ──
+
+function StatusBadgeCell({ entry }: { entry: CallPanelEntry }) {
+  const category = getStatusCategory(entry.callStatus);
+  const timeInfo = getTimeRemaining(entry.scheduledFor);
+
+  if (category === "scheduled" && timeInfo.isUrgent) {
+    return (
+      <Badge variant="destructive" className="gap-1 text-xs whitespace-nowrap">
+        AGORA!
+      </Badge>
+    );
+  }
+  if (category === "scheduled") {
+    return (
+      <Badge variant="secondary" className="gap-1 text-xs whitespace-nowrap bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
+        Agendada
+      </Badge>
+    );
+  }
+  if (category === "in_progress") {
+    return (
+      <Badge className="gap-1 text-xs whitespace-nowrap bg-emerald-500 text-white border-emerald-600">
+        {entry.callStatus === "dialing" || entry.callStatus === "ringing" ? "Discando" : "Em ligação"}
+      </Badge>
+    );
+  }
+  if (category === "completed") {
+    return (
+      <Badge variant="secondary" className="gap-1 text-xs whitespace-nowrap text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
+        Concluída
+      </Badge>
+    );
+  }
+  if (category === "cancelled") {
+    return (
+      <Badge variant="outline" className="gap-1 text-xs whitespace-nowrap text-muted-foreground">
+        Cancelada
+      </Badge>
+    );
+  }
+  // failed
+  const label = entry.callStatus === "no_answer" ? "N/Atendeu"
+    : entry.callStatus === "busy" ? "Ocupado"
+    : "Falha";
+  const isOrange = ["busy", "failed"].includes(entry.callStatus);
+  return (
+    <Badge variant="outline" className={cn(
+      "gap-1 text-xs whitespace-nowrap",
+      isOrange ? "text-orange-600 border-orange-300 dark:text-orange-400 dark:border-orange-700" : "text-muted-foreground"
+    )}>
+      {label}
+    </Badge>
+  );
+}
+
+// ── Timer Cell ──
+
+function TimerCell({ entry }: { entry: CallPanelEntry }) {
+  const category = getStatusCategory(entry.callStatus);
+  
+  if (category === "in_progress") {
+    return <span className="font-mono text-xs">{getElapsedTime(entry.startedAt)}</span>;
+  }
+  if (category === "scheduled") {
+    const timeInfo = getTimeRemaining(entry.scheduledFor);
+    if (timeInfo.isUrgent) return <span className="text-xs text-muted-foreground">—</span>;
+    return <span className="font-mono text-xs">{timeInfo.text}</span>;
+  }
+  return <span className="text-xs text-muted-foreground">—</span>;
 }
 
 // ── Main Component ──
@@ -148,6 +302,7 @@ export default function CallPanel() {
   const [actionNotes, setActionNotes] = useState("");
   const [editOperatorEntry, setEditOperatorEntry] = useState<CallPanelEntry | null>(null);
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
+  const [detailEntry, setDetailEntry] = useState<CallPanelEntry | null>(null);
 
   const { campaigns } = useCallCampaigns();
 
@@ -184,7 +339,7 @@ export default function CallPanel() {
         }
       }
     } catch {
-      // Notification API blocked (e.g. iframe)
+      // Notification API blocked
     }
   }, []);
 
@@ -195,9 +350,7 @@ export default function CallPanel() {
       const { seconds, isUrgent } = getTimeRemaining(entry.scheduledFor);
       if (isUrgent && seconds <= 60 && !notifiedRef.current.has(entry.id)) {
         notifiedRef.current.add(entry.id);
-        if (soundEnabled) {
-          playAlertSound();
-        }
+        if (soundEnabled) playAlertSound();
         if (notificationsEnabled && typeof Notification !== "undefined") {
           new Notification("📞 Ligação em instantes", {
             body: `${entry.leadName || "Lead"} - ${formatPhone(entry.leadPhone)}`,
@@ -213,10 +366,12 @@ export default function CallPanel() {
     setCurrentPage(1);
   }, [statusFilter, campaignFilter, searchQuery]);
 
+  // Sorted entries
+  const sortedEntries = useMemo(() => sortByPriority(isQueueTab ? [] : entries), [entries, isQueueTab]);
+
   // Pagination
-  const displayEntries = isQueueTab ? [] : entries;
-  const totalPages = Math.ceil(displayEntries.length / ITEMS_PER_PAGE);
-  const paginatedEntries = displayEntries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(sortedEntries.length / ITEMS_PER_PAGE);
+  const paginatedEntries = sortedEntries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
   // Queue pagination
   const queueTotalPages = Math.ceil(queueEntries.length / ITEMS_PER_PAGE);
@@ -250,6 +405,32 @@ export default function CallPanel() {
     now.setMinutes(now.getMinutes() + minutes);
     setRescheduleDate(format(now, "yyyy-MM-dd"));
     setRescheduleTime(format(now, "HH:mm"));
+  };
+
+  const openRescheduleDialog = (entry: CallPanelEntry) => {
+    setRescheduleEntry(entry);
+    const now = new Date();
+    setRescheduleDate(format(now, "yyyy-MM-dd"));
+    setRescheduleTime(format(new Date(now.getTime() + 30 * 60000), "HH:mm"));
+  };
+
+  const openActionDialog = (entry: CallPanelEntry) => {
+    setActionEntry(entry);
+    setActionNotes("");
+  };
+
+  const openEditOperator = (entry: CallPanelEntry) => {
+    setEditOperatorEntry(entry);
+    setSelectedOperatorId(entry.operatorId || "");
+  };
+
+  // Row highlight
+  const getRowClass = (entry: CallPanelEntry) => {
+    const cat = getStatusCategory(entry.callStatus);
+    const timeInfo = getTimeRemaining(entry.scheduledFor);
+    if (cat === "in_progress") return "bg-emerald-500/5 border-l-[3px] border-l-emerald-500";
+    if (cat === "scheduled" && timeInfo.isUrgent) return "bg-red-500/5 border-l-[3px] border-l-red-500";
+    return "border-l-[3px] border-l-transparent";
   };
 
   const [panelTab, setPanelTab] = useState("calls");
@@ -360,34 +541,189 @@ export default function CallPanel() {
           </div>
         )
       ) : (
-        /* Call List */
+        /* Call Table */
         isLoading ? (
           <div className="text-center py-12 text-muted-foreground">Carregando ligações...</div>
         ) : paginatedEntries.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">Nenhuma ligação encontrada.</div>
         ) : (
-          <div className="space-y-3">
-            {paginatedEntries.map((entry) => (
-              <CallCard
-                key={entry.id}
-                entry={entry}
-                onDelay={(id) => delayCall({ callId: id, minutes: 10 })}
-                onReschedule={(e) => {
-                  setRescheduleEntry(e);
-                  const now = new Date();
-                  setRescheduleDate(format(now, "yyyy-MM-dd"));
-                  setRescheduleTime(format(new Date(now.getTime() + 30 * 60000), "HH:mm"));
-                }}
-                onCancel={(e) => setCancelEntry(e)}
-                onDialNow={(id) => dialNow(id)}
-                onAction={(e) => { setActionEntry(e); setActionNotes(""); }}
-                onEditOperator={(e) => {
-                  setEditOperatorEntry(e);
-                  setSelectedOperatorId(e.operatorId || "");
-                }}
-              />
-            ))}
-          </div>
+          <TooltipProvider>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[70px]">Entrada</TableHead>
+                    <TableHead className="w-[110px]">Status</TableHead>
+                    <TableHead>Lead</TableHead>
+                    <TableHead className="hidden md:table-cell w-[140px]">Telefone</TableHead>
+                    <TableHead className="hidden lg:table-cell w-[180px]">Campanha</TableHead>
+                    <TableHead className="hidden md:table-cell w-[100px]">Operador</TableHead>
+                    <TableHead className="hidden md:table-cell w-[80px]">Timer</TableHead>
+                    <TableHead className="w-[90px] text-right">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedEntries.map((entry) => {
+                    const category = getStatusCategory(entry.callStatus);
+                    const timeInfo = getTimeRemaining(entry.scheduledFor);
+                    const isScheduledOrReady = ["scheduled", "ready"].includes(entry.callStatus);
+
+                    return (
+                      <TableRow key={entry.id} className={cn(getRowClass(entry), "transition-colors")}>
+                        {/* Entrada */}
+                        <TableCell className="text-xs text-muted-foreground font-mono py-2">
+                          {format(new Date(entry.createdAt), "HH:mm")}
+                        </TableCell>
+
+                        {/* Status */}
+                        <TableCell className="py-2">
+                          <StatusBadgeCell entry={entry} />
+                        </TableCell>
+
+                        {/* Lead */}
+                        <TableCell className="py-2">
+                          <span className="text-sm font-medium truncate block max-w-[150px]">
+                            {entry.leadName || "Sem nome"}
+                          </span>
+                        </TableCell>
+
+                        {/* Telefone */}
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
+                          {formatPhone(entry.leadPhone)}
+                        </TableCell>
+
+                        {/* Campanha */}
+                        <TableCell className="hidden lg:table-cell py-2">
+                          <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
+                            {entry.campaignName || "—"}
+                          </span>
+                        </TableCell>
+
+                        {/* Operador */}
+                        <TableCell className="hidden md:table-cell py-2">
+                          {entry.operatorName ? (
+                            <span className="text-xs truncate block max-w-[90px]">{entry.operatorName}</span>
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                                  <Bot className="h-3 w-3" /> Auto
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>Operador será atribuído automaticamente</TooltipContent>
+                            </Tooltip>
+                          )}
+                        </TableCell>
+
+                        {/* Timer */}
+                        <TableCell className="hidden md:table-cell py-2">
+                          <TimerCell entry={entry} />
+                        </TableCell>
+
+                        {/* Ações */}
+                        <TableCell className="text-right py-2">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Primary action button */}
+                            {(category === "scheduled") && (
+                              <Button
+                                size="icon"
+                                className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => dialNow(entry.id)}
+                                title="Ligar agora"
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {category === "in_progress" && (
+                              <Button
+                                size="icon"
+                                className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white"
+                                onClick={() => openActionDialog(entry)}
+                                title="Registrar ação"
+                              >
+                                <Target className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {category === "completed" && (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => openActionDialog(entry)}
+                                title="Ver detalhes"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {(category === "cancelled" || category === "failed") && entry.callStatus !== "no_answer" && (
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => openActionDialog(entry)}
+                                title="Ver detalhes"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {entry.callStatus === "no_answer" && (
+                              <Button
+                                size="icon"
+                                className="h-7 w-7 bg-amber-500 hover:bg-amber-600 text-white"
+                                onClick={() => openRescheduleDialog(entry)}
+                                title="Religar"
+                              >
+                                <RefreshCw className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+
+                            {/* Dropdown menu */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7">
+                                  <MoreHorizontal className="h-3.5 w-3.5" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => openActionDialog(entry)}>
+                                  <Eye className="h-4 w-4 mr-2" /> Ver detalhes
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => openRescheduleDialog(entry)}>
+                                  <CalendarClock className="h-4 w-4 mr-2" /> Reagendar
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => delayCall({ callId: entry.id, minutes: 10 })}>
+                                  <Plus className="h-4 w-4 mr-2" /> +10 min
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => delayCall({ callId: entry.id, minutes: 30 })}>
+                                  <Plus className="h-4 w-4 mr-2" /> +30 min
+                                </DropdownMenuItem>
+                                {isScheduledOrReady && (
+                                  <>
+                                    <DropdownMenuSeparator />
+                                    <DropdownMenuItem onClick={() => openEditOperator(entry)}>
+                                      <Headset className="h-4 w-4 mr-2" /> Trocar operador
+                                    </DropdownMenuItem>
+                                  </>
+                                )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => setCancelEntry(entry)}
+                                  className="text-destructive focus:text-destructive"
+                                >
+                                  <XCircle className="h-4 w-4 mr-2" /> Cancelar ligação
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </TooltipProvider>
         )
       )}
 
@@ -482,10 +818,7 @@ export default function CallPanel() {
           }}
           onReschedule={(e) => {
             setActionEntry(null);
-            setRescheduleEntry(e);
-            const now = new Date();
-            setRescheduleDate(format(now, "yyyy-MM-dd"));
-            setRescheduleTime(format(new Date(now.getTime() + 30 * 60000), "HH:mm"));
+            openRescheduleDialog(e);
           }}
         />
       )}
@@ -518,174 +851,6 @@ function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: stri
         <div>
           <p className="text-2xl font-bold">{value}</p>
           <p className="text-xs text-muted-foreground">{label}</p>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-interface CallCardProps {
-  entry: CallPanelEntry;
-  onDelay: (id: string) => void;
-  onReschedule: (entry: CallPanelEntry) => void;
-  onCancel: (entry: CallPanelEntry) => void;
-  onDialNow: (id: string) => void;
-  onAction: (entry: CallPanelEntry) => void;
-  onEditOperator: (entry: CallPanelEntry) => void;
-}
-
-function CallCard({ entry, onDelay, onReschedule, onCancel, onDialNow, onAction, onEditOperator }: CallCardProps) {
-  const category = getStatusCategory(entry.callStatus);
-  const timeInfo = getTimeRemaining(entry.scheduledFor);
-
-  const borderClass = cn(
-    "border-l-4 transition-all",
-    category === "scheduled" && !timeInfo.isUrgent && "border-l-amber-400",
-    category === "scheduled" && timeInfo.isUrgent && "border-l-red-500 animate-pulse",
-    category === "in_progress" && "border-l-blue-500",
-    category === "completed" && "border-l-emerald-500",
-    category === "failed" && "border-l-destructive",
-    category === "cancelled" && "border-l-muted-foreground",
-  );
-
-  return (
-    <Card className={borderClass}>
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          {/* Left: status + info */}
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              {category === "scheduled" && timeInfo.isUrgent && (
-                <Badge variant="destructive" className="gap-1 animate-pulse">
-                  <Bell className="h-3 w-3" /> LIGAÇÃO AGORA!
-                </Badge>
-              )}
-              {category === "scheduled" && !timeInfo.isUrgent && (
-                <Badge variant="secondary" className="gap-1">
-                  <Timer className="h-3 w-3" /> Em {timeInfo.text}
-                </Badge>
-              )}
-              {category === "in_progress" && (
-                <Badge className="gap-1 bg-blue-500 text-white">
-                  <Phone className="h-3 w-3" /> {entry.callStatus === "answered" ? "Atendida" : "Em ligação"}
-                </Badge>
-              )}
-              {category === "completed" && (
-                <Badge variant="secondary" className="gap-1 text-emerald-600">
-                  <CheckCircle2 className="h-3 w-3" /> Concluída
-                  {entry.durationSeconds ? ` • ${Math.floor(entry.durationSeconds / 60)}:${(entry.durationSeconds % 60).toString().padStart(2, "0")}` : ""}
-                </Badge>
-              )}
-              {category === "failed" && (
-                <Badge variant="destructive" className="gap-1">
-                  <AlertTriangle className="h-3 w-3" /> {
-                    entry.callStatus === "busy" ? "Ocupado" :
-                    entry.callStatus === "not_found" ? "Número não encontrado" :
-                    entry.callStatus === "voicemail" ? "Caixa Postal" :
-                    entry.callStatus === "timeout" ? "Tempo Expirado" :
-                    entry.callStatus === "no_answer" ? "Não atendeu" :
-                    "Falhou"
-                  }
-                  {entry.leadAttempts > 0 && ` • ${entry.leadAttempts} tentativa${entry.leadAttempts > 1 ? "s" : ""}`}
-                </Badge>
-              )}
-              {category === "cancelled" && (
-                <Badge variant="outline" className="gap-1 text-muted-foreground">
-                  <XCircle className="h-3 w-3" /> {entry.callStatus === "cancelled" ? "Cancelamento da Ligação" : "Cancelada"}
-                </Badge>
-              )}
-              {entry.scheduledFor && (
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {format(new Date(entry.scheduledFor), "HH:mm")}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-4 text-sm pt-1">
-              <span className="flex items-center gap-1 font-medium">
-                <User className="h-3.5 w-3.5 text-muted-foreground" /> {entry.leadName || "Sem nome"}
-              </span>
-              <span className="flex items-center gap-1 text-muted-foreground">
-                <Phone className="h-3.5 w-3.5" /> {formatPhone(entry.leadPhone)}
-              </span>
-            </div>
-            {entry.campaignName && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <FolderOpen className="h-3 w-3" /> {entry.campaignName}
-              </div>
-            )}
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Headset className="h-3 w-3" />
-              {entry.operatorName ? (
-                <span>
-                  {entry.operatorName}
-                  {entry.operatorExtension && <span className="ml-1 text-muted-foreground/70">• R. {entry.operatorExtension}</span>}
-                </span>
-              ) : (
-                <span className="italic">Sem operador</span>
-              )}
-              {["scheduled", "ready"].includes(entry.callStatus) && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onEditOperator(entry); }}
-                  className="ml-1 p-0.5 rounded hover:bg-accent transition-colors"
-                  title="Trocar operador"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Right: actions */}
-          <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            {category === "scheduled" && (
-              <>
-                {timeInfo.isUrgent ? (
-                  <Button size="sm" className="bg-red-600 hover:bg-red-700 text-white gap-1" onClick={() => onDialNow(entry.id)}>
-                    <Play className="h-3.5 w-3.5" /> INICIAR LIGAÇÃO
-                  </Button>
-                ) : (
-                  <>
-                    <Button variant="outline" size="sm" onClick={() => onDelay(entry.id)}>
-                      <Plus className="h-3 w-3 mr-1" /> 10 min
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => onReschedule(entry)}>
-                      <CalendarClock className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => onCancel(entry)}>
-                      <XCircle className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={() => onDialNow(entry.id)}>
-                      <Play className="h-3.5 w-3.5" />
-                    </Button>
-                  </>
-                )}
-                <Button variant="secondary" size="sm" onClick={() => onAction(entry)}>
-                  <Target className="h-3.5 w-3.5" />
-                </Button>
-              </>
-            )}
-            {category === "in_progress" && (
-              <Button variant="secondary" size="sm" onClick={() => onAction(entry)}>
-                <Target className="h-3.5 w-3.5 mr-1" /> Ação
-              </Button>
-            )}
-            {category === "failed" && (
-              <>
-                <Button variant="outline" size="sm" onClick={() => onReschedule(entry)}>
-                  <CalendarClock className="h-3.5 w-3.5 mr-1" /> Reagendar
-                </Button>
-                <Button variant="secondary" size="sm" onClick={() => onAction(entry)}>
-                  <Target className="h-3.5 w-3.5" />
-                </Button>
-              </>
-            )}
-            {category === "completed" && (
-              <Button variant="outline" size="sm" onClick={() => onAction(entry)}>
-                <Target className="h-3.5 w-3.5 mr-1" /> Detalhes
-              </Button>
-            )}
-          </div>
         </div>
       </CardContent>
     </Card>
@@ -788,7 +953,6 @@ function ActionDialog({
 
           <TabsContent value="action" className="mt-4">
             <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-              {/* Botão fixo Reagendar */}
               <button
                 onClick={() => onReschedule(entry)}
                 className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"

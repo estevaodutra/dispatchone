@@ -151,7 +151,7 @@ export function useCallPanel(filters?: {
       return results;
     },
     enabled: !!user,
-    refetchInterval: 30000,
+    refetchInterval: 5000,
   });
 
   const stats: CallPanelStats = {
