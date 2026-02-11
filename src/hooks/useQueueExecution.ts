@@ -84,6 +84,7 @@ export function useQueueExecution(campaignId: string, enabled = true) {
           calls_answered: 0,
           calls_no_answer: 0,
           current_position: 0,
+          current_operator_index: 0,
         }, { onConflict: "campaign_id" });
 
       if (error) throw error;

@@ -1769,6 +1769,7 @@ export type Database = {
           calls_no_answer: number | null
           campaign_id: string | null
           created_at: string | null
+          current_operator_index: number
           current_position: number | null
           id: string
           last_dial_at: string | null
@@ -1783,6 +1784,7 @@ export type Database = {
           calls_no_answer?: number | null
           campaign_id?: string | null
           created_at?: string | null
+          current_operator_index?: number
           current_position?: number | null
           id?: string
           last_dial_at?: string | null
@@ -1797,6 +1799,7 @@ export type Database = {
           calls_no_answer?: number | null
           campaign_id?: string | null
           created_at?: string | null
+          current_operator_index?: number
           current_position?: number | null
           id?: string
           last_dial_at?: string | null
