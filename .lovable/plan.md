@@ -1,51 +1,24 @@
 
-# Ajustar Timer e Adicionar Checkbox para Acoes em Massa
 
-## Resumo
+# Melhorar Espacamento do Painel de Ligacoes
 
-Duas alteracoes no Painel de Ligacoes:
-1. O timer so sera regressivo (countdown) para ligacoes com status "agendada". Todos os outros status mostrarao "—".
-2. Adicionar uma coluna de checkbox na tabela para selecao de linhas e uma barra de acoes em massa.
+## Problema
 
-## Mudancas
+Os elementos dentro da aba "Ligacoes" (cards de metricas, barra de filtros, abas de status e tabela) estao colados sem espacamento vertical, pois estao diretamente dentro do `TabsContent` sem um container com espacamento.
 
-### 1. Timer somente regressivo para agendadas
+## Solucao
 
-No componente `TimerCell`, remover o timer crescente para ligacoes "em ligacao" (in_progress). Apenas ligacoes com status "scheduled" que ainda tem tempo restante mostrarao o countdown. Todos os demais status (in_progress, completed, cancelled, failed, no_answer) mostrarao "—".
+### `src/pages/CallPanel.tsx`
 
-**Antes:**
-- in_progress: tempo crescente desde startedAt
-- scheduled com timer > 0: countdown
-- demais: "—"
+1. **Envolver o conteudo da aba "calls"** em uma `div` com `className="space-y-6"` para adicionar espacamento uniforme de 24px entre cada secao (metricas, filtros, tabs de status, tabela).
 
-**Depois:**
-- scheduled com timer > 0: countdown regressivo
-- todos os demais (incluindo in_progress): "—"
+2. **Agrupar filtros e abas de status** em um bloco unico com `space-y-3` para que fiquem visualmente conectados (busca + campanha + abas de status), separados das metricas acima e da tabela abaixo.
 
-### 2. Checkbox para acoes em massa
-
-Adicionar na primeira coluna da tabela um `Checkbox` para selecao individual e no header um checkbox "selecionar todos" (da pagina atual).
-
-**Estado:**
-- `selectedIds: Set<string>` — IDs das ligacoes selecionadas
-- Checkbox no header: seleciona/deseleciona todos da pagina
-- Checkbox em cada linha: seleciona/deseleciona individual
-
-**Barra de acoes em massa:**
-Quando houver itens selecionados, exibir uma barra fixa acima da tabela com:
-- Contador: "X selecionadas"
-- Botao "Cancelar selecionadas" (vermelho) — cancela todas as ligacoes selecionadas que estao em status agendada/ready
-- Botao "Reagendar selecionadas" — abre dialog de reagendamento que aplica para todas
-- Botao "Limpar selecao"
+3. **Adicionar separador visual** entre as metricas e os filtros usando um `<Separator />` ou simplesmente o espacamento adequado do `space-y-6`.
 
 ### Detalhes Tecnicos
 
-**Arquivo:** `src/pages/CallPanel.tsx`
-
-- Importar `Checkbox` de `@/components/ui/checkbox`
-- Adicionar estado `const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())`
-- Limpar selecao ao mudar filtros ou pagina
-- Nova coluna `<TableHead className="w-[40px]">` antes de "Entrada"
-- Nova `<TableCell>` com `<Checkbox>` em cada linha
-- Componente `BulkActionsBar` renderizado condicionalmente acima da tabela quando `selectedIds.size > 0`
-- Acoes em massa utilizam as mutations existentes (`cancelCall`, `rescheduleCall`) em loop
+- Linha ~486: adicionar `<div className="space-y-6">` logo apos o `TabsContent`
+- Fechar esse `div` antes do fechamento do `TabsContent`
+- Agrupar a barra de filtros (Input + Select) e as abas de status dentro de uma `div` com `space-y-3` para ficarem proximos mas com respiro
+- Nenhuma mudanca funcional, apenas ajuste de layout/espacamento
