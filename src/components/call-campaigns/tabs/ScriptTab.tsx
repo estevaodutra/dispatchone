@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useCallScript, CallScriptNode, ScriptOption } from "@/hooks/useCallScript";
+import { useCallActions } from "@/hooks/useCallActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -250,6 +251,7 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
                 <QuestionConfig
                   node={selectedNode}
                   allNodes={nodes}
+                  campaignId={campaignId}
                   onUpdate={handleUpdateNode}
                 />
               ) : (
@@ -289,14 +291,17 @@ export function ScriptTab({ campaignId }: ScriptTabProps) {
 function QuestionConfig({
   node,
   allNodes,
+  campaignId,
   onUpdate,
 }: {
   node: CallScriptNode;
   allNodes: CallScriptNode[];
+  campaignId: string;
   onUpdate: (id: string, updates: Partial<CallScriptNode["data"]>) => void;
 }) {
   const options = node.data.options || [];
   const targetableNodes = allNodes.filter((n) => n.id !== node.id);
+  const { actions } = useCallActions(campaignId);
 
   const updateOption = (index: number, patch: Partial<ScriptOption>) => {
     const newOptions = [...options];
@@ -358,6 +363,30 @@ function QuestionConfig({
                     </SelectItem>
                   );
                 })}
+              </SelectContent>
+            </Select>
+            <Select
+              value={opt.actionId || "__none__"}
+              onValueChange={(v) =>
+                updateOption(i, { actionId: v === "__none__" ? undefined : v })
+              }
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="Ação ao selecionar..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Nenhuma ação</SelectItem>
+                {actions.map((action) => (
+                  <SelectItem key={action.id} value={action.id}>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className="inline-block h-2 w-2 rounded-full"
+                        style={{ backgroundColor: action.color }}
+                      />
+                      {action.name}
+                    </span>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
