@@ -5,6 +5,7 @@ import { UnifiedSequenceBuilder } from "@/components/sequences/UnifiedSequenceBu
 import { UnifiedNodeConfigPanel } from "@/components/sequences/UnifiedNodeConfigPanel";
 import { LocalNode, NodeCategory } from "@/components/sequences/shared-types";
 import { DispatchTriggerConfigCard, DispatchTriggerType, DispatchTriggerConfig } from "./DispatchTriggerConfigCard";
+import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
 import { toast } from "sonner";
 import { MessageSquare, Clock, Image, Video, Music, FileText, MousePointerClick, List as ListIcon } from "lucide-react";
 
@@ -155,6 +156,15 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
           onUpdate={onUpdateConfig}
           onClose={onClose}
           mode="dispatch"
+          renderMediaUploader={(props) => (
+            <MediaUploader
+              mediaType={props.mediaType as "image" | "video" | "audio" | "document" | "sticker"}
+              currentUrl={props.currentUrl}
+              onUpload={props.onUpload}
+              onUrlChange={props.onUrlChange}
+              placeholder={props.placeholder}
+            />
+          )}
         />
       )}
       onSave={handleSave}

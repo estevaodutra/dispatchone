@@ -100,7 +100,7 @@ export function UnifiedNodeConfigPanel({
 
   // Media field: group uses MediaUploader, dispatch uses simple Input
   const renderMediaField = (mediaType: string, placeholder: string) => {
-    if (isGroup && renderMediaUploader) {
+    if (renderMediaUploader) {
       return renderMediaUploader({
         mediaType,
         currentUrl: (node.config.url as string) || "",
