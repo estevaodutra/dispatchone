@@ -276,22 +276,24 @@ export function useCallPanel(filters?: {
             throw new Error("Nenhum operador ativo disponível nesta campanha");
           }
 
-          // Round-robin: pick operator with fewest calls
-          let newOp = activeOps[0];
-          if (activeOps.length > 1) {
-            let minCount = Infinity;
-            for (const op of activeOps) {
-              const { count } = await (supabase as any)
-                .from("call_logs")
-                .select("*", { count: "exact", head: true })
-                .eq("operator_id", op.id)
-                .eq("campaign_id", entry.campaignId);
-              const c = count || 0;
-              if (c < minCount) {
-                minCount = c;
-                newOp = op;
-              }
-            }
+          // Round-robin: use current_operator_index from queue state
+          const { data: queueState } = await (supabase as any)
+            .from("queue_execution_state")
+            .select("current_operator_index")
+            .eq("campaign_id", entry.campaignId)
+            .maybeSingle();
+
+          const currentIdx = queueState?.current_operator_index || 0;
+          const totalOps = activeOps.length;
+          let newOp = activeOps[currentIdx % totalOps];
+          const nextIdx = (currentIdx + 1) % totalOps;
+
+          // Update the round-robin index
+          if (queueState) {
+            await (supabase as any)
+              .from("queue_execution_state")
+              .update({ current_operator_index: nextIdx })
+              .eq("campaign_id", entry.campaignId);
           }
           effectiveOperator = { id: newOp.id, name: newOp.operator_name, extension: newOp.extension };
           wasRedirected = true;

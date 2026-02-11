@@ -171,33 +171,52 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     }
   }
 
-  // 2. Find available operator (longest idle time)
-  const { data: availableOps } = await supabase
+  // 2. Round-robin: fetch ALL active operators in fixed order
+  const { data: allActiveOps } = await supabase
     .from('call_campaign_operators')
-    .select('id, operator_name, extension')
+    .select('id, operator_name, extension, status')
     .eq('campaign_id', campaignId)
-    .eq('status', 'available')
     .eq('is_active', true)
-    .order('last_call_ended_at', { ascending: true, nullsFirst: true })
-    .order('created_at', { ascending: true })
-    .limit(1);
+    .order('created_at', { ascending: true });
 
-  if (!availableOps || availableOps.length === 0) {
-    // No operator available
+  if (!allActiveOps || allActiveOps.length === 0) {
     const behavior = campaign.queue_unavailable_behavior || 'wait';
     const newStatus = behavior === 'pause' ? 'paused' : 'waiting_operator';
-    
     if (state.status !== newStatus) {
       await supabase
         .from('queue_execution_state')
         .update({ status: newStatus })
         .eq('campaign_id', campaignId);
     }
-
-    return { success: true, action: 'waiting', reason: 'No operator available', new_status: newStatus };
+    return { success: true, action: 'waiting', reason: 'No active operators', new_status: newStatus };
   }
 
-  const operator = availableOps[0];
+  // Find next available operator starting from current_operator_index
+  const currentIndex = state.current_operator_index || 0;
+  const totalOps = allActiveOps.length;
+  let operator: any = null;
+  let nextIndex = currentIndex;
+
+  for (let i = 0; i < totalOps; i++) {
+    const idx = (currentIndex + i) % totalOps;
+    if (allActiveOps[idx].status === 'available') {
+      operator = allActiveOps[idx];
+      nextIndex = (idx + 1) % totalOps;
+      break;
+    }
+  }
+
+  if (!operator) {
+    const behavior = campaign.queue_unavailable_behavior || 'wait';
+    const newStatus = behavior === 'pause' ? 'paused' : 'waiting_operator';
+    if (state.status !== newStatus) {
+      await supabase
+        .from('queue_execution_state')
+        .update({ status: newStatus })
+        .eq('campaign_id', campaignId);
+    }
+    return { success: true, action: 'waiting', reason: 'No operator available', new_status: newStatus };
+  }
 
   // 3. Find next pending lead
   const { data: nextLead } = await supabase
@@ -256,13 +275,14 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     })
     .eq('id', nextLead.id);
 
-  // Update queue state
+  // Update queue state with round-robin index
   await supabase
     .from('queue_execution_state')
     .update({
       last_dial_at: new Date().toISOString(),
       calls_made: (state.calls_made || 0) + 1,
       current_position: (state.current_position || 0) + 1,
+      current_operator_index: nextIndex,
       status: 'running',
     })
     .eq('campaign_id', campaignId);
