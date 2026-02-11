@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
@@ -268,9 +269,6 @@ function StatusBadgeCell({ entry }: { entry: CallPanelEntry }) {
 function TimerCell({ entry }: { entry: CallPanelEntry }) {
   const category = getStatusCategory(entry.callStatus);
   
-  if (category === "in_progress") {
-    return <span className="font-mono text-xs">{getElapsedTime(entry.startedAt)}</span>;
-  }
   if (category === "scheduled") {
     const timeInfo = getTimeRemaining(entry.scheduledFor);
     if (timeInfo.isUrgent) return <span className="text-xs text-muted-foreground">—</span>;
@@ -286,6 +284,7 @@ export default function CallPanel() {
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const ITEMS_PER_PAGE = 20;
   const [, setTick] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -361,9 +360,10 @@ export default function CallPanel() {
     });
   }, [entries, soundEnabled, notificationsEnabled]);
 
-  // Reset page on filter change
+  // Reset page and selection on filter change
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds(new Set());
   }, [statusFilter, campaignFilter, searchQuery]);
 
   // Sorted entries
@@ -548,10 +548,50 @@ export default function CallPanel() {
           <div className="text-center py-12 text-muted-foreground">Nenhuma ligação encontrada.</div>
         ) : (
           <TooltipProvider>
+            {/* Bulk Actions Bar */}
+            {selectedIds.size > 0 && (
+              <div className="sticky top-0 z-10 bg-primary text-primary-foreground rounded-lg px-4 py-3 flex items-center justify-between gap-4 mb-3">
+                <span className="text-sm font-medium">☑️ {selectedIds.size} selecionadas</span>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => {
+                    const firstSelected = paginatedEntries.find(e => selectedIds.has(e.id));
+                    if (firstSelected) openRescheduleDialog(firstSelected);
+                  }} className="gap-1">
+                    <CalendarClock className="h-3.5 w-3.5" /> Reagendar
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={async () => {
+                    const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+                    for (const e of toCancel) {
+                      await cancelCall({ callId: e.id, reason: "Cancelamento em massa" });
+                    }
+                    setSelectedIds(new Set());
+                  }} className="gap-1">
+                    <XCircle className="h-3.5 w-3.5" /> Cancelar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} className="text-primary-foreground hover:text-primary-foreground/80">
+                    Limpar
+                  </Button>
+                </div>
+              </div>
+            )}
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[40px]">
+                      <Checkbox
+                        checked={paginatedEntries.length > 0 && paginatedEntries.every(e => selectedIds.has(e.id))}
+                        onCheckedChange={(checked) => {
+                          const next = new Set(selectedIds);
+                          if (checked) {
+                            paginatedEntries.forEach(e => next.add(e.id));
+                          } else {
+                            paginatedEntries.forEach(e => next.delete(e.id));
+                          }
+                          setSelectedIds(next);
+                        }}
+                      />
+                    </TableHead>
                     <TableHead className="w-[70px]">Entrada</TableHead>
                     <TableHead className="w-[110px]">Status</TableHead>
                     <TableHead>Lead</TableHead>
@@ -570,6 +610,17 @@ export default function CallPanel() {
 
                     return (
                       <TableRow key={entry.id} className={cn(getRowClass(entry), "transition-colors")}>
+                        {/* Checkbox */}
+                        <TableCell className="py-2">
+                          <Checkbox
+                            checked={selectedIds.has(entry.id)}
+                            onCheckedChange={(checked) => {
+                              const next = new Set(selectedIds);
+                              if (checked) next.add(entry.id); else next.delete(entry.id);
+                              setSelectedIds(next);
+                            }}
+                          />
+                        </TableCell>
                         {/* Entrada */}
                         <TableCell className="text-xs text-muted-foreground font-mono py-2">
                           {format(new Date(entry.createdAt), "HH:mm")}
