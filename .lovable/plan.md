@@ -1,53 +1,83 @@
 
 
-# Adicionar campo de campanha na importacao em massa via API (Edge Function)
+# Alterar rotacao de operadores para round-robin sequencial
 
-## Problema
+## Problema atual
 
-O frontend (`useLeads.ts`) ja suporta os campos `campaignId` e `campaignType` na importacao de leads, mas a Edge Function `leads-api` (endpoint `POST /leads/import`) ignora esses campos. Leads importados via API nao recebem atribuicao de campanha.
+O `queue-executor` seleciona o operador com maior tempo ocioso (`last_call_ended_at ASC`). Isso pode causar distribuicao desigual dependendo da duracao das chamadas.
 
-## Alteracao
+## Nova logica
 
-### `supabase/functions/leads-api/index.ts` -- endpoint POST /leads/import
+Round-robin sequencial simples:
+1. Operador 1 recebe a ligacao
+2. Operador 2 recebe a proxima
+3. Operador 3 recebe a proxima
+4. Quando todos ja receberam, volta para o Operador 1
 
-Atualizar a logica de importacao para:
+## Como implementar
 
-1. Aceitar `campaign_id` e `campaign_type` por lead no array `leads`
-2. Aceitar `default_campaign_id` e `default_campaign_type` no objeto `options`
-3. No insert, incluir `active_campaign_id` e `active_campaign_type` (prioridade: valor do lead > valor padrao do options)
-4. No update (quando duplicado + `update_existing`), tambem atualizar os campos de campanha
+### `supabase/functions/queue-executor/index.ts` -- funcao `processTick`
 
-### Payload esperado apos a mudanca
+Substituir a query atual que ordena por `last_call_ended_at` por uma logica baseada em um indice circular armazenado na tabela `queue_execution_state`.
 
-```json
-{
-  "leads": [
-    {
-      "phone": "5511999999999",
-      "name": "Joao",
-      "email": "joao@email.com",
-      "tags": ["vip"],
-      "campaign_id": "uuid-da-campanha",
-      "campaign_type": "call"
-    }
-  ],
-  "options": {
-    "default_tags": ["importado"],
-    "update_existing": true,
-    "default_campaign_id": "uuid-fallback",
-    "default_campaign_type": "dispatch"
-  }
-}
+**Logica:**
+
+1. Buscar todos os operadores ativos e disponiveis, ordenados por `created_at ASC` (ordem fixa)
+2. Ler o campo `current_operator_index` do `queue_execution_state` (novo campo, default 0)
+3. Selecionar o operador na posicao `current_operator_index % total_operadores`
+4. Apos atribuir a ligacao, incrementar `current_operator_index` no state
+
+**Se o operador da vez nao estiver disponivel (em cooldown, on_call, paused):**
+- Avanca para o proximo operador disponivel na sequencia circular
+- Se nenhum estiver disponivel, aplica o comportamento `queue_unavailable_behavior` (wait/pause)
+
+### Migracao de banco
+
+Adicionar coluna `current_operator_index` na tabela `queue_execution_state`:
+
+```sql
+ALTER TABLE queue_execution_state
+ADD COLUMN current_operator_index integer NOT NULL DEFAULT 0;
 ```
 
-### Logica de prioridade
+### Alteracoes no codigo
 
-- Se o lead individual tem `campaign_id`, usa ele
-- Senao, usa `default_campaign_id` do options
-- Se nenhum, nao atribui campanha (comportamento atual)
+No `processTick`:
 
-## Detalhes tecnicos
+```text
+ANTES:
+  SELECT ... FROM call_campaign_operators
+  WHERE status = 'available'
+  ORDER BY last_call_ended_at ASC NULLS FIRST
+  LIMIT 1
 
-- Apenas a Edge Function sera alterada. O frontend ja esta preparado.
-- Os campos `active_campaign_id` e `active_campaign_type` ja existem na tabela `leads`, nao ha necessidade de migracao.
+DEPOIS:
+  1. SELECT todos operadores ativos ORDER BY created_at ASC
+  2. Filtrar os com status 'available'
+  3. Pegar o indice atual do state (current_operator_index)
+  4. Iterar a partir desse indice no array circular ate achar um disponivel
+  5. Atualizar current_operator_index = (indice_usado + 1) no state
+```
+
+No `startMutation` (hook `useQueueExecution.ts`):
+- Resetar `current_operator_index: 0` ao iniciar a fila (ja faz upsert, basta incluir o campo)
+
+### Tambem ajustar `useCallPanel.ts` (discagem manual)
+
+Aplicar a mesma logica round-robin na discagem manual, usando o mesmo `current_operator_index` da campanha para manter consistencia entre discagem manual e automatica.
+
+## Exemplo pratico
+
+Operadores: A, B, C (ordenados por `created_at`)
+
+| Ligacao | Index | Operador |
+|---------|-------|----------|
+| 1       | 0     | A        |
+| 2       | 1     | B        |
+| 3       | 2     | C        |
+| 4       | 0     | A        |
+| 5       | 1     | B        |
+
+Se B estiver em cooldown na ligacao 5:
+- Avanca para C (index 2), e o proximo index sera 0 (A)
 
