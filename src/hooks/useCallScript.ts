@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 export interface ScriptOption {
   text: string;
   targetNodeId?: string;
+  actionId?: string;
 }
 
 export interface CallScriptNode {

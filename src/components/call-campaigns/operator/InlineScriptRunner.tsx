@@ -3,7 +3,7 @@ import { MessageSquare, HelpCircle, StickyNote, CheckCircle, XCircle, Loader2, P
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useCallScript, CallScriptNode, CallScriptEdge } from "@/hooks/useCallScript";
+import { useCallScript, CallScriptNode, CallScriptEdge, ScriptOption } from "@/hooks/useCallScript";
 import { useCallLeads } from "@/hooks/useCallLeads";
 import { cn } from "@/lib/utils";
 
@@ -19,9 +19,10 @@ interface InlineScriptRunnerProps {
   campaignId: string;
   leadId: string;
   onReachEnd?: () => void;
+  onActionSelected?: (actionId: string) => void;
 }
 
-export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScriptRunnerProps) {
+export function InlineScriptRunner({ campaignId, leadId, onReachEnd, onActionSelected }: InlineScriptRunnerProps) {
   const { script, isLoading: scriptLoading } = useCallScript(campaignId);
   const { leads } = useCallLeads(campaignId);
 
@@ -51,8 +52,13 @@ export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScr
     return script.edges.filter((e) => e.source === nodeId);
   };
 
-  const handleNext = (targetNodeId?: string) => {
+  const handleNext = (targetNodeId?: string, actionId?: string) => {
     if (!script || !currentNodeId) return;
+
+    // If an actionId was provided from the selected option, notify parent
+    if (actionId && onActionSelected) {
+      onActionSelected(actionId);
+    }
 
     const edges = getOutgoingEdges(currentNodeId);
 
@@ -134,17 +140,20 @@ export function InlineScriptRunner({ campaignId, leadId, onReachEnd }: InlineScr
           {/* Options for questions */}
           {currentNode.type === "question" && edges.length > 0 && (
             <div className="mt-3 space-y-2">
-              {edges.map((edge) => (
-                <Button
-                  key={edge.id}
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start text-left h-auto py-2 dark:bg-background dark:border-border"
-                  onClick={() => handleNext(edge.target)}
-                >
-                  {edge.label || "Opção"}
-                </Button>
-              ))}
+              {edges.map((edge, edgeIndex) => {
+                const matchingOption = currentNode.data.options?.[edgeIndex];
+                return (
+                  <Button
+                    key={edge.id}
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-start text-left h-auto py-2 dark:bg-background dark:border-border"
+                    onClick={() => handleNext(edge.target, matchingOption?.actionId)}
+                  >
+                    {edge.label || "Opção"}
+                  </Button>
+                );
+              })}
             </div>
           )}
 
