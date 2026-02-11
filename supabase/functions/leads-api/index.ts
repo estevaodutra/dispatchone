@@ -91,10 +91,24 @@ Deno.serve(async (req) => {
 
       for (const lead of leads) {
         const tags = [...(lead.tags || []), ...(options?.default_tags || [])];
-        const { error } = await supabaseAdmin.from("leads").insert({ user_id: userId, phone: lead.phone, name: lead.name, email: lead.email, tags });
+        const campaignId = lead.campaign_id || options?.default_campaign_id || null;
+        const campaignType = lead.campaign_type || options?.default_campaign_type || null;
+
+        const insertData: Record<string, unknown> = { user_id: userId, phone: lead.phone, name: lead.name, email: lead.email, tags };
+        if (campaignId) {
+          insertData.active_campaign_id = campaignId;
+          insertData.active_campaign_type = campaignType;
+        }
+
+        const { error } = await supabaseAdmin.from("leads").insert(insertData);
         if (error) {
           if (error.message.includes("duplicate") && options?.update_existing) {
-            await supabaseAdmin.from("leads").update({ name: lead.name, email: lead.email, tags }).eq("phone", lead.phone).eq("user_id", userId);
+            const updateData: Record<string, unknown> = { name: lead.name, email: lead.email, tags };
+            if (campaignId) {
+              updateData.active_campaign_id = campaignId;
+              updateData.active_campaign_type = campaignType;
+            }
+            await supabaseAdmin.from("leads").update(updateData).eq("phone", lead.phone).eq("user_id", userId);
             updated++;
           } else skipped++;
         } else imported++;
