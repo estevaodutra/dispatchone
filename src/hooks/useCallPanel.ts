@@ -281,6 +281,19 @@ export function useCallPanel(filters?: {
       const now = new Date().toISOString();
 
       for (const [campaignId, ids] of Object.entries(byCampaign)) {
+        // Reset operators currently assigned to these calls
+        const { data: affectedOps } = await (supabase as any)
+          .from("call_operators")
+          .select("id")
+          .in("current_call_id", ids);
+
+        if (affectedOps?.length) {
+          await (supabase as any)
+            .from("call_operators")
+            .update({ status: "available", current_call_id: null, current_campaign_id: null })
+            .in("id", affectedOps.map((o: any) => o.id));
+        }
+
         // Batch update: set status to ready, scheduled_for = now, operator_id = null
         const { error } = await (supabase as any)
           .from("call_logs")

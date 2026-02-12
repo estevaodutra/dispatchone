@@ -149,6 +149,33 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 
   const intervalSeconds = campaign.queue_interval_seconds || 30;
 
+  // 0. Self-healing: reset operators stuck on finished/ready calls
+  const { data: stuckOps } = await supabase
+    .from('call_operators')
+    .select('id, current_call_id')
+    .eq('user_id', userId)
+    .eq('status', 'on_call')
+    .eq('is_active', true);
+
+  if (stuckOps) {
+    for (const op of stuckOps) {
+      if (op.current_call_id) {
+        const { data: callLog } = await supabase
+          .from('call_logs')
+          .select('call_status')
+          .eq('id', op.current_call_id)
+          .maybeSingle();
+        if (!callLog || ['ready', 'cancelled', 'completed', 'failed', 'no_answer', 'busy'].includes(callLog.call_status)) {
+          await supabase
+            .from('call_operators')
+            .update({ status: 'available', current_call_id: null, current_campaign_id: null })
+            .eq('id', op.id);
+          console.log(`[queue-executor] Freed stuck operator ${op.id}`);
+        }
+      }
+    }
+  }
+
   // 1. Transition cooldown operators to available
   const { data: cooldownOps } = await supabase
     .from('call_operators')
