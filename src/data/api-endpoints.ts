@@ -2071,6 +2071,261 @@ response = requests.post(
         }
       }
     ]
+  },
+  {
+    id: "leads",
+    name: "Leads",
+    description: "Endpoints para cadastro e gerenciamento de leads",
+    endpoints: [
+      {
+        id: "create-lead",
+        method: "POST",
+        path: "/leads-api/leads",
+        description: "Cadastra um novo lead, com possibilidade de atribuí-lo diretamente a uma campanha.",
+        attributes: [
+          {
+            name: "phone",
+            type: "string",
+            required: true,
+            description: "Número no formato DDI+DDD+Número (ex: 5511999999999)"
+          },
+          {
+            name: "name",
+            type: "string",
+            required: false,
+            description: "Nome do lead"
+          },
+          {
+            name: "email",
+            type: "string",
+            required: false,
+            description: "E-mail do lead"
+          },
+          {
+            name: "tags",
+            type: "string[]",
+            required: false,
+            description: "Lista de tags para categorização (ex: [\"cliente\", \"vip\"])"
+          },
+          {
+            name: "active_campaign_id",
+            type: "string",
+            required: false,
+            description: "UUID da campanha para atribuir o lead automaticamente"
+          },
+          {
+            name: "active_campaign_type",
+            type: "string",
+            required: false,
+            description: "Tipo da campanha: \"dispatch\", \"group\" ou \"call\""
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/leads-api/leads" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "phone": "5511999999999",
+    "name": "João Silva",
+    "email": "joao@email.com",
+    "tags": ["cliente", "vip"],
+    "active_campaign_id": "uuid-da-campanha",
+    "active_campaign_type": "dispatch"
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/leads-api/leads',
+  {
+    phone: '5511999999999',
+    name: 'João Silva',
+    email: 'joao@email.com',
+    tags: ['cliente', 'vip'],
+    active_campaign_id: 'uuid-da-campanha',
+    active_campaign_type: 'dispatch'
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);
+
+console.log(response.data);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/leads-api/leads',
+    json={
+        'phone': '5511999999999',
+        'name': 'João Silva',
+        'email': 'joao@email.com',
+        'tags': ['cliente', 'vip'],
+        'active_campaign_id': 'uuid-da-campanha',
+        'active_campaign_type': 'dispatch'
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)
+
+print(response.json())`
+        },
+        responses: {
+          success: {
+            code: 201,
+            body: {
+              id: "uuid-do-lead",
+              phone: "5511999999999",
+              name: "João Silva",
+              email: "joao@email.com",
+              tags: ["cliente", "vip"],
+              active_campaign_id: "uuid-da-campanha",
+              active_campaign_type: "dispatch",
+              status: "active",
+              created_at: "2025-01-15T10:30:00Z"
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              error: "duplicate key value violates unique constraint"
+            }
+          }
+        }
+      },
+      {
+        id: "import-leads",
+        method: "POST",
+        path: "/leads-api/leads/import",
+        description: "Importa múltiplos leads de uma vez, com opções de atribuição padrão de campanha e atualização de duplicatas.",
+        attributes: [
+          {
+            name: "leads",
+            type: "array",
+            required: true,
+            description: "Array de objetos lead, cada um com phone (obrigatório), name, email, tags, campaign_id e campaign_type"
+          },
+          {
+            name: "options",
+            type: "object",
+            required: false,
+            description: "Opções de importação"
+          },
+          {
+            name: "options.update_existing",
+            type: "boolean",
+            required: false,
+            description: "Se true, atualiza leads duplicados em vez de ignorá-los (padrão: false)"
+          },
+          {
+            name: "options.default_tags",
+            type: "string[]",
+            required: false,
+            description: "Tags aplicadas a todos os leads importados"
+          },
+          {
+            name: "options.default_campaign_id",
+            type: "string",
+            required: false,
+            description: "UUID da campanha padrão para leads sem campaign_id individual"
+          },
+          {
+            name: "options.default_campaign_type",
+            type: "string",
+            required: false,
+            description: "Tipo da campanha padrão: \"dispatch\", \"group\" ou \"call\""
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/leads-api/leads/import" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '{
+    "leads": [
+      { "phone": "5511999999999", "name": "João Silva", "email": "joao@email.com", "tags": ["cliente"] },
+      { "phone": "5511888888888", "name": "Maria Santos", "campaign_id": "uuid-campanha-especifica", "campaign_type": "call" },
+      { "phone": "5511777777777", "name": "Pedro Souza" }
+    ],
+    "options": {
+      "update_existing": true,
+      "default_tags": ["importado", "lote-01"],
+      "default_campaign_id": "uuid-da-campanha-padrao",
+      "default_campaign_type": "dispatch"
+    }
+  }'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/leads-api/leads/import',
+  {
+    leads: [
+      { phone: '5511999999999', name: 'João Silva', email: 'joao@email.com', tags: ['cliente'] },
+      { phone: '5511888888888', name: 'Maria Santos', campaign_id: 'uuid-campanha-especifica', campaign_type: 'call' },
+      { phone: '5511777777777', name: 'Pedro Souza' }
+    ],
+    options: {
+      update_existing: true,
+      default_tags: ['importado', 'lote-01'],
+      default_campaign_id: 'uuid-da-campanha-padrao',
+      default_campaign_type: 'dispatch'
+    }
+  },
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);
+
+console.log(response.data);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/leads-api/leads/import',
+    json={
+        'leads': [
+            {'phone': '5511999999999', 'name': 'João Silva', 'email': 'joao@email.com', 'tags': ['cliente']},
+            {'phone': '5511888888888', 'name': 'Maria Santos', 'campaign_id': 'uuid-campanha-especifica', 'campaign_type': 'call'},
+            {'phone': '5511777777777', 'name': 'Pedro Souza'}
+        ],
+        'options': {
+            'update_existing': True,
+            'default_tags': ['importado', 'lote-01'],
+            'default_campaign_id': 'uuid-da-campanha-padrao',
+            'default_campaign_type': 'dispatch'
+        }
+    },
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)
+
+print(response.json())`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              imported: 2,
+              updated: 1,
+              skipped: 0
+            }
+          },
+          error: {
+            code: 400,
+            body: {
+              error: "leads array is required"
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
