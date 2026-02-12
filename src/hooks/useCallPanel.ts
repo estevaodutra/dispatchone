@@ -288,6 +288,12 @@ export function useCallPanel(filters?: {
 
       for (const campaignId of campaignIds) {
         try {
+          // Ensure queue state is "running" so the tick won't be rejected
+          await (supabase as any)
+            .from("queue_execution_state")
+            .update({ status: "running" })
+            .eq("campaign_id", campaignId);
+
           await supabase.functions.invoke(
             `queue-executor?campaign_id=${campaignId}&action=tick`
           );
