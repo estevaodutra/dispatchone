@@ -312,7 +312,7 @@ export default function CallPanel() {
 
   const isQueueTab = statusFilter === "queue";
 
-  const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator, bulkUpdateOperator } = useCallPanel({
+  const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator, bulkUpdateOperator, bulkEnqueue } = useCallPanel({
     status: !isQueueTab && statusFilter !== "all" ? statusFilter : undefined,
     campaignId: campaignFilter !== "all" ? campaignFilter : undefined,
     search: searchQuery || undefined,
@@ -577,19 +577,19 @@ export default function CallPanel() {
                     <XCircle className="h-3.5 w-3.5" /> Cancelar
                   </Button>
                   <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" disabled={bulkDialing} onClick={async () => {
-                    const toDial = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
-                    if (toDial.length === 0) return;
-                    setBulkDialing(true);
-                    let done = 0;
-                    for (const e of toDial) {
-                      done++;
-                      toast({ title: `Discando ${done} de ${toDial.length}...` });
-                      try { await dialNow(e.id); } catch { /* individual errors handled by mutation */ }
+                    const toEnqueue = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+                    if (toEnqueue.length === 0) {
+                      toast({ title: "Nenhuma ligação elegível", description: "Selecione ligações com status agendada ou pronta." });
+                      return;
                     }
+                    setBulkDialing(true);
+                    try {
+                      await bulkEnqueue({ callIds: toEnqueue.map(e => e.id) });
+                    } catch { /* handled by mutation */ }
                     setBulkDialing(false);
                     setSelectedIds(new Set());
                   }}>
-                    <Phone className="h-3.5 w-3.5" /> {bulkDialing ? "Discando..." : "Discar"}
+                    <Phone className="h-3.5 w-3.5" /> {bulkDialing ? "Enfileirando..." : "Discar"}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => {
                     setBulkOperatorId("auto");

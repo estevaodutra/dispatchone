@@ -267,6 +267,74 @@ export function useCallPanel(filters?: {
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
+  const bulkEnqueueMutation = useMutation({
+    mutationFn: async ({ callIds }: { callIds: string[] }) => {
+      // Group calls by campaign_id
+      const byCampaign: Record<string, string[]> = {};
+      for (const callId of callIds) {
+        const entry = entries.find((e) => e.id === callId);
+        const cid = entry?.campaignId || "__none__";
+        if (!byCampaign[cid]) byCampaign[cid] = [];
+        byCampaign[cid].push(callId);
+      }
+
+      const now = new Date().toISOString();
+
+      for (const [campaignId, ids] of Object.entries(byCampaign)) {
+        // Batch update: set status to ready, scheduled_for = now, operator_id = null
+        const { error } = await (supabase as any)
+          .from("call_logs")
+          .update({ call_status: "ready", scheduled_for: now, operator_id: null })
+          .in("id", ids);
+        if (error) throw error;
+
+        // Ensure queue_execution_state is running for this campaign
+        if (campaignId !== "__none__") {
+          const { data: existing } = await (supabase as any)
+            .from("queue_execution_state")
+            .select("id, status")
+            .eq("campaign_id", campaignId)
+            .maybeSingle();
+
+          if (existing) {
+            if (existing.status !== "running") {
+              await (supabase as any)
+                .from("queue_execution_state")
+                .update({ status: "running", updated_at: now })
+                .eq("id", existing.id);
+            }
+          } else {
+            await (supabase as any)
+              .from("queue_execution_state")
+              .insert({
+                campaign_id: campaignId,
+                user_id: user?.id,
+                status: "running",
+                current_operator_index: 0,
+                session_started_at: now,
+              });
+          }
+
+          // Trigger queue-executor tick
+          try {
+            await supabase.functions.invoke("queue-executor", {
+              body: { action: "tick", campaign_id: campaignId },
+            });
+          } catch {
+            // queue-executor may not be available, calls are still enqueued
+          }
+        }
+      }
+
+      return callIds.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ["call_panel"] });
+      toast({ title: "Enfileiradas", description: `${count} ligações adicionadas à fila de discagem.` });
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   const dialNowMutation = useMutation({
     mutationFn: async (callId: string) => {
       const entry = entries.find((e) => e.id === callId);
@@ -497,5 +565,6 @@ export function useCallPanel(filters?: {
     dialNow: dialNowMutation.mutateAsync,
     registerAction: registerActionMutation.mutateAsync,
     bulkUpdateOperator: bulkUpdateOperatorMutation.mutateAsync,
+    bulkEnqueue: bulkEnqueueMutation.mutateAsync,
   };
 }
