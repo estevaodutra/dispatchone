@@ -1,64 +1,55 @@
 
 
-# Corrigir Discagem em Massa: Fila Sequencial por Operador
+# Fix: queue-executor Must Process Existing "ready" Call Logs
 
-## Problema
+## Root Cause
 
-O botao "Discar" em massa executa `dialNow` em loop rapido para todas as ligacoes selecionadas. Embora use `await`, cada `dialNow` apenas dispara o webhook e retorna -- nao espera a chamada terminar. Resultado: todas as ligacoes sao disparadas quase simultaneamente.
+The `queue-executor` `processTick` function (line 221-239) only looks for new pending leads in `call_leads` and creates fresh `call_logs`. The bulk enqueue mutation sets existing `call_logs` to `ready` status, but the executor never queries `call_logs` -- so those enqueued calls are ignored.
 
-## Solucao
+## Solution
 
-Substituir a logica de loop direto por um enfileiramento real: as ligacoes selecionadas sao preparadas como `ready` e o sistema de fila (`queue-executor`) processa uma por vez, respeitando round-robin de operadores e intervalos de cooldown.
+Modify `processTick` in `supabase/functions/queue-executor/index.ts` to check for existing `call_logs` with status `ready` BEFORE looking for new pending leads. If a ready call_log exists, dial it (assign operator, update status, fire webhook) instead of creating a new one.
 
-## Fluxo Proposto
+## Changes
+
+### File: `supabase/functions/queue-executor/index.ts`
+
+In the `processTick` function, after finding an available operator (line 207), add a new step before the "Find next pending lead" block:
+
+**New step 3a: Check for existing ready call_logs**
+- Query `call_logs` where `campaign_id` matches and `call_status = 'ready'`, ordered by `scheduled_for ASC`, limit 1
+- If found:
+  - Assign the operator to that call_log (`operator_id`, `call_status = 'dialing'`, `started_at = now()`)
+  - Update operator status to `on_call`
+  - Update the associated lead status to `calling`
+  - Fire the webhook (fetch from `webhook_configs` where `category = 'calls'`)
+  - Update queue state (round-robin index, calls_made)
+  - Return result
+- If not found: fall through to existing "find next pending lead" logic (unchanged)
+
+**Webhook dispatch logic** (new helper or inline):
+- Query `webhook_configs` for active config with `category = 'calls'`
+- Build payload with `action: "call.dial"`, call/campaign/lead/operator details
+- POST to webhook URL
+- Store `external_call_id` from response if available
+
+### File: `src/hooks/useCallPanel.ts`
+
+No changes needed -- the `bulkEnqueueMutation` already correctly sets `call_status = 'ready'` and triggers the tick.
+
+## Flow After Fix
 
 ```text
-Usuario seleciona 5 ligacoes -> Clica "Discar em Massa"
+Bulk Enqueue sets call_logs to "ready"
        |
        v
-  Atualiza status das 5 para "ready" no banco
-  (operator_id = NULL para atribuicao automatica)
+queue-executor tick runs
        |
        v
-  Inicia/retoma a fila da campanha via queue-executor
+Step 3a: Found ready call_log? --YES--> Assign operator, fire webhook, return
        |
+       NO
        v
-  queue-executor processa uma por vez:
-    -> Busca operador disponivel (round-robin)
-    -> Disca para o proximo lead "ready"
-    -> Aguarda intervalo de cooldown
-    -> Proximo lead
+Step 3b: Find pending lead (existing logic)
 ```
-
-## Alteracoes Tecnicas
-
-### 1. `src/pages/CallPanel.tsx` (botao "Discar" em massa)
-
-Substituir o loop `for (const e of toDial) { await dialNow(e.id); }` por:
-
-- Agrupar as ligacoes selecionadas por `campaignId`
-- Para cada grupo:
-  - Atualizar em batch o status para `ready` e `scheduled_for = now()` (via mutation)
-  - Chamar o `queue-executor` com action `tick` para iniciar o processamento (ou garantir que a fila da campanha esteja rodando)
-- Exibir toast informando quantas ligacoes foram enfileiradas
-- A fila do `queue-executor` cuida do resto (uma por vez, round-robin, cooldown)
-
-### 2. `src/hooks/useCallPanel.ts` (nova mutation)
-
-Criar `bulkEnqueueMutation`:
-- Recebe `{ callIds: string[] }`
-- Agrupa por `campaign_id`
-- Para cada campanha, faz UPDATE em batch: `call_status = 'ready', scheduled_for = now(), operator_id = NULL`
-- Garante que `queue_execution_state` da campanha esteja com status `running` (upsert)
-
-### 3. Nenhuma alteracao no `queue-executor`
-
-A edge function ja processa leads com status `scheduled`/`ready` um por vez com round-robin. A unica mudanca e que agora as ligacoes selecionadas entram na fila como `ready` e o executor as processa sequencialmente.
-
-## Resultado
-
-- As ligacoes selecionadas entram na fila de processamento
-- O sistema disca uma por vez, atribuindo operador via round-robin
-- Respeita intervalos de cooldown entre chamadas
-- Se nenhum operador estiver disponivel, aguarda ou pausa conforme configuracao da campanha
 
