@@ -258,11 +258,11 @@ export function useCallPanel(filters?: {
       if (entry.operatorId) {
         const { data: currentOp } = await (supabase as any)
           .from("call_operators")
-          .select("id, operator_name, extension, is_active")
+          .select("id, operator_name, extension, is_active, status")
           .eq("id", entry.operatorId)
           .maybeSingle();
 
-        const isInactive = !currentOp || currentOp.is_active === false;
+        const isInactive = !currentOp || currentOp.is_active === false || currentOp.status !== 'available';
 
         if (isInactive) {
           // Fetch all active operators for the user (global)
@@ -270,6 +270,7 @@ export function useCallPanel(filters?: {
             .from("call_operators")
             .select("id, operator_name, extension")
             .eq("is_active", true)
+            .eq("status", "available")
             .order("created_at", { ascending: true });
 
           if (!activeOps || activeOps.length === 0) {

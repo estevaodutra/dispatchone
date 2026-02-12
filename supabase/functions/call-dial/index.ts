@@ -432,6 +432,7 @@ Deno.serve(async (req) => {
       .select('id, operator_name, extension')
       .eq('user_id', userId)
       .eq('is_active', true)
+      .eq('status', 'available')
       .order('created_at', { ascending: true });
 
     if (operatorError || !activeOperators || activeOperators.length === 0) {
