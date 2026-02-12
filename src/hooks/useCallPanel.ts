@@ -247,14 +247,14 @@ export function useCallPanel(filters?: {
       const entry = entries.find((e) => e.id === callId);
       if (!entry) throw new Error("Ligação não encontrada");
 
-      // --- Verificação de operador ativo ---
-      let effectiveOperator = {
-        id: entry.operatorId,
-        name: entry.operatorName,
-        extension: entry.operatorExtension,
+      // --- Always search for available operators (Auto mode or redirect) ---
+      let effectiveOperator: { id: string | null; name: string | null; extension: string | null } = {
+        id: null, name: null, extension: null,
       };
       let wasRedirected = false;
+      let needsOperatorSearch = true;
 
+      // If entry already has an operator, check if still available
       if (entry.operatorId) {
         const { data: currentOp } = await (supabase as any)
           .from("call_operators")
@@ -262,47 +262,58 @@ export function useCallPanel(filters?: {
           .eq("id", entry.operatorId)
           .maybeSingle();
 
-        const isInactive = !currentOp || currentOp.is_active === false || currentOp.status !== 'available';
-
-        if (isInactive) {
-          // Fetch all active operators for the user (global)
-          const { data: activeOps } = await (supabase as any)
-            .from("call_operators")
-            .select("id, operator_name, extension")
-            .eq("is_active", true)
-            .eq("status", "available")
-            .order("created_at", { ascending: true });
-
-          if (!activeOps || activeOps.length === 0) {
-            throw new Error("Nenhum operador ativo disponível nesta campanha");
-          }
-
-          // Round-robin: use current_operator_index from queue state
-          const { data: queueState } = await (supabase as any)
-            .from("queue_execution_state")
-            .select("current_operator_index")
-            .eq("campaign_id", entry.campaignId)
-            .maybeSingle();
-
-          const currentIdx = queueState?.current_operator_index || 0;
-          const totalOps = activeOps.length;
-          let newOp = activeOps[currentIdx % totalOps];
-          const nextIdx = (currentIdx + 1) % totalOps;
-
-          // Update the round-robin index
-          if (queueState) {
-            await (supabase as any)
-              .from("queue_execution_state")
-              .update({ current_operator_index: nextIdx })
-              .eq("campaign_id", entry.campaignId);
-          }
-          effectiveOperator = { id: newOp.id, name: newOp.operator_name, extension: newOp.extension };
+        const isAvailable = currentOp && currentOp.is_active === true && currentOp.status === 'available';
+        if (isAvailable) {
+          effectiveOperator = { id: currentOp.id, name: currentOp.operator_name, extension: currentOp.extension };
+          needsOperatorSearch = false;
+        } else {
           wasRedirected = true;
+        }
+      }
 
-          await (supabase as any).from("call_logs").update({ operator_id: newOp.id }).eq("id", callId);
-          if (entry.leadId) {
-            await (supabase as any).from("call_leads").update({ assigned_operator_id: newOp.id }).eq("id", entry.leadId);
-          }
+      // Search for available operator (Auto or redirect)
+      if (needsOperatorSearch) {
+        const { data: activeOps } = await (supabase as any)
+          .from("call_operators")
+          .select("id, operator_name, extension")
+          .eq("is_active", true)
+          .eq("status", "available")
+          .order("created_at", { ascending: true });
+
+        if (!activeOps || activeOps.length === 0) {
+          // No operator available — queue the call as waiting_operator
+          await (supabase as any)
+            .from("call_logs")
+            .update({ call_status: "waiting_operator" })
+            .eq("id", callId);
+          return { queued: true };
+        }
+
+        // Round-robin selection
+        const { data: queueState } = await (supabase as any)
+          .from("queue_execution_state")
+          .select("current_operator_index")
+          .eq("campaign_id", entry.campaignId)
+          .maybeSingle();
+
+        const currentIdx = queueState?.current_operator_index || 0;
+        const totalOps = activeOps.length;
+        const newOp = activeOps[currentIdx % totalOps];
+        const nextIdx = (currentIdx + 1) % totalOps;
+
+        if (queueState) {
+          await (supabase as any)
+            .from("queue_execution_state")
+            .update({ current_operator_index: nextIdx })
+            .eq("campaign_id", entry.campaignId);
+        }
+
+        effectiveOperator = { id: newOp.id, name: newOp.operator_name, extension: newOp.extension };
+        if (entry.operatorId) wasRedirected = true;
+
+        await (supabase as any).from("call_logs").update({ operator_id: newOp.id }).eq("id", callId);
+        if (entry.leadId) {
+          await (supabase as any).from("call_leads").update({ assigned_operator_id: newOp.id }).eq("id", entry.leadId);
         }
       }
 
@@ -393,6 +404,10 @@ export function useCallPanel(filters?: {
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
+      if (result?.queued) {
+        toast({ title: "Aguardando operador", description: "Ligação será realizada quando um operador estiver disponível." });
+        return;
+      }
       const desc = result?.wasRedirected
         ? `Operador redirecionado para ${result.operatorName}`
         : "Webhook acionado com sucesso.";
