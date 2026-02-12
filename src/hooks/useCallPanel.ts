@@ -104,6 +104,7 @@ export function useCallPanel(filters?: {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [bulkPollingActive, setBulkPollingActive] = useState(false);
 
   const { data: entries = [], isLoading, refetch } = useQuery({
     queryKey: ["call_panel", filters],
@@ -268,7 +269,6 @@ export function useCallPanel(filters?: {
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
-  const [bulkPollingActive, setBulkPollingActive] = useState(false);
 
   useEffect(() => {
     if (!bulkPollingActive) return;
