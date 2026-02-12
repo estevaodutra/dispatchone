@@ -1,45 +1,51 @@
 
 
-# Correção Retroativa + Verificação do Fluxo de Discagem
+# Ações em Massa no Painel de Ligações
 
-## 1. Limpeza dos Dados Antigos
+## Novas Funcionalidades
 
-Os 7 registros em `call_logs` com status `scheduled` ainda mostram operadores fixos. Precisamos executar duas queries:
+Duas novas ações em massa na barra flutuante de seleção do Painel de Ligações:
 
-### Query 1: Limpar operator_id nos logs agendados
-```sql
-UPDATE call_logs
-SET operator_id = NULL
-WHERE call_status IN ('scheduled', 'ready', 'waiting_operator')
-  AND operator_id IS NOT NULL;
-```
+### 1. Discar em Massa
+- Botao "Discar" na barra de acoes em massa
+- Ao clicar, executa `dialNow` sequencialmente para todas as ligacoes selecionadas com status `scheduled` ou `ready`
+- Exibe progresso via toast (ex: "Discando 3 de 5...")
+- Ligacoes em outros status sao ignoradas automaticamente
 
-### Query 2: Limpar assigned_operator_id nos leads pendentes
-```sql
-UPDATE call_leads
-SET assigned_operator_id = NULL
-WHERE status IN ('pending', 'scheduled')
-  AND assigned_operator_id IS NOT NULL;
-```
+### 2. Atribuir Operador em Massa
+- Botao "Operador" na barra de acoes em massa
+- Ao clicar, abre um dialog com select de operadores (lista de `useCallOperators`)
+- Opcao "Auto" para limpar operador (setar `NULL`)
+- Ao confirmar, executa `updateOperator` para todas as ligacoes selecionadas com status `scheduled` ou `ready`
 
-Resultado: todas as ligacoes agendadas passarao a exibir "Auto" no painel.
+## Alteracoes Tecnicas
 
-## 2. Comportamento na Hora de Ligar
+### Arquivo: `src/pages/CallPanel.tsx`
 
-O sistema ja funciona assim:
+**Novos estados:**
+- `bulkOperatorOpen` (boolean) - controla dialog de operador em massa
+- `bulkOperatorId` (string) - operador selecionado no dialog
+- `bulkDialing` (boolean) - loading durante discagem em massa
 
-| Cenario | O que acontece |
-|---|---|
-| **Fila em execucao** (botao "Iniciar" ativo na campanha) | O `queue-executor` discarga **automaticamente**, busca operador disponivel via round-robin, cria o log e inicia a chamada |
-| **Discagem manual** (botao "Discar agora" no painel) | O usuario clica manualmente; se houver operador disponivel, disca; se nao houver, enfileira como `waiting_operator` |
-| **Nenhum operador disponivel** | A ligacao fica com status `waiting_operator` ate que um operador fique disponivel |
+**Barra de acoes em massa (linhas 554-579) - adicionar 2 botoes:**
+- Botao "Discar" (verde) com icone `Phone` - filtra selecionados por status scheduled/ready e executa `dialNow` em loop
+- Botao "Operador" (outline) com icone `Headset` - abre dialog para selecionar operador
 
-Nenhuma alteracao de codigo e necessaria — apenas a limpeza dos dados antigos.
+**Novo dialog de operador em massa:**
+- Select com lista de operadores ativos + opcao "Auto"
+- Botao confirmar que faz loop nas selecionadas e chama `updateOperator` ou seta `operator_id = NULL` para Auto
 
-## Resumo
+### Arquivo: `src/hooks/useCallPanel.ts`
 
-| Acao | Tipo |
-|---|---|
-| Executar 2 queries de UPDATE no banco | Correcao de dados |
-| Nenhuma alteracao de codigo | -- |
+**Nova mutation `bulkUpdateOperatorMutation`:**
+- Recebe `{ callIds: string[], operatorId: string | null }`
+- Para cada callId, atualiza `operator_id` no `call_logs`
+- Se `operatorId` for null, limpa o campo (modo Auto)
+- Tambem atualiza `assigned_operator_id` no `call_leads` correspondente
 
+## Fluxo do Usuario
+
+1. Seleciona multiplas ligacoes via checkbox
+2. Barra flutuante aparece com: "Reagendar | Cancelar | **Discar | Operador** | Limpar"
+3. **Discar**: executa discagem em lote, ignora nao-agendadas
+4. **Operador**: abre dialog, escolhe operador ou "Auto", confirma para aplicar em lote
