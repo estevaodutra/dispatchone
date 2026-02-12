@@ -218,7 +218,78 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     return { success: true, action: 'waiting', reason: 'No operator available', new_status: newStatus };
   }
 
-  // 3. Find next pending lead
+  // 3a. Check for existing ready call_logs (from bulk enqueue)
+  const { data: readyCallLog } = await supabase
+    .from('call_logs')
+    .select('id, lead_id, campaign_id')
+    .eq('campaign_id', campaignId)
+    .eq('call_status', 'ready')
+    .order('scheduled_for', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (readyCallLog) {
+    // Get lead info for this call_log
+    const { data: readyLead } = await supabase
+      .from('call_leads')
+      .select('id, phone, name')
+      .eq('id', readyCallLog.lead_id)
+      .maybeSingle();
+
+    // Assign operator and update call_log to dialing
+    await supabase
+      .from('call_logs')
+      .update({
+        operator_id: operator.id,
+        call_status: 'dialing',
+        started_at: new Date().toISOString(),
+      })
+      .eq('id', readyCallLog.id);
+
+    // Update operator status
+    await supabase
+      .from('call_operators')
+      .update({ status: 'on_call', current_call_id: readyCallLog.id, current_campaign_id: campaignId })
+      .eq('id', operator.id);
+
+    // Update lead status
+    if (readyLead) {
+      await supabase
+        .from('call_leads')
+        .update({
+          status: 'calling',
+          assigned_operator_id: operator.id,
+          last_attempt_at: new Date().toISOString(),
+        })
+        .eq('id', readyLead.id);
+    }
+
+    // Fire webhook
+    await fireDialWebhook(supabase, userId, readyCallLog.id, campaignId, campaign, readyLead, operator);
+
+    // Update queue state
+    await supabase
+      .from('queue_execution_state')
+      .update({
+        last_dial_at: new Date().toISOString(),
+        calls_made: (state.calls_made || 0) + 1,
+        current_position: (state.current_position || 0) + 1,
+        current_operator_index: nextIndex,
+        status: 'running',
+      })
+      .eq('campaign_id', campaignId);
+
+    return {
+      success: true,
+      action: 'dialed',
+      call_id: readyCallLog.id,
+      operator: operator.operator_name,
+      lead: readyLead ? { name: readyLead.name, phone: readyLead.phone } : null,
+      source: 'ready_queue',
+    };
+  }
+
+  // 3b. Find next pending lead (original logic)
   const { data: nextLead } = await supabase
     .from('call_leads')
     .select('id, phone, name')
@@ -239,7 +310,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
   }
 
   // 4. Create call log and update statuses
-  const scheduledFor = new Date().toISOString(); // Immediate
+  const scheduledFor = new Date().toISOString();
 
   const { data: callLog, error: logErr } = await supabase
     .from('call_logs')
@@ -294,4 +365,78 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     operator: operator.operator_name,
     lead: { name: nextLead.name, phone: nextLead.phone },
   };
+}
+
+// Helper: fire webhook for call.dial
+async function fireDialWebhook(
+  supabase: any,
+  userId: string,
+  callLogId: string,
+  campaignId: string,
+  campaign: any,
+  lead: any,
+  operator: any,
+) {
+  try {
+    const { data: webhookConfig } = await supabase
+      .from('webhook_configs')
+      .select('url, is_active')
+      .eq('user_id', userId)
+      .eq('category', 'calls')
+      .maybeSingle();
+
+    if (!webhookConfig?.is_active || !webhookConfig?.url) {
+      console.log('[queue-executor] No active webhook for calls category');
+      return;
+    }
+
+    const payload = {
+      action: 'call.dial',
+      call: {
+        id: callLogId,
+        status: 'dialing',
+        scheduled_for: new Date().toISOString(),
+      },
+      campaign: {
+        id: campaignId,
+        name: campaign.name,
+      },
+      lead: lead ? {
+        id: lead.id,
+        phone: lead.phone,
+        name: lead.name || null,
+      } : null,
+      operator: {
+        id: operator.id,
+        name: operator.operator_name,
+        extension: operator.extension || null,
+      },
+    };
+
+    console.log('[queue-executor] Calling webhook:', webhookConfig.url);
+    const response = await fetch(webhookConfig.url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    const responseText = await response.text();
+    console.log('[queue-executor] Webhook response:', response.status, responseText);
+
+    // Parse response for external_call_id
+    try {
+      const parsed = JSON.parse(responseText);
+      if (Array.isArray(parsed) && parsed[0]?.id) {
+        await supabase
+          .from('call_logs')
+          .update({ external_call_id: parsed[0].id })
+          .eq('id', callLogId);
+        console.log('[queue-executor] Stored external_call_id:', parsed[0].id);
+      }
+    } catch {
+      // Response not JSON, ignore
+    }
+  } catch (error) {
+    console.error('[queue-executor] Webhook error:', error);
+  }
 }
