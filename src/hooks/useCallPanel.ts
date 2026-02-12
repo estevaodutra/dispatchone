@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -267,6 +268,36 @@ export function useCallPanel(filters?: {
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
+  const [bulkPollingActive, setBulkPollingActive] = useState(false);
+
+  useEffect(() => {
+    if (!bulkPollingActive) return;
+
+    const interval = setInterval(async () => {
+      const { data: readyCalls } = await (supabase as any)
+        .from("call_logs")
+        .select("id, campaign_id")
+        .eq("call_status", "ready");
+
+      if (!readyCalls?.length) {
+        setBulkPollingActive(false);
+        return;
+      }
+
+      const campaignIds = [...new Set(readyCalls.map((c: any) => c.campaign_id).filter(Boolean))];
+
+      for (const campaignId of campaignIds) {
+        try {
+          await supabase.functions.invoke(
+            `queue-executor?campaign_id=${campaignId}&action=tick`
+          );
+        } catch { /* ignore */ }
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [bulkPollingActive]);
+
   const bulkEnqueueMutation = useMutation({
     mutationFn: async ({ callIds }: { callIds: string[] }) => {
       // Group calls by campaign_id
@@ -343,6 +374,7 @@ export function useCallPanel(filters?: {
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
+      setBulkPollingActive(true);
       toast({ title: "Enfileiradas", description: `${count} ligações adicionadas à fila de discagem.` });
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
