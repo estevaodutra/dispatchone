@@ -424,61 +424,8 @@ Deno.serve(async (req) => {
       console.log('[call-dial] Created new lead:', lead.id);
     }
 
-    // ==================== FIND ACTIVE OPERATOR (round-robin) ====================
-    console.log('[call-dial] Searching for active operators in campaign:', campaign.id);
-    
-    const { data: activeOperators, error: operatorError } = await supabase
-      .from('call_operators')
-      .select('id, operator_name, extension')
-      .eq('user_id', userId)
-      .eq('is_active', true)
-      .eq('status', 'available')
-      .order('created_at', { ascending: true });
-
-    if (operatorError || !activeOperators || activeOperators.length === 0) {
-      console.log('[call-dial] No active operator found:', operatorError?.message);
-      const responseBody = {
-        success: false,
-        error: 'no_operator_available',
-        message: 'Nenhum operador disponível na campanha'
-      };
-      await logApiCall(supabase, {
-        method: req.method,
-        endpoint: '/call-dial',
-        statusCode: 400,
-        responseTimeMs: Date.now() - startTime,
-        userId,
-        apiKeyId,
-        ipAddress,
-        requestBody,
-        responseBody,
-        errorMessage: 'No operator available',
-      });
-      return new Response(JSON.stringify(responseBody), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Select operator with fewest assigned calls (round-robin)
-    let operator = activeOperators[0];
-    if (activeOperators.length > 1) {
-      let minCount = Infinity;
-      for (const op of activeOperators) {
-        const { count } = await supabase
-          .from('call_logs')
-          .select('*', { count: 'exact', head: true })
-          .eq('operator_id', op.id)
-          .eq('campaign_id', campaign.id);
-        const c = count || 0;
-        if (c < minCount) {
-          minCount = c;
-          operator = op;
-        }
-      }
-    }
-
-    console.log('[call-dial] Found operator:', operator.id);
+    // ==================== OPERATOR: Auto (assigned at dial time) ====================
+    console.log('[call-dial] Operator will be assigned at dial time (Auto mode)');
 
     // ==================== CREATE OR UPDATE CALL LOG ====================
     const dialDelayMinutes = campaign.dial_delay_minutes || 10;
@@ -504,7 +451,7 @@ Deno.serve(async (req) => {
       const { error: updateError } = await supabase
         .from('call_logs')
         .update({
-          operator_id: operator.id,
+          operator_id: null,
           call_status: 'scheduled',
           scheduled_for: scheduledFor,
           started_at: new Date().toISOString(),
@@ -524,7 +471,7 @@ Deno.serve(async (req) => {
         .insert({
           campaign_id: campaign.id,
           lead_id: lead.id,
-          operator_id: operator.id,
+          operator_id: null,
           user_id: userId,
           call_status: 'scheduled',
           scheduled_for: scheduledFor,
@@ -551,7 +498,7 @@ Deno.serve(async (req) => {
         status: 'scheduled',
         last_attempt_at: new Date().toISOString(),
         attempts: (lead as any).attempts ? (lead as any).attempts + 1 : 1,
-        assigned_operator_id: operator.id
+        assigned_operator_id: null
       })
       .eq('id', lead.id);
 
@@ -587,11 +534,7 @@ Deno.serve(async (req) => {
         phone: lead.phone,
         name: lead.name || lead_name || null
       },
-      operator: {
-        id: operator.id,
-        name: operator.operator_name,
-        extension: operator.extension
-      }
+      operator: null
     };
 
     // Call webhook if configured and active
@@ -666,11 +609,7 @@ Deno.serve(async (req) => {
         phone: lead.phone,
         name: lead.name || lead_name || null
       },
-      operator: {
-        id: operator.id,
-        name: operator.operator_name,
-        extension: operator.extension
-      },
+      operator: null,
       webhook: webhookResult
     };
 
