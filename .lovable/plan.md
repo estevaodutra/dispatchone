@@ -1,59 +1,26 @@
 
-# Corrigir Galeria de Midia no Dispatch (Despacho)
+# Adicionar Categoria "Leads" na Documentacao da API
 
-## Problema
+## Objetivo
 
-O `DispatchSequenceBuilder` nao passa a prop `renderMediaUploader` para o `UnifiedNodeConfigPanel`. Isso faz com que os campos de midia (imagem, video, audio, documento) mostrem apenas um input de texto simples em vez do componente completo com abas Biblioteca/Upload/URL.
+Adicionar uma nova categoria "Leads" ao array `apiEndpoints` em `src/data/api-endpoints.ts` com dois endpoints documentados que mapeiam para a Edge Function `leads-api` ja existente.
 
-No Group (Grupo), o wrapper passa corretamente o `renderMediaUploader` com o `MediaUploader`. No Dispatch (Despacho), essa prop esta ausente.
+## Endpoints a Documentar
 
-## Solucao
+### 1. POST /leads-api/leads -- Cadastrar Lead
+- Cadastra um unico lead, com possibilidade de atribuir a uma campanha via `active_campaign_id` e `active_campaign_type`.
+- Atributos: `phone` (obrigatorio), `name`, `email`, `tags`, `active_campaign_id`, `active_campaign_type`
+- Resposta 201 com o lead criado
 
-### `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`
+### 2. POST /leads-api/leads/import -- Cadastrar Leads em Lote
+- Importa multiplos leads de uma vez, com opcoes de atribuicao padrao de campanha e atualizacao de duplicatas.
+- Atributos: `leads` (array obrigatorio com phone/name/email/tags/campaign_id/campaign_type), `options` (objeto opcional com `update_existing`, `default_tags`, `default_campaign_id`, `default_campaign_type`)
+- Resposta 200 com contadores de importados/atualizados/ignorados
 
-Adicionar a importacao do `MediaUploader` e do `MediaLibraryPicker` (que ja existem em `group-campaigns/sequences/`) e passar a prop `renderMediaUploader` ao `UnifiedNodeConfigPanel`.
+## Alteracoes
 
-Como o `MediaUploader` esta em `src/components/group-campaigns/sequences/MediaUploader.tsx`, ele sera importado diretamente de la (ambos os contextos compartilham o mesmo componente de upload).
+### `src/data/api-endpoints.ts`
+- Adicionar um novo objeto `EndpointCategory` com `id: "leads"` e `name: "Leads"` ao final do array `apiEndpoints` (antes do `];` na linha 2075)
+- Contera os 2 endpoints acima com exemplos completos em curl, Node.js e Python, seguindo o padrao exato das categorias existentes (Mensagens, Ligacoes, etc.)
 
-Mudancas:
-1. Importar `MediaUploader` de `@/components/group-campaigns/sequences/MediaUploader`
-2. No `renderConfigPanel`, adicionar a prop `renderMediaUploader` identica a que o SequenceBuilder do Grupo ja usa
-
-### Detalhes Tecnicos
-
-**Arquivo:** `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`
-
-- Linha 8: adicionar import do `MediaUploader`
-- Linhas 152-158: adicionar `renderMediaUploader` ao `UnifiedNodeConfigPanel`
-
-```typescript
-// Adicionar import
-import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
-
-// No renderConfigPanel, adicionar renderMediaUploader:
-renderConfigPanel={(node, onUpdateConfig, onClose) => (
-  <UnifiedNodeConfigPanel
-    node={node}
-    onUpdate={onUpdateConfig}
-    onClose={onClose}
-    mode="dispatch"
-    renderMediaUploader={(props) => (
-      <MediaUploader
-        mediaType={props.mediaType as "image" | "video" | "audio" | "document" | "sticker"}
-        currentUrl={props.currentUrl}
-        onUpload={props.onUpload}
-        onUrlChange={props.onUrlChange}
-        placeholder={props.placeholder}
-      />
-    )}
-  />
-)}
-```
-
-Tambem e necessario ajustar o `UnifiedNodeConfigPanel` para que no modo "dispatch" ele tambem use o `renderMediaUploader` quando disponivel (atualmente o codigo ja faz isso corretamente na funcao `renderMediaField` -- verifica `isGroup && renderMediaUploader`, mas precisa mudar para apenas `renderMediaUploader` sem checar o modo):
-
-**Arquivo:** `src/components/sequences/UnifiedNodeConfigPanel.tsx`
-
-- Linha 103: mudar de `if (isGroup && renderMediaUploader)` para `if (renderMediaUploader)`, permitindo que ambos os modos usem o MediaUploader quando a prop e fornecida.
-
-Isso garante que qualquer contexto que passe `renderMediaUploader` tera a galeria completa com Biblioteca/Upload/URL.
+Nenhuma outra alteracao necessaria -- a pagina `/api-docs` ja renderiza dinamicamente todas as categorias do array.
