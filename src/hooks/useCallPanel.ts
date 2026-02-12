@@ -242,6 +242,31 @@ export function useCallPanel(filters?: {
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
 
+  const bulkUpdateOperatorMutation = useMutation({
+    mutationFn: async ({ callIds, operatorId }: { callIds: string[]; operatorId: string | null }) => {
+      for (const callId of callIds) {
+        const { error } = await (supabase as any)
+          .from("call_logs")
+          .update({ operator_id: operatorId })
+          .eq("id", callId);
+        if (error) throw error;
+
+        const entry = entries.find((e) => e.id === callId);
+        if (entry?.leadId) {
+          await (supabase as any)
+            .from("call_leads")
+            .update({ assigned_operator_id: operatorId })
+            .eq("id", entry.leadId);
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_panel"] });
+      toast({ title: "Operadores atualizados", description: "Operador atribuído em massa." });
+    },
+    onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
+  });
+
   const dialNowMutation = useMutation({
     mutationFn: async (callId: string) => {
       const entry = entries.find((e) => e.id === callId);
@@ -471,5 +496,6 @@ export function useCallPanel(filters?: {
     updateOperator: updateOperatorMutation.mutateAsync,
     dialNow: dialNowMutation.mutateAsync,
     registerAction: registerActionMutation.mutateAsync,
+    bulkUpdateOperator: bulkUpdateOperatorMutation.mutateAsync,
   };
 }
