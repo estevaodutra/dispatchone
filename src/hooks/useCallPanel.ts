@@ -317,9 +317,9 @@ export function useCallPanel(filters?: {
 
           // Trigger queue-executor tick
           try {
-            await supabase.functions.invoke("queue-executor", {
-              body: { action: "tick", campaign_id: campaignId },
-            });
+            await supabase.functions.invoke(
+              `queue-executor?campaign_id=${campaignId}&action=tick`,
+            );
           } catch {
             // queue-executor may not be available, calls are still enqueued
           }
