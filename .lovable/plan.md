@@ -1,82 +1,54 @@
 
-# Corrigir Atribuicao de Operador Offline
+
+# Remover Atribuicao de Operador no Agendamento + Enfileirar quando Indisponivel
 
 ## Problema
 
-O operador "Mauro" esta com `is_active = true` mas `status = offline`, e mesmo assim recebe ligacoes. Isso acontece porque dois dos tres pontos de atribuicao de operador nao verificam o campo `status` -- apenas o `is_active`.
+1. Ao agendar uma ligacao via `call-dial`, o sistema ja fixa um operador. Se ele estiver offline no momento real da discagem, gera inconsistencia.
+2. Se nenhum operador estiver disponivel no momento da discagem manual, o sistema retorna erro em vez de enfileirar a ligacao.
 
-## Pontos Afetados
+## Solucao
 
-### 1. Edge Function `call-dial/index.ts` (linhas 430-478)
-Busca operadores filtrando apenas `is_active = true`, sem verificar se o `status` e `available`. Qualquer operador ativo (mesmo offline ou em cooldown) pode ser selecionado.
+### 1. `supabase/functions/call-dial/index.ts` -- Remover atribuicao de operador
 
-**Correcao:** Adicionar filtro `.eq('status', 'available')` na query de busca de operadores (linha 434). Se nenhum operador estiver disponivel, retornar erro `no_operator_available`.
+- **Remover** todo o bloco de busca de operadores (linhas 427-481): a busca round-robin, a contagem de calls por operador e a selecao.
+- **Remover** a validacao que retorna erro 400 `no_operator_available` (linhas 438-461). Agendamento nao depende de operador.
+- Nos inserts/updates do `call_logs` (linhas 507 e 527): gravar `operator_id: null`.
+- No update do `call_leads` (linha 554): gravar `assigned_operator_id: null`.
+- No payload do webhook (linhas 590-594): enviar `operator: null`.
 
-### 2. Hook `useCallPanel.ts` - `dialNowMutation` (linhas 258-306)
-A logica de redirecionamento so e ativada quando `is_active === false`. Se o operador original esta `is_active = true` mas `status = offline`, a verificacao passa direto e a ligacao e atribuida a ele.
+Resultado: ligacoes agendadas ficam com operador "Auto" no painel.
 
-**Correcao:** Alterar a condicao na linha 265 de:
-```
-const isInactive = !currentOp || currentOp.is_active === false;
-```
-Para:
-```
-const isInactive = !currentOp || currentOp.is_active === false || currentOp.status !== 'available';
-```
+### 2. `src/hooks/useCallPanel.ts` -- Enfileirar em vez de dar erro
 
-E tambem na busca de operadores alternativos (linha 269-273), adicionar filtro de `status = available` alem de `is_active = true`.
+Atualmente na `dialNowMutation`, quando nao ha operador disponivel (linha 276-278), o sistema lanca um erro. A mudanca:
 
-### 3. `queue-executor/index.ts` -- sem alteracao
-Este ja funciona corretamente, verificando `status === 'available'` na linha 202.
+- Em vez de `throw new Error(...)`, alterar o status da ligacao para `"waiting_operator"` no `call_logs`.
+- Retornar `{ queued: true }` para exibir um toast informando que a ligacao foi colocada em espera.
+- Quando o operador nao tem `operatorId` (ligacao agendada como "Auto"), buscar operadores disponiveis diretamente (sem a checagem de operador atual).
+- Reestruturar o inicio do bloco para tratar o caso `entry.operatorId === null` (Auto) da mesma forma que operador indisponivel.
 
-## Alteracoes Detalhadas
+Logica simplificada:
 
-### `supabase/functions/call-dial/index.ts`
-
-**Linha 434:** Adicionar filtro de status
-```typescript
-// De:
-.eq('is_active', true)
-.order('created_at', { ascending: true });
-
-// Para:
-.eq('is_active', true)
-.eq('status', 'available')
-.order('created_at', { ascending: true });
+```text
+1. Buscar operadores com is_active=true E status=available
+2. Se encontrar -> atribuir via round-robin, prosseguir com discagem
+3. Se NAO encontrar -> atualizar call_status para "waiting_operator", retornar toast "Aguardando operador"
 ```
 
-### `src/hooks/useCallPanel.ts`
+### 3. `supabase/functions/queue-executor/index.ts` -- Sem alteracao
 
-**Linha 261:** Adicionar `status` ao select
-```typescript
-// De:
-.select("id, operator_name, extension, is_active")
+O executor de fila ja:
+- Verifica `status === 'available'` nos operadores
+- Muda para `waiting_operator` ou `paused` quando nenhum esta disponivel
+- Retoma automaticamente quando um operador fica disponivel
 
-// Para:
-.select("id, operator_name, extension, is_active, status")
-```
+Ele tambem pode ser estendido futuramente para processar ligacoes com status `waiting_operator`, mas isso ja funciona pela logica de fila existente.
 
-**Linha 265:** Verificar tambem o status
-```typescript
-// De:
-const isInactive = !currentOp || currentOp.is_active === false;
+## Resumo das Alteracoes
 
-// Para:
-const isInactive = !currentOp || currentOp.is_active === false || currentOp.status !== 'available';
-```
+| Arquivo | Alteracao |
+|---|---|
+| `supabase/functions/call-dial/index.ts` | Remover busca de operador; gravar `operator_id: null` e `assigned_operator_id: null`; webhook com `operator: null` |
+| `src/hooks/useCallPanel.ts` | Tratar `operatorId === null`; enfileirar como `waiting_operator` quando nao ha operador disponivel |
 
-**Linhas 269-273:** Filtrar operadores substitutos pelo status
-```typescript
-// De:
-.eq("is_active", true)
-.order("created_at", { ascending: true });
-
-// Para:
-.eq("is_active", true)
-.eq("status", "available")
-.order("created_at", { ascending: true });
-```
-
-## Resultado
-
-Apos as correcoes, os tres pontos de atribuicao terao comportamento consistente: so atribuem ligacoes a operadores que estejam simultaneamente `is_active = true` E `status = available`.
