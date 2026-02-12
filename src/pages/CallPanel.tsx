@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
@@ -302,12 +303,16 @@ export default function CallPanel() {
   const [editOperatorEntry, setEditOperatorEntry] = useState<CallPanelEntry | null>(null);
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
   const [detailEntry, setDetailEntry] = useState<CallPanelEntry | null>(null);
+  const [bulkOperatorOpen, setBulkOperatorOpen] = useState(false);
+  const [bulkOperatorId, setBulkOperatorId] = useState("auto");
+  const [bulkDialing, setBulkDialing] = useState(false);
 
   const { campaigns } = useCallCampaigns();
+  const { toast } = useToast();
 
   const isQueueTab = statusFilter === "queue";
 
-  const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator } = useCallPanel({
+  const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator, bulkUpdateOperator } = useCallPanel({
     status: !isQueueTab && statusFilter !== "all" ? statusFilter : undefined,
     campaignId: campaignFilter !== "all" ? campaignFilter : undefined,
     search: searchQuery || undefined,
@@ -570,6 +575,27 @@ export default function CallPanel() {
                     setSelectedIds(new Set());
                   }} className="gap-1">
                     <XCircle className="h-3.5 w-3.5" /> Cancelar
+                  </Button>
+                  <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" disabled={bulkDialing} onClick={async () => {
+                    const toDial = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+                    if (toDial.length === 0) return;
+                    setBulkDialing(true);
+                    let done = 0;
+                    for (const e of toDial) {
+                      done++;
+                      toast({ title: `Discando ${done} de ${toDial.length}...` });
+                      try { await dialNow(e.id); } catch { /* individual errors handled by mutation */ }
+                    }
+                    setBulkDialing(false);
+                    setSelectedIds(new Set());
+                  }}>
+                    <Phone className="h-3.5 w-3.5" /> {bulkDialing ? "Discando..." : "Discar"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setBulkOperatorId("auto");
+                    setBulkOperatorOpen(true);
+                  }} className="gap-1 bg-white/10 text-primary-foreground border-primary-foreground/30 hover:bg-white/20">
+                    <Headset className="h-3.5 w-3.5" /> Operador
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} className="text-primary-foreground hover:text-primary-foreground/80">
                     Limpar
@@ -889,6 +915,22 @@ export default function CallPanel() {
           setEditOperatorEntry(null);
         }}
       />
+
+      {/* Bulk Operator Dialog */}
+      <BulkOperatorDialog
+        open={bulkOperatorOpen}
+        selectedOperatorId={bulkOperatorId}
+        onSelectedChange={setBulkOperatorId}
+        onClose={() => setBulkOperatorOpen(false)}
+        onConfirm={async () => {
+          const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+          if (toUpdate.length === 0) return;
+          const opId = bulkOperatorId === "auto" ? null : bulkOperatorId;
+          await bulkUpdateOperator({ callIds: toUpdate.map(e => e.id), operatorId: opId });
+          setBulkOperatorOpen(false);
+          setSelectedIds(new Set());
+        }}
+      />
           </div>
         </TabsContent>
       </Tabs>
@@ -1125,6 +1167,75 @@ function EditOperatorDialog({
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
           <Button onClick={handleConfirm} disabled={!selectedOperatorId || submitting}>
             Confirmar
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Bulk Operator Dialog ──
+
+function BulkOperatorDialog({
+  open,
+  selectedOperatorId,
+  onSelectedChange,
+  onClose,
+  onConfirm,
+}: {
+  open: boolean;
+  selectedOperatorId: string;
+  onSelectedChange: (id: string) => void;
+  onClose: () => void;
+  onConfirm: () => Promise<void>;
+}) {
+  const { operators, isLoading } = useCallOperators();
+  const [submitting, setSubmitting] = useState(false);
+  const activeOperators = operators.filter((o) => o.isActive);
+
+  const handleConfirm = async () => {
+    setSubmitting(true);
+    try {
+      await onConfirm();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Atribuir Operador em Massa</DialogTitle>
+          <DialogDescription>
+            Selecione o operador para as ligações selecionadas
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {isLoading ? (
+            <p className="text-sm text-muted-foreground">Carregando operadores...</p>
+          ) : (
+            <Select value={selectedOperatorId} onValueChange={onSelectedChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Selecione um operador" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">
+                  <span className="flex items-center gap-2">🤖 Auto (sem operador fixo)</span>
+                </SelectItem>
+                {activeOperators.map((op) => (
+                  <SelectItem key={op.id} value={op.id}>
+                    {op.operatorName}{op.extension ? ` • R. ${op.extension}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={handleConfirm} disabled={submitting}>
+            {submitting ? "Aplicando..." : "Confirmar"}
           </Button>
         </DialogFooter>
       </DialogContent>
