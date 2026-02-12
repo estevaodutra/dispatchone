@@ -1,17 +1,16 @@
 
 
-# Correção Retroativa - Remover Operador Fixo de Ligações Não Realizadas
+# Correção Retroativa - Executar Limpeza de Operador Fixo
 
-## Dados Encontrados
+## Situação Atual
 
-- **`call_logs`**: 7 registros com `call_status` = `scheduled` e `operator_id` preenchido (5 para um operador, 2 para outro)
-- **`call_leads`**: 20+ registros com `status` = `pending` ou `scheduled` e `assigned_operator_id` preenchido
+7 registros em `call_logs` com status `scheduled` ainda mostram operadores fixos (Estevão/Mauro) em vez de "Auto". A lógica nova já está no código, mas os dados antigos precisam ser corrigidos.
 
-## Correções a Executar
+## Ações
 
-Duas queries de UPDATE para limpar os dados inconsistentes:
+Executar duas queries de UPDATE no banco de dados:
 
-### 1. `call_logs` - Limpar operator_id de ligações agendadas
+### 1. Limpar `operator_id` nos logs agendados
 
 ```sql
 UPDATE call_logs
@@ -20,7 +19,7 @@ WHERE call_status IN ('scheduled', 'ready', 'waiting_operator')
   AND operator_id IS NOT NULL;
 ```
 
-### 2. `call_leads` - Limpar assigned_operator_id de leads pendentes
+### 2. Limpar `assigned_operator_id` nos leads pendentes
 
 ```sql
 UPDATE call_leads
@@ -31,5 +30,5 @@ WHERE status IN ('pending', 'scheduled')
 
 ## Resultado
 
-Após a execução, todas as ligações que ainda não foram realizadas aparecerão como **"Auto"** no painel, e o operador será atribuído somente no momento da discagem real.
+Todas as ligações agendadas passarão a exibir "Auto" na coluna Operador do painel, e o operador será atribuído somente no momento real da discagem.
 
