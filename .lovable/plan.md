@@ -1,79 +1,45 @@
 
-# Fix: Operators Stuck as "On Call" After Call Completion
+# Allow Redialing Failed Calls
 
 ## Problem
 
-When a call finishes (via `registerAction`), the `call_logs` record is updated to `completed`, but the **operator** assigned to that call is never reset. Their status remains `on_call` with `current_call_id` still pointing to the now-completed call. This prevents:
-- Toggling the operator online/offline (the switch is disabled for `on_call`)
-- The queue from assigning them new calls
-
-The self-healing in `queue-executor` only runs during ticks, which may not fire if polling has stopped.
+When a call has a failure status (`no_answer`, `busy`, `failed`), the UI does not show a "Discar agora" (dial now) button. Only `no_answer` shows a "Religar" (reschedule) button, while `busy` and `failed` only show "Ver detalhes". The user wants to be able to redial directly from any failed status.
 
 ## Solution
 
-Two changes:
+Add a green "Discar agora" (phone icon) button for all calls in the `failed` category, alongside the existing buttons. This will call `dialNow` which resets the call status and triggers the dialing flow.
 
-### 1. Reset operator when a call completes (`src/hooks/useCallPanel.ts`)
+## Technical Changes
 
-In the `registerActionMutation`, after marking the call as `completed`, find the operator assigned to that call and reset them to `available`.
+### File: `src/pages/CallPanel.tsx` (lines 738-758)
 
-Add after the call_logs update (around line 580):
+Replace the current failed/cancelled action buttons with:
 
-```typescript
-// Reset the operator assigned to this call
-const { data: assignedOps } = await (supabase as any)
-  .from("call_operators")
-  .select("id")
-  .eq("current_call_id", callId);
-
-if (assignedOps?.length) {
-  await (supabase as any)
-    .from("call_operators")
-    .update({
-      status: "available",
-      current_call_id: null,
-      current_campaign_id: null,
-      last_call_ended_at: new Date().toISOString(),
-    })
-    .in("id", assignedOps.map((o: any) => o.id));
-}
-```
-
-### 2. Allow manual reset from "on_call" in the toggle (`src/components/call-panel/OperatorsPanel.tsx`)
-
-Remove `on_call` from the disabled condition so managers can manually force an operator offline/online if they get stuck. Change line 201 from:
+1. A green "Discar agora" button for ALL failed statuses (`no_answer`, `busy`, `failed`)
+2. Keep the "Ver detalhes" button for cancelled and failed calls
 
 ```typescript
-const isToggleDisabled = !operator.isActive || operator.status === "on_call" || operator.status === "cooldown";
+{category === "failed" && (
+  <Button
+    size="icon"
+    className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
+    onClick={() => dialNow(entry.id)}
+    title="Ligar novamente"
+  >
+    <Phone className="h-3.5 w-3.5" />
+  </Button>
+)}
+{(category === "cancelled" || category === "failed") && (
+  <Button
+    variant="outline"
+    size="icon"
+    className="h-7 w-7"
+    onClick={() => openActionDialog(entry)}
+    title="Ver detalhes"
+  >
+    <Eye className="h-3.5 w-3.5" />
+  </Button>
+)}
 ```
 
-to:
-
-```typescript
-const isToggleDisabled = !operator.isActive || operator.status === "cooldown";
-```
-
-And update `handleToggle` to also clear `current_call_id` when toggling from `on_call`:
-
-```typescript
-const handleToggle = async (checked: boolean) => {
-  if (operator.status === "on_call") {
-    // Force reset - also clear call assignment
-    await updateOperator({
-      id: operator.id,
-      updates: { isActive: operator.isActive },
-    });
-    // Direct DB update to clear call state
-  }
-  updateOperatorStatus({
-    id: operator.id,
-    status: checked ? "available" : "offline",
-  });
-};
-```
-
-## Expected Result
-
-- When a call is completed via `registerAction`, the assigned operator is automatically freed and becomes available for the next call in the queue
-- If an operator gets stuck as "on_call" due to any edge case, the manager can manually toggle them back online/offline using the switch
-- The bulk dialing flow will work end-to-end: each completed call frees the operator, the polling tick picks up the next ready call and assigns it
+This removes the separate `no_answer`-only reschedule button (lines 749-758) and replaces it with a universal redial button for all failure types. The `dialNow` function already handles resetting the call status and triggering the webhook.
