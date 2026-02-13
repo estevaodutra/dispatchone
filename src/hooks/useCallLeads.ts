@@ -15,15 +15,30 @@ async function executeActionAutomation(
       case "start_sequence": {
         const sequenceId = config.sequenceId as string;
         if (!sequenceId) break;
+        const campaignType = config.campaignType as string | undefined;
         // Fetch lead data for the sequence trigger
         const { data: lead } = await (supabase as any)
           .from("call_leads")
           .select("*")
           .eq("id", leadId)
           .single();
-        await supabase.functions.invoke(`trigger-sequence/${sequenceId}`, {
-          body: { lead, campaignId },
-        });
+
+        if (campaignType === "dispatch") {
+          // Dispatch sequences use execute-dispatch-sequence
+          await supabase.functions.invoke("execute-dispatch-sequence", {
+            body: {
+              campaignId: config.campaignId || campaignId,
+              sequenceId,
+              contactPhone: lead?.phone,
+              contactName: lead?.name,
+            },
+          });
+        } else {
+          // Group sequences use trigger-sequence
+          await supabase.functions.invoke(`trigger-sequence/${sequenceId}`, {
+            body: { lead, campaignId },
+          });
+        }
         break;
       }
       case "add_tag": {
