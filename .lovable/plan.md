@@ -1,42 +1,67 @@
 
-# Registrar Logs de Dispatch na Pagina de Logs
 
-## Problema
+# Confirmar Disparo Somente Apos Resposta do Webhook
 
-A Edge Function `execute-dispatch-sequence` registra logs na tabela `dispatch_sequence_logs`, mas a pagina de Logs (/logs) le apenas da tabela `group_message_logs`. Por isso, disparos feitos via acoes de ligacao (como "Tentei de Ligar") nunca aparecem na aba "Logs de Envio".
+## Diagnostico
 
-Os dados existem no banco -- ha 2 registros recentes em `dispatch_sequence_logs` com status "sent" -- mas a interface nao os exibe.
+A Edge Function `execute-dispatch-sequence` esta deployada e funcionando, mas nao ha logs de execucao recente. Isso indica que a chamada do cliente (`supabase.functions.invoke`) esta falhando silenciosamente -- o erro e capturado pelo `try/catch` generico em `executeActionAutomation` e apenas logado no console sem feedback ao usuario.
 
-## Solucao
+Alem disso, o fluxo atual da Edge Function ja aguarda a resposta do webhook antes de logar como "sent" ou "failed". O problema principal esta no lado do cliente.
 
-Modificar a Edge Function `execute-dispatch-sequence` para, alem de gravar em `dispatch_sequence_logs`, tambem inserir um registro na tabela `group_message_logs` com os campos necessarios para aparecer na pagina de Logs. Isso garante uma visao unificada de todos os envios em um unico lugar.
+## Mudancas
 
-### Arquivo modificado
+### 1. `src/hooks/useCallLeads.ts` - Melhorar `executeActionAutomation`
 
-**`supabase/functions/execute-dispatch-sequence/index.ts`**
+Adicionar verificacao da resposta do `supabase.functions.invoke` e propagar erros para que o usuario receba feedback visual (toast) quando a automacao falha:
 
-Apos o insert em `dispatch_sequence_logs` (linha ~373), adicionar um insert na tabela `group_message_logs` com os seguintes campos mapeados:
+- Verificar `data.error` ou `error` retornados pelo invoke
+- Lancar erro se a invocacao falhou, para que o toast de erro seja exibido
+- Adicionar log mais detalhado para debugging
 
-| Campo group_message_logs | Valor |
-|---|---|
-| `group_campaign_id` | campaignId |
-| `user_id` | userId |
-| `recipient_phone` | contactPhone |
-| `status` | "sent" ou "failed" |
-| `sent_at` | timestamp atual |
-| `sequence_id` | sequenceId |
-| `node_type` | step.message_type (text, image, etc.) |
-| `node_order` | step.step_order |
-| `campaign_name` | typedCampaign.name |
-| `group_name` | contactName (nome do contato como referencia) |
-| `instance_name` | instance.name |
-| `instance_id` | instance.id |
-| `error_message` | mensagem de erro (se falha) |
-| `response_time_ms` | responseTimeMs |
-| `payload` | payload enviado ao webhook |
+### 2. `src/hooks/useCallLeads.ts` - Melhorar `completeLeadMutation`
+
+Atualmente, `executeActionAutomation` e chamada com `await` mas erros sao engolidos silenciosamente. Mudar para:
+
+- Separar o resultado da ligacao (que ja foi salvo) do resultado da automacao
+- Se a automacao falhar, mostrar toast de aviso ("Ligacao registrada, mas a automacao falhou") em vez de silenciar
+- Garantir que a ligacao nao e bloqueada por falha na automacao
+
+### 3. `supabase/functions/execute-dispatch-sequence/index.ts` - Confirmar via webhook
+
+Adicionar confirmacao explicita: a Edge Function so retornara `success: true` se o webhook respondeu com sucesso (HTTP 2xx). Se o webhook falhou:
+
+- Logar como "failed" em ambas tabelas (ja implementado)
+- Retornar `success: false` com detalhes do erro no response body
+- O cliente podera verificar esse resultado e informar o usuario
 
 ### Detalhes tecnicos
 
-A insercao em `group_message_logs` sera feita em paralelo com o insert em `dispatch_sequence_logs` usando `Promise.all`, sem impactar a performance. Erros no log unificado serao tratados silenciosamente para nao afetar o fluxo principal.
+```text
+Fluxo atual:
+  Cliente -> invoke(execute-dispatch-sequence) -> [erro silencioso] -> nada acontece
 
-O mesmo tratamento sera aplicado no bloco de erro (catch, linha ~394), garantindo que falhas tambem aparecam nos logs unificados.
+Fluxo corrigido:
+  Cliente -> invoke(execute-dispatch-sequence) -> verifica resposta
+    -> Se sucesso: toast "Sequencia disparada com sucesso"
+    -> Se erro: toast "Falha ao disparar sequencia: [detalhe]"
+```
+
+Na funcao `executeActionAutomation`, a mudanca sera:
+
+```text
+case "start_sequence" (dispatch):
+  1. Buscar lead
+  2. Invocar execute-dispatch-sequence
+  3. Verificar response.data e response.error
+  4. Se falhou, lancar Error com detalhes
+```
+
+No `completeLeadMutation`:
+
+```text
+  1. Salvar resultado da ligacao (ja funciona)
+  2. Tentar executar automacao
+  3. Se automacao falhou, nao falhar a mutacao inteira
+     - Mostrar toast de aviso separado
+```
+
