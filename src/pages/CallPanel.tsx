@@ -735,7 +735,17 @@ export default function CallPanel() {
                                 <Eye className="h-3.5 w-3.5" />
                               </Button>
                             )}
-                            {(category === "cancelled" || category === "failed") && entry.callStatus !== "no_answer" && (
+{category === "failed" && (
+                              <Button
+                                size="icon"
+                                className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                onClick={() => dialNow(entry.id)}
+                                title="Ligar novamente"
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            {(category === "cancelled" || category === "failed") && (
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -744,16 +754,6 @@ export default function CallPanel() {
                                 title="Ver detalhes"
                               >
                                 <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {entry.callStatus === "no_answer" && (
-                              <Button
-                                size="icon"
-                                className="h-7 w-7 bg-amber-500 hover:bg-amber-600 text-white"
-                                onClick={() => openRescheduleDialog(entry)}
-                                title="Religar"
-                              >
-                                <RefreshCw className="h-3.5 w-3.5" />
                               </Button>
                             )}
 
