@@ -384,23 +384,28 @@ Deno.serve(async (req) => {
               sent_at: now,
               error_message: logError,
             }),
-            supabase.from("group_message_logs").insert({
-              group_campaign_id: campaignId,
-              user_id: userId,
-              recipient_phone: contactPhone,
-              status: logStatus,
-              sent_at: now,
-              sequence_id: sequenceId,
-              node_type: step.message_type || "text",
-              node_order: step.step_order,
-              campaign_name: typedCampaign.name,
-              group_name: contactName || "",
-              instance_name: instance.name,
-              instance_id: instance.id,
-              error_message: logError,
-              response_time_ms: responseTimeMs,
-              payload: payload as unknown,
-            }).then(() => {}).catch((e) => console.warn("[DispatchSequence] group_message_logs insert warning:", e)),
+            (async () => {
+              const { error: gmlError } = await supabase.from("group_message_logs").insert({
+                group_campaign_id: campaignId,
+                user_id: userId,
+                recipient_phone: contactPhone,
+                status: logStatus,
+                sent_at: now,
+                sequence_id: sequenceId,
+                node_type: step.message_type || "text",
+                node_order: step.step_order,
+                campaign_name: typedCampaign.name,
+                group_name: contactName || "",
+                instance_name: instance.name,
+                instance_id: instance.id,
+                error_message: logError,
+                response_time_ms: responseTimeMs,
+                payload: payload as unknown,
+              });
+              if (gmlError) {
+                console.error("[DispatchSequence] group_message_logs insert FAILED:", JSON.stringify(gmlError));
+              }
+            })(),
           ]);
 
           if (response.ok) {
@@ -424,21 +429,26 @@ Deno.serve(async (req) => {
               status: "failed",
               error_message: errMsg,
             }),
-            supabase.from("group_message_logs").insert({
-              group_campaign_id: campaignId,
-              user_id: userId,
-              recipient_phone: contactPhone,
-              status: "failed",
-              sent_at: new Date().toISOString(),
-              sequence_id: sequenceId,
-              node_type: step.message_type || "text",
-              node_order: step.step_order,
-              campaign_name: typedCampaign.name,
-              group_name: contactName || "",
-              instance_name: instance.name,
-              instance_id: instance.id,
-              error_message: errMsg,
-            }).then(() => {}).catch((e) => console.warn("[DispatchSequence] group_message_logs insert warning:", e)),
+            (async () => {
+              const { error: gmlError } = await supabase.from("group_message_logs").insert({
+                group_campaign_id: campaignId,
+                user_id: userId,
+                recipient_phone: contactPhone,
+                status: "failed",
+                sent_at: new Date().toISOString(),
+                sequence_id: sequenceId,
+                node_type: step.message_type || "text",
+                node_order: step.step_order,
+                campaign_name: typedCampaign.name,
+                group_name: contactName || "",
+                instance_name: instance.name,
+                instance_id: instance.id,
+                error_message: errMsg,
+              });
+              if (gmlError) {
+                console.error("[DispatchSequence] group_message_logs insert FAILED:", JSON.stringify(gmlError));
+              }
+            })(),
           ]);
         }
       }
