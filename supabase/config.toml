@@ -56,3 +56,6 @@ verify_jwt = false
 
 [functions.call-queue-api]
 verify_jwt = false
+
+[functions.execute-dispatch-sequence]
+verify_jwt = false
