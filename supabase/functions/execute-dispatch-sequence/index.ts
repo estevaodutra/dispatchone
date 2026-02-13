@@ -470,17 +470,19 @@ Deno.serve(async (req) => {
     }
 
     const elapsed = Date.now() - startTime;
-    console.log(`[DispatchSequence] ✅ Complete: ${stepsProcessed} processed, ${stepsFailed} failed (${elapsed}ms)`);
+    const allSucceeded = stepsFailed === 0 && stepsProcessed > 0;
+    console.log(`[DispatchSequence] ${allSucceeded ? '✅' : '⚠️'} Complete: ${stepsProcessed} processed, ${stepsFailed} failed (${elapsed}ms)`);
 
     return new Response(
       JSON.stringify({
-        success: true,
+        success: allSucceeded,
         stepsProcessed,
         stepsFailed,
         totalSteps: typedSteps.length,
         elapsedMs: elapsed,
+        ...(stepsFailed > 0 ? { error: `${stepsFailed} step(s) failed to send via webhook` } : {}),
       }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: allSucceeded ? 200 : 207, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error) {

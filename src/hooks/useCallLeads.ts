@@ -25,7 +25,7 @@ async function executeActionAutomation(
 
         if (campaignType === "dispatch") {
           // Dispatch sequences use execute-dispatch-sequence
-          await supabase.functions.invoke("execute-dispatch-sequence", {
+          const { data, error: invokeError } = await supabase.functions.invoke("execute-dispatch-sequence", {
             body: {
               campaignId: config.campaignId || campaignId,
               sequenceId,
@@ -33,11 +33,20 @@ async function executeActionAutomation(
               contactName: lead?.name,
             },
           });
+          if (invokeError) {
+            throw new Error(`Falha ao invocar sequência: ${invokeError.message}`);
+          }
+          if (data && !data.success) {
+            throw new Error(data.error || "Webhook não confirmou o envio");
+          }
         } else {
           // Group sequences use trigger-sequence
-          await supabase.functions.invoke(`trigger-sequence/${sequenceId}`, {
+          const { error: invokeError } = await supabase.functions.invoke(`trigger-sequence/${sequenceId}`, {
             body: { lead, campaignId },
           });
+          if (invokeError) {
+            throw new Error(`Falha ao invocar sequência: ${invokeError.message}`);
+          }
         }
         break;
       }
@@ -78,7 +87,9 @@ async function executeActionAutomation(
       // none: no-op
     }
   } catch (err) {
-    console.error("Action automation error:", err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("Action automation error:", message);
+    throw err; // Propagate so caller can handle
   }
 }
 
@@ -399,16 +410,26 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
 
       if (logError) throw logError;
 
-      // Execute action automation
+      // Execute action automation - errors show warning but don't fail the mutation
+      let automationError: string | null = null;
       if (actionData && actionId) {
-        await executeActionAutomation(actionData.action_type, actionData.action_config || {}, leadId, campaignId);
+        try {
+          await executeActionAutomation(actionData.action_type, actionData.action_config || {}, leadId, campaignId);
+        } catch (err) {
+          automationError = err instanceof Error ? err.message : String(err);
+        }
       }
+      return { automationError };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_logs", campaignId] });
-      toast({ title: "Ligação concluída", description: "Resultado registrado com sucesso." });
+      if (result?.automationError) {
+        toast({ title: "Ligação registrada", description: `Automação falhou: ${result.automationError}`, variant: "destructive" });
+      } else {
+        toast({ title: "Ligação concluída", description: "Resultado registrado com sucesso." });
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
