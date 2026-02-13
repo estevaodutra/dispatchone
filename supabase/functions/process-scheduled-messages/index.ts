@@ -1005,6 +1005,131 @@ Deno.serve(async (req) => {
       console.log(`[Scheduler] Scheduled sequences summary:`, sequenceResults);
     }
 
+    // ============= PROCESS DISPATCH SCHEDULED SEQUENCES =============
+    
+    console.log(`[Scheduler] Checking for scheduled dispatch sequences...`);
+    
+    const { data: dispatchSequences, error: dispatchSeqError } = await supabase
+      .from("dispatch_sequences")
+      .select(`
+        id, name, user_id, campaign_id, trigger_config, is_active
+      `)
+      .eq("trigger_type", "scheduled")
+      .eq("is_active", true);
+
+    if (dispatchSeqError) {
+      console.error("[Scheduler] Error fetching dispatch scheduled sequences:", dispatchSeqError);
+    } else {
+      console.log(`[Scheduler] Found ${dispatchSequences?.length || 0} active dispatch scheduled sequences`);
+
+      for (const seq of dispatchSequences || []) {
+        try {
+          const triggerConfig = seq.trigger_config as { days?: number[]; times?: string[] } | null;
+          if (!triggerConfig?.days || !triggerConfig?.times) continue;
+
+          const matchesDay = triggerConfig.days.includes(currentDay);
+          const matchesTime = triggerConfig.times.includes(currentTime);
+          if (!matchesDay || !matchesTime) continue;
+
+          console.log(`[Scheduler] ✅ Dispatch sequence ${seq.name} matches schedule`);
+
+          // Idempotency check
+          const { data: existingExec } = await supabase
+            .from("scheduled_sequence_executions")
+            .select("id")
+            .eq("sequence_id", seq.id)
+            .eq("scheduled_date", todayDate)
+            .eq("scheduled_time", currentTime)
+            .maybeSingle();
+
+          if (existingExec) {
+            console.log(`[Scheduler] Dispatch sequence ${seq.name} already executed at ${currentTime} today`);
+            continue;
+          }
+
+          // Validate campaign and instance
+          const { data: dispCampaign } = await supabase
+            .from("dispatch_campaigns")
+            .select(`id, status, instance_id, instances!inner(id, status)`)
+            .eq("id", seq.campaign_id)
+            .single();
+
+          if (!dispCampaign || dispCampaign.status !== "active") {
+            console.log(`[Scheduler] Dispatch campaign for sequence ${seq.name} not active`);
+            continue;
+          }
+
+          const dispInstance = (dispCampaign as any).instances;
+          if (dispInstance?.status !== "connected") {
+            console.log(`[Scheduler] Instance for dispatch sequence ${seq.name} not connected`);
+            continue;
+          }
+
+          // Get contacts for this campaign
+          const { data: contacts } = await supabase
+            .from("dispatch_campaign_contacts")
+            .select("id, lead_id, leads!inner(phone, name)")
+            .eq("campaign_id", seq.campaign_id)
+            .eq("status", "active");
+
+          if (!contacts || contacts.length === 0) {
+            console.log(`[Scheduler] No active contacts for dispatch sequence ${seq.name}`);
+            continue;
+          }
+
+          // Record execution
+          await supabase.from("scheduled_sequence_executions").insert({
+            sequence_id: seq.id,
+            campaign_id: seq.campaign_id,
+            user_id: seq.user_id,
+            scheduled_date: todayDate,
+            scheduled_time: currentTime,
+            status: "executing",
+          });
+
+          console.log(`[Scheduler] 🚀 Triggering dispatch sequence ${seq.name} for ${contacts.length} contacts...`);
+
+          // Execute for each contact
+          for (const contact of contacts) {
+            const lead = (contact as any).leads;
+            if (!lead?.phone) continue;
+
+            try {
+              await fetch(`${supabaseUrl}/functions/v1/execute-dispatch-sequence`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${supabaseServiceKey}`,
+                },
+                body: JSON.stringify({
+                  campaignId: seq.campaign_id,
+                  sequenceId: seq.id,
+                  contactPhone: lead.phone,
+                  contactName: lead.name || "",
+                  contactId: contact.id,
+                }),
+              });
+            } catch (err) {
+              console.error(`[Scheduler] Error executing dispatch for contact ${contact.id}:`, err);
+            }
+          }
+
+          // Update execution status
+          await supabase
+            .from("scheduled_sequence_executions")
+            .update({ status: "executed" })
+            .eq("sequence_id", seq.id)
+            .eq("scheduled_date", todayDate)
+            .eq("scheduled_time", currentTime);
+
+          console.log(`[Scheduler] ✅ Dispatch sequence ${seq.name} triggered for ${contacts.length} contacts`);
+
+        } catch (err) {
+          console.error(`[Scheduler] Error processing dispatch sequence ${seq.id}:`, err);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,

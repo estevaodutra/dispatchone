@@ -613,6 +613,48 @@ export function useCallPanel(filters?: {
             .eq("id", entry.leadId);
         }
       }
+
+      // Check if the action triggers a sequence automation
+      const { data: actionData } = await (supabase as any)
+        .from("call_script_actions")
+        .select("action_type, action_config")
+        .eq("id", actionId)
+        .maybeSingle();
+
+      if (actionData?.action_type === "start_sequence" && actionData.action_config) {
+        const { campaignId: seqCampaignId, campaignType, sequenceId } = actionData.action_config as {
+          campaignId?: string;
+          campaignType?: string;
+          sequenceId?: string;
+        };
+
+        if (campaignType === "dispatch" && sequenceId && entry?.leadPhone) {
+          // Invoke dispatch sequence executor
+          await supabase.functions.invoke("execute-dispatch-sequence", {
+            body: {
+              campaignId: seqCampaignId,
+              sequenceId,
+              contactPhone: entry.leadPhone,
+              contactName: entry.leadName || "",
+            },
+          });
+        } else if (campaignType === "group" && sequenceId && seqCampaignId) {
+          // Invoke existing group sequence executor
+          await supabase.functions.invoke("execute-message", {
+            body: {
+              campaignId: seqCampaignId,
+              sequenceId,
+              triggerContext: {
+                respondentPhone: entry?.leadPhone || "",
+                respondentName: entry?.leadName || "",
+                respondentJid: entry?.leadPhone ? `${entry.leadPhone}@s.whatsapp.net` : "",
+                groupJid: "",
+                sendPrivate: true,
+              },
+            },
+          });
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
