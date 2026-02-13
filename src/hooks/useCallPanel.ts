@@ -579,6 +579,24 @@ export function useCallPanel(filters?: {
         .eq("id", callId);
       if (error) throw error;
 
+      // Reset the operator assigned to this call
+      const { data: assignedOps } = await (supabase as any)
+        .from("call_operators")
+        .select("id")
+        .eq("current_call_id", callId);
+
+      if (assignedOps?.length) {
+        await (supabase as any)
+          .from("call_operators")
+          .update({
+            status: "available",
+            current_call_id: null,
+            current_campaign_id: null,
+            last_call_ended_at: new Date().toISOString(),
+          })
+          .in("id", assignedOps.map((o: any) => o.id));
+      }
+
       const entry = entries.find((e) => e.id === callId);
       if (entry?.leadId) {
         // Only update lead if not already completed

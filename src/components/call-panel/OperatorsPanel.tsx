@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { useCallOperators, CallOperator, OperatorStatus } from "@/hooks/useCallOperators";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -198,10 +199,21 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
     ? ((operator.totalCallsAnswered / operator.totalCalls) * 100).toFixed(1)
     : null;
 
-  const isToggleDisabled = !operator.isActive || operator.status === "on_call" || operator.status === "cooldown";
+  const isToggleDisabled = !operator.isActive || operator.status === "cooldown";
   const isOnline = operator.status === "available";
 
-  const handleToggle = (checked: boolean) => {
+  const handleToggle = async (checked: boolean) => {
+    if (operator.status === "on_call") {
+      // Force clear call assignment via direct DB update
+      await (supabase as any)
+        .from("call_operators")
+        .update({
+          current_call_id: null,
+          current_campaign_id: null,
+          last_call_ended_at: new Date().toISOString(),
+        })
+        .eq("id", operator.id);
+    }
     updateOperatorStatus({ id: operator.id, status: checked ? "available" : "offline" });
   };
 
