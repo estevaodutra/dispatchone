@@ -1,89 +1,91 @@
 
-# Melhorar Visibilidade de Erros na Automacao de Dispatch
+# Corrigir Erro 500 nas Estatisticas de Webhook Events
 
-## Diagnostico
+## Problema
 
-A analise mostra que:
-1. A Edge Function `execute-dispatch-sequence` funciona (testada via curl com sucesso)
-2. O fix de CORS foi aplicado e deployado
-3. Nao ha registros de chamadas a Edge Function vindas do navegador do usuario
-4. O ultimo clique no botao com action_id foi as 14:40 UTC, ANTES do fix de CORS (19:25 UTC)
-5. Quando a automacao falha, o toast de erro pode ser sobreposto pelo toast de sucesso "Acao registrada"
+A tabela `webhook_events` tem **154.292 registros**. O hook `useWebhookEventStats` faz 5 consultas separadas:
 
-## Problema Principal
+1. `HEAD` com `count: "exact"` filtrando por `received_at >= hoje` (scan completo)
+2. `HEAD` com `count: "exact"` filtrando por `classification = 'pending'` (scan completo)
+3. `HEAD` com `count: "exact"` filtrando por `processing_status = 'failed'` (scan completo)
+4. `HEAD` com `count: "exact"` filtrando por `processing_status = 'processed'` (scan completo)
+5. `SELECT event_type` das ultimas 24h (pode retornar milhares de linhas)
 
-O toast de sucesso "Acao registrada" (em `onSuccess`) sempre aparece DEPOIS do toast de erro da automacao (em `mutationFn`), escondendo a falha. O usuario ve "Acao registrada" e pensa que tudo funcionou.
+Com 154k+ registros e sem indices otimizados, o PostgREST atinge timeout (erro 500).
 
 ## Solucao
 
-### 1. Mover logica de automacao para ANTES do toast de sucesso e unificar feedback
+### 1. Criar indices para as colunas filtradas
 
-No `useCallPanel.ts`, alterar o `registerActionMutation` para:
-- Retornar o resultado da automacao do `mutationFn`
-- No `onSuccess`, mostrar toast diferente dependendo do resultado da automacao
-- Se automacao falhou: toast amarelo/destructive com mensagem clara
-- Se automacao passou: toast de sucesso com confirmacao
+Adicionar indices na tabela `webhook_events` para as colunas usadas nos filtros:
 
-### 2. Adicionar logs de console detalhados
-
-Adicionar `console.log` nos pontos criticos:
-- Antes de chamar `supabase.functions.invoke`
-- Apos o retorno (sucesso ou erro)
-- Quando `entry?.leadPhone` e falsy (condicao que pula a automacao)
-
-### 3. Corrigir fluxo de feedback
-
-Alterar `onSuccess` para verificar o retorno do `mutationFn`:
-
-```typescript
-mutationFn: async (...) => {
-  // ... existing code ...
-  let automationResult = null;
-  try {
-    // ... automation code ...
-    automationResult = { success: true };
-  } catch (err) {
-    automationResult = { success: false, error: err.message };
-  }
-  return automationResult;
-},
-onSuccess: (result) => {
-  queryClient.invalidateQueries(...);
-  if (result && !result.success) {
-    toast({ title: "Acao registrada", description: `Automacao falhou: ${result.error}`, variant: "destructive" });
-  } else {
-    toast({ title: "Acao registrada", description: "Automacao executada com sucesso." });
-  }
-}
+```sql
+CREATE INDEX IF NOT EXISTS idx_webhook_events_received_at ON webhook_events (received_at);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_classification ON webhook_events (classification);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_processing_status ON webhook_events (processing_status);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_event_type_received ON webhook_events (event_type, received_at);
 ```
 
-## Detalhes Tecnicos
+### 2. Otimizar as consultas no hook `useWebhookEventStats`
 
-### Arquivo: `src/hooks/useCallPanel.ts`
+Alterar `src/hooks/useWebhookEvents.ts`:
 
-**Mudanca 1** - Adicionar console.log antes da chamada da Edge Function (linha ~632):
+- Trocar `count: "exact"` por `count: "estimated"` nas consultas que nao precisam de precisao absoluta (pending, failed, processed)
+- Manter `count: "exact"` apenas para "today" (que tem escopo menor)
+- Na consulta "byType" (ultimas 24h), usar `head: true` com agrupamento via RPC ou limitar o escopo para evitar retornar milhares de linhas
+- Adicionar `staleTime` e `refetchInterval` maiores para nao repetir essas consultas pesadas a cada segundo
+
+Mudancas especificas:
+
 ```typescript
-console.log("[CallPanel] Dispatch trigger:", { campaignType, sequenceId, leadPhone: entry?.leadPhone });
+// Pending - usar estimated
+const { count: pendingCount } = await supabase
+  .from("webhook_events")
+  .select("*", { count: "estimated", head: true })
+  .eq("classification", "pending");
+
+// Failed - usar estimated  
+const { count: failedCount } = await supabase
+  .from("webhook_events")
+  .select("*", { count: "estimated", head: true })
+  .eq("processing_status", "failed");
+
+// Processed - usar estimated
+const { count: processedCount } = await supabase
+  .from("webhook_events")
+  .select("*", { count: "estimated", head: true })
+  .eq("processing_status", "processed");
 ```
 
-**Mudanca 2** - Retornar resultado da automacao do mutationFn e ajustar onSuccess para mostrar feedback correto.
+- Para a consulta "byType", limitar a 1000 registros para evitar timeout:
 
-**Mudanca 3** - Adicionar log quando a condicao `entry?.leadPhone` falhar:
 ```typescript
-if (!entry?.leadPhone) {
-  console.warn("[CallPanel] leadPhone nao encontrado para entry:", entry);
-}
+const { data: byTypeData } = await supabase
+  .from("webhook_events")
+  .select("event_type")
+  .gte("received_at", yesterday.toISOString())
+  .limit(1000);
 ```
 
-### Nenhuma mudanca na Edge Function
-A Edge Function ja esta correta e testada.
+- Adicionar `staleTime: 60000` (1 minuto) para evitar re-fetches frequentes:
 
-## Validacao
+```typescript
+return useQuery({
+  queryKey: ["webhook-events-stats"],
+  queryFn: async () => { ... },
+  enabled: !!user,
+  staleTime: 60_000,
+  refetchInterval: 120_000,
+});
+```
 
-Apos as mudancas:
-1. Abrir o console do navegador (F12)
-2. Ir ao Painel de Ligacoes
-3. Registrar uma acao com sequencia de dispatch
-4. Verificar no console se os logs aparecem
-5. Verificar se a Edge Function e chamada
-6. Verificar se o toast mostra o resultado correto
+### 3. Nenhuma mudanca na Edge Function
+
+As Edge Functions nao sao afetadas.
+
+## Resumo das alteracoes
+
+| Arquivo | Mudanca |
+|---|---|
+| Migracao SQL | Criar 4 indices na tabela `webhook_events` |
+| `src/hooks/useWebhookEvents.ts` | Trocar `exact` por `estimated` em 3 consultas, limitar byType a 1000, adicionar staleTime/refetchInterval |
