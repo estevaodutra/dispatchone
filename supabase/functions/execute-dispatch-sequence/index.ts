@@ -369,16 +369,39 @@ Deno.serve(async (req) => {
           let responseData;
           try { responseData = JSON.parse(responseText); } catch { responseData = { raw: responseText }; }
 
-          // Log to dispatch_sequence_logs
-          await supabase.from("dispatch_sequence_logs").insert({
-            user_id: userId,
-            sequence_id: sequenceId,
-            step_id: step.id,
-            contact_id: contactId || null,
-            status: response.ok ? "sent" : "failed",
-            sent_at: new Date().toISOString(),
-            error_message: response.ok ? null : `HTTP ${response.status}: ${responseText.substring(0, 200)}`,
-          });
+          // Log to dispatch_sequence_logs AND group_message_logs in parallel
+          const logStatus = response.ok ? "sent" : "failed";
+          const logError = response.ok ? null : `HTTP ${response.status}: ${responseText.substring(0, 200)}`;
+          const now = new Date().toISOString();
+
+          await Promise.all([
+            supabase.from("dispatch_sequence_logs").insert({
+              user_id: userId,
+              sequence_id: sequenceId,
+              step_id: step.id,
+              contact_id: contactId || null,
+              status: logStatus,
+              sent_at: now,
+              error_message: logError,
+            }),
+            supabase.from("group_message_logs").insert({
+              group_campaign_id: campaignId,
+              user_id: userId,
+              recipient_phone: contactPhone,
+              status: logStatus,
+              sent_at: now,
+              sequence_id: sequenceId,
+              node_type: step.message_type || "text",
+              node_order: step.step_order,
+              campaign_name: typedCampaign.name,
+              group_name: contactName || "",
+              instance_name: instance.name,
+              instance_id: instance.id,
+              error_message: logError,
+              response_time_ms: responseTimeMs,
+              payload: payload as unknown,
+            }).then(() => {}).catch((e) => console.warn("[DispatchSequence] group_message_logs insert warning:", e)),
+          ]);
 
           if (response.ok) {
             console.log(`[DispatchSequence] ✅ Step ${step.step_order} sent to ${contactPhone} (${responseTimeMs}ms)`);
@@ -391,14 +414,32 @@ Deno.serve(async (req) => {
           stepsFailed++;
           console.error(`[DispatchSequence] ❌ Error sending step ${step.step_order}:`, err);
 
-          await supabase.from("dispatch_sequence_logs").insert({
-            user_id: userId,
-            sequence_id: sequenceId,
-            step_id: step.id,
-            contact_id: contactId || null,
-            status: "failed",
-            error_message: err instanceof Error ? err.message : "Unknown error",
-          });
+          const errMsg = err instanceof Error ? err.message : "Unknown error";
+          await Promise.all([
+            supabase.from("dispatch_sequence_logs").insert({
+              user_id: userId,
+              sequence_id: sequenceId,
+              step_id: step.id,
+              contact_id: contactId || null,
+              status: "failed",
+              error_message: errMsg,
+            }),
+            supabase.from("group_message_logs").insert({
+              group_campaign_id: campaignId,
+              user_id: userId,
+              recipient_phone: contactPhone,
+              status: "failed",
+              sent_at: new Date().toISOString(),
+              sequence_id: sequenceId,
+              node_type: step.message_type || "text",
+              node_order: step.step_order,
+              campaign_name: typedCampaign.name,
+              group_name: contactName || "",
+              instance_name: instance.name,
+              instance_id: instance.id,
+              error_message: errMsg,
+            }).then(() => {}).catch((e) => console.warn("[DispatchSequence] group_message_logs insert warning:", e)),
+          ]);
         }
       }
     }
