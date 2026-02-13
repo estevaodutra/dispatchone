@@ -1163,13 +1163,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "group_message_logs_group_campaign_id_fkey"
-            columns: ["group_campaign_id"]
-            isOneToOne: false
-            referencedRelation: "group_campaigns"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "group_message_logs_message_id_fkey"
             columns: ["message_id"]
             isOneToOne: false
