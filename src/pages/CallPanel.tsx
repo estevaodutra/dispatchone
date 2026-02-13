@@ -253,8 +253,11 @@ function StatusBadgeCell({ entry }: { entry: CallPanelEntry }) {
   // failed
   const label = entry.callStatus === "no_answer" ? "N/Atendeu"
     : entry.callStatus === "busy" ? "Ocupado"
+    : entry.callStatus === "not_found" ? "Não Encontrada"
+    : entry.callStatus === "voicemail" ? "Caixa Postal"
+    : entry.callStatus === "timeout" ? "Tempo Esgotado"
     : "Falha";
-  const isOrange = ["busy", "failed"].includes(entry.callStatus);
+  const isOrange = ["busy", "failed", "not_found", "voicemail", "timeout"].includes(entry.callStatus);
   return (
     <Badge variant="outline" className={cn(
       "gap-1 text-xs whitespace-nowrap",
