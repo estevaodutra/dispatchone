@@ -1,53 +1,89 @@
 
+# Melhorar Visibilidade de Erros na Automacao de Dispatch
 
-# Corrigir Headers CORS da Edge Function execute-dispatch-sequence
+## Diagnostico
 
-## Problema
+A analise mostra que:
+1. A Edge Function `execute-dispatch-sequence` funciona (testada via curl com sucesso)
+2. O fix de CORS foi aplicado e deployado
+3. Nao ha registros de chamadas a Edge Function vindas do navegador do usuario
+4. O ultimo clique no botao com action_id foi as 14:40 UTC, ANTES do fix de CORS (19:25 UTC)
+5. Quando a automacao falha, o toast de erro pode ser sobreposto pelo toast de sucesso "Acao registrada"
 
-A Edge Function `execute-dispatch-sequence` funciona quando chamada diretamente (via curl/servidor), mas falha silenciosamente quando chamada pelo navegador via `supabase.functions.invoke`. Nenhum log aparece na Edge Function quando o disparo e acionado pelo Painel de Ligacoes.
+## Problema Principal
 
-## Causa Raiz
-
-Os headers CORS da Edge Function estao incompletos. O Supabase JS client envia headers adicionais (`x-supabase-client-platform`, `x-supabase-client-platform-version`, etc.) que nao estao listados no `Access-Control-Allow-Headers`. Isso faz a requisicao preflight (OPTIONS) falhar no navegador, impedindo que a funcao seja chamada.
-
-**Headers atuais (incompletos):**
-```
-"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
-```
-
-**Headers necessarios:**
-```
-"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version"
-```
-
-## Evidencias
-
-- Edge Function tem ZERO logs quando acionada pelo Painel de Ligacoes
-- Edge Function responde HTTP 200 quando chamada via curl (sem CORS enforcement)
-- O `call_logs` mostra acoes registradas com `action_id` preenchido, mas sem nenhuma chamada a Edge Function
-- Os dados da acao estao corretos: `campaignType: "dispatch"`, `sequenceId` e `campaignId` validos
-- O codigo do front-end esta correto e deveria chamar a funcao
+O toast de sucesso "Acao registrada" (em `onSuccess`) sempre aparece DEPOIS do toast de erro da automacao (em `mutationFn`), escondendo a falha. O usuario ve "Acao registrada" e pensa que tudo funcionou.
 
 ## Solucao
 
-### Alteracao em `supabase/functions/execute-dispatch-sequence/index.ts`
+### 1. Mover logica de automacao para ANTES do toast de sucesso e unificar feedback
 
-Atualizar os headers CORS (linhas 3-6):
+No `useCallPanel.ts`, alterar o `registerActionMutation` para:
+- Retornar o resultado da automacao do `mutationFn`
+- No `onSuccess`, mostrar toast diferente dependendo do resultado da automacao
+- Se automacao falhou: toast amarelo/destructive com mensagem clara
+- Se automacao passou: toast de sucesso com confirmacao
+
+### 2. Adicionar logs de console detalhados
+
+Adicionar `console.log` nos pontos criticos:
+- Antes de chamar `supabase.functions.invoke`
+- Apos o retorno (sucesso ou erro)
+- Quando `entry?.leadPhone` e falsy (condicao que pula a automacao)
+
+### 3. Corrigir fluxo de feedback
+
+Alterar `onSuccess` para verificar o retorno do `mutationFn`:
 
 ```typescript
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+mutationFn: async (...) => {
+  // ... existing code ...
+  let automationResult = null;
+  try {
+    // ... automation code ...
+    automationResult = { success: true };
+  } catch (err) {
+    automationResult = { success: false, error: err.message };
+  }
+  return automationResult;
+},
+onSuccess: (result) => {
+  queryClient.invalidateQueries(...);
+  if (result && !result.success) {
+    toast({ title: "Acao registrada", description: `Automacao falhou: ${result.error}`, variant: "destructive" });
+  } else {
+    toast({ title: "Acao registrada", description: "Automacao executada com sucesso." });
+  }
+}
 ```
 
-### Deploy
+## Detalhes Tecnicos
 
-Redeployar a Edge Function `execute-dispatch-sequence`.
+### Arquivo: `src/hooks/useCallPanel.ts`
 
-### Validacao
+**Mudanca 1** - Adicionar console.log antes da chamada da Edge Function (linha ~632):
+```typescript
+console.log("[CallPanel] Dispatch trigger:", { campaignType, sequenceId, leadPhone: entry?.leadPhone });
+```
 
-Apos o deploy, registrar uma acao no Painel de Ligacoes e verificar:
-1. Logs da Edge Function mostram a execucao
-2. Registro aparece em `group_message_logs`
-3. Toast de confirmacao aparece na UI
+**Mudanca 2** - Retornar resultado da automacao do mutationFn e ajustar onSuccess para mostrar feedback correto.
+
+**Mudanca 3** - Adicionar log quando a condicao `entry?.leadPhone` falhar:
+```typescript
+if (!entry?.leadPhone) {
+  console.warn("[CallPanel] leadPhone nao encontrado para entry:", entry);
+}
+```
+
+### Nenhuma mudanca na Edge Function
+A Edge Function ja esta correta e testada.
+
+## Validacao
+
+Apos as mudancas:
+1. Abrir o console do navegador (F12)
+2. Ir ao Painel de Ligacoes
+3. Registrar uma acao com sequencia de dispatch
+4. Verificar no console se os logs aparecem
+5. Verificar se a Edge Function e chamada
+6. Verificar se o toast mostra o resultado correto
