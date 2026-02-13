@@ -184,30 +184,31 @@ export function useWebhookEventStats() {
         .select("*", { count: "exact", head: true })
         .gte("received_at", today.toISOString());
       
-      // Get pending count
+      // Get pending count (estimated for performance)
       const { count: pendingCount } = await supabase
         .from("webhook_events")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "estimated", head: true })
         .eq("classification", "pending");
       
-      // Get failed count
+      // Get failed count (estimated for performance)
       const { count: failedCount } = await supabase
         .from("webhook_events")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "estimated", head: true })
         .eq("processing_status", "failed");
       
-      // Get processed count
+      // Get processed count (estimated for performance)
       const { count: processedCount } = await supabase
         .from("webhook_events")
-        .select("*", { count: "exact", head: true })
+        .select("*", { count: "estimated", head: true })
         .eq("processing_status", "processed");
       
-      // Get counts by type (last 24 hours)
+      // Get counts by type (last 24 hours, limited to 1000)
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const { data: byTypeData } = await supabase
         .from("webhook_events")
         .select("event_type")
-        .gte("received_at", yesterday.toISOString());
+        .gte("received_at", yesterday.toISOString())
+        .limit(1000);
       
       const byType: Record<string, number> = {};
       (byTypeData || []).forEach((row) => {
@@ -224,6 +225,8 @@ export function useWebhookEventStats() {
       } as WebhookEventStats;
     },
     enabled: !!user,
+    staleTime: 60_000,
+    refetchInterval: 120_000,
   });
 }
 
