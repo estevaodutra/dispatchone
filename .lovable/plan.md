@@ -1,47 +1,53 @@
 
 
-# Corrigir Foreign Key que Bloqueia Logs de Dispatch
+# Corrigir Headers CORS da Edge Function execute-dispatch-sequence
 
-## Problema Encontrado
+## Problema
 
-A tabela `group_message_logs` possui uma foreign key:
+A Edge Function `execute-dispatch-sequence` funciona quando chamada diretamente (via curl/servidor), mas falha silenciosamente quando chamada pelo navegador via `supabase.functions.invoke`. Nenhum log aparece na Edge Function quando o disparo e acionado pelo Painel de Ligacoes.
+
+## Causa Raiz
+
+Os headers CORS da Edge Function estao incompletos. O Supabase JS client envia headers adicionais (`x-supabase-client-platform`, `x-supabase-client-platform-version`, etc.) que nao estao listados no `Access-Control-Allow-Headers`. Isso faz a requisicao preflight (OPTIONS) falhar no navegador, impedindo que a funcao seja chamada.
+
+**Headers atuais (incompletos):**
 ```
-group_campaign_id -> group_campaigns(id) ON DELETE CASCADE
+"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
 ```
 
-Quando a Edge Function tenta inserir um log de dispatch, ela passa o ID da campanha de dispatch (tabela `dispatch_campaigns`) no campo `group_campaign_id`. Esse UUID nao existe na tabela `group_campaigns`, causando violacao de foreign key e o insert falha silenciosamente.
+**Headers necessarios:**
+```
+"Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version"
+```
 
-## Evidencia
+## Evidencias
 
-- `dispatch_sequence_logs`: 5 registros recentes (funciona)
-- `group_message_logs` com `recipient_phone` preenchido: apenas 3 registros antigos de janeiro (antes da FK existir ou de outro contexto)
-- Nenhum registro de dispatch de fevereiro em `group_message_logs`
-- FK confirmada: `group_message_logs_group_campaign_id_fkey FOREIGN KEY (group_campaign_id) REFERENCES group_campaigns(id) ON DELETE CASCADE`
+- Edge Function tem ZERO logs quando acionada pelo Painel de Ligacoes
+- Edge Function responde HTTP 200 quando chamada via curl (sem CORS enforcement)
+- O `call_logs` mostra acoes registradas com `action_id` preenchido, mas sem nenhuma chamada a Edge Function
+- Os dados da acao estao corretos: `campaignType: "dispatch"`, `sequenceId` e `campaignId` validos
+- O codigo do front-end esta correto e deveria chamar a funcao
 
 ## Solucao
 
-### Migracao SQL
+### Alteracao em `supabase/functions/execute-dispatch-sequence/index.ts`
 
-Remover a foreign key constraint de `group_campaign_id`, pois a tabela agora e um log unificado que armazena IDs de campanhas de grupo E de dispatch:
+Atualizar os headers CORS (linhas 3-6):
 
-```sql
-ALTER TABLE group_message_logs 
-  DROP CONSTRAINT group_message_logs_group_campaign_id_fkey;
+```typescript
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
 ```
 
-### Re-deploy da Edge Function
+### Deploy
 
-Forcar o re-deploy de `execute-dispatch-sequence` para garantir que a versao com error handling explicito esteja ativa.
+Redeployar a Edge Function `execute-dispatch-sequence`.
 
 ### Validacao
 
-Apos a correcao:
-1. Disparar uma execucao para o lead Estevao
-2. Verificar nos logs da Edge Function se aparece o erro ou o sucesso
-3. Confirmar que o registro aparece em `group_message_logs`
-4. Verificar na pagina /logs se o registro aparece na tabela unificada
-
-## Nenhuma alteracao de codigo necessaria
-
-Apenas a migracao SQL e o re-deploy. O codigo da Edge Function e da pagina de Logs ja estao corretos.
-
+Apos o deploy, registrar uma acao no Painel de Ligacoes e verificar:
+1. Logs da Edge Function mostram a execucao
+2. Registro aparece em `group_message_logs`
+3. Toast de confirmacao aparece na UI
