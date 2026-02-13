@@ -174,9 +174,10 @@ Deno.serve(async (req) => {
       .order("step_order", { ascending: true });
 
     if (stepsError || !steps || steps.length === 0) {
+      console.log("[DispatchSequence] No steps found for sequence, returning gracefully");
       return new Response(
-        JSON.stringify({ error: "No steps found for this sequence" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ success: true, warning: "No steps found for this sequence", stepsProcessed: 0, stepsFailed: 0, totalSteps: 0 }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
