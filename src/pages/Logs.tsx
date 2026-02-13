@@ -3,6 +3,7 @@ import { useLanguage } from "@/i18n";
 import { useSequenceLogs, SequenceLog } from "@/hooks/useSequenceLogs";
 import { useApiLogs, type ApiLog } from "@/hooks/useApiLogs";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
 import { PageHeader } from "@/components/dispatch/PageHeader";
 import { DataTableWithPagination } from "@/components/dispatch/DataTableWithPagination";
 import { StatusBadge } from "@/components/dispatch/StatusBadge";
@@ -64,6 +65,7 @@ export default function Logs() {
   const { logs: dispatchLogs, isLoading: isLoadingDispatch, refetch: refetchDispatch } = useSequenceLogs();
   const { logs: apiLogs, isLoading: isLoadingApi, refetch: refetchApi } = useApiLogs();
   const { campaigns } = useGroupCampaigns();
+  const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
   
   // Tab state
   const [activeTab, setActiveTab] = useState<string>("dispatch");
@@ -147,7 +149,7 @@ export default function Logs() {
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     if (activeTab === "dispatch") {
-      const headers = ["Timestamp", "Campanha", "Grupo", "Tipo", "Status", "Tempo (ms)", "Erro"];
+      const headers = ["Timestamp", "Campanha", "Destino", "Tipo", "Status", "Tempo (ms)", "Erro"];
       const csvContent = [
         headers.join(","),
         ...filteredDispatchLogs.map((log) =>
@@ -204,7 +206,7 @@ export default function Logs() {
     },
     {
       key: "groupName",
-      header: "Grupo",
+      header: "Destino",
       render: (log: SequenceLog) => (
         <span className="text-sm">{log.groupName || "-"}</span>
       ),
@@ -359,7 +361,7 @@ export default function Logs() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por campanha, grupo ou tipo..."
+                placeholder="Buscar por campanha, destino ou tipo..."
                 value={dispatchSearch}
                 onChange={(e) => setDispatchSearch(e.target.value)}
                 className="pl-9"
@@ -372,6 +374,11 @@ export default function Logs() {
               <SelectContent>
                 <SelectItem value="all">Todas as campanhas</SelectItem>
                 {campaigns?.map((campaign) => (
+                  <SelectItem key={campaign.id} value={campaign.id}>
+                    {campaign.name}
+                  </SelectItem>
+                ))}
+                {dispatchCampaigns?.map((campaign) => (
                   <SelectItem key={campaign.id} value={campaign.id}>
                     {campaign.name}
                   </SelectItem>
@@ -515,7 +522,7 @@ export default function Logs() {
                     <p className="font-medium">{selectedDispatchLog.campaignName || "-"}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Grupo</p>
+                    <p className="text-sm text-muted-foreground">Destino</p>
                     <p className="font-medium">{selectedDispatchLog.groupName || "-"}</p>
                   </div>
                   <div>
