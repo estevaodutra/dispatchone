@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 // Default webhook URL for messages category
-const DEFAULT_MESSAGES_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/messages";
+const DEFAULT_MESSAGES_WEBHOOK = "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages";
 
 // Max delay per node (20 seconds to stay safe under timeout)
 const MAX_DELAY_MS = 20000;
