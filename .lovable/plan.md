@@ -1,41 +1,49 @@
 
 
-# Corrigir URL do Webhook na Edge Function de Disparos
+# Adicionar Suporte a Variaveis Dinamicas no Dispatch
 
 ## Problema
 
-A edge function `execute-dispatch-sequence` envia mensagens para o webhook errado: `https://n8n-n8n.nuwfic.easypanel.host/webhook/messages` em vez de `https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages`.
-
-A URL correta esta definida no arquivo `src/data/webhook-categories.ts` como default da categoria "Mensagens", mas a edge function usa uma constante diferente.
-
-A mesma inconsistencia existe na edge function `execute-message` (campanhas de grupo), que tambem usa `/webhook/messages`.
+A edge function `execute-dispatch-sequence` envia mensagens ao webhook sem substituir variaveis dinamicas como `{nome}`, `{telefone}`, `{campanha}` etc. O conteudo da mensagem chega ao webhook exatamente como foi salvo no editor, com os placeholders sem substituicao.
 
 ## Solucao
 
-### 1. Corrigir `execute-dispatch-sequence/index.ts` (linha 8)
+Adicionar uma funcao `replaceVariables` na edge function `execute-dispatch-sequence` que substitui placeholders nos campos de texto antes de enviar ao webhook. Seguira o mesmo padrao ja usado no `execute-message` (campanhas de grupo).
 
-Alterar a constante `DEFAULT_MESSAGES_WEBHOOK`:
+### Variaveis suportadas
 
+| Variavel | Valor |
+|---|---|
+| `{{nome}}` / `{{name}}` | Nome do contato |
+| `{{telefone}}` / `{{phone}}` | Telefone do contato |
+| `{{campanha}}` / `{{campaign}}` | Nome da campanha |
+| Campos customizados (`{{qualquer_campo}}`) | Valor do `customFields` passado na requisicao |
+
+### Arquivo modificado
+
+**`supabase/functions/execute-dispatch-sequence/index.ts`**
+
+1. Adicionar funcao `replaceVariables` apos os helpers existentes (antes do main handler), que recebe o texto e os dados do contato/campanha e substitui todos os placeholders
+2. Aplicar `replaceVariables` nos campos de texto do `config` gerado por `buildStepConfig` -- campos: `text`, `caption`, `url`, `filename`
+3. Tambem aplicar nos labels de botoes, caso existam
+
+### Detalhes tecnicos
+
+```text
+Fluxo atual:
+  buildStepConfig(step) --> config --> payload --> webhook
+
+Fluxo novo:
+  buildStepConfig(step) --> config --> replaceVariables(config) --> payload --> webhook
 ```
-De: "https://n8n-n8n.nuwfic.easypanel.host/webhook/messages"
-Para: "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages"
-```
 
-### 2. Corrigir `execute-message/index.ts` (linha 9)
+A funcao `replaceVariables` sera aplicada no bloco de MESSAGE steps (linha ~265-340), logo apos o `buildStepConfig` e antes de montar o payload. Os campos processados serao:
 
-Mesma correcao para manter consistencia com grupos:
+- `config.text` (mensagens de texto)
+- `config.caption` (legendas de midia)
+- `config.url` (URLs dinamicas)
+- `config.filename` (nomes de arquivo dinamicos)
+- Labels de botoes dentro de `config.buttons`
 
-```
-De: "https://n8n-n8n.nuwfic.easypanel.host/webhook/messages"
-Para: "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages"
-```
-
-## Arquivos modificados
-
-1. `supabase/functions/execute-dispatch-sequence/index.ts` - Corrigir URL do webhook default
-2. `supabase/functions/execute-message/index.ts` - Corrigir URL do webhook default
-
-## Resultado esperado
-
-As mensagens de disparos serao enviadas ao endpoint correto (`/webhook/send_messages`), consistente com a configuracao do sistema.
+Os dados de substituicao virao dos parametros ja recebidos pela funcao: `contactName`, `contactPhone`, `customFields`, e `typedCampaign.name`.
 
