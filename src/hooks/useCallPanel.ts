@@ -569,48 +569,47 @@ export function useCallPanel(filters?: {
         .eq("id", callId)
         .maybeSingle();
 
-      if (freshLog?.call_status === "completed") {
-        return { automationSuccess: true, skipped: true }; // Already completed, skip
-      }
-
-      const { error } = await (supabase as any)
-        .from("call_logs")
-        .update({ action_id: actionId, notes: notes || null, call_status: "completed", ended_at: new Date().toISOString() })
-        .eq("id", callId);
-      if (error) throw error;
-
-      // Reset the operator assigned to this call
-      const { data: assignedOps } = await (supabase as any)
-        .from("call_operators")
-        .select("id")
-        .eq("current_call_id", callId);
-
-      if (assignedOps?.length) {
-        await (supabase as any)
-          .from("call_operators")
-          .update({
-            status: "available",
-            current_call_id: null,
-            current_campaign_id: null,
-            last_call_ended_at: new Date().toISOString(),
-          })
-          .in("id", assignedOps.map((o: any) => o.id));
-      }
-
+      const alreadyCompleted = freshLog?.call_status === "completed";
       const entry = entries.find((e) => e.id === callId);
-      if (entry?.leadId) {
-        // Only update lead if not already completed
-        const { data: freshLead } = await (supabase as any)
-          .from("call_leads")
-          .select("status")
-          .eq("id", entry.leadId)
-          .maybeSingle();
 
-        if (freshLead && freshLead.status !== "completed") {
+      if (!alreadyCompleted) {
+        const { error } = await (supabase as any)
+          .from("call_logs")
+          .update({ action_id: actionId, notes: notes || null, call_status: "completed", ended_at: new Date().toISOString() })
+          .eq("id", callId);
+        if (error) throw error;
+
+        // Reset the operator assigned to this call
+        const { data: assignedOps } = await (supabase as any)
+          .from("call_operators")
+          .select("id")
+          .eq("current_call_id", callId);
+
+        if (assignedOps?.length) {
           await (supabase as any)
+            .from("call_operators")
+            .update({
+              status: "available",
+              current_call_id: null,
+              current_campaign_id: null,
+              last_call_ended_at: new Date().toISOString(),
+            })
+            .in("id", assignedOps.map((o: any) => o.id));
+        }
+
+        if (entry?.leadId) {
+          const { data: freshLead } = await (supabase as any)
             .from("call_leads")
-            .update({ status: "completed", result_action_id: actionId, result_notes: notes || null })
-            .eq("id", entry.leadId);
+            .select("status")
+            .eq("id", entry.leadId)
+            .maybeSingle();
+
+          if (freshLead && freshLead.status !== "completed") {
+            await (supabase as any)
+              .from("call_leads")
+              .update({ status: "completed", result_action_id: actionId, result_notes: notes || null })
+              .eq("id", entry.leadId);
+          }
         }
       }
 
@@ -679,13 +678,15 @@ export function useCallPanel(filters?: {
         automationResult = { automationSuccess: false, automationError: automationError?.message || "Erro inesperado" };
       }
 
-      return automationResult;
+      return { ...automationResult, skipped: alreadyCompleted };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
       queryClient.invalidateQueries({ queryKey: ["call_leads"] });
       if (result && !result.automationSuccess) {
         toast({ title: "Ação registrada", description: `Automação falhou: ${result.automationError}`, variant: "destructive" });
+      } else if (result?.skipped) {
+        toast({ title: "Automação executada", description: "Ligação já estava concluída. Mensagem enviada." });
       } else {
         toast({ title: "Ação registrada", description: "Resultado da ligação registrado com sucesso." });
       }
