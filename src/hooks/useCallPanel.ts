@@ -561,7 +561,7 @@ export function useCallPanel(filters?: {
   });
 
   const registerActionMutation = useMutation({
-    mutationFn: async ({ callId, actionId, notes }: { callId: string; actionId: string; notes?: string }) => {
+    mutationFn: async ({ callId, actionId, notes }: { callId: string; actionId: string; notes?: string }): Promise<{ automationSuccess: boolean; automationError?: string; skipped?: boolean }> => {
       // Check fresh state to prevent duplicate updates
       const { data: freshLog } = await (supabase as any)
         .from("call_logs")
@@ -570,7 +570,7 @@ export function useCallPanel(filters?: {
         .maybeSingle();
 
       if (freshLog?.call_status === "completed") {
-        return; // Already completed, skip
+        return { automationSuccess: true, skipped: true }; // Already completed, skip
       }
 
       const { error } = await (supabase as any)
@@ -615,6 +615,7 @@ export function useCallPanel(filters?: {
       }
 
       // Check if the action triggers a sequence automation (wrapped in try/catch to avoid crashing)
+      let automationResult: { automationSuccess: boolean; automationError?: string } = { automationSuccess: true };
       try {
         const { data: actionData } = await (supabase as any)
           .from("call_script_actions")
@@ -629,20 +630,29 @@ export function useCallPanel(filters?: {
             sequenceId?: string;
           };
 
-          if (campaignType === "dispatch" && sequenceId && entry?.leadPhone) {
-            const { data: result, error: fnError } = await supabase.functions.invoke("execute-dispatch-sequence", {
-              body: {
-                campaignId: seqCampaignId,
-                sequenceId,
-                contactPhone: entry.leadPhone,
-                contactName: entry.leadName || "",
-              },
-            });
-            if (fnError || result?.error) {
-              console.warn("[CallPanel] Dispatch automation error:", fnError || result?.error);
-              toast({ title: "Automação não executada", description: result?.error || "Sequência sem etapas configuradas", variant: "destructive" });
+          console.log("[CallPanel] Automation config:", { campaignType, sequenceId, seqCampaignId, leadPhone: entry?.leadPhone });
+
+          if (campaignType === "dispatch" && sequenceId) {
+            if (!entry?.leadPhone) {
+              console.warn("[CallPanel] leadPhone não encontrado para entry:", entry);
+              automationResult = { automationSuccess: false, automationError: "Telefone do lead não encontrado para disparo" };
+            } else {
+              console.log("[CallPanel] Invoking execute-dispatch-sequence:", { campaignId: seqCampaignId, sequenceId, contactPhone: entry.leadPhone });
+              const { data: result, error: fnError } = await supabase.functions.invoke("execute-dispatch-sequence", {
+                body: {
+                  campaignId: seqCampaignId,
+                  sequenceId,
+                  contactPhone: entry.leadPhone,
+                  contactName: entry.leadName || "",
+                },
+              });
+              console.log("[CallPanel] execute-dispatch-sequence response:", { result, fnError });
+              if (fnError || result?.error) {
+                automationResult = { automationSuccess: false, automationError: result?.error || fnError?.message || "Erro no disparo" };
+              }
             }
           } else if (campaignType === "group" && sequenceId && seqCampaignId) {
+            console.log("[CallPanel] Invoking execute-message (group):", { seqCampaignId, sequenceId });
             const { error: fnError } = await supabase.functions.invoke("execute-message", {
               body: {
                 campaignId: seqCampaignId,
@@ -658,19 +668,27 @@ export function useCallPanel(filters?: {
             });
             if (fnError) {
               console.warn("[CallPanel] Group automation error:", fnError);
-              toast({ title: "Automação não executada", description: "Erro ao executar sequência de grupo", variant: "destructive" });
+              automationResult = { automationSuccess: false, automationError: "Erro ao executar sequência de grupo" };
             }
+          } else {
+            console.log("[CallPanel] No automation match:", { campaignType, sequenceId, hasLeadPhone: !!entry?.leadPhone });
           }
         }
-      } catch (automationError) {
+      } catch (automationError: any) {
         console.error("[CallPanel] Automation failed:", automationError);
-        toast({ title: "Automação não executada", description: "Erro inesperado ao executar automação", variant: "destructive" });
+        automationResult = { automationSuccess: false, automationError: automationError?.message || "Erro inesperado" };
       }
+
+      return automationResult;
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
       queryClient.invalidateQueries({ queryKey: ["call_leads"] });
-      toast({ title: "Ação registrada", description: "Resultado da ligação registrado." });
+      if (result && !result.automationSuccess) {
+        toast({ title: "Ação registrada", description: `Automação falhou: ${result.automationError}`, variant: "destructive" });
+      } else {
+        toast({ title: "Ação registrada", description: "Resultado da ligação registrado com sucesso." });
+      }
     },
     onError: (e: Error) => toast({ title: "Erro", description: e.message, variant: "destructive" }),
   });
