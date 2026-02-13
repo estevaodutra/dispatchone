@@ -1,47 +1,42 @@
 
-# Corrigir Disparo de Sequencias de Dispatch no Painel de Ligacoes
+# Registrar Logs de Dispatch na Pagina de Logs
 
 ## Problema
 
-Quando o operador registra uma acao como "Tentei te Ligar" no Painel de Ligacoes, a funcao `executeActionAutomation` sempre chama a Edge Function `trigger-sequence`, que e projetada exclusivamente para sequencias de **campanhas de grupo** (tabela `message_sequences`).
+A Edge Function `execute-dispatch-sequence` registra logs na tabela `dispatch_sequence_logs`, mas a pagina de Logs (/logs) le apenas da tabela `group_message_logs`. Por isso, disparos feitos via acoes de ligacao (como "Tentei de Ligar") nunca aparecem na aba "Logs de Envio".
 
-Porem, as acoes estao configuradas com `campaignType: "dispatch"` e apontam para sequencias na tabela `dispatch_sequences`. Como `trigger-sequence` consulta `message_sequences`, a sequencia nao e encontrada e nada acontece.
-
-Dados do banco confirmam o problema:
-
-```text
-action_config: {
-  campaignId: "ff3ebe47-...",
-  campaignType: "dispatch",        <-- tipo dispatch
-  sequenceId: "d8d3d74b-..."       <-- sequencia de dispatch
-}
-```
+Os dados existem no banco -- ha 2 registros recentes em `dispatch_sequence_logs` com status "sent" -- mas a interface nao os exibe.
 
 ## Solucao
 
-Modificar a funcao `executeActionAutomation` em `src/hooks/useCallLeads.ts` para verificar o campo `campaignType` do `action_config` e chamar a Edge Function correta:
-
-- Se `campaignType === "dispatch"`: chamar `execute-dispatch-sequence` passando `campaignId`, `sequenceId`, e os dados do lead (telefone, nome)
-- Caso contrario (group ou indefinido): manter o comportamento atual chamando `trigger-sequence`
+Modificar a Edge Function `execute-dispatch-sequence` para, alem de gravar em `dispatch_sequence_logs`, tambem inserir um registro na tabela `group_message_logs` com os campos necessarios para aparecer na pagina de Logs. Isso garante uma visao unificada de todos os envios em um unico lugar.
 
 ### Arquivo modificado
 
-**`src/hooks/useCallLeads.ts`** - funcao `executeActionAutomation`, caso `start_sequence` (linhas 15-27)
+**`supabase/functions/execute-dispatch-sequence/index.ts`**
 
-Logica atualizada:
+Apos o insert em `dispatch_sequence_logs` (linha ~373), adicionar um insert na tabela `group_message_logs` com os seguintes campos mapeados:
 
-```text
-case "start_sequence":
-  1. Buscar dados do lead (call_leads)
-  2. Verificar config.campaignType
-  3. Se "dispatch":
-     -> Chamar execute-dispatch-sequence com:
-        - campaignId (da config)
-        - sequenceId (da config)
-        - contactPhone (do lead)
-        - contactName (do lead)
-  4. Senao:
-     -> Manter chamada a trigger-sequence (comportamento atual)
-```
+| Campo group_message_logs | Valor |
+|---|---|
+| `group_campaign_id` | campaignId |
+| `user_id` | userId |
+| `recipient_phone` | contactPhone |
+| `status` | "sent" ou "failed" |
+| `sent_at` | timestamp atual |
+| `sequence_id` | sequenceId |
+| `node_type` | step.message_type (text, image, etc.) |
+| `node_order` | step.step_order |
+| `campaign_name` | typedCampaign.name |
+| `group_name` | contactName (nome do contato como referencia) |
+| `instance_name` | instance.name |
+| `instance_id` | instance.id |
+| `error_message` | mensagem de erro (se falha) |
+| `response_time_ms` | responseTimeMs |
+| `payload` | payload enviado ao webhook |
 
-Nenhuma outra alteracao e necessaria. A Edge Function `execute-dispatch-sequence` ja possui toda a logica de envio ao webhook, substituicao de variaveis e logging.
+### Detalhes tecnicos
+
+A insercao em `group_message_logs` sera feita em paralelo com o insert em `dispatch_sequence_logs` usando `Promise.all`, sem impactar a performance. Erros no log unificado serao tratados silenciosamente para nao afetar o fluxo principal.
+
+O mesmo tratamento sera aplicado no bloco de erro (catch, linha ~394), garantindo que falhas tambem aparecam nos logs unificados.
