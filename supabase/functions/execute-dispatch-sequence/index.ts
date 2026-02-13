@@ -106,6 +106,60 @@ const buildStepConfig = (step: DispatchStep): Record<string, unknown> => {
   return config;
 };
 
+// ============= Variable substitution =============
+
+interface VariableContext {
+  contactName: string;
+  contactPhone: string;
+  campaignName: string;
+  customFields: Record<string, string>;
+}
+
+const replaceVariablesInText = (text: string, ctx: VariableContext): string => {
+  let result = text;
+  // Standard variables (support both {{ }} and { } syntax)
+  const replacements: Record<string, string> = {
+    nome: ctx.contactName,
+    name: ctx.contactName,
+    telefone: ctx.contactPhone,
+    phone: ctx.contactPhone,
+    campanha: ctx.campaignName,
+    campaign: ctx.campaignName,
+  };
+
+  for (const [key, value] of Object.entries(replacements)) {
+    result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi"), value || "");
+    result = result.replace(new RegExp(`\\{\\s*${key}\\s*\\}`, "gi"), value || "");
+  }
+
+  // Custom fields
+  if (ctx.customFields) {
+    for (const [key, value] of Object.entries(ctx.customFields)) {
+      result = result.replace(new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, "gi"), value || "");
+      result = result.replace(new RegExp(`\\{\\s*${key}\\s*\\}`, "gi"), value || "");
+    }
+  }
+
+  return result;
+};
+
+const applyVariablesToConfig = (config: Record<string, unknown>, ctx: VariableContext): void => {
+  if (typeof config.text === "string") config.text = replaceVariablesInText(config.text, ctx);
+  if (typeof config.caption === "string") config.caption = replaceVariablesInText(config.caption, ctx);
+  if (typeof config.url === "string") config.url = replaceVariablesInText(config.url, ctx);
+  if (typeof config.filename === "string") config.filename = replaceVariablesInText(config.filename, ctx);
+
+  if (Array.isArray(config.buttons)) {
+    config.buttons = config.buttons.map((btn: unknown) => {
+      if (btn && typeof btn === "object" && "label" in (btn as Record<string, unknown>)) {
+        const b = btn as Record<string, unknown>;
+        if (typeof b.label === "string") b.label = replaceVariablesInText(b.label, ctx);
+      }
+      return btn;
+    });
+  }
+};
+
 // ============= Main handler =============
 
 Deno.serve(async (req) => {
@@ -265,6 +319,15 @@ Deno.serve(async (req) => {
       if (step.step_type === "message") {
         const action = getActionForMessageType(step.message_type);
         const config = buildStepConfig(step);
+
+        // Apply dynamic variable substitution
+        const varCtx: VariableContext = {
+          contactName: contactName || "",
+          contactPhone: contactPhone,
+          campaignName: typedCampaign.name,
+          customFields: (customFields || {}) as Record<string, string>,
+        };
+        applyVariablesToConfig(config, varCtx);
 
         const payload = {
           action,
