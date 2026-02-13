@@ -1,91 +1,60 @@
 
-# Corrigir Erro 500 nas Estatisticas de Webhook Events
+# Corrigir: Acao em ligacao ja concluida nao dispara automacao
 
 ## Problema
 
-A tabela `webhook_events` tem **154.292 registros**. O hook `useWebhookEventStats` faz 5 consultas separadas:
+Na linha 572 do `useCallPanel.ts`, quando o `call_status` ja e `"completed"`, o codigo retorna imediatamente com `{ automationSuccess: true, skipped: true }`, pulando TODA a automacao. O toast mostra sucesso mas nenhuma mensagem e enviada.
 
-1. `HEAD` com `count: "exact"` filtrando por `received_at >= hoje` (scan completo)
-2. `HEAD` com `count: "exact"` filtrando por `classification = 'pending'` (scan completo)
-3. `HEAD` com `count: "exact"` filtrando por `processing_status = 'failed'` (scan completo)
-4. `HEAD` com `count: "exact"` filtrando por `processing_status = 'processed'` (scan completo)
-5. `SELECT event_type` das ultimas 24h (pode retornar milhares de linhas)
-
-Com 154k+ registros e sem indices otimizados, o PostgREST atinge timeout (erro 500).
+Isso ocorre quando o usuario clica numa acao em uma ligacao que ja foi concluida anteriormente (caso do lead Estevao/12982402981 que ja tinha sido concluido as 16:22 UTC).
 
 ## Solucao
 
-### 1. Criar indices para as colunas filtradas
+Separar a logica de "atualizar o call_log" da logica de "executar automacao":
 
-Adicionar indices na tabela `webhook_events` para as colunas usadas nos filtros:
+1. Se o call_status ja for "completed", pular apenas a atualizacao do banco (evitar duplicar update), mas AINDA executar a automacao
+2. Tratar o caso `skipped` no toast para mostrar que a acao ja estava registrada mas a automacao foi executada
 
-```sql
-CREATE INDEX IF NOT EXISTS idx_webhook_events_received_at ON webhook_events (received_at);
-CREATE INDEX IF NOT EXISTS idx_webhook_events_classification ON webhook_events (classification);
-CREATE INDEX IF NOT EXISTS idx_webhook_events_processing_status ON webhook_events (processing_status);
-CREATE INDEX IF NOT EXISTS idx_webhook_events_event_type_received ON webhook_events (event_type, received_at);
-```
+### Mudanca no arquivo `src/hooks/useCallPanel.ts`
 
-### 2. Otimizar as consultas no hook `useWebhookEventStats`
-
-Alterar `src/hooks/useWebhookEvents.ts`:
-
-- Trocar `count: "exact"` por `count: "estimated"` nas consultas que nao precisam de precisao absoluta (pending, failed, processed)
-- Manter `count: "exact"` apenas para "today" (que tem escopo menor)
-- Na consulta "byType" (ultimas 24h), usar `head: true` com agrupamento via RPC ou limitar o escopo para evitar retornar milhares de linhas
-- Adicionar `staleTime` e `refetchInterval` maiores para nao repetir essas consultas pesadas a cada segundo
-
-Mudancas especificas:
-
+**Antes (linha 572-574):**
 ```typescript
-// Pending - usar estimated
-const { count: pendingCount } = await supabase
-  .from("webhook_events")
-  .select("*", { count: "estimated", head: true })
-  .eq("classification", "pending");
-
-// Failed - usar estimated  
-const { count: failedCount } = await supabase
-  .from("webhook_events")
-  .select("*", { count: "estimated", head: true })
-  .eq("processing_status", "failed");
-
-// Processed - usar estimated
-const { count: processedCount } = await supabase
-  .from("webhook_events")
-  .select("*", { count: "estimated", head: true })
-  .eq("processing_status", "processed");
+if (freshLog?.call_status === "completed") {
+  return { automationSuccess: true, skipped: true };
+}
 ```
 
-- Para a consulta "byType", limitar a 1000 registros para evitar timeout:
-
+**Depois:**
 ```typescript
-const { data: byTypeData } = await supabase
-  .from("webhook_events")
-  .select("event_type")
-  .gte("received_at", yesterday.toISOString())
-  .limit(1000);
+const alreadyCompleted = freshLog?.call_status === "completed";
+
+if (!alreadyCompleted) {
+  // Atualizar call_log apenas se ainda nao estava completed
+  const { error } = await (supabase as any)
+    .from("call_logs")
+    .update({ action_id: actionId, notes: notes || null, call_status: "completed", ended_at: new Date().toISOString() })
+    .eq("id", callId);
+  if (error) throw error;
+
+  // Reset operator, update lead... (codigo existente)
+}
+// A automacao continua executando independente do status anterior
 ```
 
-- Adicionar `staleTime: 60000` (1 minuto) para evitar re-fetches frequentes:
+Isso garante que:
+- O call_log nao e atualizado duas vezes (evita duplicatas)
+- O operador nao e resetado duas vezes
+- O lead nao e atualizado duas vezes
+- MAS a automacao (disparo de sequencia) SEMPRE executa quando o usuario clica no botao
 
+### Mudanca no toast (onSuccess)
+
+Adicionar tratamento para `skipped`:
 ```typescript
-return useQuery({
-  queryKey: ["webhook-events-stats"],
-  queryFn: async () => { ... },
-  enabled: !!user,
-  staleTime: 60_000,
-  refetchInterval: 120_000,
-});
+if (result && !result.automationSuccess) {
+  toast({ title: "Acao registrada", description: `Automacao falhou: ${result.automationError}`, variant: "destructive" });
+} else if (result?.skipped) {
+  toast({ title: "Automacao executada", description: "Ligacao ja estava concluida. Mensagem enviada." });
+} else {
+  toast({ title: "Acao registrada", description: "Resultado da ligacao registrado com sucesso." });
+}
 ```
-
-### 3. Nenhuma mudanca na Edge Function
-
-As Edge Functions nao sao afetadas.
-
-## Resumo das alteracoes
-
-| Arquivo | Mudanca |
-|---|---|
-| Migracao SQL | Criar 4 indices na tabela `webhook_events` |
-| `src/hooks/useWebhookEvents.ts` | Trocar `exact` por `estimated` em 3 consultas, limitar byType a 1000, adicionar staleTime/refetchInterval |
