@@ -1,50 +1,41 @@
 
 
-# Corrigir erro ao executar sequencia de disparo sem etapas
+# Corrigir URL do Webhook na Edge Function de Disparos
 
-## Problema identificado
+## Problema
 
-A acao "Registrar" no Painel de Ligacoes chama a edge function `execute-dispatch-sequence`, mas as sequencias configuradas (como "A1" e "Tentei de Ligar") nao possuem etapas salvas na tabela `dispatch_sequence_steps` (ambas tem 0 steps). A edge function retorna HTTP 400 com `"No steps found for this sequence"`, e como o `useCallPanel` nao trata esse erro, o app inteiro quebra com o modal "Error: The app encountered an error".
+A edge function `execute-dispatch-sequence` envia mensagens para o webhook errado: `https://n8n-n8n.nuwfic.easypanel.host/webhook/messages` em vez de `https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages`.
 
-A acao de registrar a ligacao **funciona** (o log e salvo, o lead e atualizado), mas o crash ocorre logo depois, na tentativa de executar a automacao.
+A URL correta esta definida no arquivo `src/data/webhook-categories.ts` como default da categoria "Mensagens", mas a edge function usa uma constante diferente.
+
+A mesma inconsistencia existe na edge function `execute-message` (campanhas de grupo), que tambem usa `/webhook/messages`.
 
 ## Solucao
 
-### 1. Tratar erro da automacao sem quebrar o fluxo (useCallPanel.ts)
+### 1. Corrigir `execute-dispatch-sequence/index.ts` (linha 8)
 
-Envolver a chamada da automacao em um try/catch separado. Se a sequencia falhar (ex: sem etapas), exibir um aviso (toast) mas **nao** derrubar o app. A acao de registro ja foi salva com sucesso.
+Alterar a constante `DEFAULT_MESSAGES_WEBHOOK`:
 
-```typescript
-// Dentro de registerActionMutation, apos salvar o log/lead:
-try {
-  const { data: actionData } = await ...;
-  if (actionData?.action_type === "start_sequence" && actionData.action_config) {
-    // ... invocar execute-dispatch-sequence
-  }
-} catch (automationError) {
-  console.error("[CallPanel] Automation failed:", automationError);
-  // Nao re-lanca o erro - o registro da acao ja foi salvo
-}
+```
+De: "https://n8n-n8n.nuwfic.easypanel.host/webhook/messages"
+Para: "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages"
 ```
 
-### 2. Melhorar feedback ao usuario
+### 2. Corrigir `execute-message/index.ts` (linha 9)
 
-Apos a chamada ao edge function, verificar o resultado. Se retornar erro, mostrar um toast de aviso:
+Mesma correcao para manter consistencia com grupos:
 
-```typescript
-const { data: result, error: fnError } = await supabase.functions.invoke(...);
-if (fnError || result?.error) {
-  toast({ title: "Automacao nao executada", description: result?.error || "Sequencia sem etapas configuradas", variant: "destructive" });
-}
+```
+De: "https://n8n-n8n.nuwfic.easypanel.host/webhook/messages"
+Para: "https://n8n-n8n.nuwfic.easypanel.host/webhook/send_messages"
 ```
 
 ## Arquivos modificados
 
-1. **`src/hooks/useCallPanel.ts`** - Envolver bloco de automacao (linhas 617-657) em try/catch com toast de aviso
+1. `supabase/functions/execute-dispatch-sequence/index.ts` - Corrigir URL do webhook default
+2. `supabase/functions/execute-message/index.ts` - Corrigir URL do webhook default
 
 ## Resultado esperado
 
-- A acao "Registrar" salva o resultado normalmente
-- Se a sequencia nao tiver etapas, aparece um aviso "Automacao nao executada - Sequencia sem etapas configuradas" em vez de crashar o app
-- O usuario pode ir ate a campanha de disparos e adicionar etapas a sequencia
+As mensagens de disparos serao enviadas ao endpoint correto (`/webhook/send_messages`), consistente com a configuracao do sistema.
 
