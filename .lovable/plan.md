@@ -1,53 +1,45 @@
 
-# Corrigir: Ticks nao sao disparados no Painel de Ligacoes
+# Corrigir: Execucao dupla do mesmo operador em campanhas diferentes
 
-## Problema Raiz
+## Problema
 
-O loop automatico de ticks (que chama `queue-executor?action=tick`) so e executado quando o usuario esta na pagina de detalhes de uma campanha especifica, dentro do componente `QueueControlPanel`. 
-
-No Painel de Ligacoes (`/painel-ligacoes`), o hook `useQueueExecutionSummary()` apenas le o estado da fila -- ele nao dispara ticks. Resultado: a fila mostra "Em execucao" mas nenhuma ligacao e processada enquanto o usuario esta nessa tela.
+O `tickAll` no hook `useQueueExecutionSummary` dispara ticks para todas as campanhas ativas **em paralelo** usando `Promise.all`. Quando duas campanhas estao ativas, ambas chamam `queue-executor?action=tick` ao mesmo tempo. As duas encontram o mesmo operador como "available" e atribuem ele simultaneamente -- resultado: o mesmo operador fica "Discando" para dois leads diferentes.
 
 ## Solucao
 
-Adicionar um mecanismo de tick automatico dentro do `useQueueExecutionSummary` que dispara ticks para todas as campanhas com status ativo (`running`, `waiting_operator`, `waiting_cooldown`).
+Alterar o `tickAll` para executar os ticks **sequencialmente** (um por vez) com um delay de 3 segundos entre cada campanha. Isso garante que, apos o tick da primeira campanha atribuir um operador, o tick da segunda campanha ja vera o operador como "on_call" e nao o reutilizara.
 
 ## Detalhes Tecnicos
 
 ### Arquivo: `src/hooks/useQueueExecution.ts`
 
-Modificar o hook `useQueueExecutionSummary` para:
+Modificar a funcao `tickAll` dentro de `useQueueExecutionSummary`:
 
-1. Detectar quais campanhas tem status ativo (`running`, `waiting_operator`, `waiting_cooldown`)
-2. Criar um `useEffect` com `setInterval` que, a cada 15 segundos, dispara um tick para cada campanha ativa
-3. Usar um `useRef` para controlar concorrencia (evitar ticks sobrepostos)
-4. O tick chama `supabase.functions.invoke('queue-executor?campaign_id=X&action=tick')` para cada campanha ativa
-5. Apos os ticks, invalida os caches relevantes (`queue_execution_state_all`, `call_operators`)
-
+**Antes (paralelo):**
 ```
-Logica:
-
-useEffect:
-  se existem campanhas ativas:
-    criar setInterval(tickAll, 15000)
-    tickAll imediatamente na primeira execucao
-  senao:
-    limpar interval
-
-  tickAll:
-    se ja em execucao, ignorar
-    para cada campanha com status ativo:
-      chamar queue-executor?campaign_id=X&action=tick
-    invalidar caches
+await Promise.all(
+  ids.map((id) => supabase.functions.invoke(...))
+);
 ```
 
-### Impacto
+**Depois (sequencial com delay):**
+```
+for (const id of ids) {
+  await supabase.functions.invoke(
+    `queue-executor?campaign_id=${id}&action=tick`,
+    { method: "POST" }
+  );
+  // Delay de 3s entre campanhas para evitar atribuicao dupla
+  if (id !== ids[ids.length - 1]) {
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+}
+```
 
-- O Painel de Ligacoes passara a disparar ticks automaticamente para todas as campanhas ativas
-- Nao importa em qual tela o usuario esteja -- se houver campanhas ativas, elas serao processadas
-- Sem mudancas no backend
+A mesma correcao sera aplicada na funcao `tickAll` que ja existe no hook. O delay de 3 segundos entre cada campanha garante que o banco de dados tenha tempo de refletir a mudanca de status do operador antes do proximo tick ser processado.
 
 ### Arquivo modificado
 
 | Arquivo | Mudanca |
 |---|---|
-| `src/hooks/useQueueExecution.ts` | Adicionar loop de tick automatico dentro de `useQueueExecutionSummary` para todas as campanhas ativas |
+| `src/hooks/useQueueExecution.ts` | Trocar `Promise.all` por loop sequencial com delay de 3s entre campanhas no `tickAll` |
