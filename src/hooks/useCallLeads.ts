@@ -455,6 +455,97 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     },
   });
 
+  const bulkEnqueueByStatusMutation = useMutation({
+    mutationFn: async ({ status }: { status: CallLeadStatus }) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+
+      // Buscar leads com o status filtrado
+      const { data: matchingLeads, error: fetchErr } = await (supabase as any)
+        .from("call_leads")
+        .select("id, phone, name")
+        .eq("campaign_id", campaignId)
+        .eq("status", status);
+
+      if (fetchErr) throw fetchErr;
+      if (!matchingLeads?.length) throw new Error("Nenhum lead encontrado com esse status");
+
+      const now = new Date().toISOString();
+
+      // Criar call_logs com status 'ready' para cada lead
+      for (const lead of matchingLeads) {
+        const { data: existing } = await (supabase as any)
+          .from("call_logs")
+          .select("id")
+          .eq("campaign_id", campaignId)
+          .eq("lead_id", lead.id)
+          .in("call_status", ["scheduled", "ready", "dialing", "ringing", "in_progress"])
+          .maybeSingle();
+
+        if (existing) {
+          await (supabase as any)
+            .from("call_logs")
+            .update({ call_status: "ready", scheduled_for: now, operator_id: null })
+            .eq("id", existing.id);
+        } else {
+          await (supabase as any)
+            .from("call_logs")
+            .insert({
+              user_id: user.id,
+              campaign_id: campaignId,
+              lead_id: lead.id,
+              call_status: "ready",
+              scheduled_for: now,
+            });
+        }
+      }
+
+      // Garantir fila ativa
+      const { data: queueState } = await (supabase as any)
+        .from("queue_execution_state")
+        .select("id, status")
+        .eq("campaign_id", campaignId)
+        .maybeSingle();
+
+      if (queueState) {
+        if (queueState.status !== "running") {
+          await (supabase as any)
+            .from("queue_execution_state")
+            .update({ status: "running", updated_at: now })
+            .eq("id", queueState.id);
+        }
+      } else {
+        await (supabase as any)
+          .from("queue_execution_state")
+          .insert({
+            campaign_id: campaignId,
+            user_id: user.id,
+            status: "running",
+            current_operator_index: 0,
+            session_started_at: now,
+          });
+      }
+
+      // Tick imediato
+      await supabase.functions.invoke(
+        `queue-executor?campaign_id=${campaignId}&action=tick`,
+        { method: "POST" }
+      );
+
+      return matchingLeads.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["call_logs", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state", campaignId] });
+      toast({ title: "Leads enfileirados", description: `${count} leads adicionados à fila de discagem.` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     leads,
     stats: stats || { total: 0, pending: 0, inProgress: 0, completed: 0, failed: 0 },
@@ -466,6 +557,8 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     completeCall: completeCallMutation.mutateAsync,
     completeLead: completeLeadMutation.mutateAsync,
     deleteLead: deleteLeadMutation.mutateAsync,
+    bulkEnqueueByStatus: bulkEnqueueByStatusMutation.mutateAsync,
+    isBulkEnqueuing: bulkEnqueueByStatusMutation.isPending,
     isAdding: addLeadMutation.isPending,
   };
 }
