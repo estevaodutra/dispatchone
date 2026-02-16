@@ -5,6 +5,7 @@ import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
 import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
+import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
 import { Users, Settings as SettingsIcon } from "lucide-react";
@@ -54,6 +55,8 @@ import {
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import {
   Clock,
+  Pause,
+  Square,
   Phone,
   PhoneCall,
   PhoneOff,
@@ -281,6 +284,45 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
   return <span className="text-xs text-muted-foreground">—</span>;
 }
 
+// ── Queue Status Banner ──
+
+function QueueStatusBanner({ summary }: { summary: import("@/hooks/useQueueExecution").QueueExecutionSummary }) {
+  if (summary.isLoading) return null;
+
+  const { globalStatus, summary: counts } = summary;
+  const totalActive = counts.running + counts.paused + counts.waiting_operator + counts.waiting_cooldown;
+
+  if (totalActive === 0 && counts.stopped === 0) return null;
+
+  const config: Record<string, { label: string; icon: typeof Play; className: string; dotClass: string }> = {
+    running: { label: "Em execução", icon: Play, className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400", dotClass: "bg-emerald-500 animate-pulse" },
+    paused: { label: "Pausada", icon: Pause, className: "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400", dotClass: "bg-amber-500" },
+    stopped: { label: "Parada", icon: Square, className: "bg-muted border-border text-muted-foreground", dotClass: "bg-muted-foreground" },
+    mixed: { label: "Mista", icon: AlertTriangle, className: "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400", dotClass: "bg-blue-500 animate-pulse" },
+  };
+
+  const c = config[globalStatus] || config.stopped;
+  const Icon = c.icon;
+
+  const parts: string[] = [];
+  if (counts.running > 0) parts.push(`${counts.running} executando`);
+  if (counts.paused > 0) parts.push(`${counts.paused} pausada${counts.paused > 1 ? "s" : ""}`);
+  if (counts.waiting_operator > 0) parts.push(`${counts.waiting_operator} aguardando operador`);
+  if (counts.waiting_cooldown > 0) parts.push(`${counts.waiting_cooldown} em intervalo`);
+  if (parts.length === 0) parts.push("Nenhuma fila ativa");
+
+  return (
+    <div className={cn("flex items-center gap-3 rounded-lg border px-4 py-2.5", c.className)}>
+      <span className={cn("h-2 w-2 rounded-full shrink-0", c.dotClass)} />
+      <Icon className="h-4 w-4 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <span className="text-sm font-medium">{c.label}</span>
+        <span className="text-xs opacity-75 ml-2">{parts.join(" · ")}</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ──
 
 export default function CallPanel() {
@@ -322,6 +364,7 @@ export default function CallPanel() {
   });
 
   const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue } = useCallQueuePanel(campaignFilter);
+  const queueSummary = useQueueExecutionSummary();
 
   // 1-second tick for countdowns
   useEffect(() => {
@@ -546,6 +589,8 @@ export default function CallPanel() {
           <div className="text-center py-12 text-muted-foreground">Nenhum lead na fila.</div>
         ) : (
           <div className="space-y-3">
+            {/* Queue Status Banner */}
+            <QueueStatusBanner summary={queueSummary} />
             {paginatedQueue.map((qe) => (
               <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
             ))}

@@ -40,6 +40,51 @@ const transform = (db: DbQueueState): QueueExecutionState => ({
   callsNoAnswer: db.calls_no_answer ?? 0,
 });
 
+export interface QueueExecutionSummary {
+  states: QueueExecutionState[];
+  summary: {
+    running: number;
+    paused: number;
+    stopped: number;
+    waiting_operator: number;
+    waiting_cooldown: number;
+  };
+  globalStatus: "running" | "paused" | "stopped" | "mixed";
+  isLoading: boolean;
+}
+
+export function useQueueExecutionSummary(): QueueExecutionSummary {
+  const { data: states = [], isLoading } = useQuery({
+    queryKey: ["queue_execution_state_all"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("queue_execution_state")
+        .select("*");
+
+      if (error) throw error;
+      return (data || []).map((d: DbQueueState) => transform(d));
+    },
+    refetchInterval: 5000,
+  });
+
+  const summary = {
+    running: states.filter((s: QueueExecutionState) => s.status === "running").length,
+    paused: states.filter((s: QueueExecutionState) => s.status === "paused").length,
+    stopped: states.filter((s: QueueExecutionState) => s.status === "stopped").length,
+    waiting_operator: states.filter((s: QueueExecutionState) => s.status === "waiting_operator").length,
+    waiting_cooldown: states.filter((s: QueueExecutionState) => s.status === "waiting_cooldown").length,
+  };
+
+  const activeCount = summary.running + summary.waiting_operator + summary.waiting_cooldown;
+  const globalStatus: QueueExecutionSummary["globalStatus"] =
+    activeCount > 0 && summary.paused > 0 ? "mixed"
+    : activeCount > 0 ? "running"
+    : summary.paused > 0 ? "paused"
+    : "stopped";
+
+  return { states, summary, globalStatus, isLoading };
+}
+
 export function useQueueExecution(campaignId: string, enabled = true) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
