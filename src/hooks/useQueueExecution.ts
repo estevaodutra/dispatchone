@@ -100,14 +100,16 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     if (ids.length === 0) return;
     tickInFlightRef.current = true;
     try {
-      await Promise.all(
-        ids.map((id) =>
-          supabase.functions.invoke(
-            `queue-executor?campaign_id=${id}&action=tick`,
-            { method: "POST" }
-          )
-        )
-      );
+      for (const id of ids) {
+        await supabase.functions.invoke(
+          `queue-executor?campaign_id=${id}&action=tick`,
+          { method: "POST" }
+        );
+        // Delay de 3s entre campanhas para evitar atribuição dupla de operador
+        if (id !== ids[ids.length - 1]) {
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
       queryClient.invalidateQueries({ queryKey: ["call_operators"] });
     } catch (e) {
