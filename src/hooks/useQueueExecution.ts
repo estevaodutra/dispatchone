@@ -55,6 +55,9 @@ export interface QueueExecutionSummary {
 }
 
 export function useQueueExecutionSummary(): QueueExecutionSummary {
+  const queryClient = useQueryClient();
+  const tickInFlightRef = useRef(false);
+
   const { data: states = [], isLoading } = useQuery({
     queryKey: ["queue_execution_state_all"],
     queryFn: async () => {
@@ -82,6 +85,45 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     : activeCount > 0 ? "running"
     : summary.paused > 0 ? "paused"
     : "stopped";
+
+  // Global tick loop for all active campaigns
+  const activeIds = states
+    .filter((s: QueueExecutionState) => ["running", "waiting_operator", "waiting_cooldown"].includes(s.status))
+    .map((s: QueueExecutionState) => s.campaignId);
+
+  const activeIdsRef = useRef<string[]>([]);
+  activeIdsRef.current = activeIds;
+
+  const tickAll = useCallback(async () => {
+    if (tickInFlightRef.current) return;
+    const ids = activeIdsRef.current;
+    if (ids.length === 0) return;
+    tickInFlightRef.current = true;
+    try {
+      await Promise.all(
+        ids.map((id) =>
+          supabase.functions.invoke(
+            `queue-executor?campaign_id=${id}&action=tick`,
+            { method: "POST" }
+          )
+        )
+      );
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+      queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+    } catch (e) {
+      console.error("[global-queue-tick] error:", e);
+    } finally {
+      tickInFlightRef.current = false;
+    }
+  }, [queryClient]);
+
+  useEffect(() => {
+    if (activeIds.length === 0) return;
+
+    tickAll();
+    const interval = setInterval(tickAll, 15000);
+    return () => clearInterval(interval);
+  }, [activeIds.length, tickAll]);
 
   return { states, summary, globalStatus, isLoading };
 }
