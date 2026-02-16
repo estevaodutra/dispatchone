@@ -450,7 +450,7 @@ Deno.serve(async (req) => {
       'timeout': 'timeout',
       'error': 'failed',
     };
-    const mappedStatus = statusMap[status] || status;
+    let mappedStatus = statusMap[status] || status;
 
     const updateData: any = {
       call_status: mappedStatus,
@@ -463,8 +463,22 @@ Deno.serve(async (req) => {
         updateData.started_at = new Date().toISOString();
       }
     } else if (status === 'answered') {
-      if (!callLog.started_at) {
-        updateData.started_at = new Date().toISOString();
+      // Detect if "answered" comes with finalization data (duration_seconds)
+      // Some providers send a single "answered" callback with all final data
+      if (duration_seconds !== undefined && duration_seconds !== null) {
+        console.log('[call-status] "answered" with duration_seconds detected — treating as completed');
+        mappedStatus = 'completed';
+        updateData.call_status = 'completed';
+        updateData.ended_at = new Date().toISOString();
+        updateData.duration_seconds = duration_seconds;
+        if (!callLog.started_at) {
+          updateData.started_at = new Date().toISOString();
+        }
+      } else {
+        // Ongoing call, no duration yet
+        if (!callLog.started_at) {
+          updateData.started_at = new Date().toISOString();
+        }
       }
     } else if (status === 'ended') {
       updateData.ended_at = new Date().toISOString();
@@ -499,6 +513,21 @@ Deno.serve(async (req) => {
         console.error('[call-status] Failed to update call log:', updateError);
         throw new Error('Failed to update call log');
       }
+    }
+
+    // ==================== RELEASE OPERATOR ON COMPLETION ====================
+    if (mappedStatus === 'completed' && callLog.operator_id) {
+      console.log('[call-status] Releasing operator:', callLog.operator_id);
+      await supabase
+        .from('call_operators')
+        .update({
+          status: 'available',
+          current_call_id: null,
+          current_campaign_id: null,
+          last_call_ended_at: new Date().toISOString(),
+        })
+        .eq('id', callLog.operator_id)
+        .eq('current_call_id', callLog.id);
     }
 
     // ==================== UPDATE LEAD STATUS ====================
