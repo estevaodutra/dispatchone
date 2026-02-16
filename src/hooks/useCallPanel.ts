@@ -673,6 +673,57 @@ export function useCallPanel(filters?: {
             console.log("[CallPanel] No automation match:", { campaignType, sequenceId, hasLeadPhone: !!entry?.leadPhone });
           }
         }
+        // Webhook action
+        else if (actionData?.action_type === "webhook" && actionData.action_config?.url) {
+          const url = actionData.action_config.url as string;
+          const { data: leadData } = await (supabase as any)
+            .from("call_leads")
+            .select("*")
+            .eq("id", entry?.leadId)
+            .single();
+
+          const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+            body: { url, payload: { lead: leadData, campaignId: entry?.campaignId, actionType: "webhook" } },
+          });
+
+          if (proxyError) {
+            automationResult = { automationSuccess: false, automationError: `Webhook falhou: ${proxyError.message}` };
+          }
+        }
+        // Add tag
+        else if (actionData?.action_type === "add_tag" && actionData.action_config?.tag && entry?.leadId) {
+          const tag = actionData.action_config.tag as string;
+          const { data: leadData } = await (supabase as any)
+            .from("call_leads")
+            .select("custom_fields")
+            .eq("id", entry.leadId)
+            .single();
+
+          const currentFields = (leadData?.custom_fields as Record<string, unknown>) || {};
+          const currentTags = Array.isArray(currentFields.tags) ? currentFields.tags : [];
+
+          if (!currentTags.includes(tag)) {
+            await (supabase as any)
+              .from("call_leads")
+              .update({ custom_fields: { ...currentFields, tags: [...currentTags, tag] } })
+              .eq("id", entry.leadId);
+          }
+        }
+        // Update status
+        else if (actionData?.action_type === "update_status" && actionData.action_config?.status && entry?.leadId) {
+          const newStatus = String(actionData.action_config.status);
+          await (supabase as any)
+            .from("call_leads")
+            .update({ status: newStatus })
+            .eq("id", entry.leadId);
+
+          if (newStatus !== "completed") {
+            await (supabase as any)
+              .from("call_logs")
+              .update({ call_status: newStatus })
+              .eq("id", callId);
+          }
+        }
       } catch (automationError: any) {
         console.error("[CallPanel] Automation failed:", automationError);
         automationResult = { automationSuccess: false, automationError: automationError?.message || "Erro inesperado" };
