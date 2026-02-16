@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCallOperators } from "@/hooks/useCallOperators";
@@ -85,10 +86,12 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   return { states, summary, globalStatus, isLoading };
 }
 
-export function useQueueExecution(campaignId: string, enabled = true) {
+export function useQueueExecution(campaignId: string, enabled = true, intervalSeconds = 30) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { operators } = useCallOperators();
+  const tickInFlightRef = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: state, isLoading } = useQuery({
     queryKey: ["queue_execution_state", campaignId],
@@ -107,6 +110,47 @@ export function useQueueExecution(campaignId: string, enabled = true) {
   });
 
   const isRunning = state?.status === "running" || state?.status === "waiting_operator" || state?.status === "waiting_cooldown";
+
+  const tick = useCallback(async () => {
+    if (tickInFlightRef.current || !campaignId) return;
+    tickInFlightRef.current = true;
+    try {
+      await supabase.functions.invoke(
+        `queue-executor?campaign_id=${campaignId}&action=tick`,
+        { method: "POST" }
+      );
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+    } catch (e) {
+      console.error("[queue-tick] error:", e);
+    } finally {
+      tickInFlightRef.current = false;
+    }
+  }, [campaignId, queryClient]);
+
+  // Auto-tick loop while queue is active
+  useEffect(() => {
+    if (!isRunning || !campaignId) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+
+    // Immediate first tick
+    tick();
+
+    const ms = Math.max(intervalSeconds, 10) * 1000;
+    intervalRef.current = setInterval(tick, ms);
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [isRunning, campaignId, intervalSeconds, tick]);
 
   const availableOperators = operators.filter(o => o.status === "available");
   const onCallOperators = operators.filter(o => o.status === "on_call");
@@ -136,6 +180,8 @@ export function useQueueExecution(campaignId: string, enabled = true) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue_execution_state", campaignId] });
       toast({ title: "Fila iniciada", description: "A execução em fila foi iniciada." });
+      // Trigger immediate tick after state updates
+      setTimeout(() => tick(), 500);
     },
     onError: (error: Error) => {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
@@ -172,6 +218,7 @@ export function useQueueExecution(campaignId: string, enabled = true) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["queue_execution_state", campaignId] });
       toast({ title: "Fila retomada", description: "A execução foi retomada." });
+      setTimeout(() => tick(), 500);
     },
     onError: (error: Error) => {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
