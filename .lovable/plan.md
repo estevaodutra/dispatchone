@@ -1,57 +1,42 @@
 
-# Adicionar indicador de status da fila na aba "Fila"
+# Adicionar botao e indicador de operadores no banner da Fila
 
 ## O que muda
 
-Na aba "Fila" do Painel de Ligacoes, sera adicionado um banner no topo mostrando o status consolidado de execucao de todas as campanhas que possuem filas ativas. O usuario podera ver rapidamente se a fila esta executando, pausada, parada ou aguardando operador.
+O banner de status da fila vai ganhar duas melhorias:
+
+1. **Indicador de operadores disponiveis** -- mostra quantos operadores estao online/disponiveis ao lado do status da fila (ex: "2 operadores disponiveis")
+2. **Botao "Buscar operadores"** -- permite forcar uma atualizacao imediata do status dos operadores e da fila, resolvendo o problema de ficar preso em "aguardando operador" quando ja existem operadores disponiveis
 
 ## Como vai funcionar
 
-Um banner compacto aparecera acima da lista de leads na aba Fila, mostrando:
-- Status global: "Em execucao", "Pausada", "Parada", "Aguardando operador", etc.
-- Quantidade de campanhas com fila ativa
-- Indicador visual colorido (verde = rodando, laranja = pausada, cinza = parada)
-
-Se houver multiplas campanhas, o banner mostrara o status agregado (ex: "2 campanhas em execucao, 1 pausada").
+O banner passara a exibir:
+- O status atual da fila (como ja funciona)
+- Um chip/badge mostrando quantos operadores estao disponiveis (ex: "3 disponiveis" em verde, ou "0 disponiveis" em vermelho)
+- Um botao compacto "Buscar operadores" que ao ser clicado:
+  - Invalida os caches de operadores e estado da fila
+  - Forca uma re-busca imediata dos dados
+  - Mostra feedback visual (spinner enquanto carrega)
 
 ## Detalhes tecnicos
 
-### 1. Novo hook: `useQueueExecutionSummary`
+### Arquivo: `src/pages/CallPanel.tsx`
 
-Criar um hook leve que busca todos os registros de `queue_execution_state` do usuario (nao filtrado por campanha). Retorna um resumo agregado:
+**Componente `QueueStatusBanner`**:
+- Receber `operators` (lista de operadores) e uma funcao `onRefresh` como props adicionais
+- Calcular operadores disponiveis (`status === 'available'`)
+- Exibir badge com contagem de operadores disponiveis
+- Adicionar botao "Buscar operadores" com icone `RefreshCw` que chama `onRefresh`
 
-```typescript
-// Retorno:
-{
-  states: QueueExecutionState[],   // todos os estados
-  summary: {
-    running: number,
-    paused: number,
-    stopped: number,
-    waiting_operator: number,
-    waiting_cooldown: number,
-  },
-  globalStatus: "running" | "paused" | "stopped" | "mixed",
-}
-```
-
-Busca com polling de 5 segundos (mesmo intervalo do hook existente).
-
-### 2. Componente `QueueStatusBanner`
-
-Componente inline no arquivo `CallPanel.tsx` (seguindo o padrao existente de componentes locais como `QueueCard`, `MetricCard`). Exibe:
-
-- Icone + texto do status
-- Badge colorido
-- Se filtrado por campanha especifica, mostra o status daquela campanha
-
-### 3. Integracao na aba Fila
-
-Inserir o banner entre a verificacao `isQueueTab` e a lista de cards, antes do `paginatedQueue.map(...)`.
+**Componente principal `CallPanel`**:
+- Usar o hook `useCallOperators` que ja esta importado para obter a lista de operadores
+- Criar funcao `handleRefreshQueue` que invalida as queries `call_operators` e `queue_execution_state_all`
+- Passar operadores e funcao de refresh para o `QueueStatusBanner`
 
 ### Arquivos modificados
 
 | Arquivo | Mudanca |
 |---|---|
-| `src/hooks/useQueueExecution.ts` | Adicionar funcao `useQueueExecutionSummary` que busca todos os estados |
-| `src/pages/CallPanel.tsx` | Adicionar banner de status no topo da aba Fila |
+| `src/pages/CallPanel.tsx` | Adicionar indicador de operadores e botao de refresh no `QueueStatusBanner`; passar dados de operadores do componente pai |
+
+Nenhuma mudanca no backend e necessaria -- os dados de operadores ja estao disponiveis via `useCallOperators`.
