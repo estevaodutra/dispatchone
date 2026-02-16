@@ -76,11 +76,12 @@ async function executeActionAutomation(
           .select("*")
           .eq("id", leadId)
           .single();
-        await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lead, campaignId, actionType }),
-        }).catch(() => {/* silent fail for webhook */});
+        const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: { url, payload: { lead, campaignId, actionType } },
+        });
+        if (proxyError) {
+          throw new Error(`Webhook falhou: ${proxyError.message}`);
+        }
         break;
       }
       // update_status is handled inline (lead status already set)
