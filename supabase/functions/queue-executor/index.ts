@@ -165,7 +165,8 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
           .select('call_status')
           .eq('id', op.current_call_id)
           .maybeSingle();
-        if (!callLog || ['ready', 'cancelled', 'completed', 'failed', 'no_answer', 'busy'].includes(callLog.call_status)) {
+        const activeStatuses = ['dialing', 'ringing', 'in_progress'];
+        if (!callLog || !activeStatuses.includes(callLog.call_status)) {
           await supabase
             .from('call_operators')
             .update({ status: 'available', current_call_id: null, current_campaign_id: null })
