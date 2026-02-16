@@ -286,13 +286,21 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
 
 // ── Queue Status Banner ──
 
-function QueueStatusBanner({ summary }: { summary: import("@/hooks/useQueueExecution").QueueExecutionSummary }) {
+function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing }: {
+  summary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
+  operators: import("@/hooks/useCallOperators").CallOperator[];
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
   if (summary.isLoading) return null;
 
   const { globalStatus, summary: counts } = summary;
   const totalActive = counts.running + counts.paused + counts.waiting_operator + counts.waiting_cooldown;
 
   if (totalActive === 0 && counts.stopped === 0) return null;
+
+  const availableOps = operators.filter(op => op.status === "available").length;
+  const totalActiveOps = operators.filter(op => ["available", "on_call", "cooldown"].includes(op.status)).length;
 
   const config: Record<string, { label: string; icon: typeof Play; className: string; dotClass: string }> = {
     running: { label: "Em execução", icon: Play, className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400", dotClass: "bg-emerald-500 animate-pulse" },
@@ -319,6 +327,27 @@ function QueueStatusBanner({ summary }: { summary: import("@/hooks/useQueueExecu
         <span className="text-sm font-medium">{c.label}</span>
         <span className="text-xs opacity-75 ml-2">{parts.join(" · ")}</span>
       </div>
+      <Badge
+        variant={availableOps > 0 ? "default" : "destructive"}
+        className={cn("shrink-0 gap-1 text-xs", availableOps > 0
+          ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-400"
+          : ""
+        )}
+      >
+        <Headset className="h-3 w-3" />
+        {availableOps} disponíve{availableOps === 1 ? "l" : "is"}
+        {totalActiveOps > availableOps && ` / ${totalActiveOps} online`}
+      </Badge>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={onRefresh}
+        disabled={isRefreshing}
+        className="shrink-0 gap-1.5 text-xs h-7 px-2.5"
+      >
+        <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
+        Buscar operadores
+      </Button>
     </div>
   );
 }
@@ -365,6 +394,17 @@ export default function CallPanel() {
 
   const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue } = useCallQueuePanel(campaignFilter);
   const queueSummary = useQueueExecutionSummary();
+  const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
+  const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
+
+  const handleRefreshQueue = useCallback(async () => {
+    setIsRefreshingQueue(true);
+    try {
+      await refetchOperators();
+    } finally {
+      setIsRefreshingQueue(false);
+    }
+  }, [refetchOperators]);
 
   // 1-second tick for countdowns
   useEffect(() => {
@@ -590,7 +630,7 @@ export default function CallPanel() {
         ) : (
           <div className="space-y-3">
             {/* Queue Status Banner */}
-            <QueueStatusBanner summary={queueSummary} />
+            <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} />
             {paginatedQueue.map((qe) => (
               <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
             ))}
