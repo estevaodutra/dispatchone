@@ -130,12 +130,11 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   return { states, summary, globalStatus, isLoading };
 }
 
-export function useQueueExecution(campaignId: string, enabled = true, intervalSeconds = 30) {
+export function useQueueExecution(campaignId: string, enabled = true) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { operators } = useCallOperators();
   const tickInFlightRef = useRef(false);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: state, isLoading } = useQuery({
     queryKey: ["queue_execution_state", campaignId],
@@ -172,29 +171,7 @@ export function useQueueExecution(campaignId: string, enabled = true, intervalSe
     }
   }, [campaignId, queryClient]);
 
-  // Auto-tick loop while queue is active
-  useEffect(() => {
-    if (!isRunning || !campaignId) {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-      return;
-    }
-
-    // Immediate first tick
-    tick();
-
-    const ms = Math.max(intervalSeconds, 10) * 1000;
-    intervalRef.current = setInterval(tick, ms);
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [isRunning, campaignId, intervalSeconds, tick]);
+  // Tick loop removed — global useQueueExecutionSummary handles all active campaigns
 
   const availableOperators = operators.filter(o => o.status === "available");
   const onCallOperators = operators.filter(o => o.status === "on_call");

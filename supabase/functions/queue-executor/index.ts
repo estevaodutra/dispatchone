@@ -171,6 +171,13 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
             .update({ status: 'available', current_call_id: null, current_campaign_id: null })
             .eq('id', op.id);
           console.log(`[queue-executor] Freed stuck operator ${op.id}`);
+          // Cancel orphaned calls for this operator
+          await supabase
+            .from('call_logs')
+            .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
+            .eq('operator_id', op.id)
+            .in('call_status', ['dialing', 'ringing']);
+          console.log(`[queue-executor] Cancelled orphaned calls for operator ${op.id}`);
         }
       }
     }
@@ -263,6 +270,13 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
       .eq('id', readyCallLog.lead_id)
       .maybeSingle();
 
+    // Cancel any active calls from this operator before reassignment
+    await supabase
+      .from('call_logs')
+      .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
+      .eq('operator_id', operator.id)
+      .in('call_status', ['dialing', 'ringing', 'in_progress']);
+
     // Assign operator and update call_log to dialing
     await supabase
       .from('call_logs')
@@ -346,7 +360,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
       campaign_id: campaignId,
       lead_id: nextLead.id,
       operator_id: operator.id,
-      call_status: 'scheduled',
+      call_status: 'dialing',
       scheduled_for: scheduledFor,
     })
     .select('id')
@@ -356,6 +370,13 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     console.error('[queue-executor] Failed to create call log:', logErr);
     return { success: false, error: logErr.message };
   }
+
+  // Cancel any active calls from this operator before reassignment
+  await supabase
+    .from('call_logs')
+    .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
+    .eq('operator_id', operator.id)
+    .in('call_status', ['dialing', 'ringing', 'in_progress']);
 
   // Update operator status
   await supabase
