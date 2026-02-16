@@ -1,70 +1,70 @@
 
-
-# Corrigir liberacao do operador e implementar cooldown
+# Corrigir disparo de webhook nas acoes pos-ligacao
 
 ## Problema
 
-No `call-status/index.ts` (linha 519), o operador so e liberado quando `mappedStatus === 'completed'`. Status terminais como `failed`, `busy`, `not_found`, `voicemail`, `cancelled`, `timeout` nao liberam o operador, deixando-o preso em `on_call` ate o self-healing do `queue-executor` detectar (proximo tick).
+A acao "Dispara webhook externo" no dialogo "Registrar Acao" usa `fetch()` diretamente do navegador (linha 79 de `useCallLeads.ts`). Isso causa dois problemas:
 
-Alem disso, nenhuma parte do sistema implementa o cooldown: o operador volta direto para `available` e recebe uma nova chamada imediatamente, ignorando o `personal_interval_seconds`.
+1. **CORS**: O navegador bloqueia requisicoes cross-origin para APIs externas (n8n, etc.) que nao enviam headers CORS
+2. **Erro silenciado**: O `.catch(() => {})` engole qualquer falha, entao o usuario nao recebe feedback
 
 ## Solucao
 
-### Arquivo: `supabase/functions/call-status/index.ts`
+Rotear a chamada webhook por uma Edge Function existente ou nova, eliminando o problema de CORS (server-to-server nao tem restricao CORS).
 
-**Mudanca 1 - Liberar operador em TODOS os status terminais (linhas 518-531):**
+### Arquivo: `supabase/functions/webhook-proxy/index.ts` (novo)
 
-Substituir a condicao `mappedStatus === 'completed'` por uma lista de todos os status terminais:
+Criar uma Edge Function simples que recebe a URL e o payload, e faz o POST server-side:
 
 ```typescript
-const TERMINAL_STATUSES = ['completed', 'failed', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout'];
-if (TERMINAL_STATUSES.includes(mappedStatus) && callLog.operator_id) {
+// Recebe { url, payload } no body
+// Faz fetch server-side para a URL
+// Retorna o resultado
 ```
 
-**Mudanca 2 - Implementar cooldown ao liberar o operador:**
+### Arquivo: `supabase/config.toml`
 
-Em vez de definir `status: 'available'` diretamente, verificar se o operador tem `personal_interval_seconds` configurado. Se sim, colocar em `cooldown`; se nao, usar o intervalo da campanha. Se nenhum intervalo existir, liberar como `available`.
+Adicionar configuracao para desabilitar JWT verification (a funcao valida o user via header):
+
+```toml
+[functions.webhook-proxy]
+verify_jwt = false
+```
+
+### Arquivo: `src/hooks/useCallLeads.ts`
+
+Substituir o `fetch()` direto (linhas 71-84) por `supabase.functions.invoke("webhook-proxy")`:
 
 ```typescript
-// Buscar operador para verificar personal_interval_seconds
-const { data: operatorData } = await supabase
-  .from('call_operators')
-  .select('personal_interval_seconds')
-  .eq('id', callLog.operator_id)
-  .single();
-
-// Buscar intervalo da campanha como fallback
-let campaignInterval = 0;
-if (callLog.campaign_id) {
-  const { data: campData } = await supabase
-    .from('call_campaigns')
-    .select('queue_interval_seconds')
-    .eq('id', callLog.campaign_id)
+case "webhook": {
+  const url = config.url as string;
+  if (!url) break;
+  const { data: lead } = await supabase
+    .from("call_leads")
+    .select("*")
+    .eq("id", leadId)
     .single();
-  campaignInterval = campData?.queue_interval_seconds || 0;
+  
+  const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+    body: {
+      url,
+      payload: { lead, campaignId, actionType },
+    },
+  });
+  
+  if (proxyError) {
+    throw new Error(`Webhook falhou: ${proxyError.message}`);
+  }
+  break;
 }
-
-const interval = operatorData?.personal_interval_seconds || campaignInterval;
-const newStatus = interval > 0 ? 'cooldown' : 'available';
-
-await supabase
-  .from('call_operators')
-  .update({
-    status: newStatus,
-    current_call_id: null,
-    current_campaign_id: null,
-    last_call_ended_at: new Date().toISOString(),
-    total_calls: operatorData ? undefined : undefined, // mantido pelo queue-executor
-  })
-  .eq('id', callLog.operator_id)
-  .eq('current_call_id', callLog.id);
 ```
 
-O `queue-executor` ja tem a logica de transicionar cooldown -> available baseado em `last_call_ended_at + personal_interval_seconds`, entao essa mudanca completa o ciclo.
+Isso resolve o CORS e tambem garante feedback de erro ao operador.
 
-## Resumo
+## Arquivos modificados
 
 | Arquivo | Mudanca |
 |---|---|
-| `supabase/functions/call-status/index.ts` | Liberar operador em todos os status terminais; implementar cooldown baseado no intervalo pessoal ou da campanha |
-
+| `supabase/functions/webhook-proxy/index.ts` | Nova Edge Function para proxy de webhooks server-side |
+| `supabase/config.toml` | Configuracao verify_jwt = false para webhook-proxy |
+| `src/hooks/useCallLeads.ts` | Substituir fetch() direto por supabase.functions.invoke("webhook-proxy") com tratamento de erro |
