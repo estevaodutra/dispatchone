@@ -143,7 +143,8 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     .eq('campaign_id', campaignId)
     .maybeSingle();
 
-  if (!state || state.status !== 'running') {
+  const activeQueueStatuses = ['running', 'waiting_operator', 'waiting_cooldown'];
+  if (!state || !activeQueueStatuses.includes(state.status)) {
     return { success: true, action: 'none', reason: 'Queue not running' };
   }
 
