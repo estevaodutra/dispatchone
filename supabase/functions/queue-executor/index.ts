@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
     // Verify campaign ownership
     const { data: campaign, error: campErr } = await supabase
       .from('call_campaigns')
-      .select('id, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior')
+      .select('id, name, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior')
       .eq('id', campaignId)
       .eq('user_id', user.id)
       .single();
@@ -352,7 +352,14 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     return { success: true, action: 'completed', reason: 'Queue empty' };
   }
 
-  // 4. Create call log and update statuses
+  // 4. Cancel active calls for this operator FIRST (before creating new one)
+  await supabase
+    .from('call_logs')
+    .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
+    .eq('operator_id', operator.id)
+    .in('call_status', ['dialing', 'ringing', 'in_progress']);
+
+  // 5. Create call log
   const scheduledFor = new Date().toISOString();
 
   const { data: callLog, error: logErr } = await supabase
@@ -373,20 +380,13 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     return { success: false, error: logErr.message };
   }
 
-  // Cancel any active calls from this operator before reassignment
-  await supabase
-    .from('call_logs')
-    .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
-    .eq('operator_id', operator.id)
-    .in('call_status', ['dialing', 'ringing', 'in_progress']);
-
-  // Update operator status
+  // 6. Update operator status
   await supabase
     .from('call_operators')
     .update({ status: 'on_call', current_call_id: callLog.id, current_campaign_id: campaignId })
     .eq('id', operator.id);
 
-  // Update lead status
+  // 7. Update lead status
   await supabase
     .from('call_leads')
     .update({ 
@@ -396,7 +396,10 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     })
     .eq('id', nextLead.id);
 
-  // Update queue state with round-robin index
+  // 8. Fire webhook to actually initiate the call
+  await fireDialWebhook(supabase, userId, callLog.id, campaignId, campaign, nextLead, operator);
+
+  // 9. Update queue state with round-robin index
   await supabase
     .from('queue_execution_state')
     .update({
