@@ -1,70 +1,99 @@
 
-# Corrigir disparo de webhook nas acoes pos-ligacao
+# Corrigir: Acao de webhook nao dispara no Painel de Ligacoes
 
 ## Problema
 
-A acao "Dispara webhook externo" no dialogo "Registrar Acao" usa `fetch()` diretamente do navegador (linha 79 de `useCallLeads.ts`). Isso causa dois problemas:
-
-1. **CORS**: O navegador bloqueia requisicoes cross-origin para APIs externas (n8n, etc.) que nao enviam headers CORS
-2. **Erro silenciado**: O `.catch(() => {})` engole qualquer falha, entao o usuario nao recebe feedback
-
-## Solucao
-
-Rotear a chamada webhook por uma Edge Function existente ou nova, eliminando o problema de CORS (server-to-server nao tem restricao CORS).
-
-### Arquivo: `supabase/functions/webhook-proxy/index.ts` (novo)
-
-Criar uma Edge Function simples que recebe a URL e o payload, e faz o POST server-side:
+O Painel de Ligacoes (`CallPanel.tsx`) usa `useCallPanel.ts` para registrar acoes. Dentro de `registerActionMutation` (linha 625), a logica de automacao **so trata o tipo `start_sequence`**:
 
 ```typescript
-// Recebe { url, payload } no body
-// Faz fetch server-side para a URL
-// Retorna o resultado
-```
-
-### Arquivo: `supabase/config.toml`
-
-Adicionar configuracao para desabilitar JWT verification (a funcao valida o user via header):
-
-```toml
-[functions.webhook-proxy]
-verify_jwt = false
-```
-
-### Arquivo: `src/hooks/useCallLeads.ts`
-
-Substituir o `fetch()` direto (linhas 71-84) por `supabase.functions.invoke("webhook-proxy")`:
-
-```typescript
-case "webhook": {
-  const url = config.url as string;
-  if (!url) break;
-  const { data: lead } = await supabase
-    .from("call_leads")
-    .select("*")
-    .eq("id", leadId)
-    .single();
-  
-  const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
-    body: {
-      url,
-      payload: { lead, campaignId, actionType },
-    },
-  });
-  
-  if (proxyError) {
-    throw new Error(`Webhook falhou: ${proxyError.message}`);
-  }
-  break;
+if (actionData?.action_type === "start_sequence" && actionData.action_config) {
+  // ... apenas start_sequence
 }
 ```
 
-Isso resolve o CORS e tambem garante feedback de erro ao operador.
+Os tipos `webhook`, `add_tag` e `update_status` sao completamente ignorados. Isso explica por que o webhook nunca e chamado e nenhum log aparece - a funcao `webhook-proxy` nunca e invocada.
 
-## Arquivos modificados
+Ja existe uma funcao `executeActionAutomation` em `useCallLeads.ts` que trata todos os tipos corretamente (incluindo webhook via `webhook-proxy`), mas `useCallPanel.ts` nao a utiliza.
+
+## Solucao
+
+### Arquivo: `src/hooks/useCallPanel.ts`
+
+**Importar e reutilizar `executeActionAutomation` de `useCallLeads.ts`**... Porem essa funcao nao e exportada e depende do `supabase` importado diretamente. A melhor abordagem e extrair a funcao para um modulo utilitario ou simplesmente adicionar os cases faltantes diretamente no `registerActionMutation`.
+
+A abordagem mais segura e adicionar os cases `webhook`, `add_tag` e `update_status` no bloco `try/catch` de automacao (linhas 616-679) do `registerActionMutation`, replicando a logica ja funcional do `useCallLeads.ts`.
+
+**Mudanca - Expandir a logica de automacao (linhas 625-674):**
+
+Apos o bloco `if (actionData?.action_type === "start_sequence")`, adicionar:
+
+```typescript
+// Webhook action
+else if (actionData?.action_type === "webhook" && actionData.action_config?.url) {
+  const url = actionData.action_config.url as string;
+  const { data: leadData } = await (supabase as any)
+    .from("call_leads")
+    .select("*")
+    .eq("id", entry?.leadId)
+    .single();
+
+  const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+    body: { url, payload: { lead: leadData, campaignId: entry?.campaignId, actionType: "webhook" } },
+  });
+
+  if (proxyError) {
+    automationResult = { automationSuccess: false, automationError: `Webhook falhou: ${proxyError.message}` };
+  }
+}
+
+// Add tag
+else if (actionData?.action_type === "add_tag" && actionData.action_config?.tag && entry?.leadId) {
+  const tag = actionData.action_config.tag as string;
+  const { data: leadData } = await (supabase as any)
+    .from("call_leads")
+    .select("custom_fields")
+    .eq("id", entry.leadId)
+    .single();
+
+  const currentFields = (leadData?.custom_fields as Record<string, unknown>) || {};
+  const currentTags = Array.isArray(currentFields.tags) ? currentFields.tags : [];
+
+  if (!currentTags.includes(tag)) {
+    await (supabase as any)
+      .from("call_leads")
+      .update({ custom_fields: { ...currentFields, tags: [...currentTags, tag] } })
+      .eq("id", entry.leadId);
+  }
+}
+
+// Update status (lead status already updated above as "completed",
+// override with configured status)
+else if (actionData?.action_type === "update_status" && actionData.action_config?.status && entry?.leadId) {
+  const newStatus = String(actionData.action_config.status);
+  await (supabase as any)
+    .from("call_leads")
+    .update({ status: newStatus })
+    .eq("id", entry.leadId);
+
+  // Also update call_log status if different from completed
+  if (newStatus !== "completed") {
+    await (supabase as any)
+      .from("call_logs")
+      .update({ call_status: newStatus })
+      .eq("id", callId);
+  }
+}
+```
+
+## Resumo
 
 | Arquivo | Mudanca |
 |---|---|
-| `supabase/functions/webhook-proxy/index.ts` | Nova Edge Function para proxy de webhooks server-side |
-| `supabase/config.toml` | Configuracao verify_jwt = false para webhook-proxy |
-| `src/hooks/useCallLeads.ts` | Substituir fetch() direto por supabase.functions.invoke("webhook-proxy") com tratamento de erro |
+| `src/hooks/useCallPanel.ts` | Adicionar tratamento para acoes `webhook`, `add_tag` e `update_status` no `registerActionMutation`, usando `webhook-proxy` para disparos de webhook |
+
+## Impacto
+
+- Webhook sera disparado via `webhook-proxy` (server-side, sem CORS)
+- Tags serao adicionadas ao lead
+- Status customizado sera aplicado ao lead
+- Erros serao reportados ao usuario via toast
