@@ -9,10 +9,21 @@ import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Table,
   TableBody,
@@ -28,7 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye } from "lucide-react";
+import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye, PhoneCall } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCard } from "@/components/dispatch";
 import { QueueControlPanel } from "../QueueControlPanel";
@@ -70,14 +81,19 @@ const actionTypeLabels: Record<CallActionType, string> = {
 
 export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTabProps) {
   const [statusFilter, setStatusFilter] = useState<CallLeadStatus | undefined>();
-  const { leads, stats, isLoading, addLead, deleteLead, isAdding } = useCallLeads(
+  const { leads, stats, isLoading, addLead, deleteLead, bulkEnqueueByStatus, isBulkEnqueuing, isAdding } = useCallLeads(
     campaignId,
     statusFilter
   );
   const { actions } = useCallActions(campaignId);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [newLead, setNewLead] = useState({ phone: "", name: "", email: "" });
   const [selectedLead, setSelectedLead] = useState<CallLead | null>(null);
+
+  const bulkDialStatus = statusFilter || "pending";
+  const bulkDialLabel = statusLabels[bulkDialStatus];
+  const leadsCountForBulk = statusFilter ? leads.length : stats.pending;
 
   const handleAddLead = async () => {
     if (!newLead.phone.trim()) return;
@@ -134,10 +150,22 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={() => setShowAddDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Adicionar Lead
-        </Button>
+        <div className="flex items-center gap-2">
+          {queueExecutionEnabled && leadsCountForBulk > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowBulkConfirm(true)}
+              disabled={isBulkEnqueuing}
+            >
+              <PhoneCall className="mr-2 h-4 w-4" />
+              {isBulkEnqueuing ? "Enfileirando..." : `Discar todos ${bulkDialLabel.toLowerCase()}`}
+            </Button>
+          )}
+          <Button onClick={() => setShowAddDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Adicionar Lead
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -343,6 +371,30 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Dial Confirmation */}
+      <AlertDialog open={showBulkConfirm} onOpenChange={setShowBulkConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discar todos os leads</AlertDialogTitle>
+            <AlertDialogDescription>
+              Você está prestes a enfileirar <strong>{leadsCountForBulk}</strong> leads com status
+              "<strong>{bulkDialLabel}</strong>" para discagem automática. A fila será iniciada imediatamente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async () => {
+                await bulkEnqueueByStatus({ status: bulkDialStatus });
+                setShowBulkConfirm(false);
+              }}
+            >
+              Confirmar discagem
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
