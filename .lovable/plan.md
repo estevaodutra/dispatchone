@@ -1,129 +1,80 @@
 
+# Corrigir: Chamadas marcadas como "Discando" mas nunca executadas
 
-# Enfileiramento em Massa por Status na Aba de Leads
+## Problema
 
-## O que sera feito
+Tres bugs no `queue-executor` impedem chamadas de serem realmente discadas:
 
-Adicionar um botao "Discar todos" na aba de Leads da campanha que enfileira automaticamente todos os leads com o status filtrado (ex: "Pendente", "Nao atendeu", etc.) para discagem pelo motor de fila. Quando nenhum filtro esta ativo, o botao atuara sobre todos os leads com status "pending".
+1. **Webhook nao disparado no path 3b**: Quando o motor processa leads pendentes (nao vindos do bulk enqueue), ele cria o call_log como 'dialing' mas nunca chama `fireDialWebhook`. A chamada fica "presa" em Discando para sempre porque o provedor nunca e notificado.
 
-## Como vai funcionar
+2. **Auto-cancelamento no path 3b**: O codigo insere um call_log com `dialing` + `operator_id`, e em seguida executa um UPDATE que cancela TODAS as chamadas ativas daquele operador - incluindo a que acabou de criar. Isso cria um ciclo: cria -> cancela -> operador liberado -> cria novamente.
 
-1. O usuario seleciona um filtro de status (ex: "Pendente")
-2. Clica no botao "Discar todos pendentes"
-3. O sistema cria registros `call_logs` com status `ready` para cada lead filtrado
-4. Garante que a fila da campanha esteja ativa (`running`)
-5. O motor de execucao em fila processa as chamadas automaticamente
+3. **Campo `name` ausente na query da campanha**: O SELECT da campanha nao inclui `name`, mas o payload do webhook usa `campaign.name`, resultando em `undefined`.
+
+## Solucao
+
+### Arquivo: `supabase/functions/queue-executor/index.ts`
+
+**Mudanca 1 - Incluir `name` no SELECT da campanha (linha 53):**
+
+Adicionar `name` ao select: `'id, name, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior'`
+
+**Mudanca 2 - Reordenar path 3b (linhas 355-417):**
+
+Mover o cancelamento de chamadas ativas para ANTES do insert do novo call_log, e adicionar exclusao do call recem-criado:
+```
+1. Cancelar chamadas ativas do operador
+2. Inserir novo call_log com status 'dialing'
+3. Atualizar operador para on_call
+4. Atualizar lead status
+5. Disparar webhook (ADICIONAR)
+6. Atualizar queue state
+```
+
+**Mudanca 3 - Adicionar fireDialWebhook no path 3b:**
+
+Apos atualizar o lead e antes de atualizar o queue state, chamar:
+```typescript
+await fireDialWebhook(supabase, userId, callLog.id, campaignId, campaign, nextLead, operator);
+```
 
 ## Detalhes Tecnicos
 
-### Arquivo: `src/hooks/useCallLeads.ts`
+### Mudancas no arquivo `supabase/functions/queue-executor/index.ts`:
 
-Adicionar uma nova mutation `bulkEnqueueByStatus` que:
+1. Linha 53: adicionar `name` ao select da campanha
+2. Linhas 355-417: reordenar operacoes e adicionar webhook
 
-1. Busca todos os leads da campanha com o status especificado
-2. Para cada lead, cria um `call_log` com status `ready` e `scheduled_for = now()` (usando upsert para evitar duplicatas de chamadas ativas)
-3. Garante que o `queue_execution_state` esteja em `running`
-4. Dispara um tick imediato do `queue-executor`
-
+Codigo corrigido do path 3b:
 ```typescript
-const bulkEnqueueByStatusMutation = useMutation({
-  mutationFn: async ({ status }: { status: CallLeadStatus }) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error("Nao autenticado");
+// 4. Cancel active calls for this operator FIRST
+await supabase
+  .from('call_logs')
+  .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
+  .eq('operator_id', operator.id)
+  .in('call_status', ['dialing', 'ringing', 'in_progress']);
 
-    // Buscar leads com o status filtrado
-    const { data: matchingLeads, error: fetchErr } = await (supabase as any)
-      .from("call_leads")
-      .select("id, phone, name")
-      .eq("campaign_id", campaignId)
-      .eq("status", status);
+// 5. Create call log
+const { data: callLog, error: logErr } = await supabase
+  .from('call_logs')
+  .insert({
+    user_id: userId,
+    campaign_id: campaignId,
+    lead_id: nextLead.id,
+    operator_id: operator.id,
+    call_status: 'dialing',
+    scheduled_for: scheduledFor,
+  })
+  .select('id')
+  .single();
 
-    if (fetchErr) throw fetchErr;
-    if (!matchingLeads?.length) throw new Error("Nenhum lead encontrado com esse status");
-
-    const now = new Date().toISOString();
-
-    // Criar call_logs com status 'ready' para cada lead
-    // Verificar quais ja tem chamada ativa
-    for (const lead of matchingLeads) {
-      const { data: existing } = await (supabase as any)
-        .from("call_logs")
-        .select("id")
-        .eq("campaign_id", campaignId)
-        .eq("lead_id", lead.id)
-        .in("call_status", ["scheduled", "ready", "dialing", "ringing", "in_progress"])
-        .maybeSingle();
-
-      if (existing) {
-        // Atualizar para ready
-        await (supabase as any)
-          .from("call_logs")
-          .update({ call_status: "ready", scheduled_for: now, operator_id: null })
-          .eq("id", existing.id);
-      } else {
-        // Criar novo
-        await (supabase as any)
-          .from("call_logs")
-          .insert({
-            user_id: user.id,
-            campaign_id: campaignId,
-            lead_id: lead.id,
-            call_status: "ready",
-            scheduled_for: now,
-          });
-      }
-    }
-
-    // Garantir fila ativa
-    const { data: queueState } = await (supabase as any)
-      .from("queue_execution_state")
-      .select("id, status")
-      .eq("campaign_id", campaignId)
-      .maybeSingle();
-
-    if (queueState) {
-      if (queueState.status !== "running") {
-        await (supabase as any)
-          .from("queue_execution_state")
-          .update({ status: "running", updated_at: now })
-          .eq("id", queueState.id);
-      }
-    } else {
-      await (supabase as any)
-        .from("queue_execution_state")
-        .insert({
-          campaign_id: campaignId,
-          user_id: user.id,
-          status: "running",
-          current_operator_index: 0,
-          session_started_at: now,
-        });
-    }
-
-    // Tick imediato
-    await supabase.functions.invoke(
-      `queue-executor?campaign_id=${campaignId}&action=tick`,
-      { method: "POST" }
-    );
-
-    return matchingLeads.length;
-  },
-  onSuccess/onError handlers...
-});
+// 6. Update operator, lead, fire webhook, update state
+...
+await fireDialWebhook(supabase, userId, callLog.id, campaignId, campaign, nextLead, operator);
 ```
 
-### Arquivo: `src/components/call-campaigns/tabs/LeadsTab.tsx`
-
-Adicionar botao "Discar todos" ao lado do botao "Adicionar Lead":
-
-- O texto do botao muda conforme o filtro ativo: "Discar todos pendentes", "Discar todos que nao atenderam", etc.
-- Mostra um dialog de confirmacao com a contagem de leads antes de executar
-- Desabilitado se nao houver leads com o status filtrado
-
-### Arquivos modificados
+## Arquivos modificados
 
 | Arquivo | Mudanca |
 |---|---|
-| `src/hooks/useCallLeads.ts` | Nova mutation `bulkEnqueueByStatus` para enfileirar leads por status |
-| `src/components/call-campaigns/tabs/LeadsTab.tsx` | Botao "Discar todos" com dialog de confirmacao |
-
+| `supabase/functions/queue-executor/index.ts` | Adicionar `name` no select; reordenar cancel/insert no path 3b; adicionar fireDialWebhook no path 3b |
