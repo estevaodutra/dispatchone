@@ -1,42 +1,52 @@
 
-# Adicionar botao e indicador de operadores no banner da Fila
+# Corrigir: Fila em execucao nao esta discando automaticamente
 
-## O que muda
+## Problema Identificado
 
-O banner de status da fila vai ganhar duas melhorias:
+O motor da fila tem uma falha arquitetural critica: **nao existe um loop automatico que chame o `queue-executor?action=tick` periodicamente**. 
 
-1. **Indicador de operadores disponiveis** -- mostra quantos operadores estao online/disponiveis ao lado do status da fila (ex: "2 operadores disponiveis")
-2. **Botao "Buscar operadores"** -- permite forcar uma atualizacao imediata do status dos operadores e da fila, resolvendo o problema de ficar preso em "aguardando operador" quando ja existem operadores disponiveis
+Quando o usuario clica "Iniciar", o hook `useQueueExecution` apenas atualiza o status no banco para `"running"`, mas ninguem dispara os ticks. O `queue-executor` so e chamado como efeito colateral de acoes manuais no `useCallPanel` (discar, no-answer), mas nunca de forma autonoma.
 
-## Como vai funcionar
+Resultado: a fila fica marcada como "Em execucao" mas nenhuma ligacao e processada.
 
-O banner passara a exibir:
-- O status atual da fila (como ja funciona)
-- Um chip/badge mostrando quantos operadores estao disponiveis (ex: "3 disponiveis" em verde, ou "0 disponiveis" em vermelho)
-- Um botao compacto "Buscar operadores" que ao ser clicado:
-  - Invalida os caches de operadores e estado da fila
-  - Forca uma re-busca imediata dos dados
-  - Mostra feedback visual (spinner enquanto carrega)
+## Solucao
 
-## Detalhes tecnicos
+Adicionar um **loop de tick no cliente** dentro do hook `useQueueExecution`. Enquanto o status for `"running"` ou `"waiting_operator"` ou `"waiting_cooldown"`, o hook dispara automaticamente o `queue-executor?action=tick` a cada N segundos (usando o intervalo da campanha, com minimo de 10s).
 
-### Arquivo: `src/pages/CallPanel.tsx`
+### Arquivo: `src/hooks/useQueueExecution.ts`
 
-**Componente `QueueStatusBanner`**:
-- Receber `operators` (lista de operadores) e uma funcao `onRefresh` como props adicionais
-- Calcular operadores disponiveis (`status === 'available'`)
-- Exibir badge com contagem de operadores disponiveis
-- Adicionar botao "Buscar operadores" com icone `RefreshCw` que chama `onRefresh`
+**Mudancas no hook `useQueueExecution`:**
 
-**Componente principal `CallPanel`**:
-- Usar o hook `useCallOperators` que ja esta importado para obter a lista de operadores
-- Criar funcao `handleRefreshQueue` que invalida as queries `call_operators` e `queue_execution_state_all`
-- Passar operadores e funcao de refresh para o `QueueStatusBanner`
+1. Receber `intervalSeconds` como parametro (default 30)
+2. Adicionar um `useEffect` que cria um `setInterval` para chamar o tick automaticamente enquanto a fila estiver ativa
+3. Disparar o primeiro tick imediatamente ao iniciar a fila (no `onSuccess` do `startMutation`)
+4. Disparar um tick ao retomar a fila (no `onSuccess` do `resumeMutation`)
+5. Limpar o interval ao parar/pausar
 
-### Arquivos modificados
+```
+Logica do loop:
+
+useEffect:
+  se status in ['running', 'waiting_operator', 'waiting_cooldown']:
+    chamar tick() imediatamente
+    criar setInterval(tick, max(intervalSeconds, 10) * 1000)
+  senao:
+    limpar interval
+  
+  cleanup: limpar interval
+```
+
+A funcao `tick` chama `supabase.functions.invoke('queue-executor?campaign_id=X&action=tick')` e invalida o cache do estado apos a resposta.
+
+### Impacto
+
+- A fila passara a processar leads automaticamente enquanto estiver "Em execucao"
+- O `queue-executor` ja trata toda a logica de round-robin, cooldown, self-healing e webhook -- so precisa ser chamado
+- Se nao houver operador disponivel, o executor ja muda o status para `waiting_operator` -- o loop continua tentando ate encontrar
+- Nenhuma mudanca no backend e necessaria
+
+### Arquivo modificado
 
 | Arquivo | Mudanca |
 |---|---|
-| `src/pages/CallPanel.tsx` | Adicionar indicador de operadores e botao de refresh no `QueueStatusBanner`; passar dados de operadores do componente pai |
-
-Nenhuma mudanca no backend e necessaria -- os dados de operadores ja estao disponiveis via `useCallOperators`.
+| `src/hooks/useQueueExecution.ts` | Adicionar loop de tick automatico via useEffect + setInterval enquanto a fila estiver ativa |
