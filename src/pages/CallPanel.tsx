@@ -771,7 +771,7 @@ export default function CallPanel() {
 
                         {/* Operador */}
                         <TableCell className="hidden md:table-cell py-2">
-                          {entry.operatorName && entry.callStatus !== "scheduled" ? (
+                          {entry.operatorName && !["scheduled", "ready", "waiting_operator"].includes(entry.callStatus) ? (
                             <span className="text-xs truncate block max-w-[90px]">{entry.operatorName}</span>
                           ) : (
                             <Tooltip>
