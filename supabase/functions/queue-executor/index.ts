@@ -476,10 +476,37 @@ async function fireDialWebhook(
     const responseText = await response.text();
     console.log('[queue-executor] Webhook response:', response.status, responseText);
 
-    // Parse response for external_call_id
+    // Parse response for external_call_id or operator_unavailable
     try {
       const parsed = JSON.parse(responseText);
       if (Array.isArray(parsed) && parsed[0]?.id) {
+        // Detect operator_unavailable
+        if (parsed[0]?.message === 'operator_unavailable') {
+          console.log('[queue-executor] Operator unavailable response, reverting call to queue');
+          
+          // Revert call_log to ready (back to queue)
+          await supabase
+            .from('call_logs')
+            .update({ call_status: 'ready', started_at: null, operator_id: null })
+            .eq('id', callLogId);
+          
+          // Release operator
+          await supabase
+            .from('call_operators')
+            .update({ status: 'available', current_call_id: null, current_campaign_id: null })
+            .eq('id', operator.id);
+          
+          // Revert lead to pending
+          if (lead?.id) {
+            await supabase
+              .from('call_leads')
+              .update({ status: 'pending', assigned_operator_id: null })
+              .eq('id', lead.id);
+          }
+          return;
+        }
+        
+        // Normal flow: store external_call_id
         await supabase
           .from('call_logs')
           .update({ external_call_id: parsed[0].id })
