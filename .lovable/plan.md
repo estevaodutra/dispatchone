@@ -1,30 +1,47 @@
 
 
-# Exibir "Auto" para chamadas agendadas
+# Seletor de linhas por pagina no Painel de Ligacoes
 
-## Problema
+## Situacao atual
 
-Chamadas com status "Agendada" mostram o nome do operador (ex: "Mauro") mesmo quando a atribuicao real so acontece no momento da discagem. O correto e exibir "Auto" para todas as chamadas agendadas.
+- O painel ja possui filtro por campanha (Select) e filtro por status (abas) -- ambos funcionando
+- A paginacao esta fixa em 20 itens por pagina (constante `ITEMS_PER_PAGE = 20` na linha 365)
+- Os controles de paginacao sao basicos (Anterior / Proxima)
 
-## Solucao
+## O que sera alterado
 
-Alterar a exibicao do operador no `src/pages/CallPanel.tsx` para que, quando o status for `scheduled`, sempre mostre "Auto" independentemente de haver um `operatorName` no registro.
+### Arquivo: `src/pages/CallPanel.tsx`
 
-## Detalhe tecnico
+1. **Trocar constante por estado**: Substituir `const ITEMS_PER_PAGE = 20` por um `useState` com valor inicial 50 e opcoes de 25, 50 e 100
 
-### Arquivo: `src/pages/CallPanel.tsx` (linhas 772-786)
+2. **Adicionar seletor de itens por pagina**: Incluir um Select ao lado dos controles de paginacao com as opcoes 25, 50 e 100, que reseta para pagina 1 ao mudar
 
-Mudar a condicao de exibicao do operador de:
+3. **Melhorar controles de paginacao**: Adicionar indicador de intervalo (ex: "1-50 de 120") junto ao seletor
 
+### Detalhes tecnicos
+
+**Linha 365** - Trocar constante por estado:
+```typescript
+// De:
+const ITEMS_PER_PAGE = 20;
+
+// Para:
+const [itemsPerPage, setItemsPerPage] = useState(50);
 ```
-entry.operatorName ? (mostrar nome) : (mostrar Auto)
+
+**Linhas 456-460** - Adicionar `itemsPerPage` ao reset de pagina:
+```typescript
+useEffect(() => {
+  setCurrentPage(1);
+  setSelectedIds(new Set());
+}, [statusFilter, campaignFilter, searchQuery, itemsPerPage]);
 ```
 
-Para:
+**Linhas 466-471** - Atualizar calculos de paginacao para usar `itemsPerPage` em vez de `ITEMS_PER_PAGE`
 
+**Linhas 900-915** - Substituir controles de paginacao simples por versao com seletor:
 ```
-entry.operatorName && entry.callStatus !== "scheduled" ? (mostrar nome) : (mostrar Auto)
+[Itens por pagina: [25 | 50 | 100]]   (1-50 de 120)   [< Anterior] Pagina 1 de 3 [Proxima >]
 ```
 
-Isso garante que chamadas agendadas sempre exibam "Auto", enquanto chamadas em andamento ou finalizadas continuam mostrando o operador atribuido.
-
+Nenhuma mudanca de logica de negocio, banco de dados ou edge functions.
