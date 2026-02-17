@@ -131,7 +131,7 @@ function getElapsedTime(startedAt: string | null): string {
 }
 
 function getStatusCategory(status: string): "scheduled" | "in_progress" | "completed" | "failed" | "cancelled" {
-  if (["scheduled", "ready"].includes(status)) return "scheduled";
+  if (["scheduled", "ready", "waiting_operator"].includes(status)) return "scheduled";
   if (["dialing", "ringing", "answered", "in_progress"].includes(status)) return "in_progress";
   if (status === "completed") return "completed";
   if (status === "cancelled") return "cancelled";
@@ -1264,7 +1264,7 @@ function LeadCallHistory({ leadId, campaignId, currentLogId }: { leadId: string 
 
   const getStatusLabel = (status: string | null) => {
     const map: Record<string, string> = {
-      scheduled: "Agendada", ready: "Pronta", dialing: "Discando", ringing: "Tocando",
+      scheduled: "Agendada", ready: "Pronta", waiting_operator: "Aguardando Operador", dialing: "Discando", ringing: "Tocando",
       answered: "Atendida", in_progress: "Em Ligação", completed: "Atendida",
       no_answer: "Não Atendeu", busy: "Ocupado", failed: "Falha",
       cancelled: "Cancelada", not_found: "Não Encontrada", voicemail: "Caixa Postal",
