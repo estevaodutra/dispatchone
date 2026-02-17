@@ -150,7 +150,17 @@ export function useCallPanel(filters?: {
         );
       }
 
-      return results;
+      // Deduplicate by lead_id + campaign_id, keep only the most recent
+      const deduped = new Map<string, CallPanelEntry>();
+      for (const entry of results) {
+        const key = `${entry.leadId}_${entry.campaignId}`;
+        const existing = deduped.get(key);
+        if (!existing || new Date(entry.createdAt) > new Date(existing.createdAt)) {
+          deduped.set(key, entry);
+        }
+      }
+
+      return Array.from(deduped.values());
     },
     enabled: !!user,
     refetchInterval: 5000,
