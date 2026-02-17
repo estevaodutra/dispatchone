@@ -1,47 +1,29 @@
 
 
-# Seletor de linhas por pagina no Painel de Ligacoes
+# Corrigir categorização do status "waiting_operator"
 
-## Situacao atual
+## Problema
 
-- O painel ja possui filtro por campanha (Select) e filtro por status (abas) -- ambos funcionando
-- A paginacao esta fixa em 20 itens por pagina (constante `ITEMS_PER_PAGE = 20` na linha 365)
-- Os controles de paginacao sao basicos (Anterior / Proxima)
+O status `waiting_operator` cai no `return "failed"` (caso default) da função `getStatusCategory`, fazendo com que apareça na aba "Falhas". O correto é tratá-lo como uma chamada na fila/agendada, pois está apenas aguardando um operador disponível.
 
-## O que sera alterado
+## Solução
 
-### Arquivo: `src/pages/CallPanel.tsx`
+### Arquivo: `src/pages/CallPanel.tsx` (linha 134)
 
-1. **Trocar constante por estado**: Substituir `const ITEMS_PER_PAGE = 20` por um `useState` com valor inicial 50 e opcoes de 25, 50 e 100
+Adicionar `waiting_operator` à lista de status categorizados como "scheduled":
 
-2. **Adicionar seletor de itens por pagina**: Incluir um Select ao lado dos controles de paginacao com as opcoes 25, 50 e 100, que reseta para pagina 1 ao mudar
-
-3. **Melhorar controles de paginacao**: Adicionar indicador de intervalo (ex: "1-50 de 120") junto ao seletor
-
-### Detalhes tecnicos
-
-**Linha 365** - Trocar constante por estado:
 ```typescript
 // De:
-const ITEMS_PER_PAGE = 20;
+if (["scheduled", "ready"].includes(status)) return "scheduled";
 
 // Para:
-const [itemsPerPage, setItemsPerPage] = useState(50);
+if (["scheduled", "ready", "waiting_operator"].includes(status)) return "scheduled";
 ```
 
-**Linhas 456-460** - Adicionar `itemsPerPage` ao reset de pagina:
-```typescript
-useEffect(() => {
-  setCurrentPage(1);
-  setSelectedIds(new Set());
-}, [statusFilter, campaignFilter, searchQuery, itemsPerPage]);
-```
+Isso faz com que chamadas com status `waiting_operator`:
+- Apareçam na aba "Agendadas" em vez de "Falhas"
+- Recebam o visual correto (destaque de agendada, não de falha)
+- Sejam ordenadas junto com as demais chamadas pendentes
 
-**Linhas 466-471** - Atualizar calculos de paginacao para usar `itemsPerPage` em vez de `ITEMS_PER_PAGE`
+Também atualizar o label no `getStatusLabel` do componente `LeadCallHistory` (linha 1267) para exibir "Aguardando Operador" no histórico, adicionando a entrada ao mapa de labels.
 
-**Linhas 900-915** - Substituir controles de paginacao simples por versao com seletor:
-```
-[Itens por pagina: [25 | 50 | 100]]   (1-50 de 120)   [< Anterior] Pagina 1 de 3 [Proxima >]
-```
-
-Nenhuma mudanca de logica de negocio, banco de dados ou edge functions.
