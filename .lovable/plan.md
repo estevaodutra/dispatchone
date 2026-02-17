@@ -1,59 +1,67 @@
 
-# Adicionar botao de Pausar/Retomar Fila no banner da aba Fila
+# Tratar resposta "operator_unavailable" do webhook
 
 ## Problema
 
-O banner de status da fila (QueueStatusBanner) mostra o estado das filas mas nao oferece controle para pausar ou retomar a execucao diretamente da aba Fila.
+Quando o provedor externo retorna `"message": "operator_unavailable"` na resposta do webhook de discagem, o sistema ignora essa informacao e deixa a chamada em status "dialing" com o operador travado em "on_call". A chamada deveria voltar para a fila para ser tentada novamente quando houver operador disponivel.
 
 ## Solucao
 
-### Arquivo: `src/hooks/useQueueExecution.ts`
+### Arquivo: `supabase/functions/queue-executor/index.ts` -- funcao `fireDialWebhook`
 
-Adicionar funcoes `pauseAll` e `resumeAll` ao hook `useQueueExecutionSummary` que atualizam o status de todas as campanhas ativas para "paused" ou de volta para "running":
+Apos parsear a resposta do webhook (linha ~480), adicionar deteccao do `message: "operator_unavailable"`. Quando detectado:
+
+1. Reverter o `call_log` para status `ready` (volta para a fila de prontos)
+2. Liberar o operador de volta para `available` (limpar `current_call_id` e `current_campaign_id`)
+3. Reverter o lead para status `pending`
+4. Retornar um flag indicando que houve falha de operador
+
+Logica a ser adicionada no bloco de parse da resposta:
 
 ```typescript
-// Novas mutations no useQueueExecutionSummary:
-const pauseAllMutation = useMutation({
-  mutationFn: async () => {
-    const activeStates = states.filter(s => 
-      ["running", "waiting_operator", "waiting_cooldown"].includes(s.status)
-    );
-    for (const s of activeStates) {
-      await supabase.from("queue_execution_state")
-        .update({ status: "paused" })
-        .eq("campaign_id", s.campaignId);
+try {
+  const parsed = JSON.parse(responseText);
+  if (Array.isArray(parsed) && parsed[0]?.id) {
+    // Detectar operator_unavailable
+    if (parsed[0]?.message === 'operator_unavailable') {
+      console.log('[queue-executor] Operator unavailable response, reverting call to queue');
+      
+      // Reverter call_log para ready (volta para fila)
+      await supabase
+        .from('call_logs')
+        .update({ call_status: 'ready', started_at: null, operator_id: null })
+        .eq('id', callLogId);
+      
+      // Liberar operador
+      await supabase
+        .from('call_operators')
+        .update({ status: 'available', current_call_id: null, current_campaign_id: null })
+        .eq('id', operator.id);
+      
+      // Reverter lead para pending
+      if (lead?.id) {
+        await supabase
+          .from('call_leads')
+          .update({ status: 'pending', assigned_operator_id: null })
+          .eq('id', lead.id);
+      }
+      return;
     }
-  },
-  onSuccess: () => queryClient.invalidateQueries(...)
-});
-
-const resumeAllMutation = useMutation({
-  mutationFn: async () => {
-    const pausedStates = states.filter(s => s.status === "paused");
-    for (const s of pausedStates) {
-      await supabase.from("queue_execution_state")
-        .update({ status: "running" })
-        .eq("campaign_id", s.campaignId);
-    }
-  },
-  onSuccess: () => queryClient.invalidateQueries(...)
-});
+    
+    // Fluxo normal: armazenar external_call_id
+    await supabase
+      .from('call_logs')
+      .update({ external_call_id: parsed[0].id })
+      .eq('id', callLogId);
+    console.log('[queue-executor] Stored external_call_id:', parsed[0].id);
+  }
+} catch {
+  // Response not JSON, ignore
+}
 ```
 
-Retornar `pauseAll`, `resumeAll`, `isPausingAll`, `isResumingAll` no objeto de retorno do hook.
-
-### Arquivo: `src/pages/CallPanel.tsx`
-
-Atualizar o componente `QueueStatusBanner` para:
-
-1. Receber as novas props `pauseAll`, `resumeAll`, `isPausingAll`, `isResumingAll`
-2. Exibir um botao "Pausar" (icone Pause) quando o globalStatus for "running" ou "mixed"
-3. Exibir um botao "Retomar" (icone Play) quando o globalStatus for "paused"
-4. Os botoes ficam ao lado do botao "Buscar operadores" ja existente
-
-Layout do banner atualizado:
-```
-[dot] [icon] Em execucao · 2 executando   [Operadores badge]   [Pausar] [Buscar operadores]
-```
-
-Nenhuma mudanca de banco de dados ou edge functions necessaria -- apenas atualiza o campo `status` na tabela `queue_execution_state` que ja existe.
+Isso garante que:
+- A chamada volta como `ready` para ser processada no proximo tick
+- O operador e liberado imediatamente para receber outras chamadas
+- O lead volta para `pending` e pode ser atribuido novamente
+- Nenhuma mudanca de banco de dados e necessaria
