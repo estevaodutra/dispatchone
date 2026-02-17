@@ -52,6 +52,10 @@ export interface QueueExecutionSummary {
   };
   globalStatus: "running" | "paused" | "stopped" | "mixed";
   isLoading: boolean;
+  pauseAll: () => Promise<void>;
+  resumeAll: () => Promise<void>;
+  isPausingAll: boolean;
+  isResumingAll: boolean;
 }
 
 export function useQueueExecutionSummary(): QueueExecutionSummary {
@@ -127,7 +131,46 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     return () => clearInterval(interval);
   }, [activeIds.length, tickAll]);
 
-  return { states, summary, globalStatus, isLoading };
+  const pauseAllMutation = useMutation({
+    mutationFn: async () => {
+      const activeStates = states.filter((s: QueueExecutionState) =>
+        ["running", "waiting_operator", "waiting_cooldown"].includes(s.status)
+      );
+      for (const s of activeStates) {
+        await (supabase as any).from("queue_execution_state")
+          .update({ status: "paused" })
+          .eq("campaign_id", s.campaignId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+    },
+  });
+
+  const resumeAllMutation = useMutation({
+    mutationFn: async () => {
+      const pausedStates = states.filter((s: QueueExecutionState) => s.status === "paused");
+      for (const s of pausedStates) {
+        await (supabase as any).from("queue_execution_state")
+          .update({ status: "running" })
+          .eq("campaign_id", s.campaignId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+    },
+  });
+
+  return {
+    states,
+    summary,
+    globalStatus,
+    isLoading,
+    pauseAll: pauseAllMutation.mutateAsync,
+    resumeAll: resumeAllMutation.mutateAsync,
+    isPausingAll: pauseAllMutation.isPending,
+    isResumingAll: resumeAllMutation.isPending,
+  };
 }
 
 export function useQueueExecution(campaignId: string, enabled = true) {
