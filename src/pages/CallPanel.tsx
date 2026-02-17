@@ -288,11 +288,15 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
 
 // ── Queue Status Banner ──
 
-function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing }: {
+function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll }: {
   summary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
   operators: import("@/hooks/useCallOperators").CallOperator[];
   onRefresh: () => void;
   isRefreshing: boolean;
+  onPauseAll: () => void;
+  onResumeAll: () => void;
+  isPausingAll: boolean;
+  isResumingAll: boolean;
 }) {
   if (summary.isLoading) return null;
 
@@ -340,6 +344,30 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing }: {
         {availableOps} disponíve{availableOps === 1 ? "l" : "is"}
         {totalActiveOps > availableOps && ` / ${totalActiveOps} online`}
       </Badge>
+      {(globalStatus === "running" || globalStatus === "mixed") && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onPauseAll}
+          disabled={isPausingAll}
+          className="shrink-0 gap-1.5 text-xs h-7 px-2.5"
+        >
+          <Pause className="h-3.5 w-3.5" />
+          {isPausingAll ? "Pausando..." : "Pausar"}
+        </Button>
+      )}
+      {globalStatus === "paused" && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onResumeAll}
+          disabled={isResumingAll}
+          className="shrink-0 gap-1.5 text-xs h-7 px-2.5"
+        >
+          <Play className="h-3.5 w-3.5" />
+          {isResumingAll ? "Retomando..." : "Retomar"}
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="sm"
@@ -632,7 +660,7 @@ export default function CallPanel() {
         ) : (
           <div className="space-y-3">
             {/* Queue Status Banner */}
-            <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} />
+            <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} />
             {paginatedQueue.map((qe) => (
               <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
             ))}
