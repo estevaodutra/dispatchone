@@ -1,29 +1,22 @@
 
-
-# Corrigir categorização do status "waiting_operator"
+# Operador "Auto" para chamadas nao atendidas
 
 ## Problema
 
-O status `waiting_operator` cai no `return "failed"` (caso default) da função `getStatusCategory`, fazendo com que apareça na aba "Falhas". O correto é tratá-lo como uma chamada na fila/agendada, pois está apenas aguardando um operador disponível.
+Chamadas com status "AGORA!" (ready) e "waiting_operator" estao mostrando o nome do operador mesmo antes da ligacao ser atendida. O operador so deve aparecer quando a chamada efetivamente foi conectada.
 
-## Solução
+## Solucao
 
-### Arquivo: `src/pages/CallPanel.tsx` (linha 134)
+### Arquivo: `src/pages/CallPanel.tsx` (linha 774)
 
-Adicionar `waiting_operator` à lista de status categorizados como "scheduled":
+Expandir a condicao que exibe "Auto" para cobrir todos os status da categoria "scheduled" (que inclui `scheduled`, `ready` e `waiting_operator`):
 
 ```typescript
 // De:
-if (["scheduled", "ready"].includes(status)) return "scheduled";
+{entry.operatorName && entry.callStatus !== "scheduled" ? (
 
 // Para:
-if (["scheduled", "ready", "waiting_operator"].includes(status)) return "scheduled";
+{entry.operatorName && !["scheduled", "ready", "waiting_operator"].includes(entry.callStatus) ? (
 ```
 
-Isso faz com que chamadas com status `waiting_operator`:
-- Apareçam na aba "Agendadas" em vez de "Falhas"
-- Recebam o visual correto (destaque de agendada, não de falha)
-- Sejam ordenadas junto com as demais chamadas pendentes
-
-Também atualizar o label no `getStatusLabel` do componente `LeadCallHistory` (linha 1267) para exibir "Aguardando Operador" no histórico, adicionando a entrada ao mapa de labels.
-
+Assim, o nome do operador so aparece quando a chamada ja esta em andamento (`dialing`, `ringing`, `answered`, `in_progress`) ou finalizada (`completed`, `failed`, etc). Chamadas pendentes sempre mostram "Auto".
