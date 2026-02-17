@@ -242,7 +242,7 @@ function StatusBadgeCell({ entry }: { entry: CallPanelEntry }) {
   if (category === "completed") {
     return (
       <Badge variant="secondary" className="gap-1 text-xs whitespace-nowrap text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
-        Concluída
+        Atendida
       </Badge>
     );
   }
@@ -581,7 +581,7 @@ export default function CallPanel() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard icon={<Clock className="h-5 w-5 text-amber-500" />} label="Agendadas" value={stats.scheduled} />
         <MetricCard icon={<Phone className="h-5 w-5 text-blue-500" />} label="Em Andamento" value={stats.inProgress} />
-        <MetricCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />} label="Concluídas" value={stats.completed} />
+        <MetricCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />} label="Atendidas" value={stats.completed} />
         <MetricCard icon={<XCircle className="h-5 w-5 text-destructive" />} label="Canceladas / Falhas" value={stats.cancelled + stats.failed} />
       </div>
 
@@ -611,7 +611,7 @@ export default function CallPanel() {
           <TabsTrigger value="all" className="flex-1 min-w-[100px]">Todas ({statusCounts.all})</TabsTrigger>
           <TabsTrigger value="scheduled" className="flex-1 min-w-[100px]">Agendadas ({statusCounts.scheduled})</TabsTrigger>
           <TabsTrigger value="in_progress" className="flex-1 min-w-[100px]">Em Andamento ({statusCounts.in_progress})</TabsTrigger>
-          <TabsTrigger value="completed" className="flex-1 min-w-[100px]">Concluídas ({statusCounts.completed})</TabsTrigger>
+          <TabsTrigger value="completed" className="flex-1 min-w-[100px]">Atendidas ({statusCounts.completed})</TabsTrigger>
           <TabsTrigger value="failed" className="flex-1 min-w-[100px]">Falhas ({statusCounts.failed})</TabsTrigger>
           <TabsTrigger value="cancelled" className="flex-1 min-w-[100px]">Canceladas ({statusCounts.cancelled})</TabsTrigger>
           <TabsTrigger value="queue" className="flex-1 min-w-[100px] gap-1">
