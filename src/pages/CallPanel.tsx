@@ -362,7 +362,7 @@ export default function CallPanel() {
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const ITEMS_PER_PAGE = 20;
+  const [itemsPerPage, setItemsPerPage] = useState(50);
   const [, setTick] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -457,18 +457,18 @@ export default function CallPanel() {
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
-  }, [statusFilter, campaignFilter, searchQuery]);
+  }, [statusFilter, campaignFilter, searchQuery, itemsPerPage]);
 
   // Sorted entries
   const sortedEntries = useMemo(() => sortByPriority(isQueueTab ? [] : entries), [entries, isQueueTab]);
 
   // Pagination
-  const totalPages = Math.ceil(sortedEntries.length / ITEMS_PER_PAGE);
-  const paginatedEntries = sortedEntries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(sortedEntries.length / itemsPerPage);
+  const paginatedEntries = sortedEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Queue pagination
-  const queueTotalPages = Math.ceil(queueEntries.length / ITEMS_PER_PAGE);
-  const paginatedQueue = queueEntries.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const queueTotalPages = Math.ceil(queueEntries.length / itemsPerPage);
+  const paginatedQueue = queueEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Status counts for tabs
   const statusCounts = {
@@ -900,16 +900,39 @@ export default function CallPanel() {
       {/* Pagination */}
       {(() => {
         const pages = isQueueTab ? queueTotalPages : totalPages;
-        if (pages <= 1) return null;
+        const totalItems = isQueueTab ? queueEntries.length : sortedEntries.length;
+        const startItem = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+        const endItem = Math.min(currentPage * itemsPerPage, totalItems);
+        if (pages <= 1 && totalItems <= 25) return null;
         return (
-          <div className="flex items-center justify-center gap-4 pt-2">
-            <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => p - 1)}>
-              <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
-            </Button>
-            <span className="text-sm text-muted-foreground">Página {currentPage} de {pages}</span>
-            <Button variant="outline" size="sm" disabled={currentPage === pages} onClick={() => setCurrentPage((p) => p + 1)}>
-              Próxima <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">Itens por página:</span>
+              <Select value={itemsPerPage.toString()} onValueChange={(v) => setItemsPerPage(Number(v))}>
+                <SelectTrigger className="w-20 h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                </SelectContent>
+              </Select>
+              <span className="text-muted-foreground">
+                ({startItem}-{endItem} de {totalItems})
+              </span>
+            </div>
+            {pages > 1 && (
+              <div className="flex items-center gap-4">
+                <Button variant="outline" size="sm" disabled={currentPage === 1} onClick={() => setCurrentPage((p) => p - 1)}>
+                  <ChevronLeft className="h-4 w-4 mr-1" /> Anterior
+                </Button>
+                <span className="text-sm text-muted-foreground">Página {currentPage} de {pages}</span>
+                <Button variant="outline" size="sm" disabled={currentPage === pages} onClick={() => setCurrentPage((p) => p + 1)}>
+                  Próxima <ChevronRight className="h-4 w-4 ml-1" />
+                </Button>
+              </div>
+            )}
           </div>
         );
       })()}
