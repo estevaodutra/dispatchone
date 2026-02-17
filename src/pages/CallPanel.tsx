@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
@@ -1111,7 +1113,7 @@ function ActionDialog({
         )}
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="script" disabled={!hasScript}>
               <FileText className="h-4 w-4 mr-2" />
               Roteiro
@@ -1119,6 +1121,10 @@ function ActionDialog({
             <TabsTrigger value="action">
               <Target className="h-4 w-4 mr-2" />
               Ação
+            </TabsTrigger>
+            <TabsTrigger value="history">
+              <Clock className="h-4 w-4 mr-2" />
+              Histórico
             </TabsTrigger>
           </TabsList>
 
@@ -1184,6 +1190,10 @@ function ActionDialog({
               />
             </div>
           </TabsContent>
+
+          <TabsContent value="history" className="mt-4">
+            <LeadCallHistory leadId={entry.leadId} campaignId={entry.campaignId} currentLogId={entry.id} />
+          </TabsContent>
         </Tabs>
 
         <DialogFooter>
@@ -1191,6 +1201,113 @@ function ActionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Lead Call History ──
+
+function LeadCallHistory({ leadId, campaignId, currentLogId }: { leadId: string | null; campaignId: string | null; currentLogId: string }) {
+  const { data: history, isLoading } = useQuery({
+    queryKey: ["call-lead-history", leadId, campaignId],
+    enabled: !!leadId && !!campaignId,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("call_logs")
+        .select("*, call_script_actions(name, color), call_operators(operator_name)")
+        .eq("lead_id", leadId)
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data as Array<{
+        id: string;
+        call_status: string | null;
+        created_at: string | null;
+        started_at: string | null;
+        ended_at: string | null;
+        duration_seconds: number | null;
+        notes: string | null;
+        call_script_actions: { name: string; color: string } | null;
+        call_operators: { operator_name: string } | null;
+      }>;
+    },
+  });
+
+  const formatDuration = (seconds: number | null) => {
+    if (!seconds) return "—";
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const getStatusLabel = (status: string | null) => {
+    const map: Record<string, string> = {
+      scheduled: "Agendada", ready: "Pronta", dialing: "Discando", ringing: "Tocando",
+      answered: "Atendida", in_progress: "Em Ligação", completed: "Atendida",
+      no_answer: "Não Atendeu", busy: "Ocupado", failed: "Falha",
+      cancelled: "Cancelada", not_found: "Não Encontrada", voicemail: "Caixa Postal",
+      timeout: "Tempo Esgotado",
+    };
+    return map[status || ""] || status || "—";
+  };
+
+  if (isLoading) {
+    return <p className="text-sm text-muted-foreground py-4 text-center">Carregando histórico...</p>;
+  }
+
+  if (!history?.length) {
+    return <p className="text-sm text-muted-foreground py-4 text-center">Nenhum registro encontrado.</p>;
+  }
+
+  return (
+    <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+      {history.map((log, idx) => {
+        const isCurrent = log.id === currentLogId;
+        return (
+          <div
+            key={log.id}
+            className={cn(
+              "rounded-lg border p-3 space-y-1",
+              isCurrent ? "border-primary bg-primary/5" : "border-border"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant={isCurrent ? "default" : "secondary"} className="text-xs">
+                  {isCurrent ? "Atual" : `#${history.length - idx}`}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {getStatusLabel(log.call_status)}
+                </Badge>
+              </div>
+              <span className="text-xs text-muted-foreground">
+                {log.created_at ? format(new Date(log.created_at), "dd/MM/yyyy HH:mm") : "—"}
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground ml-1">
+              {log.call_operators?.operator_name && (
+                <span className="flex items-center gap-1">
+                  <Headset className="h-3 w-3" /> {log.call_operators.operator_name}
+                </span>
+              )}
+              {log.duration_seconds != null && log.duration_seconds > 0 && (
+                <span className="flex items-center gap-1">
+                  <Timer className="h-3 w-3" /> {formatDuration(log.duration_seconds)}
+                </span>
+              )}
+              {log.call_script_actions && (
+                <span className="flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full" style={{ backgroundColor: log.call_script_actions.color }} />
+                  {log.call_script_actions.name}
+                </span>
+              )}
+            </div>
+            {log.notes && (
+              <p className="text-xs text-muted-foreground mt-1 ml-1 italic">"{log.notes}"</p>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
