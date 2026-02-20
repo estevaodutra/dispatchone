@@ -803,6 +803,7 @@ export default function CallPanel() {
                     <TableHead>Lead</TableHead>
                     <TableHead className="hidden md:table-cell w-[140px]">Telefone</TableHead>
                     <TableHead className="hidden lg:table-cell w-[180px]">Campanha</TableHead>
+                    <TableHead className="hidden md:table-cell w-[80px]">Tentativa</TableHead>
                     <TableHead className="hidden md:table-cell w-[100px]">Operador</TableHead>
                     <TableHead className="hidden md:table-cell w-[80px]">Timer</TableHead>
                     <TableHead className="w-[90px] text-right">Ações</TableHead>
@@ -854,6 +855,23 @@ export default function CallPanel() {
                           <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
                             {entry.campaignName || "—"}
                           </span>
+                        </TableCell>
+
+                        {/* Tentativa */}
+                        <TableCell className="hidden md:table-cell py-2">
+                          {entry.maxAttempts > 1 ? (
+                            <span className={cn(
+                              "text-xs font-mono font-medium",
+                              entry.attemptNumber >= entry.maxAttempts
+                                ? "text-destructive"
+                                : "text-muted-foreground"
+                            )}>
+                              {entry.attemptNumber}/{entry.maxAttempts}
+                              {entry.attemptNumber >= entry.maxAttempts && " ❌"}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
                         </TableCell>
 
                         {/* Operador */}

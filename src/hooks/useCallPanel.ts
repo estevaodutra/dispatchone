@@ -25,6 +25,8 @@ export interface CallPanelEntry {
   createdAt: string;
   leadAttempts: number;
   audioUrl: string | null;
+  attemptNumber: number;
+  maxAttempts: number;
 }
 
 export interface CallPanelStats {
@@ -50,6 +52,8 @@ interface DbCallLogJoined {
   external_call_id: string | null;
   created_at: string | null;
   audio_url: string | null;
+  attempt_number: number | null;
+  max_attempts: number | null;
   call_leads: {
     name: string | null;
     phone: string;
@@ -92,6 +96,8 @@ function transformEntry(db: DbCallLogJoined): CallPanelEntry {
     createdAt: db.created_at || new Date().toISOString(),
     leadAttempts: db.call_leads?.attempts || 0,
     audioUrl: db.audio_url || null,
+    attemptNumber: db.attempt_number ?? 1,
+    maxAttempts: db.max_attempts ?? 1,
   };
 }
 

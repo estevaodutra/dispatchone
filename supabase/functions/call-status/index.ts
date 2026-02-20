@@ -551,94 +551,36 @@ Deno.serve(async (req) => {
         .eq('id', callLog.lead_id);
     }
 
-    // ==================== IMMEDIATE RESCHEDULING (AFTER 20H BRT) ====================
+    // ==================== RETRY LOGIC (REPLACES OLD RESCHEDULING) ====================
     const FAILURE_STATUSES = ['failed', 'busy', 'not_found', 'voicemail', 'timeout'];
     let rescheduled = false;
 
     if (FAILURE_STATUSES.includes(mappedStatus) && callLog.lead_id && callLog.campaign_id) {
-      const nowUtc = new Date();
-      const hourBRT = (nowUtc.getUTCHours() - 3 + 24) % 24;
+      console.log(`[call-status] Failure detected, checking retry config for campaign: ${callLog.campaign_id}`);
 
-      console.log(`[call-status] Failure detected at ${hourBRT}h BRT, checking reschedule limit for lead:`, callLog.lead_id);
+      // Fetch campaign retry config + current call attempt info
+      const { data: campaignData } = await supabase
+        .from('call_campaigns')
+        .select('retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id')
+        .eq('id', callLog.campaign_id)
+        .single();
 
-      // Count previous rescheduled attempts for this lead in this campaign
-      const { count: rescheduleCount } = await supabase
+      const { data: currentLog } = await supabase
         .from('call_logs')
-        .select('*', { count: 'exact', head: true })
-        .eq('lead_id', callLog.lead_id)
-        .eq('campaign_id', callLog.campaign_id)
-        .ilike('call_status', '%_rescheduled');
+        .select('attempt_number, max_attempts')
+        .eq('id', callLog.id)
+        .single();
 
-      const currentCount = rescheduleCount || 0;
+      const retryCount = campaignData?.retry_count ?? 3;
+      const retryIntervalMinutes = campaignData?.retry_interval_minutes ?? 30;
+      const retryExceededBehavior = campaignData?.retry_exceeded_behavior ?? 'mark_failed';
+      const retryExceededActionId = campaignData?.retry_exceeded_action_id ?? null;
+      const currentAttempt = currentLog?.attempt_number ?? 1;
 
-      if (currentCount >= 3) {
-        console.log(`[call-status] Reschedule limit reached (${currentCount}/3) for lead ${callLog.lead_id}`);
-      } else {
-        console.log(`[call-status] Rescheduling (${currentCount}/3 attempts used)`);
+      if (retryCount > 0 && currentAttempt < retryCount) {
+        // Schedule next attempt
+        const nextRetryAt = new Date(Date.now() + retryIntervalMinutes * 60 * 1000);
 
-        let scheduledFor: string;
-
-        if (hourBRT < 20) {
-          // Before 20h: try to reschedule in 2 hours
-          const twoHoursLater = new Date(nowUtc.getTime() + 2 * 60 * 60 * 1000);
-          const futureHourBRT = (twoHoursLater.getUTCHours() - 3 + 24) % 24;
-
-          if (futureHourBRT < 19) {
-            // Still within working hours, schedule for now + 2h
-            const brasiliaOffset = -3 * 60;
-            const utcMs = twoHoursLater.getTime() + twoHoursLater.getTimezoneOffset() * 60000;
-            const brasiliaDate = new Date(utcMs + brasiliaOffset * 60000);
-            const year = brasiliaDate.getFullYear();
-            const month = String(brasiliaDate.getMonth() + 1).padStart(2, '0');
-            const day = String(brasiliaDate.getDate()).padStart(2, '0');
-            const hour = String(brasiliaDate.getHours()).padStart(2, '0');
-            const minute = String(brasiliaDate.getMinutes()).padStart(2, '0');
-            scheduledFor = `${year}-${month}-${day}T${hour}:${minute}:00-03:00`;
-            console.log(`[call-status] Scheduling in 2h (same day): ${scheduledFor}`);
-          } else {
-            // now + 2h exceeds 19h, schedule for next business day
-            const brasiliaOffset = -3 * 60;
-            const utcMs = nowUtc.getTime() + nowUtc.getTimezoneOffset() * 60000;
-            const brasiliaDate = new Date(utcMs + brasiliaOffset * 60000);
-            const dayOfWeek = brasiliaDate.getDay();
-            let daysToAdd: number;
-            if (dayOfWeek === 5) daysToAdd = 3;
-            else if (dayOfWeek === 6) daysToAdd = 2;
-            else if (dayOfWeek === 0) daysToAdd = 1;
-            else daysToAdd = 1;
-            const nextDay = new Date(brasiliaDate);
-            nextDay.setDate(brasiliaDate.getDate() + daysToAdd);
-            const rHour = Math.floor(Math.random() * 10) + 9;
-            const rMinute = Math.floor(Math.random() * 60);
-            const year = nextDay.getFullYear();
-            const month = String(nextDay.getMonth() + 1).padStart(2, '0');
-            const day = String(nextDay.getDate()).padStart(2, '0');
-            scheduledFor = `${year}-${month}-${day}T${String(rHour).padStart(2, '0')}:${String(rMinute).padStart(2, '0')}:00-03:00`;
-            console.log(`[call-status] now+2h exceeds 19h, scheduling next business day: ${scheduledFor}`);
-          }
-        } else {
-          // After 20h: next business day (existing logic)
-          const brasiliaOffset = -3 * 60;
-          const utcMs = nowUtc.getTime() + nowUtc.getTimezoneOffset() * 60000;
-          const brasiliaDate = new Date(utcMs + brasiliaOffset * 60000);
-          const dayOfWeek = brasiliaDate.getDay();
-          let daysToAdd: number;
-          if (dayOfWeek === 5) daysToAdd = 3;
-          else if (dayOfWeek === 6) daysToAdd = 2;
-          else if (dayOfWeek === 0) daysToAdd = 1;
-          else daysToAdd = 1;
-          const nextDay = new Date(brasiliaDate);
-          nextDay.setDate(brasiliaDate.getDate() + daysToAdd);
-          const rHour = Math.floor(Math.random() * 10) + 9;
-          const rMinute = Math.floor(Math.random() * 60);
-          const year = nextDay.getFullYear();
-          const month = String(nextDay.getMonth() + 1).padStart(2, '0');
-          const day = String(nextDay.getDate()).padStart(2, '0');
-          scheduledFor = `${year}-${month}-${day}T${String(rHour).padStart(2, '0')}:${String(rMinute).padStart(2, '0')}:00-03:00`;
-          console.log(`[call-status] After 20h BRT, scheduling next business day: ${scheduledFor}`);
-        }
-
-        // Pick random active operator
         const { data: activeOperators } = await supabase
           .from('call_operators')
           .select('id')
@@ -649,7 +591,6 @@ Deno.serve(async (req) => {
           ? activeOperators[Math.floor(Math.random() * activeOperators.length)].id
           : callLog.operator_id;
 
-        // Create new scheduled call_log
         const { error: scheduleError } = await supabase
           .from('call_logs')
           .insert({
@@ -658,12 +599,13 @@ Deno.serve(async (req) => {
             operator_id: newOperatorId,
             user_id: userId,
             call_status: 'scheduled',
-            scheduled_for: scheduledFor,
+            scheduled_for: nextRetryAt.toISOString(),
+            attempt_number: currentAttempt + 1,
+            max_attempts: retryCount,
+            next_retry_at: nextRetryAt.toISOString(),
           });
 
-        if (scheduleError) {
-          console.error('[call-status] Failed to create rescheduled call:', scheduleError);
-        } else {
+        if (!scheduleError) {
           await supabase
             .from('call_leads')
             .update({ status: 'pending', assigned_operator_id: newOperatorId })
@@ -675,10 +617,38 @@ Deno.serve(async (req) => {
             .eq('id', callLog.id);
 
           rescheduled = true;
-          console.log(`[call-status] Rescheduled to ${scheduledFor} with operator ${newOperatorId}`);
+          console.log(`[call-status] Retry ${currentAttempt + 1}/${retryCount} scheduled for ${nextRetryAt.toISOString()}`);
+        } else {
+          console.error('[call-status] Failed to schedule retry:', scheduleError);
+        }
+      } else if (retryCount > 0 && currentAttempt >= retryCount) {
+        // Max retries exceeded
+        console.log(`[call-status] Max retries exceeded (${currentAttempt}/${retryCount})`);
+
+        await supabase
+          .from('call_logs')
+          .update({ call_status: 'max_attempts_exceeded' })
+          .eq('id', callLog.id);
+
+        if (retryExceededBehavior === 'execute_action' && retryExceededActionId) {
+          console.log(`[call-status] Executing exceeded action: ${retryExceededActionId}`);
+          try {
+            await supabase.functions.invoke('execute-message', {
+              body: {
+                action_id: retryExceededActionId,
+                lead_id: callLog.lead_id,
+                campaign_id: callLog.campaign_id,
+                trigger: 'retry_exceeded',
+              },
+            });
+          } catch (e) {
+            console.error('[call-status] Failed to invoke exceeded action:', e);
+          }
         }
       }
+      // retryCount === 0 means no retries configured — do nothing extra
     }
+
 
     // ==================== SUCCESS RESPONSE ====================
     const responseBody = {

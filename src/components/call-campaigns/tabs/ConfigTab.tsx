@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useCallOperators } from "@/hooks/useCallOperators";
+import { useCallActions } from "@/hooks/useCallActions";
 import { CallCampaign } from "@/hooks/useCallCampaigns";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,7 +17,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save, Users, Wifi, Phone, ArrowRight } from "lucide-react";
+import { Save, Users, Wifi, Phone, ArrowRight, RefreshCw, AlertTriangle } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+
+const RETRY_INTERVAL_OPTIONS = [
+  { label: "5 minutos", value: 5 },
+  { label: "10 minutos", value: 10 },
+  { label: "15 minutos", value: 15 },
+  { label: "30 minutos", value: 30 },
+  { label: "1 hora", value: 60 },
+  { label: "2 horas", value: 120 },
+  { label: "4 horas", value: 240 },
+  { label: "8 horas", value: 480 },
+  { label: "24 horas", value: 1440 },
+];
 
 interface ConfigTabProps {
   campaign: CallCampaign;
@@ -26,6 +40,7 @@ interface ConfigTabProps {
 export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
   const navigate = useNavigate();
   const { operators } = useCallOperators();
+  const { actions: campaignActions } = useCallActions(campaign.id);
   const activeOperators = operators.filter(o => o.isActive);
   const availableOperators = operators.filter(o => o.status === "available" && o.isActive);
   const onCallOperators = operators.filter(o => o.status === "on_call");
@@ -40,6 +55,10 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
   const [queueExecutionEnabled, setQueueExecutionEnabled] = useState(campaign.queueExecutionEnabled);
   const [queueIntervalSeconds, setQueueIntervalSeconds] = useState(campaign.queueIntervalSeconds);
   const [queueUnavailableBehavior, setQueueUnavailableBehavior] = useState(campaign.queueUnavailableBehavior);
+  const [retryCount, setRetryCount] = useState(campaign.retryCount);
+  const [retryIntervalMinutes, setRetryIntervalMinutes] = useState(campaign.retryIntervalMinutes);
+  const [retryExceededBehavior, setRetryExceededBehavior] = useState(campaign.retryExceededBehavior);
+  const [retryExceededActionId, setRetryExceededActionId] = useState<string | null>(campaign.retryExceededActionId);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
@@ -56,6 +75,10 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
           queueExecutionEnabled,
           queueIntervalSeconds,
           queueUnavailableBehavior,
+          retryCount,
+          retryIntervalMinutes,
+          retryExceededBehavior,
+          retryExceededActionId,
         },
       });
     } finally {
@@ -71,7 +94,11 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
     api4comQueueId !== ((campaign.api4comConfig?.queueId as string) || "") ||
     queueExecutionEnabled !== campaign.queueExecutionEnabled ||
     queueIntervalSeconds !== campaign.queueIntervalSeconds ||
-    queueUnavailableBehavior !== campaign.queueUnavailableBehavior;
+    queueUnavailableBehavior !== campaign.queueUnavailableBehavior ||
+    retryCount !== campaign.retryCount ||
+    retryIntervalMinutes !== campaign.retryIntervalMinutes ||
+    retryExceededBehavior !== campaign.retryExceededBehavior ||
+    retryExceededActionId !== campaign.retryExceededActionId;
 
   return (
     <div className="space-y-6">
@@ -191,6 +218,120 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
             </div>
           </CardContent>
         )}
+      </Card>
+
+      {/* ── Retentativas ── */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-5 w-5 text-muted-foreground" />
+            <CardTitle>Retentativas</CardTitle>
+          </div>
+          <CardDescription>
+            Configure quantas vezes o sistema deve tentar ligar quando o lead não atender.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-2">
+            <Label htmlFor="retryCount">Quantidade de Retentativas</Label>
+            <Input
+              id="retryCount"
+              type="number"
+              min={0}
+              max={10}
+              value={retryCount}
+              onChange={(e) => setRetryCount(Math.min(10, Math.max(0, Number(e.target.value) || 0)))}
+              placeholder="3"
+              className="max-w-[120px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              Número máximo de tentativas antes de desistir. (0 = sem retentativa)
+            </p>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="retryInterval">Intervalo entre Retentativas</Label>
+            <Select
+              value={String(retryIntervalMinutes)}
+              onValueChange={(v) => setRetryIntervalMinutes(Number(v))}
+            >
+              <SelectTrigger id="retryInterval" className="max-w-[200px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RETRY_INTERVAL_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={String(opt.value)}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Tempo de espera antes de tentar novamente.
+            </p>
+          </div>
+
+          {retryCount > 0 && (
+            <>
+              <Separator />
+              <div className="space-y-3">
+                <Label>Ao Exceder Retentativas</Label>
+                <RadioGroup
+                  value={retryExceededBehavior}
+                  onValueChange={(v) => setRetryExceededBehavior(v as "mark_failed" | "execute_action")}
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="mark_failed" id="mark_failed" />
+                    <Label htmlFor="mark_failed" className="font-normal cursor-pointer">
+                      Apenas marcar como "Não Atendeu"
+                    </Label>
+                  </div>
+                  <div className="flex items-start space-x-2">
+                    <RadioGroupItem value="execute_action" id="execute_action" className="mt-0.5" />
+                    <div className="space-y-2 flex-1">
+                      <Label htmlFor="execute_action" className="font-normal cursor-pointer">
+                        Executar ação da campanha:
+                      </Label>
+                      {retryExceededBehavior === "execute_action" && (
+                        <div className="space-y-2">
+                          {campaignActions.length === 0 ? (
+                            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
+                              <AlertTriangle className="h-4 w-4 shrink-0" />
+                              <span>
+                                Nenhuma ação cadastrada. Acesse a aba <strong>Ações</strong> para criar uma.
+                              </span>
+                            </div>
+                          ) : (
+                            <Select
+                              value={retryExceededActionId || ""}
+                              onValueChange={(v) => setRetryExceededActionId(v || null)}
+                            >
+                              <SelectTrigger className="max-w-[280px]">
+                                <SelectValue placeholder="Selecione uma ação..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {campaignActions.map((action) => (
+                                  <SelectItem key={action.id} value={action.id}>
+                                    {action.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                          {retryExceededActionId && campaignActions.length > 0 && (
+                            <p className="text-xs text-muted-foreground">
+                              ℹ️ A ação será executada automaticamente quando todas as tentativas falharem.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
+              </div>
+            </>
+          )}
+        </CardContent>
       </Card>
 
       <Card>
