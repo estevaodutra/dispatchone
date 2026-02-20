@@ -1,64 +1,129 @@
 
 
-# Corrigir chamadas canceladas que voltam como "AGORA"
+# Retentativas Automaticas para Campanhas de Ligacao
 
-## Causa Raiz
+## Resumo
 
-Quando o usuario cancela uma chamada no painel, o sistema faz duas coisas:
-1. Define `call_status = 'cancelled'` no `call_logs` -- correto
-2. Define `status = 'pending'` no `call_leads` -- **este e o problema**
+Adicionar uma secao "Retentativas" na aba Configuracao das campanhas de ligacao, permitindo configurar quantas vezes o sistema tenta ligar quando o lead nao atende, o intervalo entre tentativas e a acao a executar quando o limite for excedido.
 
-O motor de fila (`queue-executor`) roda a cada 15 segundos e busca leads com `status = 'pending'` para criar novas chamadas. Resultado: o lead cancelado volta instantaneamente ao painel com uma nova chamada "AGORA!".
+## Alteracoes Necessarias
 
-```text
-Cancelar chamada
-    |
-    v
-call_logs.call_status = 'cancelled'
-call_leads.status = 'pending'      <-- Lead fica "disponivel"
-    |
-    v (15 segundos depois)
-queue-executor encontra lead 'pending'
-    |
-    v
-Cria NOVO call_log com status 'dialing' --> "AGORA!" volta ao painel
-```
+### 1. Migration SQL -- Novos campos
 
-## Solucao
+Adicionar 4 colunas na tabela `call_campaigns`:
+- `retry_count` (INT, default 3) -- maximo de tentativas
+- `retry_interval_minutes` (INT, default 30) -- intervalo entre tentativas
+- `retry_exceeded_behavior` (TEXT, default 'mark_failed') -- o que fazer ao exceder
+- `retry_exceeded_action_id` (UUID, nullable) -- acao a executar (referencia `call_script_actions`)
 
-### 1. Novo status "cancelled" para call_leads
+Adicionar 3 colunas na tabela `call_logs`:
+- `attempt_number` (INT, default 1) -- tentativa atual
+- `max_attempts` (INT, default 3) -- limite de tentativas (copiado da campanha)
+- `next_retry_at` (TIMESTAMPTZ, nullable) -- horario da proxima retentativa
 
-Adicionar `'cancelled'` como status valido para leads. Quando o usuario cancela uma chamada, o lead deve ir para `cancelled` em vez de `pending`.
+### 2. Interface -- Secao "Retentativas" no ConfigTab
 
-### 2. Corrigir cancelCallMutation (useCallPanel.ts)
+Arquivo: `src/components/call-campaigns/tabs/ConfigTab.tsx`
 
-Alterar a mutacao de cancelamento para definir `call_leads.status = 'cancelled'` em vez de `'pending'`.
+Inserir entre "Execucao em Fila" e "Integracao API4com" um novo Card com:
+- Input numerico "Quantidade de Retentativas" (0-10, default 3)
+- Select "Intervalo entre Retentativas" com opcoes: 5min, 10min, 15min, 30min, 1h, 2h, 4h, 8h, 24h
+- RadioGroup "Ao Exceder Retentativas":
+  - "Apenas marcar como Nao Atendeu" (`mark_failed`)
+  - "Executar acao da campanha" (`execute_action`) com Select das acoes cadastradas
+- Se nenhuma acao cadastrada, exibir mensagem com link para aba Acoes
 
-### 3. Corrigir cancelamento em massa (useCallPanel.ts)
+Utiliza o hook `useCallActions(campaign.id)` para listar as acoes disponiveis no dropdown.
 
-A acao de cancelamento em massa (bulk cancel) tambem deve definir os leads associados como `cancelled`.
+### 3. Hook -- Atualizar useCallCampaigns
 
-### 4. Corrigir a acao "Reverter para Agora!" (useCallPanel.ts)
+Arquivo: `src/hooks/useCallCampaigns.ts`
 
-A acao de reverter chamadas travadas (`revertToReady`) ja funciona corretamente porque define o lead como `pending` intencionalmente -- o usuario QUER que a chamada seja retentada.
+- Adicionar campos `retryCount`, `retryIntervalMinutes`, `retryExceededBehavior`, `retryExceededActionId` na interface `CallCampaign`
+- Adicionar campos correspondentes na interface `DbCallCampaign`
+- Atualizar `transformDbToFrontend` para mapear os novos campos
+- Atualizar `updateCampaignMutation` para aceitar e persistir os novos campos
 
-### 5. Atualizar o tipo CallLeadStatus (useCallLeads.ts)
+### 4. Logica de Retentativa -- Edge Function `reschedule-failed-calls`
 
-Adicionar `'cancelled'` ao tipo `CallLeadStatus` para que o frontend reconheca o novo status.
+Arquivo: `supabase/functions/reschedule-failed-calls/index.ts`
 
-### 6. Atualizar labels/cores no LeadsTab
+Refatorar para usar os novos campos da campanha:
+- Ao processar uma chamada falhada, consultar `retry_count` e `retry_interval_minutes` da campanha
+- Usar `attempt_number` do `call_log` em vez de contar `_rescheduled` no banco
+- Se `attempt_number < retry_count`: criar novo log com `attempt_number + 1`, `scheduled_for = NOW() + retry_interval_minutes`
+- Se `attempt_number >= retry_count`:
+  - Se `retry_exceeded_behavior = 'mark_failed'`: marcar como `max_attempts_exceeded`
+  - Se `retry_exceeded_behavior = 'execute_action'`: marcar e retornar o `retry_exceeded_action_id` para execucao
 
-Adicionar label e cor para o status `cancelled` na aba de leads da campanha.
+### 5. Logica de Retentativa -- Edge Function `call-status`
 
-## Arquivos Modificados
+Arquivo: `supabase/functions/call-status/index.ts`
 
-1. **`src/hooks/useCallPanel.ts`** -- Alterar `cancelCallMutation` para usar `status: 'cancelled'` no lead
-2. **`src/hooks/useCallLeads.ts`** -- Adicionar `'cancelled'` ao tipo `CallLeadStatus`
-3. **`src/components/call-campaigns/tabs/LeadsTab.tsx`** -- Adicionar label/cor para status `cancelled`
+Ao receber callback de status terminal (no_answer, busy, etc.):
+- Consultar configuracao de retentativa da campanha
+- Se dentro do limite: agendar proxima tentativa (atualizar `call_logs` com novo `scheduled_for` e incrementar `attempt_number`)
+- Se excedeu: marcar como `max_attempts_exceeded` e executar acao configurada (invocar motor de automacao)
+
+### 6. Exibicao no Painel de Ligacoes
+
+Arquivo: `src/hooks/useCallPanel.ts`
+- Adicionar `attemptNumber` e `maxAttempts` na interface `CallPanelEntry`
+- Mapear de `attempt_number` e `max_attempts` do `call_logs` no transform
+
+Arquivo: `src/pages/CallPanel.tsx` (ou componente de card de ligacao)
+- Exibir badge "X/Y" (tentativa/maximo) quando `maxAttempts > 1`
+- Quando `attemptNumber >= maxAttempts`, exibir indicador vermelho
+
+### 7. Historico de Tentativas
+
+Na modal de detalhes da ligacao, buscar todos os `call_logs` do mesmo `lead_id` + `campaign_id` ordenados por `created_at` para montar o historico de tentativas anteriores.
 
 ## Detalhes Tecnicos
 
-Nenhuma migracao de banco e necessaria. A coluna `status` em `call_leads` e do tipo `text`, portanto aceita qualquer valor. O `queue-executor` ja filtra apenas por `status = 'pending'`, entao leads com `status = 'cancelled'` serao automaticamente ignorados.
+### Migration SQL
 
-A mudanca e cirurgica: apenas a linha que define `status: "pending"` no cancelamento passa a usar `status: "cancelled"`. Nenhum outro fluxo e afetado.
+```text
+-- call_campaigns: retry config
+ALTER TABLE call_campaigns ADD COLUMN retry_count integer DEFAULT 3;
+ALTER TABLE call_campaigns ADD COLUMN retry_interval_minutes integer DEFAULT 30;
+ALTER TABLE call_campaigns ADD COLUMN retry_exceeded_behavior text DEFAULT 'mark_failed';
+ALTER TABLE call_campaigns ADD COLUMN retry_exceeded_action_id uuid;
+
+-- call_logs: attempt tracking
+ALTER TABLE call_logs ADD COLUMN attempt_number integer DEFAULT 1;
+ALTER TABLE call_logs ADD COLUMN max_attempts integer DEFAULT 3;
+ALTER TABLE call_logs ADD COLUMN next_retry_at timestamptz;
+```
+
+### Opcoes do Select de Intervalo
+
+| Label | Valor (minutos) |
+|-------|-----------------|
+| 5 minutos | 5 |
+| 10 minutos | 10 |
+| 15 minutos | 15 |
+| 30 minutos | 30 |
+| 1 hora | 60 |
+| 2 horas | 120 |
+| 4 horas | 240 |
+| 8 horas | 480 |
+| 24 horas | 1440 |
+
+### Fluxo de Retentativa
+
+Quando uma ligacao termina com status de falha:
+1. Consultar `retry_count` da campanha e `attempt_number` do log
+2. Se `attempt_number < retry_count`: criar novo `call_log` com `attempt_number + 1`, `scheduled_for = NOW() + retry_interval_minutes`, e `max_attempts = retry_count`
+3. Se `attempt_number >= retry_count`: marcar o lead conforme `retry_exceeded_behavior`
+
+### Arquivos Modificados
+
+1. **Migration SQL** -- 7 novos campos (4 em `call_campaigns`, 3 em `call_logs`)
+2. **`src/hooks/useCallCampaigns.ts`** -- Interface e transform atualizados
+3. **`src/components/call-campaigns/tabs/ConfigTab.tsx`** -- Nova secao de UI
+4. **`src/hooks/useCallPanel.ts`** -- Campos de tentativa no painel
+5. **`src/pages/CallPanel.tsx`** -- Badge de tentativa na UI
+6. **`supabase/functions/reschedule-failed-calls/index.ts`** -- Logica baseada nos campos da campanha
+7. **`supabase/functions/call-status/index.ts`** -- Retentativa inline ao receber callback
 
