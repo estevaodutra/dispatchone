@@ -686,7 +686,7 @@ export default function CallPanel() {
                     <CalendarClock className="h-3.5 w-3.5" /> Reagendar
                   </Button>
                   <Button size="sm" variant="destructive" onClick={async () => {
-                    const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+                    const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
                     for (const e of toCancel) {
                       await cancelCall({ callId: e.id, reason: "Cancelamento em massa" });
                     }

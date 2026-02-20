@@ -210,17 +210,26 @@ export function useCallPanel(filters?: {
 
   const cancelCallMutation = useMutation({
     mutationFn: async ({ callId, reason }: { callId: string; reason?: string }) => {
+      const entry = entries.find((e) => e.id === callId);
+
       const { error } = await (supabase as any)
         .from("call_logs")
         .update({ call_status: "cancelled", notes: reason || null })
         .eq("id", callId);
       if (error) throw error;
 
-      const entry = entries.find((e) => e.id === callId);
+      // Release operator if call was in dialing/ringing
+      if (entry?.operatorId && ["dialing", "ringing"].includes(entry.callStatus)) {
+        await (supabase as any)
+          .from("call_operators")
+          .update({ status: "available", current_call_id: null, current_campaign_id: null })
+          .eq("id", entry.operatorId);
+      }
+
       if (entry?.leadId) {
         await (supabase as any)
           .from("call_leads")
-          .update({ status: "pending" })
+          .update({ status: "pending", assigned_operator_id: null })
           .eq("id", entry.leadId);
       }
     },
