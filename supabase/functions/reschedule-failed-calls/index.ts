@@ -6,13 +6,14 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-function getNextBusinessDay(): Date {
+function getBrasiliaDate(): Date {
   const now = new Date();
-  // Convert to Brasilia time to determine the current day of week
   const brasiliaOffset = -3 * 60; // UTC-3 in minutes
   const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-  const brasiliaDate = new Date(utcMs + brasiliaOffset * 60000);
+  return new Date(utcMs + brasiliaOffset * 60000);
+}
 
+function getNextBusinessDay(brasiliaDate: Date): Date {
   const dayOfWeek = brasiliaDate.getDay(); // 0=Sun, 5=Fri, 6=Sat
   let daysToAdd: number;
 
@@ -27,7 +28,7 @@ function getNextBusinessDay(): Date {
 }
 
 function generateRandomScheduledFor(targetDate: Date): string {
-  const hour = Math.floor(Math.random() * 10) + 9; // 9 to 18
+  const hour = Math.floor(Math.random() * 11) + 9; // 9 to 19
   const minute = Math.floor(Math.random() * 60);    // 0 to 59
 
   const year = targetDate.getFullYear();
@@ -38,6 +39,36 @@ function generateRandomScheduledFor(targetDate: Date): string {
 
   // Return as Brasilia time (UTC-3)
   return `${year}-${month}-${day}T${h}:${m}:00-03:00`;
+}
+
+function generateSameDayScheduledFor(brasiliaDate: Date): string {
+  // Schedule for now + 2 hours
+  const scheduled = new Date(brasiliaDate);
+  scheduled.setHours(brasiliaDate.getHours() + 2);
+  // Add some random minutes (0-30) to spread load
+  scheduled.setMinutes(brasiliaDate.getMinutes() + Math.floor(Math.random() * 30));
+
+  const year = scheduled.getFullYear();
+  const month = String(scheduled.getMonth() + 1).padStart(2, "0");
+  const day = String(scheduled.getDate()).padStart(2, "0");
+  const h = String(scheduled.getHours()).padStart(2, "0");
+  const m = String(scheduled.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day}T${h}:${m}:00-03:00`;
+}
+
+function computeScheduledFor(): string {
+  const brasiliaDate = getBrasiliaDate();
+  const hourBRT = brasiliaDate.getHours();
+
+  // If before 20h BRT and now + 2h would be before 19h -> same day
+  if (hourBRT < 20 && (hourBRT + 2) < 19) {
+    return generateSameDayScheduledFor(brasiliaDate);
+  }
+
+  // Otherwise -> next business day with random time
+  const nextDay = getNextBusinessDay(brasiliaDate);
+  return generateRandomScheduledFor(nextDay);
 }
 
 Deno.serve(async (req) => {
@@ -77,7 +108,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    const nextBusinessDay = getNextBusinessDay();
     let rescheduledCount = 0;
     const errors: string[] = [];
 
@@ -140,7 +170,8 @@ Deno.serve(async (req) => {
           }
         }
 
-        const scheduledFor = generateRandomScheduledFor(nextBusinessDay);
+        // Use smart scheduling: same day if possible, next business day otherwise
+        const scheduledFor = computeScheduledFor();
 
         // Create new scheduled call_log with random operator
         const { error: insertError } = await supabase
@@ -179,8 +210,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    const brasiliaDateForLog = getBrasiliaDate();
     const result = {
-      message: `Rescheduled ${rescheduledCount} calls for ${nextBusinessDay.toISOString().split("T")[0]}`,
+      message: `Rescheduled ${rescheduledCount} calls (BRT: ${brasiliaDateForLog.toISOString().split("T")[0]})`,
       rescheduled: rescheduledCount,
       total_failed: failedCalls.length,
       errors: errors.length > 0 ? errors : undefined,
