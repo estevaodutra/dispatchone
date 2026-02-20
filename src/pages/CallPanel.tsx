@@ -33,6 +33,16 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -288,7 +298,7 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
 
 // ── Queue Status Banner ──
 
-function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll }: {
+function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting }: {
   summary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
   operators: import("@/hooks/useCallOperators").CallOperator[];
   onRefresh: () => void;
@@ -297,7 +307,11 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
   onResumeAll: () => void;
   isPausingAll: boolean;
   isResumingAll: boolean;
+  onClearQueue: () => void;
+  isClearingQueue: boolean;
+  totalWaiting: number;
 }) {
+  const [confirmOpen, setConfirmOpen] = useState(false);
   if (summary.isLoading) return null;
 
   const { globalStatus, summary: counts } = summary;
@@ -378,6 +392,39 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
         <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
         Buscar operadores
       </Button>
+      {totalWaiting > 0 && (
+        <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setConfirmOpen(true)}
+            disabled={isClearingQueue}
+            className="shrink-0 gap-1.5 text-xs h-7 px-2.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {isClearingQueue ? "Esvaziando..." : "Esvaziar Fila"}
+          </Button>
+          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Esvaziar fila de ligações</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja esvaziar toda a fila? Todos os {totalWaiting} itens pendentes serão removidos. Essa ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => { onClearQueue(); setConfirmOpen(false); }}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Esvaziar Fila
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </>
+      )}
     </div>
   );
 }
@@ -422,7 +469,7 @@ export default function CallPanel() {
     search: searchQuery || undefined,
   });
 
-  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue } = useCallQueuePanel(campaignFilter);
+  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue } = useCallQueuePanel(campaignFilter);
   const queueSummary = useQueueExecutionSummary();
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
@@ -660,7 +707,7 @@ export default function CallPanel() {
         ) : (
           <div className="space-y-3">
             {/* Queue Status Banner */}
-            <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} />
+            <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
             {paginatedQueue.map((qe) => (
               <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
             ))}
