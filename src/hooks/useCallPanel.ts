@@ -218,12 +218,9 @@ export function useCallPanel(filters?: {
         .eq("id", callId);
       if (error) throw error;
 
-      // Release operator if call was in dialing/ringing
+      // Release operator atomically via RPC
       if (entry?.operatorId && ["dialing", "ringing"].includes(entry.callStatus)) {
-        await (supabase as any)
-          .from("call_operators")
-          .update({ status: "available", current_call_id: null, current_campaign_id: null })
-          .eq("id", entry.operatorId);
+        await (supabase as any).rpc('release_operator', { p_call_id: callId, p_force: true });
       }
 
       if (entry?.leadId) {
@@ -282,12 +279,9 @@ export function useCallPanel(filters?: {
           .eq("id", callId);
         if (error) throw error;
 
-        // Release old operator if stuck
+        // Release old operator atomically via RPC
         if (isStuck && entry?.operatorId) {
-          await (supabase as any)
-            .from("call_operators")
-            .update({ status: "available", current_call_id: null, current_campaign_id: null })
-            .eq("id", entry.operatorId);
+          await (supabase as any).rpc('release_operator', { p_call_id: callId, p_force: true });
         }
 
         if (entry?.leadId) {
@@ -354,17 +348,9 @@ export function useCallPanel(filters?: {
       const now = new Date().toISOString();
 
       for (const [campaignId, ids] of Object.entries(byCampaign)) {
-        // Reset operators currently assigned to these calls
-        const { data: affectedOps } = await (supabase as any)
-          .from("call_operators")
-          .select("id")
-          .in("current_call_id", ids);
-
-        if (affectedOps?.length) {
-          await (supabase as any)
-            .from("call_operators")
-            .update({ status: "available", current_call_id: null, current_campaign_id: null })
-            .in("id", affectedOps.map((o: any) => o.id));
+        // Release operators atomically via RPC for each call
+        for (const id of ids) {
+          await (supabase as any).rpc('release_operator', { p_call_id: id, p_force: true });
         }
 
         // Batch update: set status to ready, scheduled_for = now, operator_id = null
@@ -584,23 +570,8 @@ export function useCallPanel(filters?: {
           .eq("id", callId);
         if (error) throw error;
 
-        // Reset the operator assigned to this call
-        const { data: assignedOps } = await (supabase as any)
-          .from("call_operators")
-          .select("id")
-          .eq("current_call_id", callId);
-
-        if (assignedOps?.length) {
-          await (supabase as any)
-            .from("call_operators")
-            .update({
-              status: "available",
-              current_call_id: null,
-              current_campaign_id: null,
-              last_call_ended_at: new Date().toISOString(),
-            })
-            .in("id", assignedOps.map((o: any) => o.id));
-        }
+        // Release operator atomically via RPC
+        await (supabase as any).rpc('release_operator', { p_call_id: callId, p_force: true });
 
         if (entry?.leadId) {
           const { data: freshLead } = await (supabase as any)
