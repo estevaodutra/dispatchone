@@ -1,100 +1,64 @@
 
-# Bloqueio contra operador com multiplas chamadas simultaneas
 
-## Problema
-
-O operador "Mauro" aparece em 2 chamadas simultaneas com status "Discando". A protecao atual funciona apenas na tabela `call_operators` (indice unico em `current_call_id` e trigger `check_operator_not_busy`), mas a tabela `call_logs` nao tem nenhuma restricao -- permitindo que logs antigos fiquem "presos" em status ativo enquanto o operador recebe uma nova chamada.
+# Corrigir chamadas canceladas que voltam como "AGORA"
 
 ## Causa Raiz
 
-Quando o `queue-executor` ou `dialNow` reserva um operador para uma nova chamada, o RPC `reserve_operator_for_call` atualiza `current_call_id` no operador, mas **nao cancela** logs anteriores desse operador que ainda estao em status ativo (`dialing`, `ringing`, etc).
+Quando o usuario cancela uma chamada no painel, o sistema faz duas coisas:
+1. Define `call_status = 'cancelled'` no `call_logs` -- correto
+2. Define `status = 'pending'` no `call_leads` -- **este e o problema**
 
-## Solucao: Defesa em 3 camadas
-
-### Camada 1 -- RPC `reserve_operator_for_call` (prevencao)
-
-Antes de reservar o operador, o RPC deve cancelar automaticamente qualquer `call_log` ativo anterior desse operador. Isso garante que no momento da reserva, nao exista log ativo concorrente.
-
-Adicionar ao inicio da funcao:
-- `UPDATE call_logs SET call_status = 'cancelled' WHERE operator_id = v_operator.id AND call_status IN ('dialing','ringing','answered','in_progress') AND id != p_call_id`
-
-### Camada 2 -- Trigger na tabela `call_logs` (barreira de banco)
-
-Criar um trigger `BEFORE INSERT OR UPDATE` em `call_logs` que impede atribuir um `operator_id` se ja existir outro log ativo para aquele operador. Isso funciona como rede de seguranca caso algum caminho de codigo fure a Camada 1.
+O motor de fila (`queue-executor`) roda a cada 15 segundos e busca leads com `status = 'pending'` para criar novas chamadas. Resultado: o lead cancelado volta instantaneamente ao painel com uma nova chamada "AGORA!".
 
 ```text
-BEFORE INSERT OR UPDATE ON call_logs
-FOR EACH ROW
-  IF NEW.operator_id IS NOT NULL
-     AND NEW.call_status IN ('dialing','ringing','answered','in_progress')
-  THEN
-    IF EXISTS (
-      SELECT 1 FROM call_logs
-      WHERE operator_id = NEW.operator_id
-        AND id != NEW.id
-        AND call_status IN ('dialing','ringing','answered','in_progress')
-    ) THEN
-      -- Cancela os logs antigos em vez de bloquear
-      UPDATE call_logs
-      SET call_status = 'cancelled'
-      WHERE operator_id = NEW.operator_id
-        AND id != NEW.id
-        AND call_status IN ('dialing','ringing','answered','in_progress');
-    END IF;
-  END IF;
+Cancelar chamada
+    |
+    v
+call_logs.call_status = 'cancelled'
+call_leads.status = 'pending'      <-- Lead fica "disponivel"
+    |
+    v (15 segundos depois)
+queue-executor encontra lead 'pending'
+    |
+    v
+Cria NOVO call_log com status 'dialing' --> "AGORA!" volta ao painel
 ```
 
-O trigger opta por **cancelar automaticamente** os logs antigos (em vez de rejeitar o novo), porque rejeitar poderia travar a fila inteira se um log ficar preso.
+## Solucao
 
-### Camada 3 -- Frontend `dialNow` (prevencao no codigo)
+### 1. Novo status "cancelled" para call_leads
 
-No hook `useCallPanel`, antes de chamar o RPC `reserve_operator_for_call`, adicionar uma query que cancela call_logs ativos do operador que sera reservado. Isso reduz a chance de conflito antes mesmo de chegar ao banco.
+Adicionar `'cancelled'` como status valido para leads. Quando o usuario cancela uma chamada, o lead deve ir para `cancelled` em vez de `pending`.
+
+### 2. Corrigir cancelCallMutation (useCallPanel.ts)
+
+Alterar a mutacao de cancelamento para definir `call_leads.status = 'cancelled'` em vez de `'pending'`.
+
+### 3. Corrigir cancelamento em massa (useCallPanel.ts)
+
+A acao de cancelamento em massa (bulk cancel) tambem deve definir os leads associados como `cancelled`.
+
+### 4. Corrigir a acao "Reverter para Agora!" (useCallPanel.ts)
+
+A acao de reverter chamadas travadas (`revertToReady`) ja funciona corretamente porque define o lead como `pending` intencionalmente -- o usuario QUER que a chamada seja retentada.
+
+### 5. Atualizar o tipo CallLeadStatus (useCallLeads.ts)
+
+Adicionar `'cancelled'` ao tipo `CallLeadStatus` para que o frontend reconheca o novo status.
+
+### 6. Atualizar labels/cores no LeadsTab
+
+Adicionar label e cor para o status `cancelled` na aba de leads da campanha.
 
 ## Arquivos Modificados
 
-1. **Migration SQL** -- Alterar `reserve_operator_for_call` e criar trigger `trg_enforce_single_active_call`
-2. **`src/hooks/useCallPanel.ts`** -- Adicionar limpeza preventiva no `dialNow`
-3. **`supabase/functions/queue-executor/index.ts`** -- Adicionar limpeza preventiva antes de cada reserva
+1. **`src/hooks/useCallPanel.ts`** -- Alterar `cancelCallMutation` para usar `status: 'cancelled'` no lead
+2. **`src/hooks/useCallLeads.ts`** -- Adicionar `'cancelled'` ao tipo `CallLeadStatus`
+3. **`src/components/call-campaigns/tabs/LeadsTab.tsx`** -- Adicionar label/cor para status `cancelled`
 
 ## Detalhes Tecnicos
 
-### Migration SQL
+Nenhuma migracao de banco e necessaria. A coluna `status` em `call_leads` e do tipo `text`, portanto aceita qualquer valor. O `queue-executor` ja filtra apenas por `status = 'pending'`, entao leads com `status = 'cancelled'` serao automaticamente ignorados.
 
-```text
--- 1. Atualizar RPC reserve_operator_for_call
---    Adicionar UPDATE call_logs SET cancelled apos selecionar o operador, antes de reservar
+A mudanca e cirurgica: apenas a linha que define `status: "pending"` no cancelamento passa a usar `status: "cancelled"`. Nenhum outro fluxo e afetado.
 
--- 2. Criar trigger
-CREATE OR REPLACE FUNCTION enforce_single_active_call()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.operator_id IS NOT NULL
-     AND NEW.call_status IN ('dialing','ringing','answered','in_progress')
-  THEN
-    UPDATE call_logs
-    SET call_status = 'cancelled',
-        ended_at = NOW()
-    WHERE operator_id = NEW.operator_id
-      AND id != NEW.id
-      AND call_status IN ('dialing','ringing','answered','in_progress');
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_enforce_single_active_call
-  BEFORE INSERT OR UPDATE ON call_logs
-  FOR EACH ROW
-  EXECUTE FUNCTION enforce_single_active_call();
-```
-
-### Codigo Frontend/Edge
-
-Adicionar antes de cada chamada ao RPC:
-```text
-await supabase.from('call_logs')
-  .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
-  .eq('operator_id', operatorId)
-  .in('call_status', ['dialing','ringing','answered','in_progress'])
-  .neq('id', currentCallId);
-```
