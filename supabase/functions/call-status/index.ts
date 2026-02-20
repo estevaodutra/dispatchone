@@ -515,43 +515,25 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ==================== RELEASE OPERATOR ON TERMINAL STATUS ====================
+    // ==================== RELEASE OPERATOR ON TERMINAL STATUS (ATOMIC RPC) ====================
     const TERMINAL_STATUSES = ['completed', 'failed', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout'];
     if (TERMINAL_STATUSES.includes(mappedStatus) && callLog.operator_id) {
-      console.log('[call-status] Releasing operator:', callLog.operator_id, 'status:', mappedStatus);
+      console.log('[call-status] Releasing operator via RPC for call:', callLog.id);
 
-      // Fetch operator to check personal_interval_seconds
-      const { data: operatorData } = await supabase
-        .from('call_operators')
-        .select('personal_interval_seconds')
-        .eq('id', callLog.operator_id)
-        .single();
+      const { data: releaseResult, error: releaseError } = await supabase.rpc('release_operator', {
+        p_call_id: callLog.id,
+        p_force: false,
+      });
 
-      // Fetch campaign interval as fallback
-      let campaignInterval = 0;
-      if (callLog.campaign_id) {
-        const { data: campData } = await supabase
-          .from('call_campaigns')
-          .select('queue_interval_seconds')
-          .eq('id', callLog.campaign_id)
-          .single();
-        campaignInterval = campData?.queue_interval_seconds || 0;
+      if (releaseError) {
+        console.error('[call-status] RPC release_operator error:', releaseError);
+      } else if (releaseResult?.[0]?.success) {
+        console.log('[call-status] Operator released:', releaseResult[0].released_operator_id, 'new_status:', releaseResult[0].new_status, 'cooldown:', releaseResult[0].cooldown_seconds);
+      } else {
+        console.log('[call-status] release_operator returned no match, trying force release');
+        // Fallback: force release
+        await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
       }
-
-      const interval = operatorData?.personal_interval_seconds || campaignInterval;
-      const newStatus = interval > 0 ? 'cooldown' : 'available';
-      console.log('[call-status] Operator new status:', newStatus, 'interval:', interval);
-
-      await supabase
-        .from('call_operators')
-        .update({
-          status: newStatus,
-          current_call_id: null,
-          current_campaign_id: null,
-          last_call_ended_at: new Date().toISOString(),
-        })
-        .eq('id', callLog.operator_id)
-        .eq('current_call_id', callLog.id);
     }
 
     // ==================== UPDATE LEAD STATUS ====================

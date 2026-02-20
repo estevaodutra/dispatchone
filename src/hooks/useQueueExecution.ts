@@ -98,6 +98,23 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   const activeIdsRef = useRef<string[]>([]);
   activeIdsRef.current = activeIds;
 
+  // Independent cooldown/healing resolution (runs every 15s regardless of active campaigns)
+  const maintenanceInFlightRef = useRef(false);
+
+  const runMaintenance = useCallback(async () => {
+    if (maintenanceInFlightRef.current) return;
+    maintenanceInFlightRef.current = true;
+    try {
+      await (supabase as any).rpc('resolve_cooldowns');
+      await (supabase as any).rpc('heal_stuck_operators', { p_stuck_threshold_minutes: 10 });
+      queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+    } catch (e) {
+      console.error("[maintenance] error:", e);
+    } finally {
+      maintenanceInFlightRef.current = false;
+    }
+  }, [queryClient]);
+
   const tickAll = useCallback(async () => {
     if (tickInFlightRef.current) return;
     const ids = activeIdsRef.current;
@@ -123,6 +140,14 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     }
   }, [queryClient]);
 
+  // Maintenance runs always (independent of active campaigns)
+  useEffect(() => {
+    runMaintenance();
+    const interval = setInterval(runMaintenance, 15000);
+    return () => clearInterval(interval);
+  }, [runMaintenance]);
+
+  // Tick loop only runs when there are active campaigns
   useEffect(() => {
     if (activeIds.length === 0) return;
 

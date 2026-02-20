@@ -2256,6 +2256,46 @@ export type Database = {
         }
         Returns: boolean
       }
+      heal_stuck_operators: {
+        Args: { p_stuck_threshold_minutes?: number }
+        Returns: {
+          action_taken: string
+          healed_operator_id: string
+          healed_operator_name: string
+          previous_status: string
+        }[]
+      }
+      release_operator: {
+        Args: { p_call_id: string; p_force?: boolean }
+        Returns: {
+          cooldown_seconds: number
+          new_status: string
+          released_operator_id: string
+          success: boolean
+        }[]
+      }
+      reserve_operator_for_call: {
+        Args: {
+          p_call_id: string
+          p_campaign_id: string
+          p_preferred_operator_id?: string
+        }
+        Returns: {
+          error_code: string
+          operator_extension: string
+          operator_id: string
+          operator_name: string
+          success: boolean
+        }[]
+      }
+      resolve_cooldowns: {
+        Args: never
+        Returns: {
+          resolved_operator_id: string
+          resolved_operator_name: string
+          was_cooldown_seconds: number
+        }[]
+      }
     }
     Enums: {
       app_role: "admin" | "user"
