@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useCallOperators, CallOperator, OperatorStatus } from "@/hooks/useCallOperators";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,7 +12,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, User, Phone, Clock, Pause, Wifi, WifiOff, Settings, Trash2, Users } from "lucide-react";
+import { Plus, Search, User, Phone, Clock, Pause, Wifi, WifiOff, Settings, Trash2, Users, Timer } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -261,7 +262,11 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
             </div>
 
             {operator.status === "cooldown" && operator.lastCallEndedAt && (
-              <p className="text-xs text-muted-foreground">Última ligação: {getTimeSince(operator.lastCallEndedAt)}</p>
+              <CooldownTimer
+                key={operator.lastCallEndedAt}
+                lastCallEndedAt={operator.lastCallEndedAt}
+                intervalSeconds={operator.personalIntervalSeconds ?? 30}
+              />
             )}
             {operator.status === "offline" && operator.lastCallEndedAt && (
               <p className="text-xs text-muted-foreground">Último acesso: {getTimeSince(operator.lastCallEndedAt)}</p>
@@ -313,5 +318,36 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function CooldownTimer({ lastCallEndedAt, intervalSeconds }: { lastCallEndedAt: string; intervalSeconds: number }) {
+  const [remaining, setRemaining] = useState(() => {
+    const elapsed = (Date.now() - new Date(lastCallEndedAt).getTime()) / 1000;
+    return Math.max(0, Math.ceil(intervalSeconds - elapsed));
+  });
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      const elapsed = (Date.now() - new Date(lastCallEndedAt).getTime()) / 1000;
+      const r = Math.max(0, Math.ceil(intervalSeconds - elapsed));
+      setRemaining(r);
+      if (r <= 0) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lastCallEndedAt, intervalSeconds]);
+
+  const progress = Math.min(100, ((intervalSeconds - remaining) / intervalSeconds) * 100);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5">
+        <Timer className="h-3.5 w-3.5 text-amber-500" />
+        <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+          {remaining > 0 ? `${remaining}s restantes` : "Liberando..."}
+        </span>
+      </div>
+      <Progress value={progress} className="h-1.5 bg-amber-100 dark:bg-amber-950 [&>div]:bg-amber-500" />
+    </div>
   );
 }
