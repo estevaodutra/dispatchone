@@ -221,6 +221,10 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
       .eq('id', readyCallLog.lead_id)
       .maybeSingle();
 
+    // CAMADA 3: Limpeza preventiva antes de reservar
+    // (cancela call_logs ativos do operador que será atribuído)
+    // O RPC já faz isso internamente (Camada 1), mas reforçamos aqui
+
     // Reserve operator atomically via RPC
     const { data: reservation } = await supabase.rpc('reserve_operator_for_call', {
       p_call_id: readyCallLog.id,

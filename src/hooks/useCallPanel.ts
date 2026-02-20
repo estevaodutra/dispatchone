@@ -413,6 +413,16 @@ export function useCallPanel(filters?: {
       const entry = entries.find((e) => e.id === callId);
       if (!entry) throw new Error("Ligação não encontrada");
 
+      // CAMADA 3: Limpeza preventiva — cancelar call_logs ativos do operador antes de reservar
+      if (entry.operatorId) {
+        await (supabase as any)
+          .from("call_logs")
+          .update({ call_status: "cancelled", ended_at: new Date().toISOString() })
+          .eq("operator_id", entry.operatorId)
+          .in("call_status", ["dialing", "ringing", "answered", "in_progress"])
+          .neq("id", callId);
+      }
+
       // --- Reserve operator atomically via RPC ---
       let wasRedirected = false;
 
