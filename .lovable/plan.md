@@ -1,67 +1,26 @@
 
-# Tratar resposta "operator_unavailable" do webhook
+# Corrigir chamadas travadas em "Discando"
 
 ## Problema
 
-Quando o provedor externo retorna `"message": "operator_unavailable"` na resposta do webhook de discagem, o sistema ignora essa informacao e deixa a chamada em status "dialing" com o operador travado em "on_call". A chamada deveria voltar para a fila para ser tentada novamente quando houver operador disponivel.
+Existem dezenas de chamadas travadas no status "Discando" (dialing) que nunca foram atendidas -- provavelmente de antes da correcao do `operator_unavailable`. O botao "Cancelar" em massa nao funciona para elas porque so aceita chamadas com status `scheduled` ou `ready`.
 
 ## Solucao
 
-### Arquivo: `supabase/functions/queue-executor/index.ts` -- funcao `fireDialWebhook`
+### Arquivo: `src/pages/CallPanel.tsx` (linha 689)
 
-Apos parsear a resposta do webhook (linha ~480), adicionar deteccao do `message: "operator_unavailable"`. Quando detectado:
-
-1. Reverter o `call_log` para status `ready` (volta para a fila de prontos)
-2. Liberar o operador de volta para `available` (limpar `current_call_id` e `current_campaign_id`)
-3. Reverter o lead para status `pending`
-4. Retornar um flag indicando que houve falha de operador
-
-Logica a ser adicionada no bloco de parse da resposta:
+Expandir o filtro do botao "Cancelar" em massa para incluir tambem chamadas com status `dialing` e `ringing`:
 
 ```typescript
-try {
-  const parsed = JSON.parse(responseText);
-  if (Array.isArray(parsed) && parsed[0]?.id) {
-    // Detectar operator_unavailable
-    if (parsed[0]?.message === 'operator_unavailable') {
-      console.log('[queue-executor] Operator unavailable response, reverting call to queue');
-      
-      // Reverter call_log para ready (volta para fila)
-      await supabase
-        .from('call_logs')
-        .update({ call_status: 'ready', started_at: null, operator_id: null })
-        .eq('id', callLogId);
-      
-      // Liberar operador
-      await supabase
-        .from('call_operators')
-        .update({ status: 'available', current_call_id: null, current_campaign_id: null })
-        .eq('id', operator.id);
-      
-      // Reverter lead para pending
-      if (lead?.id) {
-        await supabase
-          .from('call_leads')
-          .update({ status: 'pending', assigned_operator_id: null })
-          .eq('id', lead.id);
-      }
-      return;
-    }
-    
-    // Fluxo normal: armazenar external_call_id
-    await supabase
-      .from('call_logs')
-      .update({ external_call_id: parsed[0].id })
-      .eq('id', callLogId);
-    console.log('[queue-executor] Stored external_call_id:', parsed[0].id);
-  }
-} catch {
-  // Response not JSON, ignore
-}
+// De:
+const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+
+// Para:
+const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
 ```
 
-Isso garante que:
-- A chamada volta como `ready` para ser processada no proximo tick
-- O operador e liberado imediatamente para receber outras chamadas
-- O lead volta para `pending` e pode ser atribuido novamente
-- Nenhuma mudanca de banco de dados e necessaria
+### Arquivo: `src/hooks/useCallPanel.ts` -- mutacao `cancelCall`
+
+Verificar que a mutacao `cancelCall` tambem libera o operador vinculado (limpa `current_call_id`, reseta status para `available`) e reverte o lead para `pending` quando uma chamada em `dialing` e cancelada. Isso garante que os operadores travados sejam liberados junto com o cancelamento.
+
+Com essa mudanca, o usuario pode selecionar todas as chamadas "Discando" e cancelar em massa, liberando os operadores e limpando a fila.
