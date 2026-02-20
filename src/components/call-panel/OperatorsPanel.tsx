@@ -204,21 +204,18 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
 
   const handleToggle = async (checked: boolean) => {
     if (!checked && operator.status === "on_call") {
-      // Force release via direct DB update when toggling OFF during on_call
+      // Force release via atomic RPC, then set offline
       if (!confirm("Operador está em ligação. Deseja forçar offline?")) return;
+      if (operator.currentCallId) {
+        await (supabase as any).rpc('release_operator', { p_call_id: operator.currentCallId, p_force: true });
+      }
       await (supabase as any)
         .from("call_operators")
-        .update({
-          status: "offline",
-          current_call_id: null,
-          current_campaign_id: null,
-          last_call_ended_at: new Date().toISOString(),
-        })
+        .update({ status: "offline" })
         .eq("id", operator.id);
       return;
     }
     if (!checked && operator.status === "cooldown") {
-      // Force offline during cooldown
       await (supabase as any)
         .from("call_operators")
         .update({ status: "offline" })
@@ -226,7 +223,6 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
       return;
     }
     if (checked && operator.status === "cooldown") {
-      // Force available during cooldown
       await (supabase as any)
         .from("call_operators")
         .update({ status: "available" })
