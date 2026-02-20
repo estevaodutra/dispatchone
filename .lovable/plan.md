@@ -1,36 +1,35 @@
 
-# Corrigir atribuicao de operador e status "Discando"
 
-## Problema
+# Adicionar opcao "Esvaziar Fila"
 
-1. O dialogo "Atribuir Operador em Massa" nao funciona para chamadas com status `dialing` porque o filtro so aceita `scheduled` e `ready`.
-2. Existem dezenas de chamadas travadas em "Discando" que precisam ser revertidas para "Agora!" (status `ready`).
+## Resumo
 
-## Solucao
+Adicionar um botao "Esvaziar Fila" no banner de status da aba Fila que remove todos os itens de uma vez -- tanto os registros da tabela `call_queue` (status `waiting`) quanto os `call_logs` com status `ready`. O botao tera um dialogo de confirmacao para evitar cliques acidentais.
 
-### 1. Arquivo: `src/pages/CallPanel.tsx` (linha 1067)
+## Alteracoes
 
-Expandir o filtro do dialogo de atribuicao de operador em massa para incluir `dialing` e `ringing`:
+### 1. Hook `useCallQueuePanel.ts` -- nova mutacao `clearQueue`
 
-```typescript
-// De:
-const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+Adicionar uma mutacao que:
+- Deleta todos os registros de `call_queue` com status `waiting` (filtrado por campanha se houver filtro ativo)
+- Atualiza todos os `call_logs` com status `ready` para `cancelled` (filtrado por campanha se houver filtro ativo)
+- Invalida os caches relevantes (`call-queue-panel`, `call-queue`)
 
-// Para:
-const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
-```
+### 2. Componente `QueueStatusBanner` em `CallPanel.tsx`
 
-Quando a chamada estiver em `dialing` ou `ringing`, alem de atribuir o operador, o sistema tambem reverte o status para `ready` (liberando o operador anterior se houver).
+- Adicionar prop `onClearQueue` e `isClearingQueue`
+- Adicionar um botao "Esvaziar Fila" com icone `Trash2` no banner
+- O botao abre um `AlertDialog` de confirmacao com mensagem "Tem certeza que deseja esvaziar toda a fila? Essa acao nao pode ser desfeita."
 
-### 2. Arquivo: `src/hooks/useCallPanel.ts` -- mutacao `bulkUpdateOperator`
+### 3. Integracao no componente principal `CallPanel`
 
-Atualizar a mutacao para que, ao processar chamadas em `dialing` ou `ringing`, tambem:
-- Reverta o `call_status` para `ready`
-- Limpe `started_at` e libere o operador anterior (reset `current_call_id` e status para `available`)
-- Reverta o lead para `pending`
+- Passar `clearQueue` e `isClearingQueue` do hook para o `QueueStatusBanner`
+- Exibir o botao somente quando houver itens na fila (`totalWaiting > 0`)
 
-### 3. Adicionar botao "Reverter para Agora!" no menu de acoes em massa
+## Detalhes tecnicos
 
-Adicionar uma acao no banner de selecao em massa que converte todas as chamadas `dialing` selecionadas para status `ready` de uma so vez, sem precisar passar pelo dialogo de operador. Isso permite limpar rapidamente todas as chamadas travadas.
+- A mutacao `clearQueue` recebera o `campaignFilter` opcional para limpar apenas a fila de uma campanha especifica ou todas
+- Para `call_queue`: usar `DELETE` com filtro `status = 'waiting'`
+- Para `call_logs` ready: usar `UPDATE` para `call_status = 'cancelled'` (nao deletar logs para manter historico)
+- O `AlertDialog` do shadcn/ui sera usado para a confirmacao, mantendo consistencia visual
 
-Isso resolve ambos os problemas: o dialogo de operador passa a funcionar para chamadas "Discando" e existe uma acao direta para reverter o status em massa.
