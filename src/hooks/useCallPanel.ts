@@ -226,7 +226,7 @@ export function useCallPanel(filters?: {
       if (entry?.leadId) {
         await (supabase as any)
           .from("call_leads")
-          .update({ status: "pending", assigned_operator_id: null })
+          .update({ status: "cancelled", assigned_operator_id: null })
           .eq("id", entry.leadId);
       }
     },
