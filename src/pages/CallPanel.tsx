@@ -715,6 +715,18 @@ export default function CallPanel() {
                   }} className="gap-1 bg-white/10 text-primary-foreground border-primary-foreground/30 hover:bg-white/20">
                     <Headset className="h-3.5 w-3.5" /> Operador
                   </Button>
+                  <Button size="sm" variant="secondary" onClick={async () => {
+                    const toRevert = paginatedEntries.filter(e => selectedIds.has(e.id) && ["dialing", "ringing"].includes(e.callStatus));
+                    if (toRevert.length === 0) {
+                      toast({ title: "Nenhuma chamada elegível", description: "Selecione chamadas com status 'Discando'." });
+                      return;
+                    }
+                    await bulkUpdateOperator({ callIds: toRevert.map(e => e.id), operatorId: null });
+                    setSelectedIds(new Set());
+                    toast({ title: "Revertidas", description: `${toRevert.length} chamadas revertidas para "Agora!".` });
+                  }} className="gap-1">
+                    <RefreshCw className="h-3.5 w-3.5" /> Reverter para Agora!
+                  </Button>
                   <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} className="text-primary-foreground hover:text-primary-foreground/80">
                     Limpar
                   </Button>
@@ -1064,7 +1076,7 @@ export default function CallPanel() {
         onSelectedChange={setBulkOperatorId}
         onClose={() => setBulkOperatorOpen(false)}
         onConfirm={async () => {
-          const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+          const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
           if (toUpdate.length === 0) return;
           const opId = bulkOperatorId === "auto" ? null : bulkOperatorId;
           await bulkUpdateOperator({ callIds: toUpdate.map(e => e.id), operatorId: opId });

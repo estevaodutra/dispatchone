@@ -266,17 +266,34 @@ export function useCallPanel(filters?: {
   const bulkUpdateOperatorMutation = useMutation({
     mutationFn: async ({ callIds, operatorId }: { callIds: string[]; operatorId: string | null }) => {
       for (const callId of callIds) {
+        const entry = entries.find((e) => e.id === callId);
+        const isStuck = entry && ["dialing", "ringing"].includes(entry.callStatus);
+
+        // If call is stuck in dialing/ringing, revert to ready and release old operator
+        const logUpdate: Record<string, unknown> = { operator_id: operatorId };
+        if (isStuck) {
+          logUpdate.call_status = "ready";
+          logUpdate.started_at = null;
+        }
+
         const { error } = await (supabase as any)
           .from("call_logs")
-          .update({ operator_id: operatorId })
+          .update(logUpdate)
           .eq("id", callId);
         if (error) throw error;
 
-        const entry = entries.find((e) => e.id === callId);
+        // Release old operator if stuck
+        if (isStuck && entry?.operatorId) {
+          await (supabase as any)
+            .from("call_operators")
+            .update({ status: "available", current_call_id: null, current_campaign_id: null })
+            .eq("id", entry.operatorId);
+        }
+
         if (entry?.leadId) {
           await (supabase as any)
             .from("call_leads")
-            .update({ assigned_operator_id: operatorId })
+            .update({ assigned_operator_id: operatorId, status: "pending" })
             .eq("id", entry.leadId);
         }
       }
