@@ -6,71 +6,6 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-function getBrasiliaDate(): Date {
-  const now = new Date();
-  const brasiliaOffset = -3 * 60; // UTC-3 in minutes
-  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
-  return new Date(utcMs + brasiliaOffset * 60000);
-}
-
-function getNextBusinessDay(brasiliaDate: Date): Date {
-  const dayOfWeek = brasiliaDate.getDay(); // 0=Sun, 5=Fri, 6=Sat
-  let daysToAdd: number;
-
-  if (dayOfWeek === 5) daysToAdd = 3;      // Fri -> Mon
-  else if (dayOfWeek === 6) daysToAdd = 2;  // Sat -> Mon
-  else if (dayOfWeek === 0) daysToAdd = 1;  // Sun -> Mon
-  else daysToAdd = 1;                        // Mon-Thu -> next day
-
-  const nextDay = new Date(brasiliaDate);
-  nextDay.setDate(brasiliaDate.getDate() + daysToAdd);
-  return nextDay;
-}
-
-function generateRandomScheduledFor(targetDate: Date): string {
-  const hour = Math.floor(Math.random() * 11) + 9; // 9 to 19
-  const minute = Math.floor(Math.random() * 60);    // 0 to 59
-
-  const year = targetDate.getFullYear();
-  const month = String(targetDate.getMonth() + 1).padStart(2, "0");
-  const day = String(targetDate.getDate()).padStart(2, "0");
-  const h = String(hour).padStart(2, "0");
-  const m = String(minute).padStart(2, "0");
-
-  // Return as Brasilia time (UTC-3)
-  return `${year}-${month}-${day}T${h}:${m}:00-03:00`;
-}
-
-function generateSameDayScheduledFor(brasiliaDate: Date): string {
-  // Schedule for now + 2 hours
-  const scheduled = new Date(brasiliaDate);
-  scheduled.setHours(brasiliaDate.getHours() + 2);
-  // Add some random minutes (0-30) to spread load
-  scheduled.setMinutes(brasiliaDate.getMinutes() + Math.floor(Math.random() * 30));
-
-  const year = scheduled.getFullYear();
-  const month = String(scheduled.getMonth() + 1).padStart(2, "0");
-  const day = String(scheduled.getDate()).padStart(2, "0");
-  const h = String(scheduled.getHours()).padStart(2, "0");
-  const m = String(scheduled.getMinutes()).padStart(2, "0");
-
-  return `${year}-${month}-${day}T${h}:${m}:00-03:00`;
-}
-
-function computeScheduledFor(): string {
-  const brasiliaDate = getBrasiliaDate();
-  const hourBRT = brasiliaDate.getHours();
-
-  // If before 20h BRT and now + 2h would be before 19h -> same day
-  if (hourBRT < 20 && (hourBRT + 2) < 19) {
-    return generateSameDayScheduledFor(brasiliaDate);
-  }
-
-  // Otherwise -> next business day with random time
-  const nextDay = getNextBusinessDay(brasiliaDate);
-  return generateRandomScheduledFor(nextDay);
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -91,10 +26,14 @@ Deno.serve(async (req) => {
       "not_found",
     ];
 
-    // Get all failed call logs that don't already have a rescheduled follow-up
+    // Get failed call logs with campaign retry config
     const { data: failedCalls, error: fetchError } = await supabase
       .from("call_logs")
-      .select("id, campaign_id, lead_id, operator_id, user_id, call_status")
+      .select(`
+        id, campaign_id, lead_id, operator_id, user_id, call_status,
+        attempt_number, max_attempts,
+        call_campaigns(retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id)
+      `)
       .in("call_status", failedStatuses);
 
     if (fetchError) {
@@ -109,6 +48,7 @@ Deno.serve(async (req) => {
     }
 
     let rescheduledCount = 0;
+    let exceededCount = 0;
     const errors: string[] = [];
 
     for (const call of failedCalls) {
@@ -126,94 +66,142 @@ Deno.serve(async (req) => {
           continue;
         }
 
-        // Check reschedule limit (max 3 attempts)
-        const { count: rescheduleCount } = await supabase
-          .from("call_logs")
-          .select("*", { count: "exact", head: true })
-          .eq("lead_id", call.lead_id)
-          .eq("campaign_id", call.campaign_id)
-          .ilike("call_status", "%_rescheduled");
+        // Get campaign retry config
+        const campaign = (call as any).call_campaigns;
+        const retryCount = campaign?.retry_count ?? 3;
+        const retryIntervalMinutes = campaign?.retry_interval_minutes ?? 30;
+        const retryExceededBehavior = campaign?.retry_exceeded_behavior ?? "mark_failed";
+        const retryExceededActionId = campaign?.retry_exceeded_action_id ?? null;
 
-        if ((rescheduleCount || 0) >= 3) {
-          console.log(`Lead ${call.lead_id}: reschedule limit reached (${rescheduleCount}/3), skipping`);
-          // Mark as rescheduled to avoid re-processing
+        const currentAttempt = (call as any).attempt_number ?? 1;
+        const maxAttempts = (call as any).max_attempts ?? retryCount;
+
+        // If retry_count is 0, no retries configured — mark as exceeded immediately
+        if (retryCount === 0) {
+          await supabase
+            .from("call_logs")
+            .update({ call_status: "max_attempts_exceeded" })
+            .eq("id", call.id);
+
+          if (call.lead_id) {
+            await supabase
+              .from("call_leads")
+              .update({ status: "failed" })
+              .eq("id", call.lead_id);
+          }
+          exceededCount++;
+          continue;
+        }
+
+        if (currentAttempt < retryCount) {
+          // Schedule next attempt using configured interval
+          const nextRetryAt = new Date(Date.now() + retryIntervalMinutes * 60 * 1000);
+
+          // Fetch active operators for round-robin
+          const { data: activeOperators } = await supabase
+            .from("call_operators")
+            .select("id")
+            .eq("user_id", call.user_id)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true });
+
+          let newOperatorId = call.operator_id;
+          if (activeOperators && activeOperators.length > 0) {
+            let minCount = Infinity;
+            for (const op of activeOperators) {
+              const { count } = await supabase
+                .from("call_logs")
+                .select("*", { count: "exact", head: true })
+                .eq("operator_id", op.id)
+                .eq("campaign_id", call.campaign_id);
+              const c = count || 0;
+              if (c < minCount) {
+                minCount = c;
+                newOperatorId = op.id;
+              }
+            }
+          }
+
+          // Create new scheduled call log for next attempt
+          const { error: insertError } = await supabase
+            .from("call_logs")
+            .insert({
+              campaign_id: call.campaign_id,
+              lead_id: call.lead_id,
+              operator_id: newOperatorId,
+              user_id: call.user_id,
+              call_status: "scheduled",
+              scheduled_for: nextRetryAt.toISOString(),
+              attempt_number: currentAttempt + 1,
+              max_attempts: retryCount,
+              next_retry_at: nextRetryAt.toISOString(),
+            });
+
+          if (insertError) {
+            errors.push(`Lead ${call.lead_id}: ${insertError.message}`);
+            continue;
+          }
+
+          // Update lead status to pending for next attempt
+          if (call.lead_id) {
+            await supabase
+              .from("call_leads")
+              .update({ status: "pending", assigned_operator_id: newOperatorId })
+              .eq("id", call.lead_id);
+          }
+
+          // Mark original call as rescheduled
           await supabase
             .from("call_logs")
             .update({ call_status: `${call.call_status}_rescheduled` })
             .eq("id", call.id);
-          continue;
-        }
 
-        // Fetch active operators for this campaign
-        const { data: activeOperators } = await supabase
-          .from("call_operators")
-          .select("id")
-          .eq("user_id", call.user_id)
-          .eq("is_active", true)
-          .order("created_at", { ascending: true });
+          rescheduledCount++;
+        } else {
+          // Exceeded retry limit
+          console.log(`Lead ${call.lead_id}: max attempts reached (${currentAttempt}/${retryCount})`);
 
-        // Pick operator with fewest assigned calls (round-robin)
-        let newOperatorId = call.operator_id;
-        if (activeOperators && activeOperators.length > 0) {
-          let minCount = Infinity;
-          for (const op of activeOperators) {
-            const { count } = await supabase
-              .from("call_logs")
-              .select("*", { count: "exact", head: true })
-              .eq("operator_id", op.id)
-              .eq("campaign_id", call.campaign_id);
-            const c = count || 0;
-            if (c < minCount) {
-              minCount = c;
-              newOperatorId = op.id;
+          await supabase
+            .from("call_logs")
+            .update({ call_status: "max_attempts_exceeded" })
+            .eq("id", call.id);
+
+          if (call.lead_id) {
+            await supabase
+              .from("call_leads")
+              .update({ status: "failed" })
+              .eq("id", call.lead_id);
+          }
+
+          // Execute action if configured
+          if (retryExceededBehavior === "execute_action" && retryExceededActionId) {
+            console.log(`Lead ${call.lead_id}: executing exceeded action ${retryExceededActionId}`);
+            // Invoke execute-action edge function (fire and forget)
+            try {
+              await supabase.functions.invoke("execute-message", {
+                body: {
+                  action_id: retryExceededActionId,
+                  lead_id: call.lead_id,
+                  campaign_id: call.campaign_id,
+                  trigger: "retry_exceeded",
+                },
+              });
+            } catch (e) {
+              console.error(`Failed to invoke execute-message for lead ${call.lead_id}:`, e);
             }
           }
+
+          exceededCount++;
         }
-
-        // Use smart scheduling: same day if possible, next business day otherwise
-        const scheduledFor = computeScheduledFor();
-
-        // Create new scheduled call_log with random operator
-        const { error: insertError } = await supabase
-          .from("call_logs")
-          .insert({
-            campaign_id: call.campaign_id,
-            lead_id: call.lead_id,
-            operator_id: newOperatorId,
-            user_id: call.user_id,
-            call_status: "scheduled",
-            scheduled_for: scheduledFor,
-          });
-
-        if (insertError) {
-          errors.push(`Lead ${call.lead_id}: ${insertError.message}`);
-          continue;
-        }
-
-        // Update lead status and assigned operator
-        if (call.lead_id) {
-          await supabase
-            .from("call_leads")
-            .update({ status: "pending", assigned_operator_id: newOperatorId })
-            .eq("id", call.lead_id);
-        }
-
-        // Mark original call as rescheduled so it won't be picked up again
-        await supabase
-          .from("call_logs")
-          .update({ call_status: `${call.call_status}_rescheduled` })
-          .eq("id", call.id);
-
-        rescheduledCount++;
       } catch (e) {
         errors.push(`Call ${call.id}: ${e.message}`);
       }
     }
 
-    const brasiliaDateForLog = getBrasiliaDate();
     const result = {
-      message: `Rescheduled ${rescheduledCount} calls (BRT: ${brasiliaDateForLog.toISOString().split("T")[0]})`,
+      message: `Rescheduled ${rescheduledCount} calls, ${exceededCount} exceeded limit`,
       rescheduled: rescheduledCount,
+      exceeded: exceededCount,
       total_failed: failedCalls.length,
       errors: errors.length > 0 ? errors : undefined,
     };

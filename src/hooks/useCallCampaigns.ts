@@ -13,6 +13,10 @@ export interface CallCampaign {
   queueExecutionEnabled: boolean;
   queueIntervalSeconds: number;
   queueUnavailableBehavior: "wait" | "pause";
+  retryCount: number;
+  retryIntervalMinutes: number;
+  retryExceededBehavior: "mark_failed" | "execute_action";
+  retryExceededActionId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -28,6 +32,10 @@ interface DbCallCampaign {
   queue_execution_enabled: boolean | null;
   queue_interval_seconds: number | null;
   queue_unavailable_behavior: string | null;
+  retry_count: number | null;
+  retry_interval_minutes: number | null;
+  retry_exceeded_behavior: string | null;
+  retry_exceeded_action_id: string | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -42,6 +50,10 @@ const transformDbToFrontend = (db: DbCallCampaign): CallCampaign => ({
   queueExecutionEnabled: db.queue_execution_enabled ?? false,
   queueIntervalSeconds: db.queue_interval_seconds ?? 30,
   queueUnavailableBehavior: (db.queue_unavailable_behavior as "wait" | "pause") || "wait",
+  retryCount: db.retry_count ?? 3,
+  retryIntervalMinutes: db.retry_interval_minutes ?? 30,
+  retryExceededBehavior: (db.retry_exceeded_behavior as "mark_failed" | "execute_action") || "mark_failed",
+  retryExceededActionId: db.retry_exceeded_action_id || null,
   createdAt: db.created_at || new Date().toISOString(),
   updatedAt: db.updated_at || new Date().toISOString(),
 });
@@ -108,6 +120,10 @@ export function useCallCampaigns() {
         queueExecutionEnabled: boolean;
         queueIntervalSeconds: number;
         queueUnavailableBehavior: string;
+        retryCount: number;
+        retryIntervalMinutes: number;
+        retryExceededBehavior: string;
+        retryExceededActionId: string | null;
       }>;
     }) => {
       const dbUpdates: Record<string, unknown> = {};
@@ -119,6 +135,10 @@ export function useCallCampaigns() {
       if (updates.queueExecutionEnabled !== undefined) dbUpdates.queue_execution_enabled = updates.queueExecutionEnabled;
       if (updates.queueIntervalSeconds !== undefined) dbUpdates.queue_interval_seconds = updates.queueIntervalSeconds;
       if (updates.queueUnavailableBehavior !== undefined) dbUpdates.queue_unavailable_behavior = updates.queueUnavailableBehavior;
+      if (updates.retryCount !== undefined) dbUpdates.retry_count = updates.retryCount;
+      if (updates.retryIntervalMinutes !== undefined) dbUpdates.retry_interval_minutes = updates.retryIntervalMinutes;
+      if (updates.retryExceededBehavior !== undefined) dbUpdates.retry_exceeded_behavior = updates.retryExceededBehavior;
+      if (updates.retryExceededActionId !== undefined) dbUpdates.retry_exceeded_action_id = updates.retryExceededActionId;
 
       const { data, error } = await (supabase as any)
         .from("call_campaigns")

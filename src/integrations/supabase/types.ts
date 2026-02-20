@@ -150,6 +150,10 @@ export type Database = {
           queue_execution_enabled: boolean | null
           queue_interval_seconds: number | null
           queue_unavailable_behavior: string | null
+          retry_count: number | null
+          retry_exceeded_action_id: string | null
+          retry_exceeded_behavior: string | null
+          retry_interval_minutes: number | null
           status: string | null
           updated_at: string | null
           user_id: string
@@ -164,6 +168,10 @@ export type Database = {
           queue_execution_enabled?: boolean | null
           queue_interval_seconds?: number | null
           queue_unavailable_behavior?: string | null
+          retry_count?: number | null
+          retry_exceeded_action_id?: string | null
+          retry_exceeded_behavior?: string | null
+          retry_interval_minutes?: number | null
           status?: string | null
           updated_at?: string | null
           user_id: string
@@ -178,6 +186,10 @@ export type Database = {
           queue_execution_enabled?: boolean | null
           queue_interval_seconds?: number | null
           queue_unavailable_behavior?: string | null
+          retry_count?: number | null
+          retry_exceeded_action_id?: string | null
+          retry_exceeded_behavior?: string | null
+          retry_interval_minutes?: number | null
           status?: string | null
           updated_at?: string | null
           user_id?: string
@@ -256,6 +268,7 @@ export type Database = {
       call_logs: {
         Row: {
           action_id: string | null
+          attempt_number: number | null
           audio_url: string | null
           call_status: string | null
           campaign_id: string | null
@@ -265,6 +278,8 @@ export type Database = {
           external_call_id: string | null
           id: string
           lead_id: string | null
+          max_attempts: number | null
+          next_retry_at: string | null
           notes: string | null
           operator_id: string | null
           scheduled_for: string | null
@@ -274,6 +289,7 @@ export type Database = {
         }
         Insert: {
           action_id?: string | null
+          attempt_number?: number | null
           audio_url?: string | null
           call_status?: string | null
           campaign_id?: string | null
@@ -283,6 +299,8 @@ export type Database = {
           external_call_id?: string | null
           id?: string
           lead_id?: string | null
+          max_attempts?: number | null
+          next_retry_at?: string | null
           notes?: string | null
           operator_id?: string | null
           scheduled_for?: string | null
@@ -292,6 +310,7 @@ export type Database = {
         }
         Update: {
           action_id?: string | null
+          attempt_number?: number | null
           audio_url?: string | null
           call_status?: string | null
           campaign_id?: string | null
@@ -301,6 +320,8 @@ export type Database = {
           external_call_id?: string | null
           id?: string
           lead_id?: string | null
+          max_attempts?: number | null
+          next_retry_at?: string | null
           notes?: string | null
           operator_id?: string | null
           scheduled_for?: string | null
