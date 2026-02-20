@@ -1,50 +1,100 @@
 
+# Bloqueio contra operador com multiplas chamadas simultaneas
 
-# Ajustar Retentativas Automaticas de Ligacoes
+## Problema
 
-## Contexto
+O operador "Mauro" aparece em 2 chamadas simultaneas com status "Discando". A protecao atual funciona apenas na tabela `call_operators` (indice unico em `current_call_id` e trigger `check_operator_not_busy`), mas a tabela `call_logs` nao tem nenhuma restricao -- permitindo que logs antigos fiquem "presos" em status ativo enquanto o operador recebe uma nova chamada.
 
-O sistema possui dois pontos de reagendamento:
-1. **`call-status`** (Edge Function) -- ja implementa corretamente a logica de mesmo dia vs proximo dia util, com horario 09-19 BRT
-2. **`reschedule-failed-calls`** (Edge Function) -- funciona como "varredura de seguranca" para pegar chamadas que escaparam do reagendamento inline, mas tem 3 problemas
+## Causa Raiz
 
-## Problemas a Corrigir
+Quando o `queue-executor` ou `dialNow` reserva um operador para uma nova chamada, o RPC `reserve_operator_for_call` atualiza `current_call_id` no operador, mas **nao cancela** logs anteriores desse operador que ainda estao em status ativo (`dialing`, `ringing`, etc).
 
-### 1. Sem cron automatico
-A funcao `reschedule-failed-calls` so executa quando chamada manualmente. Nao ha nenhum cron job configurado no banco.
+## Solucao: Defesa em 3 camadas
 
-**Correcao:** Criar um cron job via `pg_cron` + `pg_net` que dispara a funcao a cada 30 minutos durante o horario comercial.
+### Camada 1 -- RPC `reserve_operator_for_call` (prevencao)
 
-### 2. Sempre agenda para o proximo dia
-A funcao usa `getNextBusinessDay()` incondicionalmente, ignorando que falhas antes das 20h BRT poderiam ser reagendadas no mesmo dia (agora + 2h, se antes das 19h).
+Antes de reservar o operador, o RPC deve cancelar automaticamente qualquer `call_log` ativo anterior desse operador. Isso garante que no momento da reserva, nao exista log ativo concorrente.
 
-**Correcao:** Replicar a mesma logica de horario que ja existe no `call-status`:
-- Se antes das 20h BRT e `agora + 2h < 19h BRT` -> agenda para o mesmo dia
-- Senao -> proximo dia util
+Adicionar ao inicio da funcao:
+- `UPDATE call_logs SET call_status = 'cancelled' WHERE operator_id = v_operator.id AND call_status IN ('dialing','ringing','answered','in_progress') AND id != p_call_id`
 
-### 3. Faixa de horario 09-18 em vez de 09-19
-O `generateRandomScheduledFor` gera horas de 9 a 18 (`Math.random() * 10 + 9`), mas a especificacao e ate 19h.
+### Camada 2 -- Trigger na tabela `call_logs` (barreira de banco)
 
-**Correcao:** Alterar para `Math.random() * 11 + 9` (9 a 19 inclusive como hora de inicio).
+Criar um trigger `BEFORE INSERT OR UPDATE` em `call_logs` que impede atribuir um `operator_id` se ja existir outro log ativo para aquele operador. Isso funciona como rede de seguranca caso algum caminho de codigo fure a Camada 1.
 
-## Mudancas Tecnicas
+```text
+BEFORE INSERT OR UPDATE ON call_logs
+FOR EACH ROW
+  IF NEW.operator_id IS NOT NULL
+     AND NEW.call_status IN ('dialing','ringing','answered','in_progress')
+  THEN
+    IF EXISTS (
+      SELECT 1 FROM call_logs
+      WHERE operator_id = NEW.operator_id
+        AND id != NEW.id
+        AND call_status IN ('dialing','ringing','answered','in_progress')
+    ) THEN
+      -- Cancela os logs antigos em vez de bloquear
+      UPDATE call_logs
+      SET call_status = 'cancelled'
+      WHERE operator_id = NEW.operator_id
+        AND id != NEW.id
+        AND call_status IN ('dialing','ringing','answered','in_progress');
+    END IF;
+  END IF;
+```
 
-### Arquivo: `supabase/functions/reschedule-failed-calls/index.ts`
+O trigger opta por **cancelar automaticamente** os logs antigos (em vez de rejeitar o novo), porque rejeitar poderia travar a fila inteira se um log ficar preso.
 
-1. **`generateRandomScheduledFor`**: Trocar `Math.random() * 10` por `Math.random() * 11` para cobrir 09:00-19:59
-2. **Substituir chamada fixa a `getNextBusinessDay()`** por logica condicional:
-   - Calcular hora atual em BRT
-   - Se `hourBRT < 20` e `hourBRT + 2 < 19`, gerar timestamp para mesmo dia (agora + 2h)
-   - Senao, usar proximo dia util com horario aleatorio
-3. Manter toda a logica existente de limite de 3 tentativas, verificacao de duplicatas, e distribuicao de operadores
+### Camada 3 -- Frontend `dialNow` (prevencao no codigo)
 
-### Banco de Dados: Cron Job
+No hook `useCallPanel`, antes de chamar o RPC `reserve_operator_for_call`, adicionar uma query que cancela call_logs ativos do operador que sera reservado. Isso reduz a chance de conflito antes mesmo de chegar ao banco.
 
-Criar cron job usando `pg_cron` + `pg_net` para chamar `reschedule-failed-calls` a cada 30 minutos:
-- Horario: `*/30 * * * *` (a cada 30 min, 24h -- a funcao ja filtra por horario internamente)
-- Metodo: POST via `net.http_post` para a URL da Edge Function com o anon key
+## Arquivos Modificados
 
-### Pre-requisito
+1. **Migration SQL** -- Alterar `reserve_operator_for_call` e criar trigger `trg_enforce_single_active_call`
+2. **`src/hooks/useCallPanel.ts`** -- Adicionar limpeza preventiva no `dialNow`
+3. **`supabase/functions/queue-executor/index.ts`** -- Adicionar limpeza preventiva antes de cada reserva
 
-Habilitar as extensoes `pg_cron` e `pg_net` no banco (se nao estiverem ativas).
+## Detalhes Tecnicos
 
+### Migration SQL
+
+```text
+-- 1. Atualizar RPC reserve_operator_for_call
+--    Adicionar UPDATE call_logs SET cancelled apos selecionar o operador, antes de reservar
+
+-- 2. Criar trigger
+CREATE OR REPLACE FUNCTION enforce_single_active_call()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.operator_id IS NOT NULL
+     AND NEW.call_status IN ('dialing','ringing','answered','in_progress')
+  THEN
+    UPDATE call_logs
+    SET call_status = 'cancelled',
+        ended_at = NOW()
+    WHERE operator_id = NEW.operator_id
+      AND id != NEW.id
+      AND call_status IN ('dialing','ringing','answered','in_progress');
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_enforce_single_active_call
+  BEFORE INSERT OR UPDATE ON call_logs
+  FOR EACH ROW
+  EXECUTE FUNCTION enforce_single_active_call();
+```
+
+### Codigo Frontend/Edge
+
+Adicionar antes de cada chamada ao RPC:
+```text
+await supabase.from('call_logs')
+  .update({ call_status: 'cancelled', ended_at: new Date().toISOString() })
+  .eq('operator_id', operatorId)
+  .in('call_status', ['dialing','ringing','answered','in_progress'])
+  .neq('id', currentCallId);
+```
