@@ -1,26 +1,36 @@
 
-# Corrigir chamadas travadas em "Discando"
+# Corrigir atribuicao de operador e status "Discando"
 
 ## Problema
 
-Existem dezenas de chamadas travadas no status "Discando" (dialing) que nunca foram atendidas -- provavelmente de antes da correcao do `operator_unavailable`. O botao "Cancelar" em massa nao funciona para elas porque so aceita chamadas com status `scheduled` ou `ready`.
+1. O dialogo "Atribuir Operador em Massa" nao funciona para chamadas com status `dialing` porque o filtro so aceita `scheduled` e `ready`.
+2. Existem dezenas de chamadas travadas em "Discando" que precisam ser revertidas para "Agora!" (status `ready`).
 
 ## Solucao
 
-### Arquivo: `src/pages/CallPanel.tsx` (linha 689)
+### 1. Arquivo: `src/pages/CallPanel.tsx` (linha 1067)
 
-Expandir o filtro do botao "Cancelar" em massa para incluir tambem chamadas com status `dialing` e `ringing`:
+Expandir o filtro do dialogo de atribuicao de operador em massa para incluir `dialing` e `ringing`:
 
 ```typescript
 // De:
-const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
 
 // Para:
-const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
+const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
 ```
 
-### Arquivo: `src/hooks/useCallPanel.ts` -- mutacao `cancelCall`
+Quando a chamada estiver em `dialing` ou `ringing`, alem de atribuir o operador, o sistema tambem reverte o status para `ready` (liberando o operador anterior se houver).
 
-Verificar que a mutacao `cancelCall` tambem libera o operador vinculado (limpa `current_call_id`, reseta status para `available`) e reverte o lead para `pending` quando uma chamada em `dialing` e cancelada. Isso garante que os operadores travados sejam liberados junto com o cancelamento.
+### 2. Arquivo: `src/hooks/useCallPanel.ts` -- mutacao `bulkUpdateOperator`
 
-Com essa mudanca, o usuario pode selecionar todas as chamadas "Discando" e cancelar em massa, liberando os operadores e limpando a fila.
+Atualizar a mutacao para que, ao processar chamadas em `dialing` ou `ringing`, tambem:
+- Reverta o `call_status` para `ready`
+- Limpe `started_at` e libere o operador anterior (reset `current_call_id` e status para `available`)
+- Reverta o lead para `pending`
+
+### 3. Adicionar botao "Reverter para Agora!" no menu de acoes em massa
+
+Adicionar uma acao no banner de selecao em massa que converte todas as chamadas `dialing` selecionadas para status `ready` de uma so vez, sem precisar passar pelo dialogo de operador. Isso permite limpar rapidamente todas as chamadas travadas.
+
+Isso resolve ambos os problemas: o dialogo de operador passa a funcionar para chamadas "Discando" e existe uma acao direta para reverter o status em massa.
