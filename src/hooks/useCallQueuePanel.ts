@@ -105,10 +105,45 @@ export function useCallQueuePanel(campaignFilter?: string) {
     onError: () => toast({ title: "Erro ao remover da fila", variant: "destructive" }),
   });
 
+  const clearQueue = useMutation({
+    mutationFn: async (filter?: string) => {
+      // 1. Delete all waiting entries from call_queue
+      let deleteQuery = (supabase as any)
+        .from("call_queue")
+        .delete()
+        .eq("status", "waiting");
+      if (filter && filter !== "all") {
+        deleteQuery = deleteQuery.eq("campaign_id", filter);
+      }
+      const { error: deleteError } = await deleteQuery;
+      if (deleteError) throw deleteError;
+
+      // 2. Cancel all ready call_logs (preserve history)
+      let updateQuery = (supabase as any)
+        .from("call_logs")
+        .update({ call_status: "cancelled" })
+        .eq("call_status", "ready");
+      if (filter && filter !== "all") {
+        updateQuery = updateQuery.eq("campaign_id", filter);
+      }
+      const { error: updateError } = await updateQuery;
+      if (updateError) throw updateError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call-queue-panel"] });
+      queryClient.invalidateQueries({ queryKey: ["call-queue"] });
+      queryClient.invalidateQueries({ queryKey: ["call-panel"] });
+      toast({ title: "Fila esvaziada com sucesso" });
+    },
+    onError: () => toast({ title: "Erro ao esvaziar fila", variant: "destructive" }),
+  });
+
   return {
     entries,
     isLoading,
     totalWaiting: entries.length,
     removeFromQueue: removeFromQueue.mutateAsync,
+    clearQueue: clearQueue.mutateAsync,
+    isClearingQueue: clearQueue.isPending,
   };
 }
