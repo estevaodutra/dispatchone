@@ -199,20 +199,39 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
     ? ((operator.totalCallsAnswered / operator.totalCalls) * 100).toFixed(1)
     : null;
 
-  const isToggleDisabled = !operator.isActive || operator.status === "cooldown";
-  const isOnline = operator.status === "available";
+  const isToggleDisabled = !operator.isActive;
+  const isOnline = operator.status === "available" || operator.status === "on_call" || operator.status === "cooldown";
 
   const handleToggle = async (checked: boolean) => {
-    if (operator.status === "on_call") {
-      // Force clear call assignment via direct DB update
+    if (!checked && operator.status === "on_call") {
+      // Force release via direct DB update when toggling OFF during on_call
+      if (!confirm("Operador está em ligação. Deseja forçar offline?")) return;
       await (supabase as any)
         .from("call_operators")
         .update({
+          status: "offline",
           current_call_id: null,
           current_campaign_id: null,
           last_call_ended_at: new Date().toISOString(),
         })
         .eq("id", operator.id);
+      return;
+    }
+    if (!checked && operator.status === "cooldown") {
+      // Force offline during cooldown
+      await (supabase as any)
+        .from("call_operators")
+        .update({ status: "offline" })
+        .eq("id", operator.id);
+      return;
+    }
+    if (checked && operator.status === "cooldown") {
+      // Force available during cooldown
+      await (supabase as any)
+        .from("call_operators")
+        .update({ status: "available" })
+        .eq("id", operator.id);
+      return;
     }
     updateOperatorStatus({ id: operator.id, status: checked ? "available" : "offline" });
   };
@@ -273,12 +292,12 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
                 </TooltipTrigger>
                 <TooltipContent>
                   {isToggleDisabled
-                    ? operator.status === "on_call"
-                      ? "Em ligação — não pode ser alterado"
+                    ? "Operador inativo"
+                    : operator.status === "on_call"
+                      ? "Forçar offline (em ligação)"
                       : operator.status === "cooldown"
-                        ? "Em cooldown — aguarde"
-                        : "Operador inativo"
-                    : isOnline ? "Clique para ficar offline" : "Clique para ficar online"}
+                        ? "Forçar status (em cooldown)"
+                        : isOnline ? "Clique para ficar offline" : "Clique para ficar online"}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

@@ -427,75 +427,43 @@ export function useCallPanel(filters?: {
       const entry = entries.find((e) => e.id === callId);
       if (!entry) throw new Error("Ligação não encontrada");
 
-      // --- Always search for available operators (Auto mode or redirect) ---
-      let effectiveOperator: { id: string | null; name: string | null; extension: string | null } = {
-        id: null, name: null, extension: null,
-      };
+      // --- Reserve operator atomically via RPC ---
       let wasRedirected = false;
-      let needsOperatorSearch = true;
 
-      // If entry already has an operator, check if still available
-      if (entry.operatorId) {
-        const { data: currentOp } = await (supabase as any)
-          .from("call_operators")
-          .select("id, operator_name, extension, is_active, status")
-          .eq("id", entry.operatorId)
-          .maybeSingle();
+      // Try preferred operator first, then any available
+      const { data: reservation, error: rpcError } = await (supabase as any).rpc('reserve_operator_for_call', {
+        p_call_id: callId,
+        p_campaign_id: entry.campaignId,
+        p_preferred_operator_id: entry.operatorId || null,
+      });
 
-        const isAvailable = currentOp && currentOp.is_active === true && currentOp.status === 'available';
-        if (isAvailable) {
-          effectiveOperator = { id: currentOp.id, name: currentOp.operator_name, extension: currentOp.extension };
-          needsOperatorSearch = false;
-        } else {
-          wasRedirected = true;
-        }
+      if (rpcError || !reservation?.[0]?.success) {
+        // No operator available — queue the call as waiting_operator
+        await (supabase as any)
+          .from("call_logs")
+          .update({ call_status: "waiting_operator" })
+          .eq("id", callId);
+        return { queued: true };
       }
 
-      // Search for available operator (Auto or redirect)
-      if (needsOperatorSearch) {
-        const { data: activeOps } = await (supabase as any)
-          .from("call_operators")
-          .select("id, operator_name, extension")
-          .eq("is_active", true)
-          .eq("status", "available")
-          .order("created_at", { ascending: true });
+      const reservedOp = reservation[0];
+      const effectiveOperator = {
+        id: reservedOp.operator_id,
+        name: reservedOp.operator_name,
+        extension: reservedOp.operator_extension,
+      };
 
-        if (!activeOps || activeOps.length === 0) {
-          // No operator available — queue the call as waiting_operator
-          await (supabase as any)
-            .from("call_logs")
-            .update({ call_status: "waiting_operator" })
-            .eq("id", callId);
-          return { queued: true };
-        }
-
-        // Round-robin selection
-        const { data: queueState } = await (supabase as any)
-          .from("queue_execution_state")
-          .select("current_operator_index")
-          .eq("campaign_id", entry.campaignId)
-          .maybeSingle();
-
-        const currentIdx = queueState?.current_operator_index || 0;
-        const totalOps = activeOps.length;
-        const newOp = activeOps[currentIdx % totalOps];
-        const nextIdx = (currentIdx + 1) % totalOps;
-
-        if (queueState) {
-          await (supabase as any)
-            .from("queue_execution_state")
-            .update({ current_operator_index: nextIdx })
-            .eq("campaign_id", entry.campaignId);
-        }
-
-        effectiveOperator = { id: newOp.id, name: newOp.operator_name, extension: newOp.extension };
-        if (entry.operatorId) wasRedirected = true;
-
-        await (supabase as any).from("call_logs").update({ operator_id: newOp.id }).eq("id", callId);
-        if (entry.leadId) {
-          await (supabase as any).from("call_leads").update({ assigned_operator_id: newOp.id }).eq("id", entry.leadId);
-        }
+      // Check if operator was redirected (different from original)
+      if (entry.operatorId && reservedOp.operator_id !== entry.operatorId) {
+        wasRedirected = true;
       }
+
+      // Update call_log and lead with new operator
+      await (supabase as any).from("call_logs").update({ operator_id: reservedOp.operator_id }).eq("id", callId);
+      if (entry.leadId) {
+        await (supabase as any).from("call_leads").update({ assigned_operator_id: reservedOp.operator_id }).eq("id", entry.leadId);
+      }
+
 
       // Fetch webhook config for "calls" category
       const { data: webhookConfigs } = await (supabase as any)
@@ -572,11 +540,12 @@ export function useCallPanel(filters?: {
           // Response may not be JSON, that's fine
         }
       } catch (webhookError: any) {
-        // Revert status to "ready" on webhook failure
+        // Revert status to "ready" on webhook failure and release operator via RPC
         await (supabase as any)
           .from("call_logs")
           .update({ call_status: "ready", started_at: null })
           .eq("id", callId);
+        await (supabase as any).rpc('release_operator', { p_call_id: callId, p_force: true });
         throw new Error(`Falha ao acionar webhook: ${webhookError.message}`);
       }
 
