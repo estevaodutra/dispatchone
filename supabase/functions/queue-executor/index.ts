@@ -150,6 +150,25 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     console.log(`[queue-executor] Healed ${healedOps.length} stuck operators`);
   }
 
+  // 0b. Self-healing: revert orphan call_logs (dialing/ringing without operator)
+  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data: orphanLogs } = await supabase
+    .from('call_logs')
+    .select('id')
+    .eq('campaign_id', campaignId)
+    .in('call_status', ['dialing', 'ringing'])
+    .is('operator_id', null)
+    .lt('created_at', twoMinutesAgo);
+
+  if (orphanLogs?.length) {
+    const orphanIds = orphanLogs.map((l: any) => l.id);
+    await supabase
+      .from('call_logs')
+      .update({ call_status: 'ready', started_at: null })
+      .in('id', orphanIds);
+    console.log(`[queue-executor] Reverted ${orphanIds.length} orphan call_logs to ready`);
+  }
+
   // 1. Resolve cooldowns via RPC (atomic)
   const { data: resolvedOps } = await supabase.rpc('resolve_cooldowns');
   if (resolvedOps?.length) {
@@ -318,7 +337,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
       user_id: userId,
       campaign_id: campaignId,
       lead_id: nextLead.id,
-      call_status: 'dialing',
+      call_status: 'ready',
       scheduled_for: scheduledFor,
     })
     .select('id')
@@ -349,10 +368,10 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 
   const operator = reservation[0];
 
-  // 6. Update call log with operator
+  // 6. Update call log with operator + set to dialing
   await supabase
     .from('call_logs')
-    .update({ operator_id: operator.operator_id, started_at: new Date().toISOString() })
+    .update({ operator_id: operator.operator_id, call_status: 'dialing', started_at: new Date().toISOString() })
     .eq('id', callLog.id);
 
   // 7. Update lead status
