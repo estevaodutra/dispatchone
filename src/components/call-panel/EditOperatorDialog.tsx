@@ -13,6 +13,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Timer } from "lucide-react";
 import { format } from "date-fns";
 
 const quickIntervals = [15, 30, 45, 60, 90, 120];
@@ -85,7 +87,22 @@ export function EditOperatorDialog({ operator, onClose }: EditOperatorDialogProp
             <Separator />
 
             <div className="space-y-3">
-              <Label>Intervalo entre Ligações</Label>
+              <Label>Cooldown (Intervalo entre Ligações)</Label>
+              <p className="text-xs text-muted-foreground">
+                Tempo de descanso obrigatório entre chamadas. O operador fica indisponível durante este período após cada ligação.
+              </p>
+
+              {operator.status === "cooldown" && operator.lastCallEndedAt && (() => {
+                const intervalSec = intervalMode === "custom" ? customInterval : 30;
+                const elapsed = Math.floor((Date.now() - new Date(operator.lastCallEndedAt!).getTime()) / 1000);
+                const remaining = Math.max(0, intervalSec - elapsed);
+                return remaining > 0 ? (
+                  <Badge variant="secondary" className="gap-1 w-fit">
+                    <Timer className="h-3 w-3" />
+                    Em cooldown — {remaining}s restantes
+                  </Badge>
+                ) : null;
+              })()}
               <RadioGroup value={intervalMode} onValueChange={(v) => setIntervalMode(v as "default" | "custom")}>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="default" id="editDefault" />
