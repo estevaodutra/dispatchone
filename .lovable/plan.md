@@ -1,53 +1,40 @@
 
-# Popular a campanha "IPTV | Disparo de Ligacoes" com os leads existentes
+# Exibir Status de Execucao em Fila no Painel de Ligacoes
 
-## Situacao Atual
+## Objetivo
 
-A campanha "IPTV | Disparo de Ligacoes" (ID: `95c32f25-9bc8-4b6b-853a-ffc1e857ad50`) esta completamente vazia:
-- 0 registros em `call_leads`
-- 0 registros em `call_logs`
-- 0 registros em `call_queue`
+Atualmente, o banner de status da execucao em fila (campanhas rodando, pausadas, etc.) so aparece quando o operador abre a aba "Fila". O objetivo e tornar esse status visivel tambem na aba principal "Ligacoes", para que os gestores vejam imediatamente se ha campanhas em execucao automatica.
 
-Existem 934 leads na tabela `leads` do usuario. Esses leads precisam ser copiados para `call_leads` para aparecerem na aba de Leads da campanha.
+## O que muda
 
-## Plano
+### Arquivo: `src/pages/CallPanel.tsx`
 
-### 1. Inserir leads na tabela `call_leads`
+1. **Mover o `QueueStatusBanner` para fora da aba "Fila"** -- exibi-lo logo acima dos filtros/status tabs, dentro da aba "Ligacoes", mas **tambem** manter na aba "Fila".
 
-Executar uma query SQL que copia todos os leads do usuario para a campanha, usando INSERT com dados da tabela `leads`:
+2. Na pratica, o banner sera renderizado **logo apos os cards de metricas** (Agendadas, Em Andamento, Atendidas, Canceladas/Falhas) e **antes** da area de filtros, na aba "Ligacoes". Isso garante visibilidade imediata.
 
-```text
-INSERT INTO call_leads (campaign_id, user_id, phone, name, email, status)
-SELECT
-  '95c32f25-9bc8-4b6b-853a-ffc1e857ad50',
-  user_id,
-  phone,
-  name,
-  email,
-  'pending'
-FROM leads
-WHERE user_id = (SELECT user_id FROM call_campaigns WHERE id = '95c32f25-9bc8-4b6b-853a-ffc1e857ad50')
-ON CONFLICT (phone, campaign_id) DO NOTHING;
-```
+3. O banner so aparecera quando houver pelo menos uma campanha com estado ativo (running, paused, waiting_operator, waiting_cooldown) -- o mesmo comportamento atual.
 
-### 2. Atualizar `active_campaign_id` nos leads
+### Resultado visual
 
-Atualizar os leads na tabela `leads` para vincular a campanha de ligacao:
+O layout da aba "Ligacoes" ficara assim:
 
 ```text
-UPDATE leads
-SET active_campaign_id = '95c32f25-9bc8-4b6b-853a-ffc1e857ad50',
-    active_campaign_type = 'ligacao'
-WHERE user_id = (SELECT user_id FROM call_campaigns WHERE id = '95c32f25-9bc8-4b6b-853a-ffc1e857ad50');
++------------------------------------------+
+| Metricas (Agendadas, Em Andamento, ...)  |
++------------------------------------------+
+| [Banner] Em execucao - 1 executando      |
+|   1 disponivel  | Pausar | Buscar ops    |
++------------------------------------------+
+| Filtros + Status tabs                    |
++------------------------------------------+
+| Tabela de ligacoes                       |
++------------------------------------------+
 ```
-
-## Resultado Esperado
-
-Apos a execucao, os ~934 leads aparecerão na aba "Leads" da campanha "IPTV | Disparo de Ligacoes" com status "Pendente", prontos para serem discados.
 
 ## Detalhes Tecnicos
 
-- A constraint UNIQUE em `(phone, campaign_id)` garante que nao havera duplicatas
-- `ON CONFLICT DO NOTHING` ignora telefones duplicados silenciosamente
-- Os leads serao inseridos com status `pending`, permitindo posterior enfileiramento
-- A operacao sera feita via ferramenta de insercao do banco de dados (nao via migracao)
+- No componente `CallPanel`, dentro do `TabsContent value="calls"`, adicionar `<QueueStatusBanner ... />` entre o grid de metricas e a div de filtros (entre as linhas ~667 e ~669).
+- Reutilizar exatamente as mesmas props ja passadas na aba "Fila" (`queueSummary`, `operators`, `handleRefreshQueue`, etc.).
+- Nenhum componente novo sera criado -- e apenas uma linha adicional de JSX.
+- Nenhuma alteracao de banco de dados necessaria.
