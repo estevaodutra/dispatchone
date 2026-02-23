@@ -1,56 +1,39 @@
 
 
-# Selecionar todos os leads do filtro ao clicar no checkbox superior
+# Padronizar formatacao de telefone na pagina de Leads
 
-## Resumo
+## Problema
 
-Atualmente, o checkbox superior seleciona apenas os 20 leads da pagina atual. O comportamento desejado e que, quando houver filtros aplicados, o checkbox superior selecione automaticamente **todos os leads que correspondem ao filtro** (ex: todos os 933), nao apenas os da pagina visivel.
+A funcao `formatPhone` atual so reconhece numeros com 13 ou 11 digitos. Numeros com 12 digitos (ex: `557186476266` -- codigo pais + DDD + 8 digitos sem o 9) nao sao formatados, aparecendo crus na tabela.
 
-## Mudancas
+## Solucao
 
-### 1. `src/pages/Leads.tsx` -- funcao `toggleAll`
+Atualizar a funcao `formatPhone` em `src/pages/Leads.tsx` para cobrir todos os formatos de telefone brasileiro:
 
-Alterar a logica do checkbox superior para que, ao marcar, ele ative o modo `selectAllResults` automaticamente (selecionando todos os resultados do filtro), em vez de selecionar apenas os IDs da pagina atual.
+- **13 digitos** (55 + DDD + 9 digitos): `+55 (71) 98647-6266`
+- **12 digitos** (55 + DDD + 8 digitos): `+55 (48) 9811-9374`
+- **11 digitos** (DDD + 9 digitos): `(21) 95903-7496`
+- **10 digitos** (DDD + 8 digitos): `(21) 3456-7890`
+- Outros tamanhos: retorna o valor original
 
-- Ao marcar: setar `selectAllResults = true` e tambem marcar os leads visiveis na pagina (para feedback visual)
-- Ao desmarcar: limpar tudo (`selectedIds` e `selectAllResults`)
-
-### 2. `src/pages/Leads.tsx` -- estado do checkbox
-
-Atualizar a propriedade `checked` do checkbox superior para refletir o estado `selectAllResults` tambem, nao apenas a comparacao com `leads.length`.
-
-### 3. `src/components/leads/BulkActionsBar.tsx`
-
-Quando `selectAllResults` ja estiver ativo, esconder o botao "Selecionar todos os X" pois ja estao todos selecionados.
-
-## Detalhes tecnicos
-
-### toggleAll atualizado
+### Codigo atualizado
 
 ```text
-const toggleAll = () => {
-  if (selectAllResults || selectedIds.size === leads.length) {
-    // Desmarcar tudo
-    setSelectedIds(new Set());
-    setSelectAllResults(false);
-  } else {
-    // Selecionar todos os resultados do filtro
-    setSelectedIds(new Set(leads.map((l) => l.id)));
-    setSelectAllResults(true);
-  }
+const formatPhone = (phone: string) => {
+  const clean = phone.replace(/\D/g, "");
+  if (clean.length === 13)
+    return `+${clean.slice(0,2)} (${clean.slice(2,4)}) ${clean.slice(4,9)}-${clean.slice(9)}`;
+  if (clean.length === 12)
+    return `+${clean.slice(0,2)} (${clean.slice(2,4)}) ${clean.slice(4,8)}-${clean.slice(8)}`;
+  if (clean.length === 11)
+    return `(${clean.slice(0,2)}) ${clean.slice(2,7)}-${clean.slice(7)}`;
+  if (clean.length === 10)
+    return `(${clean.slice(0,2)}) ${clean.slice(2,6)}-${clean.slice(6)}`;
+  return phone;
 };
 ```
 
-### Checkbox checked
+### Arquivo modificado
 
-```text
-<Checkbox
-  checked={selectAllResults || (leads.length > 0 && selectedIds.size === leads.length)}
-  onCheckedChange={toggleAll}
-/>
-```
-
-### Arquivos modificados
-
-- `src/pages/Leads.tsx` (toggleAll, checkbox state)
+- `src/pages/Leads.tsx` (funcao `formatPhone`, linhas 142-147)
 
