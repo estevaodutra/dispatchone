@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useInstances } from "@/hooks/useInstances";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
+import { useGroupMembers } from "@/hooks/useGroupMembers";
 import { useLanguage } from "@/i18n/LanguageContext";
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { buildGroupPayload } from "@/lib/webhook-utils";
@@ -43,6 +44,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     isAdding, 
     isRemoving 
   } = useCampaignGroups(campaignId);
+  const { addMembersBulk } = useGroupMembers(campaignId || null);
   
   const [selectedInstance, setSelectedInstance] = useState<string>("");
   const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
@@ -139,6 +141,54 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     }
   };
 
+  const fetchAndImportMembers = async (groupJid: string, groupName: string) => {
+    const instance = instances?.find(i => i.id === selectedInstance);
+    if (!instance || !campaignId) return;
+
+    try {
+      const webhookUrl = getWebhookUrlForCategory("groups", configs);
+      const payload = buildGroupPayload({
+        action: "group.members",
+        instance: {
+          id: instance.id,
+          name: instance.name,
+          phone: instance.phoneNumber || "",
+          provider: instance.provider,
+          externalId: instance.idInstance || "",
+          externalToken: instance.tokenInstance || "",
+        },
+        campaign: { id: campaignId, name: "" },
+        group: { jid: groupJid },
+      });
+
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Falha ao buscar membros");
+
+      const data = await response.json();
+      const rawMembers = data.members || data.participants || data || [];
+      const membersList = Array.isArray(rawMembers) ? rawMembers : [];
+
+      if (membersList.length > 0) {
+        const membersToInsert = membersList.map((m: { phone?: string; id?: string; name?: string; isAdmin?: boolean; admin?: boolean }) => ({
+          phone: m.phone || m.id || "",
+          name: m.name,
+          isAdmin: m.isAdmin || m.admin || false,
+        })).filter((m: { phone: string }) => m.phone);
+
+        await addMembersBulk(membersToInsert);
+        toast.success(`${membersToInsert.length} membro(s) importados do grupo "${groupName}"`);
+      }
+    } catch (error) {
+      console.error(`Erro ao importar membros de ${groupName}:`, error);
+      toast.error(`Falha ao importar membros do grupo "${groupName}"`);
+    }
+  };
+
   const handleAddToCampaign = async () => {
     if (selectedGroups.length === 0 || !campaignId) return;
     
@@ -153,6 +203,12 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     try {
       await addGroups(groupsToAdd);
       setSelectedGroups([]);
+
+      // Buscar membros em background para cada grupo adicionado
+      toast.info("Buscando membros dos grupos...");
+      for (const group of groupsToAdd) {
+        await fetchAndImportMembers(group.jid, group.name);
+      }
     } catch (error) {
       // Error already handled by the hook
     }

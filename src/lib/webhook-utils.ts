@@ -177,6 +177,9 @@ export interface GroupPayload {
     id: string;
     name: string;
   };
+  group?: {
+    jid: string;
+  };
 }
 
 export function buildGroupPayload(params: {
@@ -193,6 +196,9 @@ export function buildGroupPayload(params: {
     id: string;
     name?: string;
   };
+  group?: {
+    jid: string;
+  };
 }): GroupPayload {
   return {
     action: params.action,
@@ -208,6 +214,11 @@ export function buildGroupPayload(params: {
       campaign: {
         id: params.campaign.id,
         name: params.campaign.name || "",
+      },
+    }),
+    ...(params.group && {
+      group: {
+        jid: params.group.jid,
       },
     }),
   };
