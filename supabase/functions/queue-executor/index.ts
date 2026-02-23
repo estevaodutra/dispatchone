@@ -222,15 +222,44 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     return { success: true, action: 'waiting', reason: 'No operator available', new_status: newStatus };
   }
 
-  // 3a. Check for existing ready call_logs (from bulk enqueue)
-  const { data: readyCallLog } = await supabase
-    .from('call_logs')
-    .select('id, lead_id, campaign_id')
-    .eq('campaign_id', campaignId)
-    .eq('call_status', 'ready')
-    .order('scheduled_for', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // 3a. Check for existing ready call_logs
+  // Priority: first try from priority campaigns, then normal
+  const { data: priorityCampaigns } = await supabase
+    .from('call_campaigns')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('is_priority', true)
+    .eq('status', 'active');
+
+  const priorityIds = (priorityCampaigns || []).map((c: any) => c.id);
+
+  let readyCallLog = null;
+
+  // Try priority campaigns first
+  if (priorityIds.length > 0) {
+    const { data } = await supabase
+      .from('call_logs')
+      .select('id, lead_id, campaign_id')
+      .in('campaign_id', priorityIds)
+      .eq('call_status', 'ready')
+      .order('scheduled_for', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    readyCallLog = data;
+  }
+
+  // If no priority ready, try current campaign
+  if (!readyCallLog) {
+    const { data } = await supabase
+      .from('call_logs')
+      .select('id, lead_id, campaign_id')
+      .eq('campaign_id', campaignId)
+      .eq('call_status', 'ready')
+      .order('scheduled_for', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    readyCallLog = data;
+  }
 
   if (readyCallLog) {
     // Get lead info
@@ -309,15 +338,32 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     };
   }
 
-  // 3b. Find next pending lead
-  const { data: nextLead } = await supabase
-    .from('call_leads')
-    .select('id, phone, name')
-    .eq('campaign_id', campaignId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  // 3b. Find next pending lead (priority campaigns first, then current)
+  let nextLead = null;
+
+  if (priorityIds.length > 0) {
+    const { data } = await supabase
+      .from('call_leads')
+      .select('id, phone, name, campaign_id')
+      .in('campaign_id', priorityIds)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    nextLead = data;
+  }
+
+  if (!nextLead) {
+    const { data } = await supabase
+      .from('call_leads')
+      .select('id, phone, name, campaign_id')
+      .eq('campaign_id', campaignId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    nextLead = data;
+  }
 
   if (!nextLead) {
     await supabase

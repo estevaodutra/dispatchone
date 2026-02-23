@@ -146,7 +146,9 @@ export type Database = {
           description: string | null
           dial_delay_minutes: number | null
           id: string
+          is_priority: boolean | null
           name: string
+          priority_position: number | null
           queue_execution_enabled: boolean | null
           queue_interval_seconds: number | null
           queue_unavailable_behavior: string | null
@@ -164,7 +166,9 @@ export type Database = {
           description?: string | null
           dial_delay_minutes?: number | null
           id?: string
+          is_priority?: boolean | null
           name: string
+          priority_position?: number | null
           queue_execution_enabled?: boolean | null
           queue_interval_seconds?: number | null
           queue_unavailable_behavior?: string | null
@@ -182,7 +186,9 @@ export type Database = {
           description?: string | null
           dial_delay_minutes?: number | null
           id?: string
+          is_priority?: boolean | null
           name?: string
+          priority_position?: number | null
           queue_execution_enabled?: boolean | null
           queue_interval_seconds?: number | null
           queue_unavailable_behavior?: string | null

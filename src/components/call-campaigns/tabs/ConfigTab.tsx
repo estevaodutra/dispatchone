@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Save, Users, Wifi, Phone, ArrowRight, RefreshCw, AlertTriangle } from "lucide-react";
+import { Save, Users, Wifi, Phone, ArrowRight, RefreshCw, AlertTriangle, Star } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 
 const RETRY_INTERVAL_OPTIONS = [
@@ -59,6 +59,8 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
   const [retryIntervalMinutes, setRetryIntervalMinutes] = useState(campaign.retryIntervalMinutes);
   const [retryExceededBehavior, setRetryExceededBehavior] = useState(campaign.retryExceededBehavior);
   const [retryExceededActionId, setRetryExceededActionId] = useState<string | null>(campaign.retryExceededActionId);
+  const [isPriority, setIsPriority] = useState(campaign.isPriority);
+  const [priorityPosition, setPriorityPosition] = useState(campaign.priorityPosition);
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
@@ -79,6 +81,8 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
           retryIntervalMinutes,
           retryExceededBehavior,
           retryExceededActionId,
+          isPriority,
+          priorityPosition,
         },
       });
     } finally {
@@ -98,7 +102,9 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
     retryCount !== campaign.retryCount ||
     retryIntervalMinutes !== campaign.retryIntervalMinutes ||
     retryExceededBehavior !== campaign.retryExceededBehavior ||
-    retryExceededActionId !== campaign.retryExceededActionId;
+    retryExceededActionId !== campaign.retryExceededActionId ||
+    isPriority !== campaign.isPriority ||
+    priorityPosition !== campaign.priorityPosition;
 
   return (
     <div className="space-y-6">
@@ -159,6 +165,46 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
             </Select>
           </div>
         </CardContent>
+      </Card>
+
+      {/* Priority */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+          <div className="space-y-1">
+            <CardTitle className="flex items-center gap-2">
+              <Star className="h-5 w-5 text-amber-500" />
+              Prioridade
+            </CardTitle>
+            <CardDescription>
+              Quando habilitado, as ligações desta campanha entram à frente na fila,
+              sendo posicionadas entre as próximas 5 ligações disponíveis.
+            </CardDescription>
+          </div>
+          <Switch
+            checked={isPriority}
+            onCheckedChange={setIsPriority}
+          />
+        </CardHeader>
+        {isPriority && (
+          <CardContent className="space-y-4 pt-4">
+            <div className="grid gap-2">
+              <Label htmlFor="priorityPosition">Posição na Fila (1-5)</Label>
+              <Input
+                id="priorityPosition"
+                type="number"
+                min={1}
+                max={5}
+                value={priorityPosition}
+                onChange={(e) => setPriorityPosition(Math.min(5, Math.max(1, Number(e.target.value) || 3)))}
+                placeholder="3"
+                className="max-w-[120px]"
+              />
+              <p className="text-xs text-muted-foreground">
+                Posição 1 = próxima ligação. Posição 5 = após 4 ligações.
+              </p>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       <Card>
