@@ -1475,6 +1475,11 @@ export type Database = {
           last_contact_at: string | null
           name: string | null
           phone: string
+          source_campaign_id: string | null
+          source_group_id: string | null
+          source_group_name: string | null
+          source_name: string | null
+          source_type: string | null
           status: string | null
           tags: string[] | null
           total_calls: number | null
@@ -1492,6 +1497,11 @@ export type Database = {
           last_contact_at?: string | null
           name?: string | null
           phone: string
+          source_campaign_id?: string | null
+          source_group_id?: string | null
+          source_group_name?: string | null
+          source_name?: string | null
+          source_type?: string | null
           status?: string | null
           tags?: string[] | null
           total_calls?: number | null
@@ -1509,6 +1519,11 @@ export type Database = {
           last_contact_at?: string | null
           name?: string | null
           phone?: string
+          source_campaign_id?: string | null
+          source_group_id?: string | null
+          source_group_name?: string | null
+          source_name?: string | null
+          source_type?: string | null
           status?: string | null
           tags?: string[] | null
           total_calls?: number | null
