@@ -95,9 +95,16 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
   const [newLead, setNewLead] = useState({ phone: "", name: "", email: "" });
   const [selectedLead, setSelectedLead] = useState<CallLead | null>(null);
 
+  const [bulkLimit, setBulkLimit] = useState<string>("");
+
   const bulkDialStatus = statusFilter || "pending";
   const bulkDialLabel = statusLabels[bulkDialStatus];
   const leadsCountForBulk = statusFilter ? leads.length : stats.pending;
+  const parsedLimit = bulkLimit ? parseInt(bulkLimit) : undefined;
+  const effectiveCount = parsedLimit ? Math.min(parsedLimit, leadsCountForBulk) : leadsCountForBulk;
+  const bulkButtonText = parsedLimit
+    ? `Discar ${effectiveCount} ${bulkDialLabel.toLowerCase()}`
+    : `Discar todos ${bulkDialLabel.toLowerCase()}`;
 
   const handleAddLead = async () => {
     if (!newLead.phone.trim()) return;
@@ -156,14 +163,25 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
         </Select>
         <div className="flex items-center gap-2">
           {queueExecutionEnabled && leadsCountForBulk > 0 && (
-            <Button
-              variant="outline"
-              onClick={() => setShowBulkConfirm(true)}
-              disabled={isBulkEnqueuing}
-            >
-              <PhoneCall className="mr-2 h-4 w-4" />
-              {isBulkEnqueuing ? "Enfileirando..." : `Discar todos ${bulkDialLabel.toLowerCase()}`}
-            </Button>
+            <>
+              <Input
+                type="number"
+                min={1}
+                max={leadsCountForBulk}
+                placeholder="Qtd"
+                value={bulkLimit}
+                onChange={(e) => setBulkLimit(e.target.value)}
+                className="w-[80px]"
+              />
+              <Button
+                variant="outline"
+                onClick={() => setShowBulkConfirm(true)}
+                disabled={isBulkEnqueuing}
+              >
+                <PhoneCall className="mr-2 h-4 w-4" />
+                {isBulkEnqueuing ? "Enfileirando..." : bulkButtonText}
+              </Button>
+            </>
           )}
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -382,7 +400,7 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
           <AlertDialogHeader>
             <AlertDialogTitle>Discar todos os leads</AlertDialogTitle>
             <AlertDialogDescription>
-              Você está prestes a enfileirar <strong>{leadsCountForBulk}</strong> leads com status
+              Você está prestes a enfileirar <strong>{effectiveCount}</strong> leads com status
               "<strong>{bulkDialLabel}</strong>" para discagem automática. A fila será iniciada imediatamente.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -390,7 +408,7 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={async () => {
-                await bulkEnqueueByStatus({ status: bulkDialStatus });
+                await bulkEnqueueByStatus({ status: bulkDialStatus, limit: parsedLimit });
                 setShowBulkConfirm(false);
                 navigate("/painel-ligacoes?tab=queue");
               }}

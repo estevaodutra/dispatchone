@@ -457,16 +457,22 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
   });
 
   const bulkEnqueueByStatusMutation = useMutation({
-    mutationFn: async ({ status }: { status: CallLeadStatus }) => {
+    mutationFn: async ({ status, limit }: { status: CallLeadStatus; limit?: number }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
 
       // Buscar leads com o status filtrado
-      const { data: matchingLeads, error: fetchErr } = await (supabase as any)
+      let leadsQuery = (supabase as any)
         .from("call_leads")
         .select("id, phone, name")
         .eq("campaign_id", campaignId)
         .eq("status", status);
+
+      if (limit) {
+        leadsQuery = leadsQuery.limit(limit);
+      }
+
+      const { data: matchingLeads, error: fetchErr } = await leadsQuery;
 
       if (fetchErr) throw fetchErr;
       if (!matchingLeads?.length) throw new Error("Nenhum lead encontrado com esse status");
