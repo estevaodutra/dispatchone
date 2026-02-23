@@ -477,7 +477,10 @@ export default function CallPanel() {
     search: searchQuery || undefined,
   });
 
-  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue } = useCallQueuePanel(campaignFilter);
+  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue } = useCallQueuePanel(
+    campaignFilter !== "all" ? campaignFilter : undefined,
+    searchQuery || undefined
+  );
   const queueSummary = useQueueExecutionSummary();
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
