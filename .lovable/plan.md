@@ -1,70 +1,56 @@
 
-# Adicionar Filtro de Grupo WhatsApp na Pagina de Leads
+
+# Selecionar todos os leads do filtro ao clicar no checkbox superior
 
 ## Resumo
 
-Quando o tipo "Grupo" estiver selecionado, exibir um novo dropdown ao lado dos filtros existentes listando os nomes reais dos grupos WhatsApp (extraidos de `source_group_name`). Ao selecionar um grupo, filtrar os leads por esse grupo especifico.
+Atualmente, o checkbox superior seleciona apenas os 20 leads da pagina atual. O comportamento desejado e que, quando houver filtros aplicados, o checkbox superior selecione automaticamente **todos os leads que correspondem ao filtro** (ex: todos os 933), nao apenas os da pagina visivel.
 
 ## Mudancas
 
-### 1. `src/hooks/useLeads.ts`
+### 1. `src/pages/Leads.tsx` -- funcao `toggleAll`
 
-- Adicionar campo `sourceGroupName` na interface `LeadFilters`
-- Aplicar filtro `.eq("source_group_name", filters.sourceGroupName)` na query quando presente
-- Adicionar uma nova query para buscar a lista distinta de `source_group_name` dos leads do usuario (para popular o dropdown)
+Alterar a logica do checkbox superior para que, ao marcar, ele ative o modo `selectAllResults` automaticamente (selecionando todos os resultados do filtro), em vez de selecionar apenas os IDs da pagina atual.
 
-### 2. `src/pages/Leads.tsx`
+- Ao marcar: setar `selectAllResults = true` e tambem marcar os leads visiveis na pagina (para feedback visual)
+- Ao desmarcar: limpar tudo (`selectedIds` e `selectAllResults`)
 
-- Adicionar estado `groupFilter` para o grupo selecionado
-- Passar `sourceGroupName` nos filtros quando `groupFilter` nao for "all"
-- Renderizar um novo `Select` dropdown condicional: so aparece quando `typeFilter === "grupos"` ou `sourceFilter === "whatsapp_group"`
-- O dropdown lista os nomes dos grupos vindos da nova query
-- Ao trocar o tipo para outro valor que nao "grupos", resetar o `groupFilter` para "all"
+### 2. `src/pages/Leads.tsx` -- estado do checkbox
 
-### 3. `src/pages/Leads.tsx` -- getSelectedIds
+Atualizar a propriedade `checked` do checkbox superior para refletir o estado `selectAllResults` tambem, nao apenas a comparacao com `leads.length`.
 
-- Adicionar o filtro `source_group_name` na query de selecao global para consistencia
+### 3. `src/components/leads/BulkActionsBar.tsx`
+
+Quando `selectAllResults` ja estiver ativo, esconder o botao "Selecionar todos os X" pois ja estao todos selecionados.
 
 ## Detalhes tecnicos
 
-### Nova query em useLeads
+### toggleAll atualizado
 
 ```text
-// Buscar nomes distintos de grupos
-const groupNamesQuery = useQuery({
-  queryKey: ["leads-group-names"],
-  queryFn: async () => {
-    const { data } = await supabase
-      .from("leads")
-      .select("source_group_name")
-      .not("source_group_name", "is", null)
-      .order("source_group_name");
-    // Extrair valores unicos
-    const names = [...new Set((data || []).map(d => d.source_group_name).filter(Boolean))];
-    return names as string[];
-  },
-});
+const toggleAll = () => {
+  if (selectAllResults || selectedIds.size === leads.length) {
+    // Desmarcar tudo
+    setSelectedIds(new Set());
+    setSelectAllResults(false);
+  } else {
+    // Selecionar todos os resultados do filtro
+    setSelectedIds(new Set(leads.map((l) => l.id)));
+    setSelectAllResults(true);
+  }
+};
 ```
 
-### Novo dropdown no filtro (condicional)
+### Checkbox checked
 
 ```text
-{(typeFilter === "grupos" || sourceFilter === "whatsapp_group") && (
-  <Select value={groupFilter} onValueChange={(v) => { setGroupFilter(v); setPage(1); }}>
-    <SelectTrigger className="w-[200px]">
-      <SelectValue placeholder="Grupo" />
-    </SelectTrigger>
-    <SelectContent>
-      <SelectItem value="all">Todos os grupos</SelectItem>
-      {groupNames.map(name => (
-        <SelectItem key={name} value={name}>{name}</SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
-)}
+<Checkbox
+  checked={selectAllResults || (leads.length > 0 && selectedIds.size === leads.length)}
+  onCheckedChange={toggleAll}
+/>
 ```
 
 ### Arquivos modificados
 
-- `src/hooks/useLeads.ts` (interface LeadFilters, query de filtro, query de nomes de grupos)
-- `src/pages/Leads.tsx` (estado groupFilter, dropdown condicional, filtro nos params)
+- `src/pages/Leads.tsx` (toggleAll, checkbox state)
+
