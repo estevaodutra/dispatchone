@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQueueExecution } from "@/hooks/useQueueExecution";
 import { useCallLeads } from "@/hooks/useCallLeads";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,6 +20,7 @@ const statusDisplay: Record<string, { label: string; color: string; description:
 };
 
 export function QueueControlPanel({ campaignId }: QueueControlPanelProps) {
+  const navigate = useNavigate();
   const {
     state,
     isLoading,
@@ -60,7 +62,7 @@ export function QueueControlPanel({ campaignId }: QueueControlPanelProps) {
             </Badge>
 
             {currentStatus === "stopped" && (
-              <Button size="sm" onClick={() => startQueue()} disabled={isStarting}>
+              <Button size="sm" onClick={async () => { await startQueue(); navigate("/painel-ligacoes?tab=queue"); }} disabled={isStarting}>
                 <Play className="h-3.5 w-3.5 mr-1" />
                 {isStarting ? "Iniciando..." : "Iniciar"}
               </Button>

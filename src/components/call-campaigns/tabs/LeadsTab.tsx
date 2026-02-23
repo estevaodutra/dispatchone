@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useCallLeads, CallLeadStatus } from "@/hooks/useCallLeads";
 import { useCallActions, CallActionType } from "@/hooks/useCallActions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +83,7 @@ const actionTypeLabels: Record<CallActionType, string> = {
 };
 
 export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTabProps) {
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<CallLeadStatus | undefined>();
   const { leads, stats, isLoading, addLead, deleteLead, bulkEnqueueByStatus, isBulkEnqueuing, isAdding } = useCallLeads(
     campaignId,
@@ -390,6 +392,7 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
               onClick={async () => {
                 await bulkEnqueueByStatus({ status: bulkDialStatus });
                 setShowBulkConfirm(false);
+                navigate("/painel-ligacoes?tab=queue");
               }}
             >
               Confirmar discagem

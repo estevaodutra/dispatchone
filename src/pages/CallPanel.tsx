@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -436,7 +437,10 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
 // ── Main Component ──
 
 export default function CallPanel() {
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState<string>(() =>
+    searchParams.get("tab") === "queue" ? "queue" : "all"
+  );
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -606,6 +610,14 @@ export default function CallPanel() {
   };
 
   const [panelTab, setPanelTab] = useState("calls");
+
+  useEffect(() => {
+    if (searchParams.get("tab")) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("tab");
+      setSearchParams(newParams, { replace: true });
+    }
+  }, []);
 
   return (
     <div className="space-y-6">
