@@ -27,6 +27,7 @@ export interface CallPanelEntry {
   audioUrl: string | null;
   attemptNumber: number;
   maxAttempts: number;
+  isPriority: boolean;
 }
 
 export interface CallPanelStats {
@@ -61,6 +62,7 @@ interface DbCallLogJoined {
   } | null;
   call_campaigns: {
     name: string;
+    is_priority: boolean | null;
   } | null;
   call_operators: {
     operator_name: string | null;
@@ -98,6 +100,7 @@ function transformEntry(db: DbCallLogJoined): CallPanelEntry {
     audioUrl: db.audio_url || null,
     attemptNumber: db.attempt_number ?? 1,
     maxAttempts: db.max_attempts ?? 1,
+    isPriority: db.call_campaigns?.is_priority ?? false,
   };
 }
 
@@ -117,7 +120,7 @@ export function useCallPanel(filters?: {
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
-        .select("*, call_leads(name, phone, attempts), call_campaigns(name), call_operators(operator_name, extension)")
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority), call_operators(operator_name, extension)")
         .order("created_at", { ascending: false })
         .limit(200);
 

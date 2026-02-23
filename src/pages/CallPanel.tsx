@@ -95,6 +95,7 @@ import {
   RefreshCw,
   MoreHorizontal,
   Bot,
+  Star,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
@@ -173,6 +174,9 @@ function sortByPriority(entries: CallPanelEntry[]): CallPanelEntry[] {
     const prioB = getPrio(catB, isNowB);
 
     if (prioA !== prioB) return prioA - prioB;
+
+    // Within same priority group, priority campaigns come first
+    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
 
     // Same priority group — sub-sort
     if (prioA === 0) {
@@ -852,7 +856,8 @@ export default function CallPanel() {
 
                         {/* Campanha */}
                         <TableCell className="hidden lg:table-cell py-2">
-                          <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
+                          <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
+                            {entry.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
                             {entry.campaignName || "—"}
                           </span>
                         </TableCell>

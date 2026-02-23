@@ -17,6 +17,8 @@ export interface CallCampaign {
   retryIntervalMinutes: number;
   retryExceededBehavior: "mark_failed" | "execute_action";
   retryExceededActionId: string | null;
+  isPriority: boolean;
+  priorityPosition: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +38,8 @@ interface DbCallCampaign {
   retry_interval_minutes: number | null;
   retry_exceeded_behavior: string | null;
   retry_exceeded_action_id: string | null;
+  is_priority: boolean | null;
+  priority_position: number | null;
   created_at: string | null;
   updated_at: string | null;
 }
@@ -54,6 +58,8 @@ const transformDbToFrontend = (db: DbCallCampaign): CallCampaign => ({
   retryIntervalMinutes: db.retry_interval_minutes ?? 30,
   retryExceededBehavior: (db.retry_exceeded_behavior as "mark_failed" | "execute_action") || "mark_failed",
   retryExceededActionId: db.retry_exceeded_action_id || null,
+  isPriority: db.is_priority ?? false,
+  priorityPosition: db.priority_position ?? 3,
   createdAt: db.created_at || new Date().toISOString(),
   updatedAt: db.updated_at || new Date().toISOString(),
 });
@@ -124,6 +130,8 @@ export function useCallCampaigns() {
         retryIntervalMinutes: number;
         retryExceededBehavior: string;
         retryExceededActionId: string | null;
+        isPriority: boolean;
+        priorityPosition: number;
       }>;
     }) => {
       const dbUpdates: Record<string, unknown> = {};
@@ -139,6 +147,8 @@ export function useCallCampaigns() {
       if (updates.retryIntervalMinutes !== undefined) dbUpdates.retry_interval_minutes = updates.retryIntervalMinutes;
       if (updates.retryExceededBehavior !== undefined) dbUpdates.retry_exceeded_behavior = updates.retryExceededBehavior;
       if (updates.retryExceededActionId !== undefined) dbUpdates.retry_exceeded_action_id = updates.retryExceededActionId;
+      if (updates.isPriority !== undefined) dbUpdates.is_priority = updates.isPriority;
+      if (updates.priorityPosition !== undefined) dbUpdates.priority_position = updates.priorityPosition;
 
       const { data, error } = await (supabase as any)
         .from("call_campaigns")

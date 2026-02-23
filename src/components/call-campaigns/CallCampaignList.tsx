@@ -31,6 +31,7 @@ import {
   Pause,
   FileEdit,
   Users,
+  Star,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -142,7 +143,10 @@ export function CallCampaignList({
               <CardHeader className="pb-2">
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
-                    <CardTitle className="text-base font-medium">
+                    <CardTitle className="text-base font-medium flex items-center gap-1.5">
+                      {campaign.isPriority && (
+                        <Star className="h-4 w-4 text-amber-500 fill-amber-500 shrink-0" />
+                      )}
                       {campaign.name}
                     </CardTitle>
                     {campaign.description && (
@@ -208,9 +212,16 @@ export function CallCampaignList({
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <Badge className={statusColors[campaign.status]}>
-                    {statusLabels[campaign.status]}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge className={statusColors[campaign.status]}>
+                      {statusLabels[campaign.status]}
+                    </Badge>
+                    {campaign.isPriority && (
+                      <Badge className="bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200 text-xs">
+                        PRIORIDADE
+                      </Badge>
+                    )}
+                  </div>
                   <span className="text-xs text-muted-foreground">
                     {format(new Date(campaign.createdAt), "dd MMM yyyy", { locale: ptBR })}
                   </span>
@@ -225,6 +236,12 @@ export function CallCampaignList({
                     <PhoneCall className="h-4 w-4" />
                     <span>0 ligações</span>
                   </div>
+                  {campaign.isPriority && (
+                    <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+                      <Star className="h-3.5 w-3.5" />
+                      <span>Posição: {campaign.priorityPosition}</span>
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
