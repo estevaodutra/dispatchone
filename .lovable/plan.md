@@ -1,80 +1,36 @@
 
-
-# Otimizar mecanismos de busca no Painel de Ligacoes
+# Padronizar formatacao de numeros de telefone
 
 ## Problema
 
-A busca por "6578" nao retorna resultados por dois motivos:
-
-1. **Aba "Fila"**: O hook `useCallQueuePanel` nao aplica nenhum filtro de busca. Os itens da fila sao exibidos sem considerar o campo de busca.
-2. **Aba "Chamadas"**: O hook `useCallPanel` faz a busca apenas no lado do cliente (client-side), sobre no maximo 200 registros retornados do banco. Se o lead com "6578" nao estiver entre esses 200, ele nunca sera encontrado. Alem disso, a busca por telefone usa `includes` simples, sem normalizar o numero (ex: remover "55", "+", etc.).
+A funcao `formatPhone` no Painel de Ligacoes (`CallPanel.tsx`) so trata numeros com 11 e 13 digitos. Numeros com 10 ou 12 digitos (ex: `553298366089`, `5531889774300`) sao exibidos sem formatacao. A pagina de Leads ja tem uma versao mais completa que trata 10, 11, 12 e 13 digitos.
 
 ## Solucao
 
-### 1. Adicionar filtro de busca na aba "Fila" (`src/hooks/useCallQueuePanel.ts`)
+Criar uma funcao utilitaria compartilhada em `src/lib/utils.ts` e reutiliza-la em todos os locais que formatam telefone.
 
-- Aceitar um parametro `searchQuery?: string` no hook.
-- Filtrar os resultados (client-side) por nome ou telefone do lead, usando busca normalizada.
-- Aplicar o filtro tanto nos `regularEntries` (call_queue) quanto nos `readyEntries` (call_logs com status ready).
+## Alteracoes
 
-### 2. Melhorar a busca no hook de chamadas (`src/hooks/useCallPanel.ts`)
+### 1. `src/lib/utils.ts` - Adicionar funcao compartilhada
 
-- Normalizar o termo de busca removendo caracteres nao numericos antes de comparar com o telefone.
-- Normalizar tambem o telefone do lead antes de comparar.
-- Isso permite que "6578" encontre "5511965780000" ou "+55 11 96578-0000".
+Adicionar a funcao `formatPhone` que cobre todos os tamanhos de numeros brasileiros:
 
-### 3. Passar `searchQuery` para o hook da fila (`src/pages/CallPanel.tsx`)
+- **13 digitos** (55 + DDD + 9 digitos): `+55 (18) 99620-7384`
+- **12 digitos** (55 + DDD + 8 digitos): `+55 (31) 3298-3660`
+- **11 digitos** (DDD + 9 digitos): `(18) 99620-7384`
+- **10 digitos** (DDD + 8 digitos): `(31) 3298-3660`
+- Outros tamanhos: retorna o valor original
 
-- Alterar a chamada de `useCallQueuePanel(campaignFilter)` para `useCallQueuePanel(campaignFilter, searchQuery)`.
+### 2. `src/pages/CallPanel.tsx` - Usar funcao compartilhada
 
-## Detalhes Tecnicos
+- Remover a funcao `formatPhone` local (linhas 106-117)
+- Importar `formatPhone` de `@/lib/utils`
 
-**`src/hooks/useCallQueuePanel.ts`** -- Adicionar filtragem:
-```text
-export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string) {
-  // ... fetch data as before ...
+### 3. `src/pages/Leads.tsx` - Usar funcao compartilhada
 
-  // After combining regularEntries + readyEntries:
-  let combined = [...regularEntries, ...readyEntries];
-
-  if (searchQuery) {
-    const s = searchQuery.toLowerCase();
-    const sDigits = s.replace(/\D/g, "");
-    combined = combined.filter(e => {
-      const nameMatch = e.leadName?.toLowerCase().includes(s);
-      const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
-      const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
-      return nameMatch || phoneMatch;
-    });
-  }
-
-  return combined;
-}
-```
-
-**`src/hooks/useCallPanel.ts`** -- Normalizar busca por telefone:
-```text
-if (filters?.search) {
-  const s = filters.search.toLowerCase();
-  const sDigits = s.replace(/\D/g, "");
-  results = results.filter((e) => {
-    const nameMatch = e.leadName?.toLowerCase().includes(s);
-    const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
-    const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
-    return nameMatch || phoneMatch;
-  });
-}
-```
-
-**`src/pages/CallPanel.tsx`** -- Passar searchQuery ao hook da fila:
-```text
-const { entries: queueEntries, ... } = useCallQueuePanel(
-  campaignFilter !== "all" ? campaignFilter : undefined,
-  searchQuery || undefined
-);
-```
+- Remover a funcao `formatPhone` local (linhas 142-149)
+- Importar `formatPhone` de `@/lib/utils`
 
 ## Resultado
 
-- Buscar "6578" vai encontrar qualquer lead cujo telefone contenha esses digitos, independente de formatacao ou codigo de pais.
-- A busca passa a funcionar tanto na aba "Chamadas" quanto na aba "Fila".
+Todos os numeros de telefone serao exibidos com formatacao consistente em toda a aplicacao, incluindo numeros com codigo de pais (55) e sem.
