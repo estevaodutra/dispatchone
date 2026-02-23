@@ -1,95 +1,53 @@
 
+# Popular a campanha "IPTV | Disparo de Ligacoes" com os leads existentes
 
-# Sistema de Prioridade para Campanhas de Ligacao
+## Situacao Atual
 
-## Visao Geral
+A campanha "IPTV | Disparo de Ligacoes" (ID: `95c32f25-9bc8-4b6b-853a-ffc1e857ad50`) esta completamente vazia:
+- 0 registros em `call_leads`
+- 0 registros em `call_logs`
+- 0 registros em `call_queue`
 
-Adicionar um toggle de prioridade nas campanhas de ligacao que permite posicionar as ligacoes a frente na fila. Campanhas prioritarias terao seus leads processados antes das campanhas normais pelo motor de execucao da fila.
+Existem 934 leads na tabela `leads` do usuario. Esses leads precisam ser copiados para `call_leads` para aparecerem na aba de Leads da campanha.
 
-## Mudancas Necessarias
+## Plano
 
-### 1. Migracao de Banco de Dados
+### 1. Inserir leads na tabela `call_leads`
 
-Adicionar 2 colunas na tabela `call_campaigns`:
+Executar uma query SQL que copia todos os leads do usuario para a campanha, usando INSERT com dados da tabela `leads`:
 
 ```text
-ALTER TABLE call_campaigns ADD COLUMN is_priority BOOLEAN DEFAULT false;
-ALTER TABLE call_campaigns ADD COLUMN priority_position INT DEFAULT 3;
+INSERT INTO call_leads (campaign_id, user_id, phone, name, email, status)
+SELECT
+  '95c32f25-9bc8-4b6b-853a-ffc1e857ad50',
+  user_id,
+  phone,
+  name,
+  email,
+  'pending'
+FROM leads
+WHERE user_id = (SELECT user_id FROM call_campaigns WHERE id = '95c32f25-9bc8-4b6b-853a-ffc1e857ad50')
+ON CONFLICT (phone, campaign_id) DO NOTHING;
 ```
 
-### 2. Hook `useCallCampaigns` (`src/hooks/useCallCampaigns.ts`)
+### 2. Atualizar `active_campaign_id` nos leads
 
-- Adicionar `isPriority: boolean` e `priorityPosition: number` ao tipo `CallCampaign`
-- Adicionar `is_priority` e `priority_position` ao tipo `DbCallCampaign`
-- Atualizar `transformDbToFrontend` para mapear os novos campos
-- Atualizar a mutacao `updateCampaign` para aceitar e converter `isPriority` e `priorityPosition`
+Atualizar os leads na tabela `leads` para vincular a campanha de ligacao:
 
-### 3. Configuracao da Campanha (`src/components/call-campaigns/tabs/ConfigTab.tsx`)
+```text
+UPDATE leads
+SET active_campaign_id = '95c32f25-9bc8-4b6b-853a-ffc1e857ad50',
+    active_campaign_type = 'ligacao'
+WHERE user_id = (SELECT user_id FROM call_campaigns WHERE id = '95c32f25-9bc8-4b6b-853a-ffc1e857ad50');
+```
 
-Adicionar um novo Card "Prioridade" entre "Configuracoes Gerais" e "Execucao em Fila":
+## Resultado Esperado
 
-- Switch para habilitar/desabilitar prioridade
-- Quando habilitado, mostrar campo numerico "Posicao na Fila" (1 a 5) com valor padrao 3
-- Texto explicativo: "Quando habilitado, as ligacoes desta campanha entram a frente na fila, sendo posicionadas entre as proximas 5 ligacoes disponiveis."
-- Incluir os novos campos no `handleSave` e `hasChanges`
-
-### 4. Lista de Campanhas (`src/components/call-campaigns/CallCampaignList.tsx`)
-
-- Mostrar icone de estrela antes do nome de campanhas prioritarias
-- Exibir badge "PRIORIDADE" ao lado do status
-- Mostrar a posicao configurada (ex: "Posicao: 3") nos detalhes do card
-
-### 5. Motor de Execucao da Fila (`supabase/functions/queue-executor/index.ts`)
-
-Modificar a logica de selecao do proximo lead na fila para considerar prioridade:
-
-- **Passo 3a (ready call_logs)**: Alterar a query para ordenar por `is_priority DESC, scheduled_for ASC`, buscando primeiro os call_logs de campanhas prioritarias. Para isso, fazer um JOIN com `call_campaigns` para verificar `is_priority`.
-
-- **Passo 3b (pending call_leads)**: Alterar a query para buscar primeiro leads de campanhas prioritarias. Usar uma abordagem em duas etapas: primeiro tentar buscar de campanhas prioritarias, depois de campanhas normais.
-
-A logica de posicionamento sera simplificada: em vez de manipular positions fisicas na fila, campanhas prioritarias simplesmente serao processadas antes na ordenacao da query.
-
-### 6. Painel de Ligacoes (`src/pages/CallPanel.tsx`)
-
-- Atualizar `sortByPriority` para considerar `is_priority` como sub-criterio dentro do grupo "AGORA/Agendada"
-- Exibir icone de estrela no nome da campanha na tabela quando a ligacao vem de campanha prioritaria
-
-### 7. Hook `useCallPanel` (`src/hooks/useCallPanel.ts`)
-
-- Adicionar campo `isPriority` ao tipo `CallPanelEntry`
-- Buscar `is_priority` da campanha vinculada na query de call_logs (via join com `call_campaigns`)
-- Passar o campo para a interface
+Apos a execucao, os ~934 leads aparecerão na aba "Leads" da campanha "IPTV | Disparo de Ligacoes" com status "Pendente", prontos para serem discados.
 
 ## Detalhes Tecnicos
 
-### Ordenacao no Queue Executor
-
-A query atual:
-```text
-.eq('call_status', 'ready')
-.order('scheduled_for', { ascending: true })
-```
-
-Sera substituida por uma abordagem que verifica primeiro se ha call_logs de campanhas prioritarias antes de processar as normais. Como o Supabase JS client nao suporta ORDER BY campo de tabela relacionada facilmente, a logica sera:
-
-1. Buscar a lista de `campaign_ids` prioritarios do usuario
-2. Tentar buscar um `ready` call_log de campanha prioritaria primeiro
-3. Se nao encontrar, buscar o proximo `ready` normal
-
-### Mesma logica para pending leads (3b):
-
-1. Buscar campanhas prioritarias ativas do usuario
-2. Tentar buscar lead pendente de campanha prioritaria primeiro
-3. Se nao encontrar, buscar o proximo pendente normal
-
-### Arquivos Modificados
-
-| Arquivo | Tipo de Mudanca |
-|---------|----------------|
-| Migracao SQL | 2 novas colunas em `call_campaigns` |
-| `src/hooks/useCallCampaigns.ts` | Novos campos no tipo e transformacao |
-| `src/components/call-campaigns/tabs/ConfigTab.tsx` | Card de Prioridade na UI |
-| `src/components/call-campaigns/CallCampaignList.tsx` | Badge e icone de prioridade |
-| `supabase/functions/queue-executor/index.ts` | Ordenacao por prioridade |
-| `src/pages/CallPanel.tsx` | Indicador visual de prioridade |
-| `src/hooks/useCallPanel.ts` | Campo isPriority no tipo |
+- A constraint UNIQUE em `(phone, campaign_id)` garante que nao havera duplicatas
+- `ON CONFLICT DO NOTHING` ignora telefones duplicados silenciosamente
+- Os leads serao inseridos com status `pending`, permitindo posterior enfileiramento
+- A operacao sera feita via ferramenta de insercao do banco de dados (nao via migracao)
