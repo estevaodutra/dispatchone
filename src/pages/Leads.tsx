@@ -6,6 +6,11 @@ import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
 import { CampaignOption } from "@/components/leads/ImportLeadsDialog";
 import { PageHeader } from "@/components/dispatch/PageHeader";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useQueryClient } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import { MetricCard } from "@/components/dispatch/MetricCard";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,6 +38,7 @@ import {
   Menu,
   Download,
   Upload,
+  RefreshCw,
   Tag,
   Phone,
   Trash2,
@@ -41,10 +47,13 @@ import {
 } from "lucide-react";
 
 export default function Leads() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Dialogs
   const [createOpen, setCreateOpen] = useState(false);
@@ -101,15 +110,61 @@ export default function Leads() {
     return phone;
   };
 
+  const handleSync = async () => {
+    if (!user) return;
+    setIsSyncing(true);
+    try {
+      const { data: allMembers } = await supabase
+        .from("group_members")
+        .select("phone, name, group_campaign_id")
+        .eq("status", "active");
+
+      const validMembers = allMembers?.filter(m => !m.phone.includes("-group")) || [];
+
+      const leadRecords = validMembers.map(m => ({
+        user_id: user.id,
+        phone: m.phone,
+        name: m.name || null,
+        tags: ["grupo"],
+        active_campaign_id: m.group_campaign_id,
+        active_campaign_type: "grupos",
+        status: "active" as const,
+      }));
+
+      for (let i = 0; i < leadRecords.length; i += 500) {
+        const batch = leadRecords.slice(i, i + 500);
+        await supabase.from("leads").upsert(batch, {
+          onConflict: "phone,user_id",
+          ignoreDuplicates: false,
+        });
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
+
+      toast.success(`${validMembers.length} leads sincronizados com sucesso.`);
+    } catch {
+      toast.error("Erro ao sincronizar leads.");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Leads"
         description="Consulte, crie, modifique ou remova seus leads"
         actions={
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> Novo Lead
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleSync} disabled={isSyncing} className="gap-2">
+              <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+              Sincronizar
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" /> Novo Lead
+            </Button>
+          </div>
         }
       />
 
