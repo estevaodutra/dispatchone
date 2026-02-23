@@ -1,40 +1,72 @@
 
-# Exibir Status de Execucao em Fila no Painel de Ligacoes
+# Navegar para aba "Fila" do Painel ao iniciar execucao em fila
 
 ## Objetivo
 
-Atualmente, o banner de status da execucao em fila (campanhas rodando, pausadas, etc.) so aparece quando o operador abre a aba "Fila". O objetivo e tornar esse status visivel tambem na aba principal "Ligacoes", para que os gestores vejam imediatamente se ha campanhas em execucao automatica.
+Quando o usuario clicar em "Iniciar" (QueueControlPanel) ou "Discar todos pendente" (LeadsTab) dentro de uma campanha de ligacao, o sistema deve redirecionar automaticamente para o Painel de Ligacoes (`/painel-ligacoes`) com a aba "Fila" ja selecionada.
 
-## O que muda
+## Abordagem
 
-### Arquivo: `src/pages/CallPanel.tsx`
+Usar `useNavigate` do React Router com um query parameter (ex: `?tab=queue`) para comunicar ao Painel de Ligacoes qual aba deve estar ativa ao carregar.
 
-1. **Mover o `QueueStatusBanner` para fora da aba "Fila"** -- exibi-lo logo acima dos filtros/status tabs, dentro da aba "Ligacoes", mas **tambem** manter na aba "Fila".
+## Alteracoes
 
-2. Na pratica, o banner sera renderizado **logo apos os cards de metricas** (Agendadas, Em Andamento, Atendidas, Canceladas/Falhas) e **antes** da area de filtros, na aba "Ligacoes". Isso garante visibilidade imediata.
+### 1. `src/pages/CallPanel.tsx`
 
-3. O banner so aparecera quando houver pelo menos uma campanha com estado ativo (running, paused, waiting_operator, waiting_cooldown) -- o mesmo comportamento atual.
+- Importar `useSearchParams` do `react-router-dom`
+- No `useState` do `statusFilter`, verificar se existe um parametro `tab=queue` na URL
+- Se existir, inicializar `statusFilter` como `"queue"` em vez de `"all"`
+- Limpar o parametro da URL apos consumir (para nao persistir em navegacoes futuras)
 
-### Resultado visual
+### 2. `src/components/call-campaigns/QueueControlPanel.tsx`
 
-O layout da aba "Ligacoes" ficara assim:
+- Importar `useNavigate` do `react-router-dom`
+- No callback do botao "Iniciar", apos chamar `startQueue()`, navegar para `/painel-ligacoes?tab=queue`
 
-```text
-+------------------------------------------+
-| Metricas (Agendadas, Em Andamento, ...)  |
-+------------------------------------------+
-| [Banner] Em execucao - 1 executando      |
-|   1 disponivel  | Pausar | Buscar ops    |
-+------------------------------------------+
-| Filtros + Status tabs                    |
-+------------------------------------------+
-| Tabela de ligacoes                       |
-+------------------------------------------+
-```
+### 3. `src/components/call-campaigns/tabs/LeadsTab.tsx`
+
+- Importar `useNavigate` do `react-router-dom`
+- No callback de confirmacao do bulk enqueue (apos `bulkEnqueueByStatus`), navegar para `/painel-ligacoes?tab=queue`
 
 ## Detalhes Tecnicos
 
-- No componente `CallPanel`, dentro do `TabsContent value="calls"`, adicionar `<QueueStatusBanner ... />` entre o grid de metricas e a div de filtros (entre as linhas ~667 e ~669).
-- Reutilizar exatamente as mesmas props ja passadas na aba "Fila" (`queueSummary`, `operators`, `handleRefreshQueue`, etc.).
-- Nenhum componente novo sera criado -- e apenas uma linha adicional de JSX.
-- Nenhuma alteracao de banco de dados necessaria.
+**CallPanel.tsx** - Leitura do parametro:
+```text
+const [searchParams, setSearchParams] = useSearchParams();
+const initialTab = searchParams.get("tab") === "queue" ? "queue" : "all";
+const [statusFilter, setStatusFilter] = useState(initialTab);
+
+useEffect(() => {
+  if (searchParams.get("tab")) {
+    searchParams.delete("tab");
+    setSearchParams(searchParams, { replace: true });
+  }
+}, []);
+```
+
+**QueueControlPanel.tsx** - Navegacao apos iniciar:
+```text
+const navigate = useNavigate();
+
+// No onClick do botao Iniciar:
+onClick={async () => {
+  await startQueue();
+  navigate("/painel-ligacoes?tab=queue");
+}}
+```
+
+**LeadsTab.tsx** - Navegacao apos enfileirar:
+```text
+const navigate = useNavigate();
+
+// No AlertDialogAction do bulk enqueue:
+onClick={async () => {
+  await bulkEnqueueByStatus({ status: bulkDialStatus });
+  setShowBulkConfirm(false);
+  navigate("/painel-ligacoes?tab=queue");
+}}
+```
+
+## Resultado
+
+Ao iniciar a execucao ou enfileirar leads em massa, o usuario sera automaticamente levado ao Painel de Ligacoes com a aba "Fila" visivel, onde pode acompanhar o progresso em tempo real.
