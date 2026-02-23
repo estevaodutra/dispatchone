@@ -1,59 +1,39 @@
 
-# Auto-importar membros ao vincular grupo a campanha
+# Adicionar botao "Listar Membros" na aba Membros
 
 ## Resumo
 
-Quando um grupo for vinculado a uma campanha (clicando "Adicionar a Campanha"), o sistema vai automaticamente:
-1. Enviar um webhook para `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` pedindo a lista de membros do grupo
-2. Aguardar a resposta com os dados dos membros
-3. Inserir automaticamente os membros na tabela `group_members` vinculados a campanha
-
-## Fluxo
-
-```text
-Usuario clica "Adicionar a Campanha"
-       |
-       v
-Salva grupo(s) na tabela campaign_groups (ja existe)
-       |
-       v
-Para cada grupo adicionado, envia POST para:
-  https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent
-  com payload: { action: "group.members", instance: {...}, group: { jid: "..." } }
-       |
-       v
-Recebe resposta com lista de membros (phone, name, isAdmin, etc.)
-       |
-       v
-Insere membros na tabela group_members via addMembersBulk
-       |
-       v
-Toast de sucesso com contagem
-```
+Adicionar um botao "Listar Membros" na barra de acoes da aba Membros que, ao ser clicado, busca os grupos vinculados a campanha, envia uma requisicao para o webhook `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` pedindo a lista de membros de cada grupo, e insere os resultados na tabela `group_members`.
 
 ## Arquivo modificado
 
-**`src/components/group-campaigns/tabs/GroupsListTab.tsx`**
+**`src/components/group-campaigns/tabs/MembersTab.tsx`**
 
-Mudancas:
-- Importar `useGroupMembers` hook
-- Apos `addGroups(groupsToAdd)` ter sucesso em `handleAddToCampaign`, iterar sobre os grupos adicionados e para cada um:
-  - Enviar POST para `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` com action `group.members`, dados da instancia e o JID do grupo
-  - Parsear a resposta (array de membros com phone/name/isAdmin)
-  - Chamar `addMembersBulk` para inserir os membros no banco
-- Mostrar feedback ao usuario (toast com quantidade de membros importados ou erro)
-- O processo de buscar membros sera feito em background apos vincular o grupo, sem bloquear a UI (toast de "buscando membros..." seguido de resultado)
+### Mudancas:
 
-## Detalhes tecnicos
+1. Importar `useCampaignGroups` e `useInstances` para obter os grupos vinculados e dados da instancia
+2. Importar `buildGroupPayload` de `webhook-utils`
+3. Adicionar estado `isFetchingMembers` para controlar loading do botao
+4. Criar funcao `handleFetchMembers` que:
+   - Busca os grupos vinculados (via `useCampaignGroups`)
+   - Para cada grupo, envia POST para `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` com action `group.members`, dados da instancia e JID do grupo
+   - Parseia a resposta (array de membros com phone/name/isAdmin)
+   - Chama `addMembersBulk` para inserir no banco
+   - Mostra toast com contagem total de membros importados
+5. Adicionar botao "Listar Membros" (com icone `RefreshCw`) ao lado dos botoes existentes (antes do "Importar CSV"), desabilitado quando nao ha grupos vinculados ou quando esta carregando
 
-O payload enviado ao webhook seguira o padrao existente do `buildGroupPayload`:
+### Detalhes tecnicos
+
+O payload enviado ao webhook:
 ```text
 {
   action: "group.members",
   instance: { id, name, phone, provider, externalId, externalToken },
   group: { jid: "120363319799859760-group" },
-  campaign: { id: "...", name: "" }
+  campaign: { id: "...", name: "..." }
 }
 ```
 
-A resposta esperada e um array de objetos com ao menos `phone` (e opcionalmente `name`, `isAdmin`). O codigo vai tratar formatos flexiveis como `data.members`, `data.participants`, ou o array direto.
+A resposta esperada e um array de membros. O codigo vai tentar normalizar formatos flexiveis (`data.members`, `data.participants`, ou array direto), extraindo `phone`, `name` e `isAdmin` de cada membro.
+
+O endpoint fixo sera `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent` conforme solicitado pelo usuario.
