@@ -1,73 +1,53 @@
 
 
-# Corrigir parsing da resposta do webhook de membros
+# Sincronizar membros de grupo como leads na pagina /leads
 
-## Problema
+## Resumo
 
-A resposta do webhook retorna um array de objetos, onde cada objeto representa um grupo e contem um campo `participants` com a lista de membros. O codigo atual tenta acessar `data.members` ou `data.participants` diretamente, mas como `data` e um array, essas propriedades sao `undefined` e o fallback `data` retorna o array de grupos em vez dos participantes.
-
-Formato real da resposta:
-```text
-[
-  {
-    "phone": "120363319799859760-group",
-    "subject": "Nome do Grupo",
-    "participants": [
-      { "phone": "5511999999999", "isAdmin": false, "isSuperAdmin": false },
-      ...
-    ]
-  }
-]
-```
+Atualmente, quando membros sao importados de grupos via webhook, eles sao salvos apenas na tabela `group_members`. O usuario quer que esses membros tambem aparecam na pagina `/leads`, ou seja, precisam ser criados como registros na tabela `leads`.
 
 ## Solucao
 
-Atualizar a logica de parsing em dois arquivos para:
-1. Verificar se `data` e um array
-2. Se for, extrair `participants` do primeiro elemento (ou iterar todos)
-3. Filtrar phones que contem "-group" (sao JIDs de grupo, nao membros)
-4. Mapear `isSuperAdmin` como admin tambem
+Modificar o hook `useGroupMembers` para que, alem de inserir na tabela `group_members`, tambem crie (ou atualize) registros na tabela `leads` com os mesmos dados de telefone/nome. Isso sera feito no `addMembersBulk` e no `addMember`.
 
 ## Arquivos modificados
 
-### 1. `src/components/group-campaigns/tabs/MembersTab.tsx`
+### 1. `src/hooks/useGroupMembers.ts`
 
-Na funcao `handleFetchMembers` (linhas 117-130), substituir a logica de parsing:
+**Na mutacao `addMembersBulkMutation`** (apos inserir em `group_members`):
+- Para cada membro inserido, fazer um upsert na tabela `leads` usando o telefone como chave (ja existe constraint de unicidade `phone + user_id`)
+- Usar `supabase.from("leads").upsert(...)` com `onConflict: "phone,user_id"` para evitar duplicatas
+- Atribuir `active_campaign_id = groupCampaignId` e `active_campaign_type = "grupos"` para vincular o lead a campanha
+- Adicionar tag automatica "grupo" para identificar a origem
 
-```text
--- DE:
-const rawMembers = data.members || data.participants || data || [];
-const membersList = Array.isArray(rawMembers) ? rawMembers : [];
+**Na mutacao `addMemberMutation`** (membro individual):
+- Mesma logica: apos inserir em `group_members`, fazer upsert em `leads`
 
--- PARA:
-// Resposta e um array de objetos de grupo, cada um com "participants"
-let membersList: any[] = [];
-if (Array.isArray(data)) {
-  for (const item of data) {
-    if (item.participants && Array.isArray(item.participants)) {
-      membersList.push(...item.participants);
-    }
-  }
-} else if (data.participants) {
-  membersList = data.participants;
-} else if (data.members) {
-  membersList = data.members;
-}
-```
+**Invalidar queries de leads** apos sucesso:
+- Adicionar `queryClient.invalidateQueries({ queryKey: ["leads"] })` e `queryClient.invalidateQueries({ queryKey: ["leads-stats"] })`
 
-Tambem atualizar o mapeamento para filtrar JIDs de grupo e incluir `isSuperAdmin`:
+### Detalhes tecnicos
+
+Codigo do upsert em leads (dentro de addMembersBulk):
 
 ```text
-const membersToInsert = membersList
-  .filter(m => m.phone && !m.phone.includes("-group"))
-  .map(m => ({
-    phone: m.phone,
-    name: m.name || undefined,
-    isAdmin: m.isAdmin || m.isSuperAdmin || false,
-  }));
+const leadRecords = members.map((m) => ({
+  user_id: user.id,
+  phone: m.phone,
+  name: m.name || null,
+  tags: ["grupo"],
+  active_campaign_id: groupCampaignId,
+  active_campaign_type: "grupos",
+  status: "active",
+}));
+
+await supabase
+  .from("leads")
+  .upsert(leadRecords, { onConflict: "phone,user_id", ignoreDuplicates: false });
 ```
 
-### 2. `src/components/group-campaigns/tabs/GroupsListTab.tsx`
-
-Na funcao `fetchAndImportMembers` (linhas 172-181), aplicar a mesma correcao de parsing com a mesma logica acima.
+Isso garante que:
+- Novos membros criam leads automaticamente
+- Membros que ja existem como leads sao atualizados com a campanha atual
+- A pagina /leads mostra todos os contatos da plataforma, incluindo os importados de grupos
 
