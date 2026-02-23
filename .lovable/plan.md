@@ -1,63 +1,68 @@
 
-
-# Corrigir erro ao adicionar leads em massa a uma campanha
+# Corrigir leads nao aparecendo na campanha de ligacao
 
 ## Problema
 
-Ao selecionar todos os 933 leads filtrados e tentar adicionar a uma campanha de ligacao, ocorre o erro "Erro ao adicionar a campanha". Isso acontece porque o Supabase tem limites no tamanho de queries com `.in("id", ids)` quando ha muitos IDs (centenas ou milhares).
+Quando o usuario adiciona leads a uma campanha de ligacao pela pagina de Leads (acao "Adicionar a Campanha"), o sistema so atualiza a tabela `leads` (campo `active_campaign_id`). Porem, a aba "Leads" da campanha de ligacao consulta a tabela `call_leads`, que e uma tabela separada. Como nenhum registro e inserido em `call_leads`, os leads nao aparecem na campanha.
 
 ## Solucao
 
-Modificar a mutacao `bulkAddToCampaign` em `src/hooks/useLeads.ts` para processar os IDs em lotes (batches) de 200, evitando o limite do Supabase.
+Modificar a mutacao `bulkAddToCampaign` em `src/hooks/useLeads.ts` para que, quando o tipo de campanha for `ligacao`, alem de atualizar a tabela `leads`, tambem insira os registros correspondentes na tabela `call_leads`.
 
 ## Mudancas
 
 ### `src/hooks/useLeads.ts` -- mutacao `bulkAddToCampaign`
 
-1. Ao verificar leads existentes (`skipExisting`), buscar em lotes de 200
-2. Ao fazer o `update`, processar em lotes de 200
-3. Aplicar a mesma logica de batching para `bulkDelete`, `bulkAddTags` e `bulkRemoveTags` que tambem usam `.in("id", ids)`
+Apos atualizar os leads na tabela `leads`, verificar se `campaignType === "ligacao"`. Se sim:
 
-### Codigo atualizado (bulkAddToCampaign)
+1. Buscar os dados (phone, name, email) dos leads atualizados em lotes de 200
+2. Inserir cada lead na tabela `call_leads` com status `pending`, usando upsert para evitar duplicatas (conflito em `campaign_id` + `phone`)
+3. Invalidar tambem a query `call_leads` para que a aba de Leads da campanha atualize
+
+### Logica adicional
 
 ```text
-const bulkAddToCampaign = useMutation({
-  mutationFn: async ({ ids, campaignId, campaignType, skipExisting }) => {
-    let toUpdate = ids;
-    if (skipExisting) {
-      const existingIds = new Set<string>();
-      for (let i = 0; i < ids.length; i += 200) {
-        const batch = ids.slice(i, i + 200);
-        const { data } = await supabase
-          .from("leads").select("id").in("id", batch)
-          .eq("active_campaign_id", campaignId);
-        (data || []).forEach(e => existingIds.add(e.id));
-      }
-      toUpdate = ids.filter(id => !existingIds.has(id));
-    }
-    if (toUpdate.length === 0) return { added: 0, skipped: ids.length };
-    for (let i = 0; i < toUpdate.length; i += 200) {
-      const batch = toUpdate.slice(i, i + 200);
-      const { error } = await supabase
-        .from("leads")
-        .update({ active_campaign_id: campaignId, active_campaign_type: campaignType })
-        .in("id", batch);
-      if (error) throw error;
-    }
-    return { added: toUpdate.length, skipped: ids.length - toUpdate.length };
-  },
-  ...
-});
+// Apos o update em leads, se for campanha de ligacao:
+if (campaignType === "ligacao") {
+  // Buscar dados dos leads atualizados
+  const leadsData = [];
+  for (let i = 0; i < toUpdate.length; i += 200) {
+    const batch = toUpdate.slice(i, i + 200);
+    const { data } = await supabase
+      .from("leads")
+      .select("id, phone, name, email")
+      .in("id", batch);
+    leadsData.push(...(data || []));
+  }
+
+  // Inserir em call_leads (upsert)
+  const { data: { user } } = await supabase.auth.getUser();
+  for (let i = 0; i < leadsData.length; i += 200) {
+    const batch = leadsData.slice(i, i + 200);
+    const rows = batch.map(l => ({
+      campaign_id: campaignId,
+      user_id: user.id,
+      phone: l.phone,
+      name: l.name,
+      email: l.email,
+      lead_id: l.id,
+      status: "pending",
+    }));
+    await supabase.from("call_leads").upsert(rows, {
+      onConflict: "campaign_id,phone"
+    });
+  }
+}
 ```
 
-### Mesma logica de batching para:
+### Invalidacao de cache
 
-- `bulkDelete` -- deletar em lotes de 200
-- `bulkAddTags` -- buscar e atualizar em lotes de 200
-- `bulkRemoveTags` -- buscar e atualizar em lotes de 200
-- `getSelectedIds` em `Leads.tsx` -- buscar IDs em lotes (ja esta sem limite, mas verificar)
+Adicionar no `onSuccess`:
+```text
+queryClient.invalidateQueries({ queryKey: ["call_leads"] });
+queryClient.invalidateQueries({ queryKey: ["call_leads_stats"] });
+```
 
 ### Arquivo modificado
 
-- `src/hooks/useLeads.ts` (4 mutacoes com batching)
-
+- `src/hooks/useLeads.ts` (mutacao `bulkAddToCampaign`)
