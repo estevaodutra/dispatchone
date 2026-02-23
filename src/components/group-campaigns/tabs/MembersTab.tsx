@@ -1,5 +1,8 @@
 import { useState, useRef } from "react";
 import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
+import { useCampaignGroups } from "@/hooks/useCampaignGroups";
+import { useInstances } from "@/hooks/useInstances";
+import { buildGroupPayload } from "@/lib/webhook-utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,9 +44,11 @@ import {
   UserCheck,
   UserX,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { toast } from "sonner";
 
 interface MembersTabProps {
   campaignId: string;
@@ -52,16 +57,91 @@ interface MembersTabProps {
 export function MembersTab({ campaignId }: MembersTabProps) {
   const { members, stats, isLoading, addMember, addMembersBulk, removeMember, isAdding } = useGroupMembers(campaignId);
   
+  const { linkedGroups } = useCampaignGroups(campaignId);
+  const { instances } = useInstances();
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newMemberPhone, setNewMemberPhone] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
+  const [isFetchingMembers, setIsFetchingMembers] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredMembers = members.filter((m) =>
     m.phone.includes(searchTerm) ||
     m.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleFetchMembers = async () => {
+    if (!linkedGroups.length) {
+      toast.error("Nenhum grupo vinculado a esta campanha.");
+      return;
+    }
+
+    setIsFetchingMembers(true);
+    let totalImported = 0;
+
+    try {
+      for (const group of linkedGroups) {
+        const instance = instances?.find(i => i.id === group.instanceId);
+        if (!instance) continue;
+
+        const payload = buildGroupPayload({
+          action: "group.members",
+          instance: {
+            id: instance.id,
+            name: instance.name,
+            phone: instance.phoneNumber || "",
+            provider: instance.provider,
+            externalId: instance.idInstance || "",
+            externalToken: instance.tokenInstance || "",
+          },
+          campaign: { id: campaignId, name: "" },
+          group: { jid: group.groupJid },
+        });
+
+        const response = await fetch(
+          "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
+
+        if (!response.ok) {
+          console.error(`Falha ao buscar membros do grupo ${group.groupName}`);
+          continue;
+        }
+
+        const data = await response.json();
+        const rawMembers = data.members || data.participants || data || [];
+        const membersList = Array.isArray(rawMembers) ? rawMembers : [];
+
+        if (membersList.length > 0) {
+          const membersToInsert = membersList.map((m: { phone?: string; id?: string; name?: string; isAdmin?: boolean; admin?: boolean }) => ({
+            phone: m.phone || m.id || "",
+            name: m.name,
+            isAdmin: m.isAdmin || m.admin || false,
+          })).filter((m: { phone: string }) => m.phone);
+
+          await addMembersBulk(membersToInsert);
+          totalImported += membersToInsert.length;
+        }
+      }
+
+      if (totalImported > 0) {
+        toast.success(`${totalImported} membro(s) importado(s) com sucesso!`);
+      } else {
+        toast.info("Nenhum membro novo encontrado.");
+      }
+    } catch (error) {
+      console.error("Erro ao buscar membros:", error);
+      toast.error("Falha ao buscar membros. Tente novamente.");
+    } finally {
+      setIsFetchingMembers(false);
+    }
+  };
 
   const handleAddMember = async () => {
     await addMember({ phone: newMemberPhone, name: newMemberName || undefined });
@@ -207,6 +287,19 @@ export function MembersTab({ campaignId }: MembersTabProps) {
               </CardDescription>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchMembers}
+                disabled={isFetchingMembers || !linkedGroups.length}
+              >
+                {isFetchingMembers ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                Listar Membros
+              </Button>
               <input
                 ref={fileInputRef}
                 type="file"
