@@ -666,6 +666,11 @@ export default function CallPanel() {
         <MetricCard icon={<XCircle className="h-5 w-5 text-destructive" />} label="Canceladas / Falhas" value={stats.cancelled + stats.failed} />
       </div>
 
+      {/* Queue Status Banner (visible in Calls tab) */}
+      {queueSummary.globalStatus !== "stopped" && (
+        <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
+      )}
+
       {/* Filters & Status */}
       <div className="space-y-3">
       <div className="flex flex-wrap gap-3">
