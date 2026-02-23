@@ -1,68 +1,95 @@
 
-# Corrigir leads nao aparecendo na campanha de ligacao
 
-## Problema
+# Sistema de Prioridade para Campanhas de Ligacao
 
-Quando o usuario adiciona leads a uma campanha de ligacao pela pagina de Leads (acao "Adicionar a Campanha"), o sistema so atualiza a tabela `leads` (campo `active_campaign_id`). Porem, a aba "Leads" da campanha de ligacao consulta a tabela `call_leads`, que e uma tabela separada. Como nenhum registro e inserido em `call_leads`, os leads nao aparecem na campanha.
+## Visao Geral
 
-## Solucao
+Adicionar um toggle de prioridade nas campanhas de ligacao que permite posicionar as ligacoes a frente na fila. Campanhas prioritarias terao seus leads processados antes das campanhas normais pelo motor de execucao da fila.
 
-Modificar a mutacao `bulkAddToCampaign` em `src/hooks/useLeads.ts` para que, quando o tipo de campanha for `ligacao`, alem de atualizar a tabela `leads`, tambem insira os registros correspondentes na tabela `call_leads`.
+## Mudancas Necessarias
 
-## Mudancas
+### 1. Migracao de Banco de Dados
 
-### `src/hooks/useLeads.ts` -- mutacao `bulkAddToCampaign`
-
-Apos atualizar os leads na tabela `leads`, verificar se `campaignType === "ligacao"`. Se sim:
-
-1. Buscar os dados (phone, name, email) dos leads atualizados em lotes de 200
-2. Inserir cada lead na tabela `call_leads` com status `pending`, usando upsert para evitar duplicatas (conflito em `campaign_id` + `phone`)
-3. Invalidar tambem a query `call_leads` para que a aba de Leads da campanha atualize
-
-### Logica adicional
+Adicionar 2 colunas na tabela `call_campaigns`:
 
 ```text
-// Apos o update em leads, se for campanha de ligacao:
-if (campaignType === "ligacao") {
-  // Buscar dados dos leads atualizados
-  const leadsData = [];
-  for (let i = 0; i < toUpdate.length; i += 200) {
-    const batch = toUpdate.slice(i, i + 200);
-    const { data } = await supabase
-      .from("leads")
-      .select("id, phone, name, email")
-      .in("id", batch);
-    leadsData.push(...(data || []));
-  }
-
-  // Inserir em call_leads (upsert)
-  const { data: { user } } = await supabase.auth.getUser();
-  for (let i = 0; i < leadsData.length; i += 200) {
-    const batch = leadsData.slice(i, i + 200);
-    const rows = batch.map(l => ({
-      campaign_id: campaignId,
-      user_id: user.id,
-      phone: l.phone,
-      name: l.name,
-      email: l.email,
-      lead_id: l.id,
-      status: "pending",
-    }));
-    await supabase.from("call_leads").upsert(rows, {
-      onConflict: "campaign_id,phone"
-    });
-  }
-}
+ALTER TABLE call_campaigns ADD COLUMN is_priority BOOLEAN DEFAULT false;
+ALTER TABLE call_campaigns ADD COLUMN priority_position INT DEFAULT 3;
 ```
 
-### Invalidacao de cache
+### 2. Hook `useCallCampaigns` (`src/hooks/useCallCampaigns.ts`)
 
-Adicionar no `onSuccess`:
+- Adicionar `isPriority: boolean` e `priorityPosition: number` ao tipo `CallCampaign`
+- Adicionar `is_priority` e `priority_position` ao tipo `DbCallCampaign`
+- Atualizar `transformDbToFrontend` para mapear os novos campos
+- Atualizar a mutacao `updateCampaign` para aceitar e converter `isPriority` e `priorityPosition`
+
+### 3. Configuracao da Campanha (`src/components/call-campaigns/tabs/ConfigTab.tsx`)
+
+Adicionar um novo Card "Prioridade" entre "Configuracoes Gerais" e "Execucao em Fila":
+
+- Switch para habilitar/desabilitar prioridade
+- Quando habilitado, mostrar campo numerico "Posicao na Fila" (1 a 5) com valor padrao 3
+- Texto explicativo: "Quando habilitado, as ligacoes desta campanha entram a frente na fila, sendo posicionadas entre as proximas 5 ligacoes disponiveis."
+- Incluir os novos campos no `handleSave` e `hasChanges`
+
+### 4. Lista de Campanhas (`src/components/call-campaigns/CallCampaignList.tsx`)
+
+- Mostrar icone de estrela antes do nome de campanhas prioritarias
+- Exibir badge "PRIORIDADE" ao lado do status
+- Mostrar a posicao configurada (ex: "Posicao: 3") nos detalhes do card
+
+### 5. Motor de Execucao da Fila (`supabase/functions/queue-executor/index.ts`)
+
+Modificar a logica de selecao do proximo lead na fila para considerar prioridade:
+
+- **Passo 3a (ready call_logs)**: Alterar a query para ordenar por `is_priority DESC, scheduled_for ASC`, buscando primeiro os call_logs de campanhas prioritarias. Para isso, fazer um JOIN com `call_campaigns` para verificar `is_priority`.
+
+- **Passo 3b (pending call_leads)**: Alterar a query para buscar primeiro leads de campanhas prioritarias. Usar uma abordagem em duas etapas: primeiro tentar buscar de campanhas prioritarias, depois de campanhas normais.
+
+A logica de posicionamento sera simplificada: em vez de manipular positions fisicas na fila, campanhas prioritarias simplesmente serao processadas antes na ordenacao da query.
+
+### 6. Painel de Ligacoes (`src/pages/CallPanel.tsx`)
+
+- Atualizar `sortByPriority` para considerar `is_priority` como sub-criterio dentro do grupo "AGORA/Agendada"
+- Exibir icone de estrela no nome da campanha na tabela quando a ligacao vem de campanha prioritaria
+
+### 7. Hook `useCallPanel` (`src/hooks/useCallPanel.ts`)
+
+- Adicionar campo `isPriority` ao tipo `CallPanelEntry`
+- Buscar `is_priority` da campanha vinculada na query de call_logs (via join com `call_campaigns`)
+- Passar o campo para a interface
+
+## Detalhes Tecnicos
+
+### Ordenacao no Queue Executor
+
+A query atual:
 ```text
-queryClient.invalidateQueries({ queryKey: ["call_leads"] });
-queryClient.invalidateQueries({ queryKey: ["call_leads_stats"] });
+.eq('call_status', 'ready')
+.order('scheduled_for', { ascending: true })
 ```
 
-### Arquivo modificado
+Sera substituida por uma abordagem que verifica primeiro se ha call_logs de campanhas prioritarias antes de processar as normais. Como o Supabase JS client nao suporta ORDER BY campo de tabela relacionada facilmente, a logica sera:
 
-- `src/hooks/useLeads.ts` (mutacao `bulkAddToCampaign`)
+1. Buscar a lista de `campaign_ids` prioritarios do usuario
+2. Tentar buscar um `ready` call_log de campanha prioritaria primeiro
+3. Se nao encontrar, buscar o proximo `ready` normal
+
+### Mesma logica para pending leads (3b):
+
+1. Buscar campanhas prioritarias ativas do usuario
+2. Tentar buscar lead pendente de campanha prioritaria primeiro
+3. Se nao encontrar, buscar o proximo pendente normal
+
+### Arquivos Modificados
+
+| Arquivo | Tipo de Mudanca |
+|---------|----------------|
+| Migracao SQL | 2 novas colunas em `call_campaigns` |
+| `src/hooks/useCallCampaigns.ts` | Novos campos no tipo e transformacao |
+| `src/components/call-campaigns/tabs/ConfigTab.tsx` | Card de Prioridade na UI |
+| `src/components/call-campaigns/CallCampaignList.tsx` | Badge e icone de prioridade |
+| `supabase/functions/queue-executor/index.ts` | Ordenacao por prioridade |
+| `src/pages/CallPanel.tsx` | Indicador visual de prioridade |
+| `src/hooks/useCallPanel.ts` | Campo isPriority no tipo |
