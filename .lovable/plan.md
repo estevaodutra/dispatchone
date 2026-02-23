@@ -1,41 +1,80 @@
 
 
-# Melhorar seção de Cooldown no Configurar Operador
+# Otimizar mecanismos de busca no Painel de Ligacoes
 
-## Objetivo
+## Problema
 
-A dialog "Configurar Operador" já possui a seção "Intervalo entre Ligações" que controla o cooldown, mas o rótulo não deixa claro que se trata do tempo de descanso (cooldown) entre chamadas. O objetivo é tornar essa seção mais descritiva e intuitiva.
+A busca por "6578" nao retorna resultados por dois motivos:
 
-## Alterações
+1. **Aba "Fila"**: O hook `useCallQueuePanel` nao aplica nenhum filtro de busca. Os itens da fila sao exibidos sem considerar o campo de busca.
+2. **Aba "Chamadas"**: O hook `useCallPanel` faz a busca apenas no lado do cliente (client-side), sobre no maximo 200 registros retornados do banco. Se o lead com "6578" nao estiver entre esses 200, ele nunca sera encontrado. Alem disso, a busca por telefone usa `includes` simples, sem normalizar o numero (ex: remover "55", "+", etc.).
 
-### Arquivo: `src/components/call-panel/EditOperatorDialog.tsx`
+## Solucao
 
-1. **Renomear o label da seção** de "Intervalo entre Ligações" para "Cooldown (Intervalo entre Ligações)" com uma descrição explicativa abaixo.
+### 1. Adicionar filtro de busca na aba "Fila" (`src/hooks/useCallQueuePanel.ts`)
 
-2. **Adicionar indicador de cooldown ativo** -- se o operador estiver em status "cooldown", exibir o tempo restante calculado a partir de `lastCallEndedAt` e do intervalo configurado.
+- Aceitar um parametro `searchQuery?: string` no hook.
+- Filtrar os resultados (client-side) por nome ou telefone do lead, usando busca normalizada.
+- Aplicar o filtro tanto nos `regularEntries` (call_queue) quanto nos `readyEntries` (call_logs com status ready).
 
-3. **Adicionar descrição contextual** explicando o que o cooldown faz: "Tempo de descanso obrigatório entre chamadas. O operador ficará indisponível durante este período após encerrar uma ligação."
+### 2. Melhorar a busca no hook de chamadas (`src/hooks/useCallPanel.ts`)
 
-## Layout atualizado da seção
+- Normalizar o termo de busca removendo caracteres nao numericos antes de comparar com o telefone.
+- Normalizar tambem o telefone do lead antes de comparar.
+- Isso permite que "6578" encontre "5511965780000" ou "+55 11 96578-0000".
 
+### 3. Passar `searchQuery` para o hook da fila (`src/pages/CallPanel.tsx`)
+
+- Alterar a chamada de `useCallQueuePanel(campaignFilter)` para `useCallQueuePanel(campaignFilter, searchQuery)`.
+
+## Detalhes Tecnicos
+
+**`src/hooks/useCallQueuePanel.ts`** -- Adicionar filtragem:
 ```text
-Cooldown (Intervalo entre Ligações)
-Tempo de descanso entre chamadas. O operador fica
-indisponível durante este período após cada ligação.
+export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string) {
+  // ... fetch data as before ...
 
-[Se em cooldown: Badge "Em cooldown - Xs restantes"]
+  // After combining regularEntries + readyEntries:
+  let combined = [...regularEntries, ...readyEntries];
 
-○ Usar padrão das campanhas
-○ Personalizado
-   [Input: __ ] segundos
-   [15s] [30s] [45s] [60s] [90s] [120s]
+  if (searchQuery) {
+    const s = searchQuery.toLowerCase();
+    const sDigits = s.replace(/\D/g, "");
+    combined = combined.filter(e => {
+      const nameMatch = e.leadName?.toLowerCase().includes(s);
+      const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
+      const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+      return nameMatch || phoneMatch;
+    });
+  }
+
+  return combined;
+}
 ```
 
-## Detalhes Técnicos
+**`src/hooks/useCallPanel.ts`** -- Normalizar busca por telefone:
+```text
+if (filters?.search) {
+  const s = filters.search.toLowerCase();
+  const sDigits = s.replace(/\D/g, "");
+  results = results.filter((e) => {
+    const nameMatch = e.leadName?.toLowerCase().includes(s);
+    const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
+    const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+    return nameMatch || phoneMatch;
+  });
+}
+```
 
-- Alterar o `Label` da seção de "Intervalo entre Ligações" para "Cooldown (Intervalo entre Ligações)"
-- Adicionar `<p className="text-xs text-muted-foreground">` com a descrição explicativa
-- Adicionar um badge condicional que aparece quando `operator.status === "cooldown"` e `operator.lastCallEndedAt` existe, calculando o tempo restante com base no intervalo configurado (personalizado ou padrão de 30s)
-- Importar `Badge` de `@/components/ui/badge` e `Timer` icon de `lucide-react`
-- Nenhuma alteração de banco de dados necessária -- o campo `personal_interval_seconds` já existe e é utilizado corretamente
+**`src/pages/CallPanel.tsx`** -- Passar searchQuery ao hook da fila:
+```text
+const { entries: queueEntries, ... } = useCallQueuePanel(
+  campaignFilter !== "all" ? campaignFilter : undefined,
+  searchQuery || undefined
+);
+```
 
+## Resultado
+
+- Buscar "6578" vai encontrar qualquer lead cujo telefone contenha esses digitos, independente de formatacao ou codigo de pais.
+- A busca passa a funcionar tanto na aba "Chamadas" quanto na aba "Fila".
