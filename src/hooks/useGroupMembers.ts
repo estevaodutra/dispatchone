@@ -93,10 +93,26 @@ export function useGroupMembers(groupCampaignId: string | null) {
         .single();
 
       if (error) throw error;
+
+      // Sync to leads table
+      await supabase
+        .from("leads")
+        .upsert({
+          user_id: user.id,
+          phone: member.phone,
+          name: member.name || null,
+          tags: ["grupo"],
+          active_campaign_id: groupCampaignId,
+          active_campaign_type: "grupos",
+          status: "active",
+        }, { onConflict: "phone,user_id", ignoreDuplicates: false });
+
       return transformDbToFrontend(data as DbGroupMember);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["group_members", groupCampaignId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       toast({ title: "Membro adicionado", description: "Membro adicionado à lista." });
     },
     onError: (error) => {
@@ -119,11 +135,28 @@ export function useGroupMembers(groupCampaignId: string | null) {
 
       const { error } = await supabase.from("group_members").insert(records);
       if (error) throw error;
-      
+
+      // Sync to leads table
+      const leadRecords = members.map((m) => ({
+        user_id: user.id,
+        phone: m.phone,
+        name: m.name || null,
+        tags: ["grupo"],
+        active_campaign_id: groupCampaignId,
+        active_campaign_type: "grupos",
+        status: "active",
+      }));
+
+      await supabase
+        .from("leads")
+        .upsert(leadRecords, { onConflict: "phone,user_id", ignoreDuplicates: false });
+
       return members.length;
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ["group_members", groupCampaignId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       toast({ title: "Membros importados", description: `${count} membros adicionados.` });
     },
     onError: (error) => {
