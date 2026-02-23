@@ -19,7 +19,7 @@ export interface QueuePanelEntry {
   createdAt: string | null;
 }
 
-export function useCallQueuePanel(campaignFilter?: string) {
+export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string) {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -86,7 +86,20 @@ export function useCallQueuePanel(campaignFilter?: string) {
         createdAt: log.created_at,
       })) as QueuePanelEntry[];
 
-      return [...regularEntries, ...readyEntries];
+      let combined = [...regularEntries, ...readyEntries];
+
+      if (searchQuery) {
+        const s = searchQuery.toLowerCase();
+        const sDigits = s.replace(/\D/g, "");
+        combined = combined.filter(e => {
+          const nameMatch = e.leadName?.toLowerCase().includes(s);
+          const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
+          const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+          return nameMatch || phoneMatch;
+        });
+      }
+
+      return combined;
     },
     enabled: !!user,
     refetchInterval: 10000,

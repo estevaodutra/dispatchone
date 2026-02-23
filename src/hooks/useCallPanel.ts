@@ -152,11 +152,13 @@ export function useCallPanel(filters?: {
 
       if (filters?.search) {
         const s = filters.search.toLowerCase();
-        results = results.filter(
-          (e) =>
-            e.leadName?.toLowerCase().includes(s) ||
-            e.leadPhone?.includes(s)
-        );
+        const sDigits = s.replace(/\D/g, "");
+        results = results.filter((e) => {
+          const nameMatch = e.leadName?.toLowerCase().includes(s);
+          const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
+          const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+          return nameMatch || phoneMatch;
+        });
       }
 
       // Deduplicate by lead_id + campaign_id, keep only the most recent
