@@ -1,51 +1,41 @@
 
-# Adicionar opcao de selecionar quantidade de leads para enfileirar
+
+# Melhorar seção de Cooldown no Configurar Operador
 
 ## Objetivo
 
-Atualmente o botao "Discar todos pendente" enfileira **todos** os leads com o status selecionado. O usuario quer poder escolher uma quantidade especifica de leads para enfileirar (ex: "discar os primeiros 50 pendentes").
+A dialog "Configurar Operador" já possui a seção "Intervalo entre Ligações" que controla o cooldown, mas o rótulo não deixa claro que se trata do tempo de descanso (cooldown) entre chamadas. O objetivo é tornar essa seção mais descritiva e intuitiva.
 
-## Alteracoes
+## Alterações
 
-### 1. `src/components/call-campaigns/tabs/LeadsTab.tsx`
+### Arquivo: `src/components/call-panel/EditOperatorDialog.tsx`
 
-- Adicionar um campo `Input` numerico ao lado do botao "Discar todos" para que o usuario possa definir a quantidade (ex: 50, 100, 200).
-- Alterar o botao para exibir o texto dinamicamente: "Discar todos pendente" quando nenhum limite e definido, ou "Discar 50 pendente" quando um limite e especificado.
-- Passar o parametro `limit` para o dialogo de confirmacao e para a funcao `bulkEnqueueByStatus`.
-- No dialogo de confirmacao, exibir a quantidade real que sera enfileirada (o menor entre o limite e o total disponivel).
+1. **Renomear o label da seção** de "Intervalo entre Ligações" para "Cooldown (Intervalo entre Ligações)" com uma descrição explicativa abaixo.
 
-### 2. `src/hooks/useCallLeads.ts`
+2. **Adicionar indicador de cooldown ativo** -- se o operador estiver em status "cooldown", exibir o tempo restante calculado a partir de `lastCallEndedAt` e do intervalo configurado.
 
-- Alterar a mutation `bulkEnqueueByStatus` para aceitar um parametro opcional `limit?: number`.
-- Quando `limit` for informado, aplicar `.limit(limit)` na query que busca os leads com o status filtrado, para que apenas a quantidade solicitada seja enfileirada.
+3. **Adicionar descrição contextual** explicando o que o cooldown faz: "Tempo de descanso obrigatório entre chamadas. O operador ficará indisponível durante este período após encerrar uma ligação."
 
-## Detalhes Tecnicos
+## Layout atualizado da seção
 
-**LeadsTab.tsx** - Novo estado e UI:
-- Novo estado: `const [bulkLimit, setBulkLimit] = useState<string>("")`
-- Ao lado do Select de filtro (ou ao lado do botao "Discar todos"), adicionar um Input numerico com placeholder "Qtd" (largura pequena, ~80px).
-- O botao muda o texto:
-  - Sem limite: "Discar todos pendente" (comportamento atual)
-  - Com limite: "Discar 50 pendente"
-- No dialogo de confirmacao, exibir: "Voce esta prestes a enfileirar **50** leads..." (usando `Math.min(bulkLimit, leadsCountForBulk)` como valor).
-- Passar `{ status: bulkDialStatus, limit: bulkLimit ? parseInt(bulkLimit) : undefined }` para `bulkEnqueueByStatus`.
-
-**useCallLeads.ts** - Parametro limit:
-- Alterar tipo do parametro: `{ status: CallLeadStatus; limit?: number }`
-- Na query de busca, adicionar `.limit(limit)` quando o valor existir:
 ```text
-let query = supabase.from("call_leads")
-  .select("id, phone, name")
-  .eq("campaign_id", campaignId)
-  .eq("status", status);
+Cooldown (Intervalo entre Ligações)
+Tempo de descanso entre chamadas. O operador fica
+indisponível durante este período após cada ligação.
 
-if (limit) {
-  query = query.limit(limit);
-}
+[Se em cooldown: Badge "Em cooldown - Xs restantes"]
 
-const { data: matchingLeads, error } = await query;
+○ Usar padrão das campanhas
+○ Personalizado
+   [Input: __ ] segundos
+   [15s] [30s] [45s] [60s] [90s] [120s]
 ```
 
-## Resultado
+## Detalhes Técnicos
 
-O usuario podera escolher enfileirar uma quantidade especifica de leads em vez de sempre enfileirar todos, dando mais controle sobre o volume de discagens automaticas.
+- Alterar o `Label` da seção de "Intervalo entre Ligações" para "Cooldown (Intervalo entre Ligações)"
+- Adicionar `<p className="text-xs text-muted-foreground">` com a descrição explicativa
+- Adicionar um badge condicional que aparece quando `operator.status === "cooldown"` e `operator.lastCallEndedAt` existe, calculando o tempo restante com base no intervalo configurado (personalizado ou padrão de 30s)
+- Importar `Badge` de `@/components/ui/badge` e `Timer` icon de `lucide-react`
+- Nenhuma alteração de banco de dados necessária -- o campo `personal_interval_seconds` já existe e é utilizado corretamente
+
