@@ -260,11 +260,43 @@ export function useLeads(filters: LeadFilters = {}) {
           .in("id", batch);
         if (error) throw error;
       }
+      // Sync to call_leads if campaign type is ligacao
+      if (campaignType === "ligacao") {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const leadsData: { id: string; phone: string; name: string | null; email: string | null }[] = [];
+          for (let i = 0; i < toUpdate.length; i += 200) {
+            const batch = toUpdate.slice(i, i + 200);
+            const { data } = await supabase
+              .from("leads")
+              .select("id, phone, name, email")
+              .in("id", batch);
+            leadsData.push(...(data || []));
+          }
+          for (let i = 0; i < leadsData.length; i += 200) {
+            const batch = leadsData.slice(i, i + 200);
+            const rows = batch.map(l => ({
+              campaign_id: campaignId,
+              user_id: user.id,
+              phone: l.phone,
+              name: l.name,
+              email: l.email,
+              status: "pending",
+            }));
+            await supabase.from("call_leads").upsert(rows as any, {
+              onConflict: "phone,campaign_id"
+            });
+          }
+        }
+      }
+
       return { added: toUpdate.length, skipped: ids.length - toUpdate.length };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["call-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["call_leads"] });
       const msg = result
         ? `${result.added} leads adicionados${result.skipped > 0 ? `, ${result.skipped} ignorados` : ""}`
         : "Leads adicionados à campanha";
