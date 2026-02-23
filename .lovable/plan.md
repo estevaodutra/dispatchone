@@ -1,39 +1,63 @@
 
 
-# Padronizar formatacao de telefone na pagina de Leads
+# Corrigir erro ao adicionar leads em massa a uma campanha
 
 ## Problema
 
-A funcao `formatPhone` atual so reconhece numeros com 13 ou 11 digitos. Numeros com 12 digitos (ex: `557186476266` -- codigo pais + DDD + 8 digitos sem o 9) nao sao formatados, aparecendo crus na tabela.
+Ao selecionar todos os 933 leads filtrados e tentar adicionar a uma campanha de ligacao, ocorre o erro "Erro ao adicionar a campanha". Isso acontece porque o Supabase tem limites no tamanho de queries com `.in("id", ids)` quando ha muitos IDs (centenas ou milhares).
 
 ## Solucao
 
-Atualizar a funcao `formatPhone` em `src/pages/Leads.tsx` para cobrir todos os formatos de telefone brasileiro:
+Modificar a mutacao `bulkAddToCampaign` em `src/hooks/useLeads.ts` para processar os IDs em lotes (batches) de 200, evitando o limite do Supabase.
 
-- **13 digitos** (55 + DDD + 9 digitos): `+55 (71) 98647-6266`
-- **12 digitos** (55 + DDD + 8 digitos): `+55 (48) 9811-9374`
-- **11 digitos** (DDD + 9 digitos): `(21) 95903-7496`
-- **10 digitos** (DDD + 8 digitos): `(21) 3456-7890`
-- Outros tamanhos: retorna o valor original
+## Mudancas
 
-### Codigo atualizado
+### `src/hooks/useLeads.ts` -- mutacao `bulkAddToCampaign`
+
+1. Ao verificar leads existentes (`skipExisting`), buscar em lotes de 200
+2. Ao fazer o `update`, processar em lotes de 200
+3. Aplicar a mesma logica de batching para `bulkDelete`, `bulkAddTags` e `bulkRemoveTags` que tambem usam `.in("id", ids)`
+
+### Codigo atualizado (bulkAddToCampaign)
 
 ```text
-const formatPhone = (phone: string) => {
-  const clean = phone.replace(/\D/g, "");
-  if (clean.length === 13)
-    return `+${clean.slice(0,2)} (${clean.slice(2,4)}) ${clean.slice(4,9)}-${clean.slice(9)}`;
-  if (clean.length === 12)
-    return `+${clean.slice(0,2)} (${clean.slice(2,4)}) ${clean.slice(4,8)}-${clean.slice(8)}`;
-  if (clean.length === 11)
-    return `(${clean.slice(0,2)}) ${clean.slice(2,7)}-${clean.slice(7)}`;
-  if (clean.length === 10)
-    return `(${clean.slice(0,2)}) ${clean.slice(2,6)}-${clean.slice(6)}`;
-  return phone;
-};
+const bulkAddToCampaign = useMutation({
+  mutationFn: async ({ ids, campaignId, campaignType, skipExisting }) => {
+    let toUpdate = ids;
+    if (skipExisting) {
+      const existingIds = new Set<string>();
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = ids.slice(i, i + 200);
+        const { data } = await supabase
+          .from("leads").select("id").in("id", batch)
+          .eq("active_campaign_id", campaignId);
+        (data || []).forEach(e => existingIds.add(e.id));
+      }
+      toUpdate = ids.filter(id => !existingIds.has(id));
+    }
+    if (toUpdate.length === 0) return { added: 0, skipped: ids.length };
+    for (let i = 0; i < toUpdate.length; i += 200) {
+      const batch = toUpdate.slice(i, i + 200);
+      const { error } = await supabase
+        .from("leads")
+        .update({ active_campaign_id: campaignId, active_campaign_type: campaignType })
+        .in("id", batch);
+      if (error) throw error;
+    }
+    return { added: toUpdate.length, skipped: ids.length - toUpdate.length };
+  },
+  ...
+});
 ```
+
+### Mesma logica de batching para:
+
+- `bulkDelete` -- deletar em lotes de 200
+- `bulkAddTags` -- buscar e atualizar em lotes de 200
+- `bulkRemoveTags` -- buscar e atualizar em lotes de 200
+- `getSelectedIds` em `Leads.tsx` -- buscar IDs em lotes (ja esta sem limite, mas verificar)
 
 ### Arquivo modificado
 
-- `src/pages/Leads.tsx` (funcao `formatPhone`, linhas 142-147)
+- `src/hooks/useLeads.ts` (4 mutacoes com batching)
 
