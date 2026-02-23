@@ -124,11 +124,12 @@ export default function Leads() {
   };
 
   const toggleAll = () => {
-    if (selectedIds.size === leads.length) {
+    if (selectAllResults || (leads.length > 0 && selectedIds.size === leads.length)) {
       setSelectedIds(new Set());
       setSelectAllResults(false);
     } else {
       setSelectedIds(new Set(leads.map((l) => l.id)));
+      setSelectAllResults(true);
     }
   };
 
@@ -350,8 +351,8 @@ export default function Leads() {
           <TableHeader>
             <TableRow>
               <TableHead className="w-12">
-                <Checkbox
-                  checked={leads.length > 0 && selectedIds.size === leads.length}
+                 <Checkbox
+                  checked={selectAllResults || (leads.length > 0 && selectedIds.size === leads.length)}
                   onCheckedChange={toggleAll}
                 />
               </TableHead>
