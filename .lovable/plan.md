@@ -1,72 +1,51 @@
 
-# Navegar para aba "Fila" do Painel ao iniciar execucao em fila
+# Adicionar opcao de selecionar quantidade de leads para enfileirar
 
 ## Objetivo
 
-Quando o usuario clicar em "Iniciar" (QueueControlPanel) ou "Discar todos pendente" (LeadsTab) dentro de uma campanha de ligacao, o sistema deve redirecionar automaticamente para o Painel de Ligacoes (`/painel-ligacoes`) com a aba "Fila" ja selecionada.
-
-## Abordagem
-
-Usar `useNavigate` do React Router com um query parameter (ex: `?tab=queue`) para comunicar ao Painel de Ligacoes qual aba deve estar ativa ao carregar.
+Atualmente o botao "Discar todos pendente" enfileira **todos** os leads com o status selecionado. O usuario quer poder escolher uma quantidade especifica de leads para enfileirar (ex: "discar os primeiros 50 pendentes").
 
 ## Alteracoes
 
-### 1. `src/pages/CallPanel.tsx`
+### 1. `src/components/call-campaigns/tabs/LeadsTab.tsx`
 
-- Importar `useSearchParams` do `react-router-dom`
-- No `useState` do `statusFilter`, verificar se existe um parametro `tab=queue` na URL
-- Se existir, inicializar `statusFilter` como `"queue"` em vez de `"all"`
-- Limpar o parametro da URL apos consumir (para nao persistir em navegacoes futuras)
+- Adicionar um campo `Input` numerico ao lado do botao "Discar todos" para que o usuario possa definir a quantidade (ex: 50, 100, 200).
+- Alterar o botao para exibir o texto dinamicamente: "Discar todos pendente" quando nenhum limite e definido, ou "Discar 50 pendente" quando um limite e especificado.
+- Passar o parametro `limit` para o dialogo de confirmacao e para a funcao `bulkEnqueueByStatus`.
+- No dialogo de confirmacao, exibir a quantidade real que sera enfileirada (o menor entre o limite e o total disponivel).
 
-### 2. `src/components/call-campaigns/QueueControlPanel.tsx`
+### 2. `src/hooks/useCallLeads.ts`
 
-- Importar `useNavigate` do `react-router-dom`
-- No callback do botao "Iniciar", apos chamar `startQueue()`, navegar para `/painel-ligacoes?tab=queue`
-
-### 3. `src/components/call-campaigns/tabs/LeadsTab.tsx`
-
-- Importar `useNavigate` do `react-router-dom`
-- No callback de confirmacao do bulk enqueue (apos `bulkEnqueueByStatus`), navegar para `/painel-ligacoes?tab=queue`
+- Alterar a mutation `bulkEnqueueByStatus` para aceitar um parametro opcional `limit?: number`.
+- Quando `limit` for informado, aplicar `.limit(limit)` na query que busca os leads com o status filtrado, para que apenas a quantidade solicitada seja enfileirada.
 
 ## Detalhes Tecnicos
 
-**CallPanel.tsx** - Leitura do parametro:
+**LeadsTab.tsx** - Novo estado e UI:
+- Novo estado: `const [bulkLimit, setBulkLimit] = useState<string>("")`
+- Ao lado do Select de filtro (ou ao lado do botao "Discar todos"), adicionar um Input numerico com placeholder "Qtd" (largura pequena, ~80px).
+- O botao muda o texto:
+  - Sem limite: "Discar todos pendente" (comportamento atual)
+  - Com limite: "Discar 50 pendente"
+- No dialogo de confirmacao, exibir: "Voce esta prestes a enfileirar **50** leads..." (usando `Math.min(bulkLimit, leadsCountForBulk)` como valor).
+- Passar `{ status: bulkDialStatus, limit: bulkLimit ? parseInt(bulkLimit) : undefined }` para `bulkEnqueueByStatus`.
+
+**useCallLeads.ts** - Parametro limit:
+- Alterar tipo do parametro: `{ status: CallLeadStatus; limit?: number }`
+- Na query de busca, adicionar `.limit(limit)` quando o valor existir:
 ```text
-const [searchParams, setSearchParams] = useSearchParams();
-const initialTab = searchParams.get("tab") === "queue" ? "queue" : "all";
-const [statusFilter, setStatusFilter] = useState(initialTab);
+let query = supabase.from("call_leads")
+  .select("id, phone, name")
+  .eq("campaign_id", campaignId)
+  .eq("status", status);
 
-useEffect(() => {
-  if (searchParams.get("tab")) {
-    searchParams.delete("tab");
-    setSearchParams(searchParams, { replace: true });
-  }
-}, []);
-```
+if (limit) {
+  query = query.limit(limit);
+}
 
-**QueueControlPanel.tsx** - Navegacao apos iniciar:
-```text
-const navigate = useNavigate();
-
-// No onClick do botao Iniciar:
-onClick={async () => {
-  await startQueue();
-  navigate("/painel-ligacoes?tab=queue");
-}}
-```
-
-**LeadsTab.tsx** - Navegacao apos enfileirar:
-```text
-const navigate = useNavigate();
-
-// No AlertDialogAction do bulk enqueue:
-onClick={async () => {
-  await bulkEnqueueByStatus({ status: bulkDialStatus });
-  setShowBulkConfirm(false);
-  navigate("/painel-ligacoes?tab=queue");
-}}
+const { data: matchingLeads, error } = await query;
 ```
 
 ## Resultado
 
-Ao iniciar a execucao ou enfileirar leads em massa, o usuario sera automaticamente levado ao Painel de Ligacoes com a aba "Fila" visivel, onde pode acompanhar o progresso em tempo real.
+O usuario podera escolher enfileirar uma quantidade especifica de leads em vez de sempre enfileirar todos, dando mais controle sobre o volume de discagens automaticas.
