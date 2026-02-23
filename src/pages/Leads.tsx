@@ -68,6 +68,7 @@ export default function Leads() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [groupFilter, setGroupFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllResults, setSelectAllResults] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -86,11 +87,12 @@ export default function Leads() {
     status: statusFilter !== "all" ? statusFilter : undefined,
     campaignType: typeFilter !== "all" ? typeFilter : undefined,
     sourceType: sourceFilter !== "all" ? sourceFilter : undefined,
+    sourceGroupName: groupFilter !== "all" ? groupFilter : undefined,
     page,
   };
 
   const {
-    leads, totalCount, stats, isLoading,
+    leads, totalCount, stats, isLoading, groupNames,
     createLead, updateLead, deleteLead, bulkDelete, bulkAddTags, bulkRemoveTags, bulkAddToCampaign, importLeads, pageSize,
   } = useLeads(filters);
 
@@ -207,6 +209,7 @@ export default function Leads() {
     if (filters.status) query = query.eq("status", filters.status);
     if (filters.sourceType) query = query.eq("source_type", filters.sourceType);
     if (filters.campaignType) query = query.eq("active_campaign_type", filters.campaignType);
+    if (filters.sourceGroupName) query = query.eq("source_group_name", filters.sourceGroupName);
     const { data } = await query;
     return (data || []).map(d => d.id);
   };
@@ -282,7 +285,7 @@ export default function Leads() {
           </SelectContent>
         </Select>
 
-        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1); }}>
+        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1); if (v !== "grupos") setGroupFilter("all"); }}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todos os tipos</SelectItem>
@@ -292,7 +295,7 @@ export default function Leads() {
           </SelectContent>
         </Select>
 
-        <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setPage(1); }}>
+        <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setPage(1); if (v !== "whatsapp_group") setGroupFilter("all"); }}>
           <SelectTrigger className="w-[150px]"><SelectValue placeholder="Origem" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas origens</SelectItem>
@@ -304,6 +307,18 @@ export default function Leads() {
             <SelectItem value="dispatch_campaign">Campanha Despacho</SelectItem>
           </SelectContent>
         </Select>
+
+        {(typeFilter === "grupos" || sourceFilter === "whatsapp_group") && (
+          <Select value={groupFilter} onValueChange={(v) => { setGroupFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Selecionar Grupo" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os grupos</SelectItem>
+              {groupNames.map(name => (
+                <SelectItem key={name} value={name}>{name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

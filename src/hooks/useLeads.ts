@@ -32,6 +32,7 @@ export interface LeadFilters {
   campaignId?: string;
   sourceType?: string;
   campaignType?: string;
+  sourceGroupName?: string;
   page?: number;
   limit?: number;
 }
@@ -77,6 +78,9 @@ export function useLeads(filters: LeadFilters = {}) {
       if (filters.campaignType) {
         query = query.eq("active_campaign_type", filters.campaignType);
       }
+      if (filters.sourceGroupName) {
+        query = query.eq("source_group_name", filters.sourceGroupName);
+      }
 
       const from = (page - 1) * limit;
       const to = from + limit - 1;
@@ -85,6 +89,19 @@ export function useLeads(filters: LeadFilters = {}) {
       const { data, error, count } = await query;
       if (error) throw error;
       return { data: (data || []) as Lead[], count: count || 0 };
+    },
+  });
+
+  const groupNamesQuery = useQuery({
+    queryKey: ["leads-group-names"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("leads")
+        .select("source_group_name")
+        .not("source_group_name", "is", null)
+        .order("source_group_name");
+      const names = [...new Set((data || []).map(d => d.source_group_name).filter(Boolean))];
+      return names as string[];
     },
   });
 
@@ -307,6 +324,7 @@ export function useLeads(filters: LeadFilters = {}) {
     leads: leadsQuery.data?.data || [],
     totalCount: leadsQuery.data?.count || 0,
     stats: statsQuery.data || { total: 0, active: 0, inCampaign: 0, inactive: 0 },
+    groupNames: groupNamesQuery.data || [],
     isLoading: leadsQuery.isLoading,
     createLead,
     updateLead,
