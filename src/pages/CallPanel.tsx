@@ -98,23 +98,11 @@ import {
   Bot,
   Star,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import { format } from "date-fns";
 
 // ── Helpers ──
 
-function formatPhone(phone: string | null) {
-  if (!phone) return "";
-  const clean = phone.replace(/\D/g, "");
-  if (clean.length === 13 && clean.startsWith("55")) {
-    const local = clean.slice(2);
-    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
-  }
-  if (clean.length === 11) {
-    return `(${clean.slice(0, 2)}) ${clean.slice(2, 7)}-${clean.slice(7)}`;
-  }
-  return phone;
-}
 
 function getTimeRemaining(scheduledFor: string | null): { text: string; seconds: number; isUrgent: boolean } {
   if (!scheduledFor) return { text: "", seconds: Infinity, isUrgent: false };
