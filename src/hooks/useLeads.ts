@@ -176,8 +176,11 @@ export function useLeads(filters: LeadFilters = {}) {
 
   const bulkDelete = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await supabase.from("leads").delete().in("id", ids);
-      if (error) throw error;
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = ids.slice(i, i + 200);
+        const { error } = await supabase.from("leads").delete().in("id", batch);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -189,9 +192,14 @@ export function useLeads(filters: LeadFilters = {}) {
 
   const bulkAddTags = useMutation({
     mutationFn: async ({ ids, tags }: { ids: string[]; tags: string[] }) => {
-      const { data: currentLeads, error: fetchErr } = await supabase.from("leads").select("id, tags").in("id", ids);
-      if (fetchErr) throw fetchErr;
-      for (const lead of currentLeads || []) {
+      const allLeads: { id: string; tags: string[] }[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = ids.slice(i, i + 200);
+        const { data, error: fetchErr } = await supabase.from("leads").select("id, tags").in("id", batch);
+        if (fetchErr) throw fetchErr;
+        allLeads.push(...(data || []));
+      }
+      for (const lead of allLeads) {
         const merged = Array.from(new Set([...(lead.tags || []), ...tags]));
         await supabase.from("leads").update({ tags: merged }).eq("id", lead.id);
       }
@@ -205,9 +213,14 @@ export function useLeads(filters: LeadFilters = {}) {
 
   const bulkRemoveTags = useMutation({
     mutationFn: async ({ ids, tags }: { ids: string[]; tags: string[] }) => {
-      const { data: currentLeads, error: fetchErr } = await supabase.from("leads").select("id, tags").in("id", ids);
-      if (fetchErr) throw fetchErr;
-      for (const lead of currentLeads || []) {
+      const allLeads: { id: string; tags: string[] }[] = [];
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = ids.slice(i, i + 200);
+        const { data, error: fetchErr } = await supabase.from("leads").select("id, tags").in("id", batch);
+        if (fetchErr) throw fetchErr;
+        allLeads.push(...(data || []));
+      }
+      for (const lead of allLeads) {
         const filtered = (lead.tags || []).filter((t: string) => !tags.includes(t));
         await supabase.from("leads").update({ tags: filtered }).eq("id", lead.id);
       }
@@ -228,20 +241,25 @@ export function useLeads(filters: LeadFilters = {}) {
     }) => {
       let toUpdate = ids;
       if (skipExisting) {
-        const { data: existing } = await supabase
-          .from("leads")
-          .select("id")
-          .in("id", ids)
-          .eq("active_campaign_id", campaignId);
-        const existingIds = new Set((existing || []).map(e => e.id));
+        const existingIds = new Set<string>();
+        for (let i = 0; i < ids.length; i += 200) {
+          const batch = ids.slice(i, i + 200);
+          const { data } = await supabase
+            .from("leads").select("id").in("id", batch)
+            .eq("active_campaign_id", campaignId);
+          (data || []).forEach(e => existingIds.add(e.id));
+        }
         toUpdate = ids.filter(id => !existingIds.has(id));
       }
       if (toUpdate.length === 0) return { added: 0, skipped: ids.length };
-      const { error } = await supabase
-        .from("leads")
-        .update({ active_campaign_id: campaignId, active_campaign_type: campaignType })
-        .in("id", toUpdate);
-      if (error) throw error;
+      for (let i = 0; i < toUpdate.length; i += 200) {
+        const batch = toUpdate.slice(i, i + 200);
+        const { error } = await supabase
+          .from("leads")
+          .update({ active_campaign_id: campaignId, active_campaign_type: campaignType })
+          .in("id", batch);
+        if (error) throw error;
+      }
       return { added: toUpdate.length, skipped: ids.length - toUpdate.length };
     },
     onSuccess: (result) => {
