@@ -147,9 +147,18 @@ export default function Leads() {
     if (!user) return;
     setIsSyncing(true);
     try {
-      // Fetch group campaigns for names
+      // Fetch group campaigns for names (Origem = campaign name)
       const { data: gcList } = await supabase.from("group_campaigns").select("id, name");
       const gcMap = new Map((gcList || []).map(g => [g.id, g.name]));
+
+      // Fetch linked groups for real WhatsApp group name (Grupo column)
+      const { data: cgList } = await supabase.from("campaign_groups").select("campaign_id, group_jid, group_name");
+      const groupNameMap = new Map<string, string>();
+      (cgList || []).forEach(cg => {
+        if (!groupNameMap.has(cg.campaign_id)) {
+          groupNameMap.set(cg.campaign_id, cg.group_name);
+        }
+      });
 
       const { data: allMembers } = await supabase
         .from("group_members")
@@ -162,13 +171,13 @@ export default function Leads() {
         user_id: user.id,
         phone: m.phone,
         name: m.name || null,
-        tags: ["grupo"],
         active_campaign_id: m.group_campaign_id,
         active_campaign_type: "grupos",
         status: "active" as const,
         source_type: "whatsapp_group",
+        source_name: gcMap.get(m.group_campaign_id) || null,
         source_group_id: m.group_campaign_id,
-        source_group_name: gcMap.get(m.group_campaign_id) || null,
+        source_group_name: groupNameMap.get(m.group_campaign_id) || null,
       }));
 
       for (let i = 0; i < leadRecords.length; i += 500) {
@@ -364,7 +373,7 @@ export default function Leads() {
                     <TableCell className="text-muted-foreground">{formatPhone(lead.phone)}</TableCell>
                     <TableCell>
                       <span className="text-sm text-muted-foreground">
-                        {SOURCE_LABELS[lead.source_type || ""] || "—"}
+                        {lead.source_name || SOURCE_LABELS[lead.source_type || ""] || "—"}
                       </span>
                     </TableCell>
                     <TableCell>
