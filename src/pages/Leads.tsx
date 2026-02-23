@@ -9,7 +9,7 @@ import { PageHeader } from "@/components/dispatch/PageHeader";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQueryClient } from "@tanstack/react-query";
-import { cn } from "@/lib/utils";
+import { cn, formatPhone } from "@/lib/utils";
 import { toast } from "sonner";
 import { MetricCard } from "@/components/dispatch/MetricCard";
 import { Input } from "@/components/ui/input";
@@ -139,14 +139,6 @@ export default function Leads() {
 
   const effectiveCount = selectAllResults ? totalCount : selectedIds.size;
 
-  const formatPhone = (phone: string) => {
-    const clean = phone.replace(/\D/g, "");
-    if (clean.length === 13) return `+${clean.slice(0,2)} (${clean.slice(2,4)}) ${clean.slice(4,9)}-${clean.slice(9)}`;
-    if (clean.length === 12) return `+${clean.slice(0,2)} (${clean.slice(2,4)}) ${clean.slice(4,8)}-${clean.slice(8)}`;
-    if (clean.length === 11) return `(${clean.slice(0,2)}) ${clean.slice(2,7)}-${clean.slice(7)}`;
-    if (clean.length === 10) return `(${clean.slice(0,2)}) ${clean.slice(2,6)}-${clean.slice(6)}`;
-    return phone;
-  };
 
   const handleSync = async () => {
     if (!user) return;
