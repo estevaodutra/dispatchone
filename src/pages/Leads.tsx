@@ -27,6 +27,8 @@ import {
   LeadActionsMenu,
   BulkActionsBar,
   LeadHistoryDialog,
+  AddToCampaignDialog,
+  BulkTagDialog,
 } from "@/components/leads";
 import {
   Users,
@@ -39,12 +41,24 @@ import {
   Download,
   Upload,
   RefreshCw,
-  Tag,
-  Phone,
-  Trash2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+
+const SOURCE_LABELS: Record<string, string> = {
+  import_csv: "Importação CSV",
+  whatsapp_group: "Grupo WhatsApp",
+  api: "API Externa",
+  manual: "Manual",
+  call_campaign: "Campanha Ligação",
+  dispatch_campaign: "Campanha Despacho",
+};
+
+const TYPE_BADGES: Record<string, { label: string; className: string }> = {
+  grupos: { label: "👥 Grupo", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800" },
+  ligacao: { label: "📞 Ligação", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" },
+  despacho: { label: "📱 WhatsApp", className: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border-teal-200 dark:border-teal-800" },
+};
 
 export default function Leads() {
   const { user } = useAuth();
@@ -52,7 +66,10 @@ export default function Leads() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectAllResults, setSelectAllResults] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
   // Dialogs
@@ -61,18 +78,20 @@ export default function Leads() {
   const [queueOpen, setQueueOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [historyLead, setHistoryLead] = useState<Lead | null>(null);
-  const [bulkTagOpen, setBulkTagOpen] = useState(false);
-  const [tagInput, setTagInput] = useState("");
+  const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
+  const [tagDialogMode, setTagDialogMode] = useState<"add" | "remove" | null>(null);
 
   const filters: LeadFilters = {
     search: search || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
+    campaignType: typeFilter !== "all" ? typeFilter : undefined,
+    sourceType: sourceFilter !== "all" ? sourceFilter : undefined,
     page,
   };
 
   const {
     leads, totalCount, stats, isLoading,
-    createLead, updateLead, deleteLead, bulkDelete, bulkAddTags, importLeads, pageSize,
+    createLead, updateLead, deleteLead, bulkDelete, bulkAddTags, bulkRemoveTags, bulkAddToCampaign, importLeads, pageSize,
   } = useLeads(filters);
 
   const { addToQueue } = useCallQueue();
@@ -86,6 +105,12 @@ export default function Leads() {
     ...groupCampaigns.map((c) => ({ id: c.id, name: c.name, type: "grupos" })),
   ], [callCampaigns, dispatchCampaigns, groupCampaigns]);
 
+  const allCampaignsWithStatus = useMemo(() => [
+    ...callCampaigns.map((c: any) => ({ id: c.id, name: c.name, type: "ligacao", status: c.status })),
+    ...dispatchCampaigns.map((c: any) => ({ id: c.id, name: c.name, type: "despacho", status: c.status })),
+    ...groupCampaigns.map((c: any) => ({ id: c.id, name: c.name, type: "grupos", status: c.status })),
+  ], [callCampaigns, dispatchCampaigns, groupCampaigns]);
+
   const totalPages = Math.ceil(totalCount / pageSize);
 
   const toggleSelect = (id: string) => {
@@ -93,15 +118,23 @@ export default function Leads() {
     if (next.has(id)) next.delete(id);
     else next.add(id);
     setSelectedIds(next);
+    setSelectAllResults(false);
   };
 
   const toggleAll = () => {
     if (selectedIds.size === leads.length) {
       setSelectedIds(new Set());
+      setSelectAllResults(false);
     } else {
       setSelectedIds(new Set(leads.map((l) => l.id)));
     }
   };
+
+  const handleSelectAllResults = () => {
+    setSelectAllResults(true);
+  };
+
+  const effectiveCount = selectAllResults ? totalCount : selectedIds.size;
 
   const formatPhone = (phone: string) => {
     const clean = phone.replace(/\D/g, "");
@@ -114,6 +147,10 @@ export default function Leads() {
     if (!user) return;
     setIsSyncing(true);
     try {
+      // Fetch group campaigns for names
+      const { data: gcList } = await supabase.from("group_campaigns").select("id, name");
+      const gcMap = new Map((gcList || []).map(g => [g.id, g.name]));
+
       const { data: allMembers } = await supabase
         .from("group_members")
         .select("phone, name, group_campaign_id")
@@ -129,6 +166,9 @@ export default function Leads() {
         active_campaign_id: m.group_campaign_id,
         active_campaign_type: "grupos",
         status: "active" as const,
+        source_type: "whatsapp_group",
+        source_group_id: m.group_campaign_id,
+        source_group_name: gcMap.get(m.group_campaign_id) || null,
       }));
 
       for (let i = 0; i < leadRecords.length; i += 500) {
@@ -148,6 +188,23 @@ export default function Leads() {
     } finally {
       setIsSyncing(false);
     }
+  };
+
+  const getSelectedIds = async (): Promise<string[]> => {
+    if (!selectAllResults) return Array.from(selectedIds);
+    // Fetch all IDs matching current filters
+    let query = supabase.from("leads").select("id");
+    if (filters.search) query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`);
+    if (filters.status) query = query.eq("status", filters.status);
+    if (filters.sourceType) query = query.eq("source_type", filters.sourceType);
+    if (filters.campaignType) query = query.eq("active_campaign_type", filters.campaignType);
+    const { data } = await query;
+    return (data || []).map(d => d.id);
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setSelectAllResults(false);
   };
 
   return (
@@ -178,14 +235,19 @@ export default function Leads() {
 
       {/* Bulk Actions Bar */}
       <BulkActionsBar
-        count={selectedIds.size}
-        onAddTag={() => setBulkTagOpen(true)}
-        onAddToQueue={() => setQueueOpen(true)}
-        onDelete={() => {
-          bulkDelete.mutate(Array.from(selectedIds));
-          setSelectedIds(new Set());
+        count={effectiveCount}
+        totalCount={totalCount}
+        allSelected={selectAllResults}
+        onSelectAll={handleSelectAllResults}
+        onAddToCampaign={() => setCampaignDialogOpen(true)}
+        onAddTag={() => setTagDialogMode("add")}
+        onRemoveTag={() => setTagDialogMode("remove")}
+        onDelete={async () => {
+          const ids = await getSelectedIds();
+          bulkDelete.mutate(ids);
+          clearSelection();
         }}
-        onCancel={() => setSelectedIds(new Set())}
+        onCancel={clearSelection}
       />
 
       {/* Search & Filters */}
@@ -200,6 +262,7 @@ export default function Leads() {
           />
         </div>
         <span className="text-sm text-muted-foreground">{totalCount} resultados</span>
+
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
           <SelectContent>
@@ -207,6 +270,29 @@ export default function Leads() {
             <SelectItem value="active">Ativos</SelectItem>
             <SelectItem value="inactive">Inativos</SelectItem>
             <SelectItem value="blocked">Bloqueados</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={typeFilter} onValueChange={(v) => { setTypeFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[140px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os tipos</SelectItem>
+            <SelectItem value="grupos">👥 Grupo</SelectItem>
+            <SelectItem value="ligacao">📞 Ligação</SelectItem>
+            <SelectItem value="despacho">📱 WhatsApp</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="Origem" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas origens</SelectItem>
+            <SelectItem value="import_csv">Importação CSV</SelectItem>
+            <SelectItem value="whatsapp_group">Grupo WhatsApp</SelectItem>
+            <SelectItem value="api">API Externa</SelectItem>
+            <SelectItem value="manual">Manual</SelectItem>
+            <SelectItem value="call_campaign">Campanha Ligação</SelectItem>
+            <SelectItem value="dispatch_campaign">Campanha Despacho</SelectItem>
           </SelectContent>
         </Select>
 
@@ -219,9 +305,8 @@ export default function Leads() {
               <Upload className="h-4 w-4 mr-2" /> Importar leads
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
-              // Export CSV
-              const csv = ["nome,telefone,email,tags", ...leads.map((l) =>
-                `"${l.name || ""}","${l.phone}","${l.email || ""}","${(l.tags || []).join(",")}"`
+              const csv = ["nome,telefone,email,tags,origem,tipo,grupo", ...leads.map((l) =>
+                `"${l.name || ""}","${l.phone}","${l.email || ""}","${(l.tags || []).join(",")}","${SOURCE_LABELS[l.source_type || ""] || ""}","${l.active_campaign_type || ""}","${l.source_group_name || ""}"`
               )].join("\n");
               const blob = new Blob([csv], { type: "text/csv" });
               const url = URL.createObjectURL(blob);
@@ -248,55 +333,76 @@ export default function Leads() {
               </TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Telefone</TableHead>
+              <TableHead>Origem</TableHead>
+              <TableHead>Tipo</TableHead>
+              <TableHead>Grupo</TableHead>
               <TableHead>Tags</TableHead>
-              <TableHead>Campanha</TableHead>
               <TableHead className="w-12"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
             ) : leads.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Nenhum lead encontrado.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum lead encontrado.</TableCell></TableRow>
             ) : (
-              leads.map((lead) => (
-                <TableRow key={lead.id}>
-                  <TableCell>
-                    <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                        <Users className="h-4 w-4 text-muted-foreground" />
+              leads.map((lead) => {
+                const typeBadge = lead.active_campaign_type ? TYPE_BADGES[lead.active_campaign_type] : null;
+                return (
+                  <TableRow key={lead.id}>
+                    <TableCell>
+                      <Checkbox checked={selectedIds.has(lead.id)} onCheckedChange={() => toggleSelect(lead.id)} />
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                          <Users className="h-4 w-4 text-muted-foreground" />
+                        </div>
+                        <span className="font-medium">{lead.name || "—"}</span>
                       </div>
-                      <span className="font-medium">{lead.name || "—"}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{formatPhone(lead.phone)}</TableCell>
-                  <TableCell>
-                    <div className="flex flex-wrap gap-1">
-                      {(lead.tags || []).slice(0, 3).map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
-                      ))}
-                      {(lead.tags || []).length > 3 && (
-                        <Badge variant="outline" className="text-xs">+{lead.tags.length - 3}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">{formatPhone(lead.phone)}</TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">
+                        {SOURCE_LABELS[lead.source_type || ""] || "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {typeBadge ? (
+                        <Badge variant="outline" className={cn("text-xs border", typeBadge.className)}>
+                          {typeBadge.label}
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{lead.active_campaign_type || "—"}</TableCell>
-                  <TableCell>
-                    <LeadActionsMenu
-                      lead={lead}
-                      onEdit={setEditLead}
-                      onHistory={setHistoryLead}
-                      onAddTag={(l) => { setSelectedIds(new Set([l.id])); setBulkTagOpen(true); }}
-                      onAddToQueue={(l) => { setSelectedIds(new Set([l.id])); setQueueOpen(true); }}
-                      onBlock={(l) => updateLead.mutate({ id: l.id, status: "blocked" })}
-                      onDelete={(l) => deleteLead.mutate(l.id)}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-muted-foreground">{lead.source_group_name || "—"}</span>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {(lead.tags || []).slice(0, 3).map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">{tag}</Badge>
+                        ))}
+                        {(lead.tags || []).length > 3 && (
+                          <Badge variant="outline" className="text-xs">+{lead.tags.length - 3}</Badge>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <LeadActionsMenu
+                        lead={lead}
+                        onEdit={setEditLead}
+                        onHistory={setHistoryLead}
+                        onAddTag={(l) => { setSelectedIds(new Set([l.id])); setTagDialogMode("add"); }}
+                        onAddToCampaign={(l) => { setSelectedIds(new Set([l.id])); setCampaignDialogOpen(true); }}
+                        onBlock={(l) => updateLead.mutate({ id: l.id, status: "blocked" })}
+                        onDelete={(l) => deleteLead.mutate(l.id)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -349,7 +455,7 @@ export default function Leads() {
         onSubmit={(campaignId, position) => {
           addToQueue.mutate({ campaignId, leadIds: Array.from(selectedIds), position });
           setQueueOpen(false);
-          setSelectedIds(new Set());
+          clearSelection();
         }}
         isLoading={addToQueue.isPending}
       />
@@ -359,41 +465,39 @@ export default function Leads() {
         onOpenChange={(o) => !o && setHistoryLead(null)}
       />
 
-      {/* Bulk Tag Dialog */}
-      {bulkTagOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center">
-          <div className="bg-background rounded-lg p-6 w-80 space-y-4">
-            <h3 className="font-semibold">Adicionar Tag</h3>
-            <Input
-              value={tagInput}
-              onChange={(e) => setTagInput(e.target.value)}
-              placeholder="Nome da tag"
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const tag = tagInput.trim().toLowerCase();
-                  if (tag) {
-                    bulkAddTags.mutate({ ids: Array.from(selectedIds), tags: [tag] });
-                    setTagInput("");
-                    setBulkTagOpen(false);
-                    setSelectedIds(new Set());
-                  }
-                }
-              }}
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" size="sm" onClick={() => setBulkTagOpen(false)}>Cancelar</Button>
-              <Button size="sm" onClick={() => {
-                const tag = tagInput.trim().toLowerCase();
-                if (tag) {
-                  bulkAddTags.mutate({ ids: Array.from(selectedIds), tags: [tag] });
-                  setTagInput("");
-                  setBulkTagOpen(false);
-                  setSelectedIds(new Set());
-                }
-              }}>Adicionar</Button>
-            </div>
-          </div>
-        </div>
+      <AddToCampaignDialog
+        open={campaignDialogOpen}
+        onOpenChange={setCampaignDialogOpen}
+        selectedCount={effectiveCount}
+        campaigns={allCampaignsWithStatus}
+        onSubmit={async (campaignId, campaignType, skipExisting) => {
+          const ids = await getSelectedIds();
+          bulkAddToCampaign.mutate({ ids, campaignId, campaignType, skipExisting });
+          setCampaignDialogOpen(false);
+          clearSelection();
+        }}
+        isLoading={bulkAddToCampaign.isPending}
+      />
+
+      {tagDialogMode && (
+        <BulkTagDialog
+          open={!!tagDialogMode}
+          onOpenChange={(o) => !o && setTagDialogMode(null)}
+          mode={tagDialogMode}
+          leads={leads}
+          selectedIds={selectedIds}
+          onSubmit={async (tags) => {
+            const ids = await getSelectedIds();
+            if (tagDialogMode === "add") {
+              bulkAddTags.mutate({ ids, tags });
+            } else {
+              bulkRemoveTags.mutate({ ids, tags });
+            }
+            setTagDialogMode(null);
+            clearSelection();
+          }}
+          isLoading={bulkAddTags.isPending || bulkRemoveTags.isPending}
+        />
       )}
     </div>
   );

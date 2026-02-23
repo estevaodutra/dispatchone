@@ -5,3 +5,5 @@ export { AddToQueueDialog } from "./AddToQueueDialog";
 export { LeadActionsMenu } from "./LeadActionsMenu";
 export { BulkActionsBar } from "./BulkActionsBar";
 export { LeadHistoryDialog } from "./LeadHistoryDialog";
+export { AddToCampaignDialog } from "./AddToCampaignDialog";
+export { BulkTagDialog } from "./BulkTagDialog";
