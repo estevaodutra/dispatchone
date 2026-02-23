@@ -115,15 +115,29 @@ export function MembersTab({ campaignId }: MembersTabProps) {
         }
 
         const data = await response.json();
-        const rawMembers = data.members || data.participants || data || [];
-        const membersList = Array.isArray(rawMembers) ? rawMembers : [];
+        
+        // Resposta é um array de objetos de grupo, cada um com "participants"
+        let membersList: any[] = [];
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            if (item.participants && Array.isArray(item.participants)) {
+              membersList.push(...item.participants);
+            }
+          }
+        } else if (data.participants) {
+          membersList = data.participants;
+        } else if (data.members) {
+          membersList = data.members;
+        }
 
         if (membersList.length > 0) {
-          const membersToInsert = membersList.map((m: { phone?: string; id?: string; name?: string; isAdmin?: boolean; admin?: boolean }) => ({
-            phone: m.phone || m.id || "",
-            name: m.name,
-            isAdmin: m.isAdmin || m.admin || false,
-          })).filter((m: { phone: string }) => m.phone);
+          const membersToInsert = membersList
+            .filter((m: any) => m.phone && !m.phone.includes("-group"))
+            .map((m: any) => ({
+              phone: m.phone,
+              name: m.name || undefined,
+              isAdmin: m.isAdmin || m.isSuperAdmin || false,
+            }));
 
           await addMembersBulk(membersToInsert);
           totalImported += membersToInsert.length;
