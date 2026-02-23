@@ -1,82 +1,70 @@
 
-
-# Ajustar colunas Origem, Grupo e Tags na pagina de Leads
+# Adicionar Filtro de Grupo WhatsApp na Pagina de Leads
 
 ## Resumo
 
-Corrigir o mapeamento das colunas para que:
-- **Origem**: Mostre o nome da campanha (ex: "Clientes VIP")
-- **Tipo**: Mantenha como esta (correto)
-- **Grupo**: Mostre o nome real do grupo WhatsApp (ex: "@achadinhoscomcarol 10")
-- **Tags**: Sejam apenas manuais -- remover a tag automatica "grupo" do sync
+Quando o tipo "Grupo" estiver selecionado, exibir um novo dropdown ao lado dos filtros existentes listando os nomes reais dos grupos WhatsApp (extraidos de `source_group_name`). Ao selecionar um grupo, filtrar os leads por esse grupo especifico.
 
 ## Mudancas
 
-### 1. `src/pages/Leads.tsx` -- handleSync
+### 1. `src/hooks/useLeads.ts`
 
-Atualizar a funcao de sincronizacao para:
-- Buscar tambem os grupos vinculados (`campaign_groups`) para obter o nome real do grupo WhatsApp
-- Preencher `source_group_name` com o nome do grupo WhatsApp (de `campaign_groups.group_name`), nao o nome da campanha
-- Preencher `source_name` com o nome da campanha (de `group_campaigns.name`) para usar na coluna Origem
-- Remover `tags: ["grupo"]` do upsert -- tags serao apenas manuais
+- Adicionar campo `sourceGroupName` na interface `LeadFilters`
+- Aplicar filtro `.eq("source_group_name", filters.sourceGroupName)` na query quando presente
+- Adicionar uma nova query para buscar a lista distinta de `source_group_name` dos leads do usuario (para popular o dropdown)
 
-### 2. `src/pages/Leads.tsx` -- Coluna Origem
+### 2. `src/pages/Leads.tsx`
 
-Trocar de `SOURCE_LABELS[lead.source_type]` para mostrar `lead.source_name` (nome da campanha). Caso nao tenha, usar o label generico como fallback.
+- Adicionar estado `groupFilter` para o grupo selecionado
+- Passar `sourceGroupName` nos filtros quando `groupFilter` nao for "all"
+- Renderizar um novo `Select` dropdown condicional: so aparece quando `typeFilter === "grupos"` ou `sourceFilter === "whatsapp_group"`
+- O dropdown lista os nomes dos grupos vindos da nova query
+- Ao trocar o tipo para outro valor que nao "grupos", resetar o `groupFilter` para "all"
 
-### 3. `src/hooks/useGroupMembers.ts` -- addMember e addMembersBulk
+### 3. `src/pages/Leads.tsx` -- getSelectedIds
 
-Remover `tags: ["grupo"]` dos upserts de leads para que tags sejam apenas manuais.
+- Adicionar o filtro `source_group_name` na query de selecao global para consistencia
 
 ## Detalhes tecnicos
 
-### handleSync atualizado
+### Nova query em useLeads
 
 ```text
-const handleSync = async () => {
-  // Busca campanhas de grupo
-  const { data: gcList } = await supabase.from("group_campaigns").select("id, name");
-  const gcMap = new Map((gcList || []).map(g => [g.id, g.name]));
-
-  // Busca grupos vinculados para nome real do grupo WhatsApp
-  const { data: cgList } = await supabase.from("campaign_groups").select("campaign_id, group_jid, group_name");
-  // Mapa: campaign_id -> primeiro group_name encontrado
-  const groupNameMap = new Map<string, string>();
-  (cgList || []).forEach(cg => {
-    if (!groupNameMap.has(cg.campaign_id)) {
-      groupNameMap.set(cg.campaign_id, cg.group_name);
-    }
-  });
-
-  // ... fetch members ...
-
-  const leadRecords = validMembers.map(m => ({
-    user_id: user.id,
-    phone: m.phone,
-    name: m.name || null,
-    // SEM tags automaticas
-    active_campaign_id: m.group_campaign_id,
-    active_campaign_type: "grupos",
-    status: "active",
-    source_type: "whatsapp_group",
-    source_name: gcMap.get(m.group_campaign_id) || null,       // nome da campanha
-    source_group_id: m.group_campaign_id,
-    source_group_name: groupNameMap.get(m.group_campaign_id) || null, // nome do grupo WhatsApp
-  }));
-};
+// Buscar nomes distintos de grupos
+const groupNamesQuery = useQuery({
+  queryKey: ["leads-group-names"],
+  queryFn: async () => {
+    const { data } = await supabase
+      .from("leads")
+      .select("source_group_name")
+      .not("source_group_name", "is", null)
+      .order("source_group_name");
+    // Extrair valores unicos
+    const names = [...new Set((data || []).map(d => d.source_group_name).filter(Boolean))];
+    return names as string[];
+  },
+});
 ```
 
-### Coluna Origem na tabela
+### Novo dropdown no filtro (condicional)
 
 ```text
-// Antes:
-{SOURCE_LABELS[lead.source_type || ""] || "---"}
-
-// Depois:
-{lead.source_name || SOURCE_LABELS[lead.source_type || ""] || "---"}
+{(typeFilter === "grupos" || sourceFilter === "whatsapp_group") && (
+  <Select value={groupFilter} onValueChange={(v) => { setGroupFilter(v); setPage(1); }}>
+    <SelectTrigger className="w-[200px]">
+      <SelectValue placeholder="Grupo" />
+    </SelectTrigger>
+    <SelectContent>
+      <SelectItem value="all">Todos os grupos</SelectItem>
+      {groupNames.map(name => (
+        <SelectItem key={name} value={name}>{name}</SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+)}
 ```
 
 ### Arquivos modificados
 
-- `src/pages/Leads.tsx` (handleSync, coluna Origem)
-- `src/hooks/useGroupMembers.ts` (remover tags automaticas dos upserts)
+- `src/hooks/useLeads.ts` (interface LeadFilters, query de filtro, query de nomes de grupos)
+- `src/pages/Leads.tsx` (estado groupFilter, dropdown condicional, filtro nos params)
