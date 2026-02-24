@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, LayoutDashboard } from "lucide-react";
+import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -118,14 +118,19 @@ export function CallPopup() {
           {/* Lead info */}
           {currentCall && (
             <div className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
-              <div className="flex items-center gap-2">
-                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
-                  {currentCall.leadName.charAt(0).toUpperCase()}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                    {currentCall.leadName.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-medium text-sm">{currentCall.leadName}</p>
+                    <p className="text-xs text-muted-foreground">{currentCall.leadPhone}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-sm">{currentCall.leadName}</p>
-                  <p className="text-xs text-muted-foreground">{currentCall.leadPhone}</p>
-                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowCallDialog(true)}>
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </Button>
               </div>
               <div className="flex flex-wrap gap-1.5 pt-1">
                 <Badge variant="outline" className="text-xs">📁 {currentCall.campaignName}</Badge>
@@ -171,9 +176,6 @@ export function CallPopup() {
                   </div>
                 </div>
               )}
-              <Button size="sm" className="w-full" onClick={() => setShowCallDialog(true)}>
-                <LayoutDashboard className="mr-1 h-3 w-3" /> Abrir Painel
-              </Button>
             </>
           )}
 
@@ -213,7 +215,7 @@ export function CallPopup() {
       </div>
 
       {/* Unified Call Dialog */}
-      {currentCall?.campaignId && currentCall.leadId && (
+      {isActive && currentCall?.campaignId && currentCall.leadId && (
         <CallActionDialog
           open={showCallDialog}
           onOpenChange={setShowCallDialog}
