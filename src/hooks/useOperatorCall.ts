@@ -152,6 +152,15 @@ export function useOperatorCall() {
         return;
       }
 
+      // Auto-set available if offline and active
+      if (data.status === "offline" && data.is_active) {
+        await (supabase as any)
+          .from("call_operators")
+          .update({ status: "available" })
+          .eq("id", data.id);
+        data.status = "available";
+      }
+
       const op: OperatorData = {
         id: data.id,
         operatorName: data.operator_name,
@@ -297,6 +306,19 @@ export function useOperatorCall() {
     };
   }, []);
 
+  const toggleAvailability = useCallback(async () => {
+    if (!operator) return;
+    const newStatus = operator.status === "available" ? "offline" : "available";
+    await (supabase as any)
+      .from("call_operators")
+      .update({ status: newStatus })
+      .eq("id", operator.id);
+    setOperator(prev => prev ? { ...prev, status: newStatus } : prev);
+    if (newStatus === "available") {
+      setCallStatus("idle");
+    }
+  }, [operator]);
+
   return {
     operator,
     currentCall,
@@ -306,5 +328,6 @@ export function useOperatorCall() {
     isCallActive: ["dialing", "ringing", "on_call"].includes(callStatus),
     isLoading,
     cooldownTotal: operator?.personalIntervalSeconds ?? 30,
+    toggleAvailability,
   };
 }
