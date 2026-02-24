@@ -478,10 +478,20 @@ export function useCallPanel(filters?: {
       }
 
 
-      // Fetch webhook config for "calls" category
+      // Get campaign owner's user_id to resolve webhook
+      const { data: campaignData } = await (supabase as any)
+        .from("call_campaigns")
+        .select("user_id")
+        .eq("id", entry.campaignId)
+        .single();
+
+      const campaignOwnerId = campaignData?.user_id;
+
+      // Fetch webhook config for "calls" category from campaign owner
       const { data: webhookConfigs } = await (supabase as any)
         .from("webhook_configs")
         .select("*")
+        .eq("user_id", campaignOwnerId)
         .eq("category", "calls")
         .eq("is_active", true)
         .limit(1);
