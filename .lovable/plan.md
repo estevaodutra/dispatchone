@@ -1,67 +1,92 @@
 
 
-## Plano: Corrigir fila que não avança automaticamente
+## Diagnóstico: Fila automática não dispara ticks
 
-### Diagnóstico
+### O que foi verificado
 
-Analisando os logs e o comportamento observado:
+1. **Backend funciona**: Executei manualmente um tick via edge function — discou "Thaina" com operador "Mauro Dutra" com sucesso.
+2. **Dados corretos**: Campanha `f78dc789...` está em `waiting_operator`, operador "Mauro Dutra" está `available`, há 10+ `call_logs` em `ready`.
+3. **Zero logs do `queue-executor`**: Nenhum tick foi disparado pelo frontend — o loop do `useQueueExecutionSummary` não está chamando a edge function.
 
-1. **Nenhum log do `queue-executor` foi encontrado** — os ticks não estão sendo disparados, ou estão retornando cedo demais sem logar.
-2. **Fluxo observado**: Chamada falha → cooldown do operador (30s) → cooldown termina → operador mostra "Aguardando..." com toggle disponível ligado → **nada acontece**.
-3. **Causa raiz**: O intervalo do tick global é de **15 segundos**, mas quando o `resolve_cooldowns` roda na manutenção (separada), ele resolve o operador mas **não dispara um tick imediato**. Além disso, o tick e a manutenção rodam no mesmo intervalo de 15s, criando um gap onde o cooldown resolve mas o próximo tick pode demorar até 15s.
-4. **Agravante**: Quando o tick roda e não encontra operador disponível, muda o status da fila para `waiting_operator`. Na próxima execução, o tick processa, mas se o `resolve_cooldowns` dentro do tick não resolver ainda (o cooldown não expirou naquele instante exato), a fila fica presa em `waiting_operator` por mais um ciclo de 15s.
+### Causa raiz provável
 
-### Alterações
+O `useEffect` que controla o tick loop depende de `[activeIds.length, tickAll]`. A referência de `tickAll` é recriada pelo `useCallback` sempre que `queryClient` muda (raro, mas possível). No entanto, o problema mais provável é que:
+
+1. A primeira chamada do `tickAll` pode falhar silenciosamente (ex: erro de rede, timeout), seta `tickInFlightRef.current = true` mas **não chega ao `finally`** se o `supabase.functions.invoke` retornar uma promise que nunca resolve.
+2. Alternativamente, como o `useEffect` depende de `activeIds.length` (valor numérico), e o `refetchInterval` de 5s atualiza `states`, o array `activeIds` é recriado a cada render, mas `.length` permanece o mesmo, então o efeito NÃO re-executa — o que é correto. Porém, se a primeira execução falhou e `tickInFlightRef` ficou `true`, todas as execuções subsequentes são bloqueadas pelo guard `if (tickInFlightRef.current) return;`.
+
+### Plano de correção
 
 **Arquivo: `src/hooks/useQueueExecution.ts`**
 
-1. **Reduzir intervalo do tick de 15s para 8s** (linha 155) — menor latência entre cooldown resolver e a próxima discagem.
+1. **Adicionar timeout safety no `tickAll`**: Envolver o `supabase.functions.invoke` com um `Promise.race` com timeout de 30s para evitar que promises penduradas bloqueiem o ref.
 
-2. **Após manutenção resolver cooldowns, disparar tick imediato** — dentro de `runMaintenance`, se `resolvedOps` tiver resultados E existirem campanhas ativas, chamar `tickAll()` imediatamente em vez de esperar o próximo ciclo de 8s.
+2. **Adicionar logs de debug**: Colocar `console.log` no início e fim do `tickAll` e `runMaintenance` para facilitar diagnóstico futuro.
 
-3. **Reduzir intervalo da manutenção de 15s para 10s** (linha 146) — garantir que cooldowns sejam resolvidos mais rapidamente.
+3. **Reset do `tickInFlightRef` no efeito**: Sempre resetar o ref quando o efeito re-executa (cleanup).
 
 ```typescript
-// runMaintenance atualizado:
-const runMaintenance = useCallback(async () => {
-  if (maintenanceInFlightRef.current) return;
-  maintenanceInFlightRef.current = true;
-  try {
-    const { data: resolved } = await (supabase as any).rpc('resolve_cooldowns');
-    await (supabase as any).rpc('heal_stuck_operators', { p_stuck_threshold_minutes: 10 });
-    queryClient.invalidateQueries({ queryKey: ["call_operators"] });
-    
-    // Se cooldowns foram resolvidos e há campanhas ativas, tickar imediatamente
-    if (resolved?.length && activeIdsRef.current.length > 0) {
-      console.log(`[maintenance] Resolved ${resolved.length} cooldowns, triggering immediate tick`);
-      setTimeout(() => tickAll(), 500);
-    }
-  } catch (e) {
-    console.error("[maintenance] error:", e);
-  } finally {
-    maintenanceInFlightRef.current = false;
+const tickAll = useCallback(async () => {
+  if (tickInFlightRef.current) {
+    console.log("[global-queue-tick] skipped (in-flight)");
+    return;
   }
-}, [queryClient, tickAll]);
+  const ids = activeIdsRef.current;
+  if (ids.length === 0) return;
+  
+  console.log(`[global-queue-tick] processing ${ids.length} campaigns`);
+  tickInFlightRef.current = true;
+  try {
+    for (const id of ids) {
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("tick timeout")), 30000)
+      );
+      try {
+        await Promise.race([
+          supabase.functions.invoke(
+            `queue-executor?campaign_id=${id}&action=tick`,
+            { method: "POST" }
+          ),
+          timeoutPromise,
+        ]);
+      } catch (e) {
+        console.error(`[global-queue-tick] error for ${id}:`, e);
+      }
+      if (id !== ids[ids.length - 1]) {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+    queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+    queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+  } catch (e) {
+    console.error("[global-queue-tick] fatal error:", e);
+  } finally {
+    tickInFlightRef.current = false;
+  }
+}, [queryClient]);
 ```
 
-4. **Intervalos atualizados**:
+4. **Garantir cleanup do ref no efeito**:
 ```typescript
-// Manutenção: 10s em vez de 15s
-const interval = setInterval(runMaintenance, 10000);
-
-// Ticks: 8s em vez de 15s
-const interval = setInterval(tickAll, 8000);
+useEffect(() => {
+  if (activeIds.length === 0) return;
+  
+  // Reset in case previous cycle left it stuck
+  tickInFlightRef.current = false;
+  
+  tickAll();
+  const interval = setInterval(tickAll, 8000);
+  return () => {
+    clearInterval(interval);
+    tickInFlightRef.current = false;
+  };
+}, [activeIds.length, tickAll]);
 ```
 
 ### Resultado esperado
 
-- Após o cooldown expirar, o `resolve_cooldowns` (rodando a cada 10s) detecta e libera o operador
-- Imediatamente após a resolução, um tick é disparado (em vez de esperar mais 8-15s)
-- O tick encontra o operador disponível e disca o próximo lead
-- Tempo máximo de espera após cooldown: ~10s (antes: ~30s ou infinito)
-
-### Impacto
-- Apenas `src/hooks/useQueueExecution.ts` é alterado
-- Sem alteração no backend (edge functions)
-- Maior frequência de polling (10s manutenção + 8s ticks vs 15s+15s)
+- O tick loop não pode mais travar por promises penduradas (timeout de 30s).
+- Logs de console ajudam a diagnosticar problemas futuros.
+- O `tickInFlightRef` é resetado quando o efeito é recriado, evitando deadlocks.
+- Impacto: apenas `src/hooks/useQueueExecution.ts`.
 
