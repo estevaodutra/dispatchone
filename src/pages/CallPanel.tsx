@@ -1323,60 +1323,63 @@ function ActionDialog({
                     </div>
                   </div>
 
-                  {/* Campaign Actions (only if answered) */}
-                  {answered === true && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Qual foi o resultado?</p>
+                  {/* Campaign Actions - always visible */}
+                  <div className={cn("space-y-2", answered === false && "opacity-50 pointer-events-none")}>
+                    <p className="text-sm text-muted-foreground">
+                      {answered === false ? "Ações desabilitadas (não atendeu)" : "Qual foi o resultado?"}
+                    </p>
 
-                      {/* Reschedule option */}
-                      <button
-                        onClick={() => onReschedule(entry)}
-                        className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                          <span className="font-medium text-sm">Reagendar</span>
-                        </div>
-                        <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
-                      </button>
-
-                      {isLoading ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">Carregando ações...</p>
-                      ) : (
-                        <>
-                          {actions.length === 0 && (
-                            <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
-                              <p className="text-xs text-muted-foreground">
-                                ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
-                              </p>
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-2">
-                            {displayActions.map((action) => (
-                              <button
-                                key={action.id}
-                                onClick={() => setSelectedActionId(action.id)}
-                                className={cn(
-                                  "rounded-lg border p-3 text-left transition-all",
-                                  selectedActionId === action.id
-                                    ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                    : "border-border hover:border-primary/50"
-                                )}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="h-3 w-3 rounded-full shrink-0"
-                                    style={{ backgroundColor: action.color }}
-                                  />
-                                  <span className="font-medium text-sm">{action.name}</span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        </>
+                    {/* Reschedule option */}
+                    <button
+                      onClick={() => onReschedule(entry)}
+                      className={cn(
+                        "w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors",
+                        answered === false && "pointer-events-auto opacity-100"
                       )}
-                    </div>
-                  )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <span className="font-medium text-sm">Reagendar</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
+                    </button>
+
+                    {isLoading ? (
+                      <p className="text-sm text-muted-foreground text-center py-4">Carregando ações...</p>
+                    ) : (
+                      <>
+                        {actions.length === 0 && (
+                          <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
+                            <p className="text-xs text-muted-foreground">
+                              ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
+                            </p>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          {displayActions.map((action) => (
+                            <button
+                              key={action.id}
+                              onClick={() => setSelectedActionId(action.id)}
+                              className={cn(
+                                "rounded-lg border p-3 text-left transition-all",
+                                selectedActionId === action.id
+                                  ? "border-primary bg-primary/5 ring-2 ring-primary"
+                                  : "border-border hover:border-primary/50"
+                              )}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full shrink-0"
+                                  style={{ backgroundColor: action.color }}
+                                />
+                                <span className="font-medium text-sm">{action.name}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
 
                   {/* Notes */}
                   <div>
@@ -1398,7 +1401,7 @@ function ActionDialog({
                   </Button>
                   <Button
                     onClick={handleSave}
-                    disabled={answered === null || (answered && !selectedActionId) || submitting}
+                    disabled={answered === null || (answered === true && !selectedActionId) || submitting}
                   >
                     {submitting ? "Salvando..." : "✅ Salvar e Encerrar"}
                   </Button>
