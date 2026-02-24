@@ -57,7 +57,6 @@ export function CallActionDialog({
   const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
   const { toast } = useToast();
 
-  const [answered, setAnswered] = useState<boolean | null>(null);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
@@ -107,12 +106,7 @@ export function CallActionDialog({
   }, [open, leadId, campaignId]);
 
   const handleSave = async () => {
-    if (answered === null) {
-      toast({ title: "Indique se o lead atendeu", variant: "destructive" });
-      return;
-    }
-
-    if (answered && !selectedActionId) {
+    if (!selectedActionId) {
       toast({ title: "Selecione uma ação", variant: "destructive" });
       return;
     }
@@ -121,11 +115,11 @@ export function CallActionDialog({
     try {
       const updates: Record<string, unknown> = {
         notes: notes || null,
-        call_status: answered ? "completed" : "no_answer",
+        call_status: selectedActionId === "__failure" ? "no_answer" : "completed",
         ended_at: new Date().toISOString(),
       };
 
-      if (answered && selectedActionId && !selectedActionId.startsWith("__")) {
+      if (selectedActionId && !selectedActionId.startsWith("__")) {
         updates.action_id = selectedActionId;
       }
 
@@ -151,7 +145,6 @@ export function CallActionDialog({
   };
 
   const resetState = () => {
-    setAnswered(null);
     setSelectedActionId(null);
     setNotes("");
     setScheduledDate("");
@@ -216,33 +209,10 @@ export function CallActionDialog({
 
                 {/* Result Section */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Resultado da Ligação</h3>
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Ações</h3>
 
-                  {/* Answered question */}
+                  {/* Campaign Actions */}
                   <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">O lead atendeu?</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant={answered === true ? "default" : "outline"}
-                        className={cn("h-12 text-sm gap-2", answered === true && "ring-2 ring-primary")}
-                        onClick={() => { setAnswered(true); setSelectedActionId(null); }}
-                      >
-                        <Phone className="h-4 w-4" /> Atendeu
-                      </Button>
-                      <Button
-                        variant={answered === false ? "destructive" : "outline"}
-                        className={cn("h-12 text-sm gap-2", answered === false && "ring-2 ring-destructive")}
-                        onClick={() => { setAnswered(false); setSelectedActionId(null); }}
-                      >
-                        <PhoneMissed className="h-4 w-4" /> Não Atendeu
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Campaign Actions (only if answered) */}
-                  {answered === true && (
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Qual foi o resultado?</p>
                       {actionsLoading ? (
                         <div className="flex justify-center py-4">
                           <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -286,7 +256,6 @@ export function CallActionDialog({
                         </>
                       )}
                     </div>
-                  )}
 
                   {/* Schedule fields */}
                   {isScheduleType && selectedActionId && (
@@ -345,7 +314,7 @@ export function CallActionDialog({
                   <Button variant="outline" onClick={() => onOpenChange(false)}>
                     Cancelar
                   </Button>
-                  <Button onClick={handleSave} disabled={answered === null || (answered && !selectedActionId) || isSaving}>
+                  <Button onClick={handleSave} disabled={!selectedActionId || isSaving}>
                     {isSaving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
                     ✅ Salvar e Encerrar
                   </Button>
