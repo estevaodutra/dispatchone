@@ -8,7 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
-  signOut: () => Promise<void>;
+  signOut: () => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,30 +21,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
 
-    // Check for existing session FIRST
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (isMounted) {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setIsLoading(false);
-      }
-    });
-
-    // THEN set up auth state listener for future changes
+    // Register listener FIRST to avoid race conditions
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
-        
-        // Always update session and user
         setSession(session);
         setUser(session?.user ?? null);
-        
-        // Only set loading false on definitive auth events
         if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
           setIsLoading(false);
         }
       }
     );
+
+    // THEN validate session
+    const initializeAuth = async () => {
+      try {
+        const { data: { session: localSession } } = await supabase.auth.getSession();
+
+        if (localSession) {
+          // Validate the session is still valid on the server
+          const { data: { user: validatedUser }, error: validationError } = await supabase.auth.getUser();
+
+          if (isMounted) {
+            if (validationError || !validatedUser) {
+              console.warn("Session validation failed, clearing local session:", validationError?.message);
+              await supabase.auth.signOut({ scope: "local" });
+              setSession(null);
+              setUser(null);
+            } else {
+              setSession(localSession);
+              setUser(validatedUser);
+            }
+          }
+        } else {
+          if (isMounted) {
+            setSession(null);
+            setUser(null);
+          }
+        }
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+        if (isMounted) {
+          setSession(null);
+          setUser(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initializeAuth();
 
     return () => {
       isMounted = false;
@@ -76,8 +104,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error: error as Error | null };
   };
 
-  const signOut = async () => {
-    await supabase.auth.signOut();
+  const signOut = async (): Promise<{ error: Error | null }> => {
+    try {
+      const { error: globalError } = await supabase.auth.signOut();
+
+      if (globalError) {
+        console.warn("Global sign out failed, attempting local fallback:", globalError.message);
+        const { error: localError } = await supabase.auth.signOut({ scope: "local" });
+        if (localError) {
+          console.error("Local sign out also failed:", localError.message);
+          return { error: localError };
+        }
+        return { error: null };
+      }
+
+      return { error: null };
+    } catch (err) {
+      console.error("Unexpected error during sign out:", err);
+      try {
+        await supabase.auth.signOut({ scope: "local" });
+        return { error: null };
+      } catch (fallbackErr) {
+        return { error: fallbackErr as Error };
+      }
+    } finally {
+      // Always clear local state regardless of backend result
+      setUser(null);
+      setSession(null);
+      setIsLoading(false);
+    }
   };
 
   return (

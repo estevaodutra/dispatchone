@@ -8,10 +8,9 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children }: ProtectedRouteProps) {
-  const { user, session, isLoading } = useAuth();
+  const { user, isLoading } = useAuth();
   const location = useLocation();
 
-  // Always show loading while auth state is being determined
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -20,8 +19,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     );
   }
 
-  // Only redirect if both user AND session are null (definitive logged out state)
-  if (!user && !session) {
+  // Rely only on validated user, not potentially stale session
+  if (!user) {
     return <Navigate to="/auth" state={{ from: location }} replace />;
   }
 

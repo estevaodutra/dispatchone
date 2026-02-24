@@ -22,11 +22,22 @@ export function AppHeader() {
   const { toast } = useToast();
 
   const handleSignOut = async () => {
-    await signOut();
-    toast({
-      title: "Até logo!",
-      description: "Você foi desconectado com sucesso.",
-    });
+    const { error } = await signOut();
+
+    if (error) {
+      toast({
+        title: "Erro ao sair",
+        description: "Não foi possível encerrar a sessão. Tente novamente.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Até logo!",
+        description: "Você foi desconectado com sucesso.",
+      });
+    }
+
+    // Always navigate to auth — state was cleared in finally block
     navigate("/auth");
   };
 
