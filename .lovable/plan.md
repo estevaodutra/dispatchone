@@ -1,82 +1,76 @@
 
 
-## Plano: Fixar balão do operador no Painel de Ligações
+## Plano: Campo `obs` no endpoint `/call-dial`
 
-### Contexto
+### Resumo
 
-O `CallPopup` atualmente é renderizado como `fixed bottom-6 right-6` no `AppLayout`, flutuando sobre qualquer página. O usuário quer que ele fique fixo (embutido) dentro da página `/painel-ligacoes` em vez de flutuar.
+Adicionar campo opcional `obs` ao endpoint `/call-dial`, salvar em nova coluna `observations` na tabela `call_logs`, exibir no popup do operador e pré-preencher no modal de ação. Atualizar documentação.
 
-### Alterações
+### 1. Migração de banco de dados
 
-**1. `src/components/operator/CallPopup.tsx`** — Aceitar prop `embedded` que remove posicionamento fixo
+Adicionar coluna `observations` (TEXT, nullable) à tabela `call_logs`:
 
-- Adicionar prop `embedded?: boolean` ao componente
-- Quando `embedded=true`, trocar classes `fixed bottom-6 right-6 z-50` por classes inline (sem position fixed)
-- No estado minimizado/idle: remover `fixed`, usar `w-full` em vez de tamanho automático
-- No estado expandido: remover `fixed`, usar `w-full` em vez de `w-[380px]`
-
-**2. `src/pages/CallPanel.tsx`** — Renderizar `CallPopup` embutido acima das tabs
-
-- Importar `CallPopup` 
-- Renderizar `<CallPopup embedded />` entre o header e as tabs (antes da linha 605)
-
-**3. `src/components/layout/AppLayout.tsx`** — Continuar renderizando o `CallPopup` global (para outras páginas)
-
-- Sem alteração necessária — o popup global continua para outras rotas
-- Alternativa: esconder o global quando estiver em `/painel-ligacoes` para evitar duplicata
-
-### Abordagem para evitar duplicata
-
-Adicionar prop `hidden?: boolean` ou verificar a rota atual no `AppLayout`. A solução mais limpa:
-
-- No `CallPopup`, aceitar `embedded?: boolean`
-- No `AppLayout`, passar uma prop ou usar `useLocation` para esconder o popup quando a rota for `/painel-ligacoes`
-
-### Detalhes de implementação
-
-```typescript
-// CallPopup.tsx - nova interface
-interface CallPopupProps {
-  embedded?: boolean;
-}
-
-export function CallPopup({ embedded = false }: CallPopupProps) {
-  // ...existing logic...
-  
-  // Classes condicionais:
-  // embedded: sem fixed, w-full, sem shadow extremo
-  // floating (default): fixed bottom-6 right-6 z-50
-}
+```sql
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS observations TEXT;
 ```
 
-```typescript
-// AppLayout.tsx - esconder na rota do painel
-import { useLocation } from "react-router-dom";
+### 2. Edge Function `call-dial`
 
-export function AppLayout({ children }: AppLayoutProps) {
-  const location = useLocation();
-  const hideFloatingPopup = location.pathname === "/painel-ligacoes";
-  
-  return (
-    <SidebarProvider defaultOpen>
-      {/* ...existing... */}
-      {!hideFloatingPopup && <CallPopup />}
-    </SidebarProvider>
-  );
-}
+**Arquivo:** `supabase/functions/call-dial/index.ts`
+
+- Linha 87: extrair `obs` do body junto com os outros campos
+- Linhas 454-459 (update existente): adicionar `observations: obs || null`
+- Linhas 472-481 (insert novo): adicionar `observations: obs || null`
+
+### 3. Hook `useOperatorCall` — expor observations
+
+**Arquivo:** `src/hooks/useOperatorCall.ts`
+
+- Adicionar `observations: string | null` à interface `CallData` (linha 18-36)
+- Na função `fetchCallData`, mapear `data.observations` para o campo (linha ~96)
+
+### 4. Popup do operador — exibir observação
+
+**Arquivo:** `src/components/operator/CallPopup.tsx`
+
+- No bloco `callStatus === "on_call"`, antes dos custom fields, adicionar seção condicional:
+```
+{currentCall?.observations && (
+  <div className="rounded border bg-amber-500/10 border-amber-500/20 p-2">
+    <p className="text-xs font-medium text-amber-600">📝 Observação</p>
+    <p className="text-sm">{currentCall.observations}</p>
+  </div>
+)}
 ```
 
-```typescript
-// CallPanel.tsx - embutir o popup
-import { CallPopup } from "@/components/operator/CallPopup";
+### 5. Modal de ação — pré-preencher notas
 
-// Renderizar antes das tabs (linha ~605):
-<CallPopup embedded />
-<Tabs value={panelTab} onValueChange={setPanelTab}>
-```
+**Arquivo:** `src/components/operator/CallActionDialog.tsx`
 
-### Resultado
-- No Painel de Ligações: balão do operador aparece fixo dentro da página, acima das tabs
-- Em outras páginas: balão continua flutuante no canto inferior direito
-- Sem duplicatas
+- Receber prop `initialObservations?: string`
+- Inicializar estado `notes` com `initialObservations || ""`
+- Passar a prop a partir do `CallPopup`
+
+**Arquivo:** `src/components/operator/RegisterActionModal.tsx`
+
+- Mesma lógica: receber `initialObservations` e pré-preencher o campo `notes`
+
+### 6. Documentação da API
+
+**Arquivo:** `src/data/api-endpoints.ts`
+
+- Adicionar atributo `obs` na lista de attributes do endpoint `call-dial` (após `lead_name`, ~linha 1868)
+- Atualizar exemplos curl/nodejs/python para incluir `"obs": "Cliente VIP - tratar com prioridade"`
+
+### Arquivos impactados
+
+| Arquivo | Tipo de alteração |
+|---------|-------------------|
+| Migração SQL | Nova coluna `observations` |
+| `supabase/functions/call-dial/index.ts` | Extrair e salvar `obs` |
+| `src/hooks/useOperatorCall.ts` | Expor `observations` no `CallData` |
+| `src/components/operator/CallPopup.tsx` | Exibir observação no card |
+| `src/components/operator/CallActionDialog.tsx` | Pré-preencher notas |
+| `src/components/operator/RegisterActionModal.tsx` | Pré-preencher notas |
+| `src/data/api-endpoints.ts` | Documentação do novo campo |
 
