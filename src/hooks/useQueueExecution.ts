@@ -98,22 +98,9 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   const activeIdsRef = useRef<string[]>([]);
   activeIdsRef.current = activeIds;
 
-  // Independent cooldown/healing resolution (runs every 15s regardless of active campaigns)
+  // Independent cooldown/healing resolution
   const maintenanceInFlightRef = useRef(false);
-
-  const runMaintenance = useCallback(async () => {
-    if (maintenanceInFlightRef.current) return;
-    maintenanceInFlightRef.current = true;
-    try {
-      await (supabase as any).rpc('resolve_cooldowns');
-      await (supabase as any).rpc('heal_stuck_operators', { p_stuck_threshold_minutes: 10 });
-      queryClient.invalidateQueries({ queryKey: ["call_operators"] });
-    } catch (e) {
-      console.error("[maintenance] error:", e);
-    } finally {
-      maintenanceInFlightRef.current = false;
-    }
-  }, [queryClient]);
+  const tickAllRef = useRef<() => Promise<void>>(async () => {});
 
   const tickAll = useCallback(async () => {
     if (tickInFlightRef.current) return;
@@ -126,7 +113,6 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
           `queue-executor?campaign_id=${id}&action=tick`,
           { method: "POST" }
         );
-        // Delay de 3s entre campanhas para evitar atribuição dupla de operador
         if (id !== ids[ids.length - 1]) {
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
@@ -140,10 +126,31 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     }
   }, [queryClient]);
 
+  tickAllRef.current = tickAll;
+
+  const runMaintenance = useCallback(async () => {
+    if (maintenanceInFlightRef.current) return;
+    maintenanceInFlightRef.current = true;
+    try {
+      const { data: resolved } = await (supabase as any).rpc('resolve_cooldowns');
+      await (supabase as any).rpc('heal_stuck_operators', { p_stuck_threshold_minutes: 10 });
+      queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+      
+      if (resolved?.length && activeIdsRef.current.length > 0) {
+        console.log(`[maintenance] Resolved ${resolved.length} cooldowns, triggering immediate tick`);
+        setTimeout(() => tickAllRef.current(), 500);
+      }
+    } catch (e) {
+      console.error("[maintenance] error:", e);
+    } finally {
+      maintenanceInFlightRef.current = false;
+    }
+  }, [queryClient]);
+
   // Maintenance runs always (independent of active campaigns)
   useEffect(() => {
     runMaintenance();
-    const interval = setInterval(runMaintenance, 15000);
+    const interval = setInterval(runMaintenance, 10000);
     return () => clearInterval(interval);
   }, [runMaintenance]);
 
@@ -152,7 +159,7 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     if (activeIds.length === 0) return;
 
     tickAll();
-    const interval = setInterval(tickAll, 15000);
+    const interval = setInterval(tickAll, 8000);
     return () => clearInterval(interval);
   }, [activeIds.length, tickAll]);
 
