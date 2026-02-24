@@ -1,48 +1,37 @@
 
 
-# Plan: Unificar Reagendamento Dentro do Card Principal
+# Plan: Fix Script Not Loading (Duplicate Script Issue)
 
-## Problema
-Quando o operador clica em "Reagendar" no dialog principal, abre um **segundo dialog separado** por cima, quebrando o fluxo. O usuário quer que o formulário de reagendamento apareça inline, dentro do mesmo card.
+## Root Cause
 
-## Mudança
+The `useCallScript` hook uses `.maybeSingle()` to fetch the script. The database now has **2 scripts** for campaign `f78dc789`:
 
-**Arquivo:** `src/pages/CallPanel.tsx` — Componente `ActionDialog`
+1. Original script (created by admin `3b6be6fe`) — has the full roteiro with questions
+2. Duplicate empty script (created by operator `7848b4ff`) — auto-created when the operator couldn't see the first one (before RLS fix)
 
-### O que muda:
+After the RLS fix, both scripts are now visible. `.maybeSingle()` throws an error when it finds 2 rows, causing the infinite loading spinner.
 
-1. **Adicionar estado local** `showReschedule`, `localDate`, `localTime` dentro do `ActionDialog`
-2. **Substituir** o botão "Reagendar" que chama `onReschedule(entry)` (abre dialog separado) por um toggle que expande/colapsa um painel inline
-3. **Quando clicado "Reagendar"**, expandir uma seção inline abaixo do botão com:
-   - Inputs de Data e Horário (grid 2 colunas)
-   - Botões rápidos: +10 min, +30 min, +1 hora, Amanhã
-   - Botão "Confirmar Reagendamento"
-4. **Ao confirmar**, chamar diretamente a função de reagendamento e fechar o dialog
-5. **Remover** a prop `onReschedule` do `ActionDialog` (não precisa mais abrir dialog externo)
+## Changes
 
-### Detalhes técnicos:
+### 1. Database cleanup (migration)
+Delete duplicate/empty scripts — keep only the oldest (original) script per campaign:
 
-- O `ActionDialog` passará a receber uma nova prop `onRescheduleConfirm: (entry: CallPanelEntry, scheduledFor: string) => Promise<void>` em vez de `onReschedule`
-- O estado de data/hora fica local ao `ActionDialog`
-- O botão "Reagendar" alterna `showReschedule` state; quando expandido, mostra os controles inline com um fundo diferenciado (mesmo estilo amber)
-- Ao confirmar, chama `onRescheduleConfirm` e fecha tudo
-
-### Layout resultante:
-
-```text
-🎯 RESULTADO DA LIGAÇÃO
-
-┌─────────────────────────────────┐
-│ 📅 Reagendar                    │
-│ A pessoa não pode falar agora   │
-│                                 │
-│  [Data ___]     [Horário ___]   │
-│  [+10min] [+30min] [+1h] [Amanhã]│
-│  [Confirmar Reagendamento]      │
-└─────────────────────────────────┘
-
-Qual foi o resultado?
-[Ação 1]  [Ação 2]
-[Ação 3]  [Ação 4]
+```sql
+DELETE FROM public.call_scripts
+WHERE id IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY campaign_id ORDER BY created_at ASC) as rn
+    FROM public.call_scripts
+  ) sub
+  WHERE rn > 1
+);
 ```
+
+Also add a UNIQUE constraint on `campaign_id` to prevent future duplicates.
+
+### 2. Fix `src/hooks/useCallScript.ts`
+Change `.maybeSingle()` to `.order("created_at", { ascending: true }).limit(1).maybeSingle()` so even if duplicates somehow exist, it picks the oldest one and doesn't error.
+
+### 3. Fix auto-create logic
+The hook's "create if none exists" logic should NOT create a new script if the user isn't the campaign owner. Change to only create for the admin/owner, not for operators viewing scripts.
 
