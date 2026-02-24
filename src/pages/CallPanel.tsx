@@ -489,9 +489,19 @@ export default function CallPanel() {
   // Sorted entries
   const sortedEntries = useMemo(() => {
     if (isQueueTab) return [];
-    return [...entries].sort((a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+
+    const getPriority = (s: string) => {
+      if (['dialing', 'ringing', 'in_progress'].includes(s)) return 0;
+      if (['ready', 'scheduled', 'waiting_operator'].includes(s)) return 1;
+      return 2;
+    };
+
+    return [...entries].sort((a, b) => {
+      const pa = getPriority(a.callStatus);
+      const pb = getPriority(b.callStatus);
+      if (pa !== pb) return pa - pb;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
   }, [entries, isQueueTab]);
 
   // Pagination
