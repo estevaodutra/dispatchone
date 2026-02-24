@@ -65,3 +65,9 @@ verify_jwt = false
 
 [functions.company-add-member]
 verify_jwt = false
+
+[functions.queue-executor]
+verify_jwt = false
+
+[functions.call-status]
+verify_jwt = false
