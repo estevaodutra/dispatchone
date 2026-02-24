@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Outlet } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { LanguageProvider } from "@/i18n";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { CompanyProvider } from "@/contexts/CompanyContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout";
 
@@ -42,6 +43,7 @@ const App = () => {
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
         <LanguageProvider>
           <AuthProvider>
+            <CompanyProvider>
             <TooltipProvider>
               <Toaster />
               <Sonner />
@@ -198,6 +200,7 @@ const App = () => {
                 </Routes>
               </BrowserRouter>
             </TooltipProvider>
+            </CompanyProvider>
           </AuthProvider>
         </LanguageProvider>
       </ThemeProvider>

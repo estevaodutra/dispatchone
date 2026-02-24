@@ -44,12 +44,21 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { useLanguage } from "@/i18n";
+import { useCompany } from "@/contexts/CompanyContext";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Building2, Check } from "lucide-react";
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const { t } = useLanguage();
   const location = useLocation();
   const isCollapsed = state === "collapsed";
+  const { companies, activeCompany, setActiveCompany } = useCompany();
 
   // Check if we're in any campaigns route
   const isCampaignsRoute = location.pathname.startsWith("/campaigns");
@@ -89,7 +98,7 @@ export function AppSidebar() {
       collapsible="icon"
       className="border-r border-sidebar-border bg-sidebar"
     >
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
+      <SidebarHeader className="border-b border-sidebar-border px-4 py-3 space-y-2">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Zap className="h-4 w-4 text-primary-foreground" />
@@ -101,6 +110,35 @@ export function AppSidebar() {
             </div>
           )}
         </div>
+        {!isCollapsed && companies.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-2 w-full rounded-md border border-sidebar-border bg-sidebar px-2.5 py-1.5 text-sm text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
+                <Building2 className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="truncate flex-1 text-left font-medium">
+                  {activeCompany?.name || "Selecionar"}
+                </span>
+                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground rotate-90" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56">
+              {companies.map((company) => (
+                <DropdownMenuItem
+                  key={company.id}
+                  onClick={() => setActiveCompany(company.id)}
+                  className="flex items-center gap-2"
+                >
+                  {company.id === activeCompany?.id ? (
+                    <Check className="h-3.5 w-3.5 text-primary" />
+                  ) : (
+                    <div className="h-3.5 w-3.5" />
+                  )}
+                  <span className="truncate">{company.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </SidebarHeader>
 
       <SidebarContent className="px-2 py-4">

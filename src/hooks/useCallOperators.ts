@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 export type OperatorStatus = "offline" | "available" | "on_call" | "cooldown" | "paused";
 
@@ -54,20 +55,26 @@ const transformDbToFrontend = (db: DbCallOperator): CallOperator => ({
 export function useCallOperators() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { activeCompanyId } = useCompany();
   const queryClient = useQueryClient();
 
   const { data: operators = [], isLoading, refetch } = useQuery({
-    queryKey: ["call_operators"],
+    queryKey: ["call_operators", activeCompanyId],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from("call_operators")
         .select("*")
         .order("created_at", { ascending: true });
 
+      if (activeCompanyId) {
+        query = query.eq("company_id", activeCompanyId);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return (data as DbCallOperator[]).map(transformDbToFrontend);
     },
-    enabled: !!user,
+    enabled: !!user && !!activeCompanyId,
   });
 
   const addOperatorMutation = useMutation({
@@ -79,6 +86,7 @@ export function useCallOperators() {
         .from("call_operators")
         .insert({
           user_id: authUser.id,
+          company_id: activeCompanyId,
           operator_name: operator.operatorName,
           extension: operator.extension || null,
           is_active: true,
