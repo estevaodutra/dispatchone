@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 export interface CallPanelEntry {
   id: string;
@@ -112,17 +113,22 @@ export function useCallPanel(filters?: {
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { activeCompanyId } = useCompany();
   const queryClient = useQueryClient();
   const [bulkPollingActive, setBulkPollingActive] = useState(false);
 
   const { data: entries = [], isLoading, refetch } = useQuery({
-    queryKey: ["call_panel", filters],
+    queryKey: ["call_panel", filters, activeCompanyId],
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
         .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority), call_operators(operator_name, extension)")
         .order("created_at", { ascending: false })
         .limit(200);
+
+      if (activeCompanyId) {
+        query = query.eq("company_id", activeCompanyId);
+      }
 
       if (filters?.campaignId) {
         query = query.eq("campaign_id", filters.campaignId);

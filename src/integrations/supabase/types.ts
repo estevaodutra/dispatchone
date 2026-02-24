@@ -142,6 +142,7 @@ export type Database = {
       call_campaigns: {
         Row: {
           api4com_config: Json | null
+          company_id: string | null
           created_at: string | null
           description: string | null
           dial_delay_minutes: number | null
@@ -162,6 +163,7 @@ export type Database = {
         }
         Insert: {
           api4com_config?: Json | null
+          company_id?: string | null
           created_at?: string | null
           description?: string | null
           dial_delay_minutes?: number | null
@@ -182,6 +184,7 @@ export type Database = {
         }
         Update: {
           api4com_config?: Json | null
+          company_id?: string | null
           created_at?: string | null
           description?: string | null
           dial_delay_minutes?: number | null
@@ -200,13 +203,22 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "call_campaigns_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       call_leads: {
         Row: {
           assigned_operator_id: string | null
           attempts: number | null
           campaign_id: string
+          company_id: string | null
           created_at: string | null
           custom_fields: Json | null
           email: string | null
@@ -224,6 +236,7 @@ export type Database = {
           assigned_operator_id?: string | null
           attempts?: number | null
           campaign_id: string
+          company_id?: string | null
           created_at?: string | null
           custom_fields?: Json | null
           email?: string | null
@@ -241,6 +254,7 @@ export type Database = {
           assigned_operator_id?: string | null
           attempts?: number | null
           campaign_id?: string
+          company_id?: string | null
           created_at?: string | null
           custom_fields?: Json | null
           email?: string | null
@@ -263,6 +277,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "call_leads_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "call_leads_result_action_id_fkey"
             columns: ["result_action_id"]
             isOneToOne: false
@@ -278,6 +299,7 @@ export type Database = {
           audio_url: string | null
           call_status: string | null
           campaign_id: string | null
+          company_id: string | null
           created_at: string | null
           duration_seconds: number | null
           ended_at: string | null
@@ -299,6 +321,7 @@ export type Database = {
           audio_url?: string | null
           call_status?: string | null
           campaign_id?: string | null
+          company_id?: string | null
           created_at?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
@@ -320,6 +343,7 @@ export type Database = {
           audio_url?: string | null
           call_status?: string | null
           campaign_id?: string | null
+          company_id?: string | null
           created_at?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
@@ -348,6 +372,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
           {
@@ -432,6 +463,7 @@ export type Database = {
         Row: {
           attempts: number | null
           campaign_id: string
+          company_id: string | null
           created_at: string | null
           id: string
           last_attempt_at: string | null
@@ -445,6 +477,7 @@ export type Database = {
         Insert: {
           attempts?: number | null
           campaign_id: string
+          company_id?: string | null
           created_at?: string | null
           id?: string
           last_attempt_at?: string | null
@@ -458,6 +491,7 @@ export type Database = {
         Update: {
           attempts?: number | null
           campaign_id?: string
+          company_id?: string | null
           created_at?: string | null
           id?: string
           last_attempt_at?: string | null
@@ -474,6 +508,13 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "call_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_queue_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
             referencedColumns: ["id"]
           },
           {

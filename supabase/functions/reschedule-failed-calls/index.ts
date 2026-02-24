@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
     const { data: failedCalls, error: fetchError } = await supabase
       .from("call_logs")
       .select(`
-        id, campaign_id, lead_id, operator_id, user_id, call_status,
+        id, campaign_id, lead_id, operator_id, user_id, call_status, company_id,
         attempt_number, max_attempts,
         call_campaigns(retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id)
       `)
@@ -130,6 +130,7 @@ Deno.serve(async (req) => {
               lead_id: call.lead_id,
               operator_id: newOperatorId,
               user_id: call.user_id,
+              company_id: (call as any).company_id || null,
               call_status: "scheduled",
               scheduled_for: nextRetryAt.toISOString(),
               attempt_number: currentAttempt + 1,

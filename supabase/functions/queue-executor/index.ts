@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     // Verify campaign ownership
     const { data: campaign, error: campErr } = await supabase
       .from('call_campaigns')
-      .select('id, name, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior')
+      .select('id, name, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior, company_id')
       .eq('id', campaignId)
       .eq('user_id', user.id)
       .single();
@@ -381,6 +381,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     .from('call_logs')
     .insert({
       user_id: userId,
+      company_id: campaign.company_id || null,
       campaign_id: campaignId,
       lead_id: nextLead.id,
       call_status: 'ready',

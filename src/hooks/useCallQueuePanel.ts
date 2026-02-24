@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 export interface QueuePanelEntry {
   id: string;
@@ -22,10 +23,11 @@ export interface QueuePanelEntry {
 export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { activeCompanyId } = useCompany();
   const queryClient = useQueryClient();
 
   const { data: entries = [], isLoading } = useQuery({
-    queryKey: ["call-queue-panel", campaignFilter],
+    queryKey: ["call-queue-panel", campaignFilter, activeCompanyId],
     queryFn: async () => {
       // 1. Regular call_queue entries
       let query = (supabase as any)
@@ -33,6 +35,10 @@ export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string)
         .select("*, leads(name, phone, email), call_campaigns(name)")
         .eq("status", "waiting")
         .order("position", { ascending: true });
+
+      if (activeCompanyId) {
+        query = query.eq("company_id", activeCompanyId);
+      }
 
       if (campaignFilter && campaignFilter !== "all") {
         query = query.eq("campaign_id", campaignFilter);
