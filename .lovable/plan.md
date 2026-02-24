@@ -1,44 +1,57 @@
 
 
-# Fix: Operador travado como "Em ligação" com chamada em status inconsistente
+# Plan: Operador auto-disponivel ao logar + toggle no popup
 
-## Diagnostico
+## Problema
 
-O operador "Mauro Dutra" esta com status `on_call` e `current_call_id` apontando para um call_log com status `waiting_operator`. Isso e um estado inconsistente: o operador foi reservado mas a chamada nunca progrediu para `dialing`.
-
-A funcao `heal_stuck_operators` nao resolve isso porque so verifica status terminais (`completed`, `failed`, etc.) e o timeout de 10 minutos. O status `waiting_operator` nao e terminal nem ativo — e um limbo.
+Atualmente o operador ve o popup "Disponivel / Aguardando..." mas nao tem controle para se colocar online ou offline. O status so muda pelo painel admin (OperatorsPanel). Alem disso, ao fazer login, o operador permanece "offline" ate que um admin o coloque disponivel.
 
 ## Solucao
 
-Atualizar a RPC `heal_stuck_operators` para tambem liberar operadores cujo `current_call_id` aponta para chamadas em status nao-ativo (`waiting_operator`, `ready`, `scheduled`). Esses status indicam que a chamada nunca iniciou de fato.
+Duas alteracoes no hook `useOperatorCall` e no componente `CallPopup`:
 
-### Migration SQL
+### 1. Auto-disponibilizar ao carregar (useOperatorCall.ts)
 
-Adicionar um Case 5 na funcao `heal_stuck_operators`:
+Apos buscar o operador no `fetchOperator`, se o status for `offline` e `is_active = true`, atualizar automaticamente para `available`:
 
-```sql
-CREATE OR REPLACE FUNCTION public.heal_stuck_operators(...)
--- Dentro do WHERE, adicionar:
-OR
--- Case 5: call in non-active state (never actually started)
-EXISTS (
-  SELECT 1 FROM call_logs cl
-  WHERE cl.id = op.current_call_id
-    AND cl.call_status IN ('waiting_operator', 'ready', 'scheduled')
-)
+```text
+fetchOperator() {
+  // ... busca operador
+  if (data.status === 'offline' && data.is_active) {
+    await supabase.from('call_operators')
+      .update({ status: 'available' })
+      .eq('id', data.id);
+    data.status = 'available';  // refletir localmente
+  }
+}
 ```
 
-Isso libera imediatamente operadores vinculados a chamadas que nunca sairam do estagio de pre-discagem.
+### 2. Toggle de disponibilidade no CallPopup
 
-### Correcao imediata dos dados
+Adicionar um switch no popup minimizado (estado `idle`) para que o operador possa se colocar offline/online manualmente:
 
-Executar um UPDATE direto para corrigir o estado atual do operador travado, sem esperar pelo proximo ciclo de manutencao.
+```text
+Popup minimizado:
+  [Switch Online/Offline] ● Disponivel  Aguardando...
+  
+Popup minimizado (offline):
+  [Switch Online/Offline] ○ Offline
+```
+
+No `useOperatorCall`, expor uma funcao `toggleAvailability` que altera o status entre `available` e `offline`.
+
+### 3. Nao renderizar popup se offline
+
+Quando o operador estiver offline (apos desligar o toggle), o popup mostra estado "Offline" em vez de "Disponivel / Aguardando".
 
 ### Arquivos alterados
 
-| Tipo | Descricao |
-|------|-----------|
-| Migration SQL | Atualizar RPC `heal_stuck_operators` para tratar status `waiting_operator`, `ready`, `scheduled` |
+| Arquivo | Descricao |
+|---------|-----------|
+| `src/hooks/useOperatorCall.ts` | Auto-set available ao carregar; expor `toggleAvailability` |
+| `src/components/operator/CallPopup.tsx` | Adicionar switch online/offline no popup minimizado |
 
-Nenhuma alteracao de frontend necessaria — o ciclo de manutencao ja roda a cada 15 segundos e vai resolver automaticamente apos a correcao da RPC.
+### Seguranca
+
+A policy RLS ja permite que o operador atualize seu proprio registro (`user_id = auth.uid()`), entao nenhuma alteracao de banco e necessaria.
 
