@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallOperators, CallOperator, OperatorStatus } from "@/hooks/useCallOperators";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -206,6 +207,7 @@ function SummaryCard({ icon, label, value }: { icon: React.ReactNode; label: str
 
 function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOperator; onConfigure: (op: CallOperator) => void; onRemove: (id: string) => void }) {
   const { updateOperatorStatus } = useCallOperators();
+  const queryClient = useQueryClient();
   const config = statusConfig[operator.status];
   const answerRate = operator.totalCalls > 0
     ? ((operator.totalCallsAnswered / operator.totalCalls) * 100).toFixed(1)
@@ -215,33 +217,39 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
   const isOnline = operator.status === "available" || operator.status === "on_call" || operator.status === "cooldown";
 
   const handleToggle = async (checked: boolean) => {
-    if (!checked && operator.status === "on_call") {
-      // Force release via atomic RPC, then set offline
-      if (!confirm("Operador está em ligação. Deseja forçar offline?")) return;
-      if (operator.currentCallId) {
-        await (supabase as any).rpc('release_operator', { p_call_id: operator.currentCallId, p_force: true });
+    try {
+      if (!checked && operator.status === "on_call") {
+        if (!confirm("Operador está em ligação. Deseja forçar offline?")) return;
+        if (operator.currentCallId) {
+          await (supabase as any).rpc('release_operator', { p_call_id: operator.currentCallId, p_force: true });
+        }
+        await (supabase as any)
+          .from("call_operators")
+          .update({ status: "offline" })
+          .eq("id", operator.id);
+        queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+        return;
       }
-      await (supabase as any)
-        .from("call_operators")
-        .update({ status: "offline" })
-        .eq("id", operator.id);
-      return;
+      if (!checked && operator.status === "cooldown") {
+        await (supabase as any)
+          .from("call_operators")
+          .update({ status: "offline" })
+          .eq("id", operator.id);
+        queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+        return;
+      }
+      if (checked && operator.status === "cooldown") {
+        await (supabase as any)
+          .from("call_operators")
+          .update({ status: "available" })
+          .eq("id", operator.id);
+        queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+        return;
+      }
+      await updateOperatorStatus({ id: operator.id, status: checked ? "available" : "offline" });
+    } catch {
+      // Error already handled by mutation's onError
     }
-    if (!checked && operator.status === "cooldown") {
-      await (supabase as any)
-        .from("call_operators")
-        .update({ status: "offline" })
-        .eq("id", operator.id);
-      return;
-    }
-    if (checked && operator.status === "cooldown") {
-      await (supabase as any)
-        .from("call_operators")
-        .update({ status: "available" })
-        .eq("id", operator.id);
-      return;
-    }
-    updateOperatorStatus({ id: operator.id, status: checked ? "available" : "offline" });
   };
 
   return (
