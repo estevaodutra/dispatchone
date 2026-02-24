@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
@@ -8,6 +9,9 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
+  const location = useLocation();
+  const hideFloatingPopup = location.pathname === "/painel-ligacoes";
+
   return (
     <SidebarProvider defaultOpen>
       <div className="flex min-h-screen w-full">
@@ -17,7 +21,7 @@ export function AppLayout({ children }: AppLayoutProps) {
           <main className="flex-1 p-6">{children}</main>
         </div>
       </div>
-      <CallPopup />
+      {!hideFloatingPopup && <CallPopup />}
     </SidebarProvider>
   );
 }
