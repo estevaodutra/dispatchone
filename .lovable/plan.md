@@ -1,51 +1,57 @@
 
 
-# Plan: Corrigir Visibilidade de Ações e Roteiro no Dialog do Operador
+# Plan: Corrigir Ações Não Aparecendo + Remover Duplicatas
 
-## Problema Identificado
+## Problemas Identificados
 
-Analisando o código em `src/pages/CallPanel.tsx` (linhas 1326-1378), as **ações da campanha ficam escondidas** atrás do clique em "Atendeu". O bloco que renderiza as ações está dentro de `{answered === true && (...)}` (linha 1327), então o operador não vê nenhuma ação até clicar em "Atendeu". Antes do refactor, as ações eram exibidas diretamente.
+### 1. Ações não aparecem para operadores (CAUSA RAIZ)
+A tabela `call_script_actions` tem política de segurança `user_id = auth.uid()`. Quando um **administrador** cria as ações, elas ficam vinculadas ao `user_id` dele. Quando um **operador** (outro usuário, membro da empresa) abre o dialog, a política bloqueia a leitura — por isso aparece "Nenhuma ação configurada".
 
-O roteiro está funcionando corretamente (o `InlineScriptRunner` mostra um nó por vez, começando pelo "Início"), mas a percepção é de que "sumiu" porque as ações que complementavam a tela sumiram.
+A campanha "FN | Abandono de Funil" tem **3 ações configuradas** no banco, mas o operador não consegue vê-las.
 
-## Mudança Necessária
+**Solução**: Atualizar a política RLS de `call_script_actions` para permitir leitura por membros da empresa (mesma lógica que `call_campaigns` usa: `is_company_member(company_id)`), fazendo JOIN com `call_campaigns`.
 
-**Arquivo:** `src/pages/CallPanel.tsx` — Componente `ActionDialog` (linhas 1300-1410)
+### 2. Botões "Atendeu / Não Atendeu" duplicados
+- O `InlineScriptRunner` já renderiza "Atendeu / Não Atendeu" no nó de Início do roteiro
+- O `ActionDialog` renderiza **outro par** na seção "Resultado da Ligação"
+- Resultado: 4 botões iguais na tela
 
-Reorganizar a seção "Resultado da Ligação" para:
+**Solução**: Remover a seção "O lead atendeu?" do `ActionDialog` e delegar isso ao `InlineScriptRunner`.
 
-1. **Mostrar TODAS as ações da campanha sempre visíveis** (não esconder atrás de "Atendeu")
-2. Manter os botões "Atendeu / Não Atendeu" como seleção de estado, mas as ações da campanha ficam visíveis logo abaixo
-3. Quando "Não Atendeu" for selecionado, desabilitar as ações (mas mantê-las visíveis) ou mostrar apenas "Reagendar"
-4. O botão "Salvar e Encerrar" deve funcionar com qualquer combinação válida
+### 3. Botões "Sucesso / Sem Sucesso" (fallback) desnecessários
+Com as ações aparecendo corretamente, o fallback não é necessário.
 
-### Layout novo da seção Resultado:
+**Solução**: Remover os botões fallback e mostrar apenas as ações reais da campanha.
+
+## Mudanças
+
+### Arquivo 1: Migração SQL (RLS)
+- Remover política antiga `Users can manage own call_script_actions`
+- Criar política de SELECT: permitir leitura se o usuário é membro da empresa da campanha (`call_campaigns.company_id`) OU dono direto
+- Manter política de INSERT/UPDATE/DELETE apenas para o dono (`user_id = auth.uid()`)
+
+### Arquivo 2: `src/pages/CallPanel.tsx` — Componente `ActionDialog`
+- **Remover** a seção "O lead atendeu?" (linhas 1306-1324) — o InlineScriptRunner já cuida disso
+- **Remover** o state `answered` e a lógica condicional de opacidade
+- **Remover** os botões fallback "Sucesso / Sem Sucesso"
+- **Mostrar** as ações da campanha diretamente, sempre visíveis
+- **Ajustar** `handleSave` para funcionar sem o state `answered` — basta ter uma ação selecionada
+- Manter botão "Reagendar" e campo de notas
+
+### Layout resultante:
 
 ```text
-🎯 RESULTADO DA LIGAÇÃO
+📋 ROTEIRO (InlineScriptRunner)
+  [Nó atual com Atendeu/Não Atendeu no início]
 ─────────────────────────
-O lead atendeu?
-[📞 Atendeu]    [📵 Não Atendeu]
+🎯 RESULTADO DA LIGAÇÃO
+  [Reagendar]
+  [Ação 1] [Ação 2]    ← ações reais da campanha
+  [Ação 3] [Ação 4]
 
-Se atendeu, qual foi o resultado?
-(Ações da campanha)
-[✅ Venda]   [📅 Agendar]
-[❌ Sem Int] [📱 WhatsApp]
-
-⚠️ Se não há ações: "Nenhuma ação configurada. Usando padrão:"
-[✅ Sucesso]  [❌ Sem Sucesso]
-
-📝 Observações (opcional)
+📝 Observações
 [textarea]
 
 [Cancelar] [Salvar e Encerrar]
 ```
-
-### Detalhes técnicos:
-
-- Mover `displayActions` grid para fora do `{answered === true}` condicional
-- Quando `answered === false`: mostrar ações desabilitadas (opacity reduzida) + "Reagendar" como opção principal
-- Quando `answered === null`: mostrar ações mas exigir seleção de "Atendeu/Não Atendeu" para salvar
-- Manter lógica de `handleSave` e `onSelect` inalterada
-- Garantir que `useCallActions(entry.campaignId || "")` recebe o campaignId correto (já confirmado que sim pelo header mostrando o nome da campanha)
 
