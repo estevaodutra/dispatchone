@@ -1204,27 +1204,14 @@ function ActionDialog({
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
   const [submitting, setSubmitting] = useState(false);
-  const [answered, setAnswered] = useState<boolean | null>(null);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const hasScript = !!(entry.campaignId && entry.leadId);
 
-  const fallbackActions = [
-    { id: "__success", name: "Sucesso", color: "#10b981", icon: "✅", actionType: "none" as const, sortOrder: 0, actionConfig: null, campaignId: "", createdAt: "" },
-    { id: "__failure", name: "Sem Sucesso", color: "#ef4444", icon: "❌", actionType: "none" as const, sortOrder: 1, actionConfig: null, campaignId: "", createdAt: "" },
-  ];
-  const displayActions = actions.length > 0 ? actions : fallbackActions;
-
   const handleSave = async () => {
-    if (answered === null) return;
-    if (answered && !selectedActionId) return;
+    if (!selectedActionId) return;
     setSubmitting(true);
     try {
-      if (!answered) {
-        // No answer — use a dummy action or just register notes
-        await onSelect("__no_answer");
-      } else {
-        await onSelect(selectedActionId!);
-      }
+      await onSelect(selectedActionId);
     } finally {
       setSubmitting(false);
     }
@@ -1302,82 +1289,52 @@ function ActionDialog({
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Resultado da Ligação</h3>
 
-                  {/* Answered question */}
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">O lead atendeu?</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant={answered === true ? "default" : "outline"}
-                        className={cn("h-12 text-sm gap-2", answered === true && "ring-2 ring-primary")}
-                        onClick={() => { setAnswered(true); setSelectedActionId(null); }}
-                      >
-                        <Phone className="h-4 w-4" /> Atendeu
-                      </Button>
-                      <Button
-                        variant={answered === false ? "destructive" : "outline"}
-                        className={cn("h-12 text-sm gap-2", answered === false && "ring-2 ring-destructive")}
-                        onClick={() => { setAnswered(false); setSelectedActionId(null); }}
-                      >
-                        <PhoneOff className="h-4 w-4" /> Não Atendeu
-                      </Button>
+                  {/* Reschedule option */}
+                  <button
+                    onClick={() => onReschedule(entry)}
+                    className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-2">
+                      <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      <span className="font-medium text-sm">Reagendar</span>
                     </div>
-                  </div>
+                    <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
+                  </button>
 
-                  {/* Campaign Actions - always visible */}
-                  <div className={cn("space-y-2", answered === false && "opacity-50 pointer-events-none")}>
-                    <p className="text-sm text-muted-foreground">
-                      {answered === false ? "Ações desabilitadas (não atendeu)" : "Qual foi o resultado?"}
-                    </p>
-
-                    {/* Reschedule option */}
-                    <button
-                      onClick={() => onReschedule(entry)}
-                      className={cn(
-                        "w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors",
-                        answered === false && "pointer-events-auto opacity-100"
-                      )}
-                    >
-                      <div className="flex items-center gap-2">
-                        <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                        <span className="font-medium text-sm">Reagendar</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
-                    </button>
-
+                  {/* Campaign Actions */}
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">Qual foi o resultado?</p>
                     {isLoading ? (
                       <p className="text-sm text-muted-foreground text-center py-4">Carregando ações...</p>
+                    ) : actions.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-3 bg-muted/20">
+                        <p className="text-xs text-muted-foreground">
+                          ⚠️ Nenhuma ação configurada para esta campanha. Configure ações na aba de configurações.
+                        </p>
+                      </div>
                     ) : (
-                      <>
-                        {actions.length === 0 && (
-                          <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
-                            <p className="text-xs text-muted-foreground">
-                              ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
-                            </p>
-                          </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-2">
-                          {displayActions.map((action) => (
-                            <button
-                              key={action.id}
-                              onClick={() => setSelectedActionId(action.id)}
-                              className={cn(
-                                "rounded-lg border p-3 text-left transition-all",
-                                selectedActionId === action.id
-                                  ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                  : "border-border hover:border-primary/50"
-                              )}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="h-3 w-3 rounded-full shrink-0"
-                                  style={{ backgroundColor: action.color }}
-                                />
-                                <span className="font-medium text-sm">{action.name}</span>
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </>
+                      <div className="grid grid-cols-2 gap-2">
+                        {actions.map((action) => (
+                          <button
+                            key={action.id}
+                            onClick={() => setSelectedActionId(action.id)}
+                            className={cn(
+                              "rounded-lg border p-3 text-left transition-all",
+                              selectedActionId === action.id
+                                ? "border-primary bg-primary/5 ring-2 ring-primary"
+                                : "border-border hover:border-primary/50"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <div
+                                className="h-3 w-3 rounded-full shrink-0"
+                                style={{ backgroundColor: action.color }}
+                              />
+                              <span className="font-medium text-sm">{action.name}</span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
 
@@ -1401,7 +1358,7 @@ function ActionDialog({
                   </Button>
                   <Button
                     onClick={handleSave}
-                    disabled={answered === null || (answered === true && !selectedActionId) || submitting}
+                    disabled={!selectedActionId || submitting}
                   >
                     {submitting ? "Salvando..." : "✅ Salvar e Encerrar"}
                   </Button>
