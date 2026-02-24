@@ -1127,9 +1127,9 @@ export default function CallPanel() {
             await registerAction({ callId: actionEntry.id, actionId, notes: actionNotes || undefined });
             setActionEntry(null);
           }}
-          onReschedule={(e) => {
+          onRescheduleConfirm={async (e, scheduledFor) => {
+            await rescheduleCall({ callId: e.id, scheduledFor });
             setActionEntry(null);
-            openRescheduleDialog(e);
           }}
         />
       )}
@@ -1193,19 +1193,43 @@ function ActionDialog({
   onNotesChange,
   onClose,
   onSelect,
-  onReschedule,
+  onRescheduleConfirm,
 }: {
   entry: CallPanelEntry;
   notes: string;
   onNotesChange: (v: string) => void;
   onClose: () => void;
   onSelect: (actionId: string) => Promise<void>;
-  onReschedule: (entry: CallPanelEntry) => void;
+  onRescheduleConfirm: (entry: CallPanelEntry, scheduledFor: string) => Promise<void>;
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
   const [submitting, setSubmitting] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const hasScript = !!(entry.campaignId && entry.leadId);
+
+  // Inline reschedule state
+  const [showReschedule, setShowReschedule] = useState(false);
+  const [localDate, setLocalDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
+  const [localTime, setLocalTime] = useState(() => format(new Date(Date.now() + 30 * 60000), "HH:mm"));
+  const [rescheduling, setRescheduling] = useState(false);
+
+  const handleQuickReschedule = (minutes: number) => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + minutes);
+    setLocalDate(format(d, "yyyy-MM-dd"));
+    setLocalTime(format(d, "HH:mm"));
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!localDate || !localTime) return;
+    setRescheduling(true);
+    try {
+      await onRescheduleConfirm(entry, new Date(`${localDate}T${localTime}`).toISOString());
+      onClose();
+    } finally {
+      setRescheduling(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!selectedActionId) return;
@@ -1289,17 +1313,57 @@ function ActionDialog({
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Resultado da Ligação</h3>
 
-                  {/* Reschedule option */}
-                  <button
-                    onClick={() => onReschedule(entry)}
-                    className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      <span className="font-medium text-sm">Reagendar</span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
-                  </button>
+                  {/* Inline Reschedule */}
+                  <div className={cn(
+                    "rounded-lg border transition-all",
+                    showReschedule
+                      ? "border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/40"
+                      : "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50"
+                  )}>
+                    <button
+                      onClick={() => setShowReschedule(!showReschedule)}
+                      className="w-full text-left p-3"
+                    >
+                      <div className="flex items-center gap-2">
+                        <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        <span className="font-medium text-sm">Reagendar</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
+                    </button>
+
+                    {showReschedule && (
+                      <div className="px-3 pb-3 space-y-3 border-t border-amber-200 dark:border-amber-700 pt-3">
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-xs">Data</Label>
+                            <Input type="date" value={localDate} onChange={(e) => setLocalDate(e.target.value)} className="mt-1" />
+                          </div>
+                          <div>
+                            <Label className="text-xs">Horário</Label>
+                            <Input type="time" value={localTime} onChange={(e) => setLocalTime(e.target.value)} className="mt-1" />
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => handleQuickReschedule(10)}>+10 min</Button>
+                          <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => handleQuickReschedule(30)}>+30 min</Button>
+                          <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => handleQuickReschedule(60)}>+1 hora</Button>
+                          <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            setLocalDate(format(tomorrow, "yyyy-MM-dd"));
+                          }}>Amanhã</Button>
+                        </div>
+                        <Button
+                          className="w-full gap-1.5"
+                          onClick={handleConfirmReschedule}
+                          disabled={!localDate || !localTime || rescheduling}
+                        >
+                          <CalendarClock className="h-4 w-4" />
+                          {rescheduling ? "Reagendando..." : "Confirmar Reagendamento"}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Campaign Actions */}
                   <div className="space-y-2">
