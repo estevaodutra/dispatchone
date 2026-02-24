@@ -1,0 +1,228 @@
+import { useState } from "react";
+import { Phone, PhoneOff, Minus, Maximize2, FileText, Target, Loader2, AlertTriangle, PhoneMissed } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useOperatorCall, PopupCallStatus } from "@/hooks/useOperatorCall";
+import { CooldownOverlay } from "./CooldownOverlay";
+import { ScriptModal } from "./ScriptModal";
+import { RegisterActionModal } from "./RegisterActionModal";
+import { cn } from "@/lib/utils";
+
+const formatDuration = (s: number) => {
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m.toString().padStart(2, "0")}:${sec.toString().padStart(2, "0")}`;
+};
+
+const statusConfig: Record<PopupCallStatus, { icon: React.ReactNode; label: string; color: string; pulse?: boolean }> = {
+  idle: { icon: <Phone className="h-4 w-4" />, label: "Disponível", color: "text-emerald-500" },
+  dialing: { icon: <Loader2 className="h-4 w-4 animate-spin" />, label: "DISCANDO...", color: "text-blue-500", pulse: true },
+  ringing: { icon: <Phone className="h-4 w-4" />, label: "CHAMANDO...", color: "text-amber-500", pulse: true },
+  on_call: { icon: <Phone className="h-4 w-4" />, label: "EM LIGAÇÃO", color: "text-emerald-500" },
+  ended: { icon: <Phone className="h-4 w-4" />, label: "FINALIZADA", color: "text-muted-foreground" },
+  no_answer: { icon: <PhoneMissed className="h-4 w-4" />, label: "NÃO ATENDEU", color: "text-amber-500" },
+  failed: { icon: <AlertTriangle className="h-4 w-4" />, label: "FALHA", color: "text-destructive" },
+};
+
+export function CallPopup() {
+  const {
+    operator, currentCall, callStatus, callDuration,
+    cooldownRemaining, isLoading, cooldownTotal,
+  } = useOperatorCall();
+
+  const [minimized, setMinimized] = useState(false);
+  const [showScript, setShowScript] = useState(false);
+  const [showAction, setShowAction] = useState(false);
+
+  // Don't render if user is not an operator
+  if (isLoading || !operator) return null;
+
+  const config = statusConfig[callStatus];
+  const isActive = ["dialing", "ringing", "on_call"].includes(callStatus);
+  const showCooldown = callStatus === "ended" && cooldownRemaining > 0;
+
+  // Minimized bar
+  if (minimized || callStatus === "idle") {
+    return (
+      <div
+        className={cn(
+          "fixed bottom-6 right-6 z-50 rounded-lg border shadow-lg px-4 py-2.5 flex items-center gap-3 cursor-pointer transition-all bg-card",
+          callStatus === "idle" && "border-emerald-500/30",
+          isActive && "border-primary animate-pulse"
+        )}
+        onClick={() => { if (callStatus !== "idle") setMinimized(false); }}
+      >
+        <span className={cn("flex items-center gap-2 text-sm font-medium", config.color)}>
+          {config.icon}
+          {config.label}
+        </span>
+        {callStatus === "on_call" && (
+          <span className="text-xs font-mono text-muted-foreground">{formatDuration(callDuration)}</span>
+        )}
+        {callStatus === "idle" && (
+          <span className="text-xs text-muted-foreground">Aguardando...</span>
+        )}
+        {isActive && callStatus !== "idle" && (
+          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setMinimized(false); }}>
+            <Maximize2 className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // Expanded card
+  return (
+    <>
+      <div className="fixed bottom-6 right-6 z-50 w-[380px] rounded-xl border shadow-2xl bg-card overflow-hidden">
+        {/* Header */}
+        <div className={cn(
+          "flex items-center justify-between px-4 py-3 border-b",
+          callStatus === "on_call" && "bg-emerald-500/5",
+          callStatus === "dialing" && "bg-blue-500/5",
+          callStatus === "ringing" && "bg-amber-500/5",
+          callStatus === "failed" && "bg-destructive/5",
+        )}>
+          <div className="flex items-center gap-2">
+            <span className={cn(config.color, config.pulse && "animate-pulse")}>{config.icon}</span>
+            <span className={cn("font-semibold text-sm", config.color)}>{config.label}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {callStatus === "on_call" && (
+              <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">⏱️ {formatDuration(callDuration)}</span>
+            )}
+            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setMinimized(true)}>
+              <Minus className="h-3 w-3" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="p-4 space-y-3">
+          {/* Lead info */}
+          {currentCall && (
+            <div className="rounded-lg border bg-muted/20 p-3 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">
+                  {currentCall.leadName.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <p className="font-medium text-sm">{currentCall.leadName}</p>
+                  <p className="text-xs text-muted-foreground">{currentCall.leadPhone}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                <Badge variant="outline" className="text-xs">📁 {currentCall.campaignName}</Badge>
+                <Badge variant="outline" className="text-xs">🔄 x{currentCall.attemptNumber}</Badge>
+                {currentCall.isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
+              </div>
+            </div>
+          )}
+
+          {/* Dialing state */}
+          {callStatus === "dialing" && (
+            <div className="text-center space-y-2 py-2">
+              <div className="flex justify-center gap-1">
+                <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "150ms" }} />
+                <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
+              </div>
+              <p className="text-xs text-muted-foreground">⏳ Conectando com o número...</p>
+            </div>
+          )}
+
+          {/* Ringing state */}
+          {callStatus === "ringing" && (
+            <div className="text-center space-y-2 py-2">
+              <div className="text-2xl animate-pulse">🔔</div>
+              <p className="text-xs text-muted-foreground">📱 Aguardando atendimento...</p>
+            </div>
+          )}
+
+          {/* On call - custom fields + actions */}
+          {callStatus === "on_call" && currentCall && (
+            <>
+              {Object.keys(currentCall.leadCustomFields).length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs font-medium text-muted-foreground">📝 Informações</p>
+                  <div className="rounded border bg-muted/10 p-2 space-y-0.5">
+                    {Object.entries(currentCall.leadCustomFields).map(([key, value]) => (
+                      <div key={key} className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{key}:</span>
+                        <span className="font-medium">{String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowScript(true)}>
+                  <FileText className="mr-1 h-3 w-3" /> Roteiro
+                </Button>
+                <Button size="sm" className="flex-1" onClick={() => setShowAction(true)}>
+                  <Target className="mr-1 h-3 w-3" /> Registrar Ação
+                </Button>
+              </div>
+            </>
+          )}
+
+          {/* No answer */}
+          {callStatus === "no_answer" && currentCall && (
+            <div className="text-center space-y-1 py-1">
+              <p className="text-sm">🔄 Tentativa {currentCall.attemptNumber} de {currentCall.maxAttempts}</p>
+              {currentCall.scheduledFor && (
+                <p className="text-xs text-muted-foreground">
+                  ⏰ Reagendado para: {new Date(currentCall.scheduledFor).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Failed */}
+          {callStatus === "failed" && (
+            <div className="text-center py-1">
+              <p className="text-sm text-destructive">⚠️ Erro na ligação</p>
+            </div>
+          )}
+
+          {/* Cooldown */}
+          {showCooldown && operator && (
+            <CooldownOverlay
+              remaining={cooldownRemaining}
+              total={cooldownTotal}
+              operatorId={operator.id}
+            />
+          )}
+
+          {/* Ended without cooldown - show briefly */}
+          {callStatus === "ended" && !showCooldown && currentCall && (
+            <p className="text-center text-xs text-muted-foreground">✅ Ligação encerrada</p>
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      {currentCall?.campaignId && currentCall.leadId && (
+        <ScriptModal
+          open={showScript}
+          onOpenChange={setShowScript}
+          campaignId={currentCall.campaignId}
+          leadId={currentCall.leadId}
+          campaignName={currentCall.campaignName}
+        />
+      )}
+
+      {currentCall?.campaignId && (
+        <RegisterActionModal
+          open={showAction}
+          onOpenChange={setShowAction}
+          callId={currentCall.id}
+          campaignId={currentCall.campaignId}
+          leadName={currentCall.leadName}
+          leadPhone={currentCall.leadPhone}
+          campaignName={currentCall.campaignName}
+          duration={callDuration}
+        />
+      )}
+    </>
+  );
+}
