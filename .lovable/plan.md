@@ -1,94 +1,116 @@
 
 
-# Migrar tabelas de chamadas para isolamento por company_id (Fase 2)
+# Pop-up de Ligacao em Tempo Real para Operadores
 
-## Problema
+## Visao Geral
 
-Quando o usuario (Mauro Dutra) seleciona a companhia "Estevao Dutra" no seletor lateral, os operadores aparecem corretamente (ja filtrados por `company_id`), mas as ligacoes, campanhas, leads e fila mostram zero dados. Isso acontece porque essas tabelas ainda usam `user_id = auth.uid()` nas politicas RLS, entao so mostram dados do proprio usuario logado.
+Criar um sistema de pop-up flutuante que aparece automaticamente quando uma ligacao e atribuida ao operador logado. O pop-up monitora mudancas em tempo real via Supabase Realtime na tabela `call_operators` e `call_logs`, exibindo status da chamada, dados do lead, roteiro da campanha e permitindo registro de acoes.
 
-## Solucao
+## Arquitetura
 
-Adicionar `company_id` nas tabelas `call_campaigns`, `call_logs`, `call_leads` e `call_queue`, migrar os dados existentes, atualizar as RLS policies para usar `is_company_member()`, e atualizar os hooks do frontend para filtrar por `activeCompanyId`.
+O operador logado e identificado pelo seu `user_id` na tabela `call_operators`. O pop-up escuta mudancas no campo `current_call_id` do operador via Realtime. Quando `current_call_id` muda de null para um UUID, o pop-up busca os dados da chamada (`call_logs` + `call_leads` + `call_campaigns`) e exibe. Quando a chamada termina, mostra cooldown.
 
-## Alteracoes
-
-### 1. Migracao SQL
-
-Adicionar coluna `company_id UUID` nas 4 tabelas:
-- `call_campaigns` -- migrar com base no `user_id` -> `companies.owner_id`
-- `call_logs` -- migrar via `call_campaigns.company_id` ou `user_id`
-- `call_leads` -- migrar via `call_campaigns.company_id`
-- `call_queue` -- migrar com base no `user_id` -> `companies.owner_id`
-
-Atualizar RLS policies de `user_id = auth.uid()` para `is_company_member(company_id, auth.uid())`.
-
-### 2. Hooks do Frontend
-
-**`src/hooks/useCallPanel.ts`**
-- Importar `useCompany` e obter `activeCompanyId`
-- Adicionar filtro `.eq("company_id", activeCompanyId)` na query de `call_logs`
-- Atualizar `queryKey` para incluir `activeCompanyId`
-
-**`src/hooks/useCallCampaigns.ts`**
-- Importar `useCompany` e filtrar por `activeCompanyId`
-- Inserir `company_id` ao criar campanha
-
-**`src/hooks/useCallLeads.ts`**
-- Sem mudanca direta (leads sao filtrados por campaign_id que ja pertence a companhia via RLS)
-
-**`src/hooks/useCallQueuePanel.ts`**
-- Importar `useCompany` e filtrar por `activeCompanyId`
-
-**`src/hooks/useCallQueue.ts`**
-- Inserir `company_id` ao adicionar items na fila
-
-**`src/hooks/useCallLogs.ts`**
-- Sem mudanca direta (filtrado por campaign_id)
-
-### 3. Edge Functions
-
-**`supabase/functions/queue-executor/index.ts`**
-- Passar `company_id` ao criar `call_logs`
-
-**`supabase/functions/call-dial/index.ts`**
-- Incluir `company_id` ao criar registros
-
-**`supabase/functions/call-status/index.ts`**
-- Incluir `company_id` ao criar registros
-
-**`supabase/functions/reschedule-failed-calls/index.ts`**
-- Incluir `company_id` ao criar novos logs de retentativa
-
-### Detalhes Tecnicos
-
-**Migracao de dados existentes:**
-```text
-1. ALTER TABLE call_campaigns ADD COLUMN company_id UUID
-2. UPDATE call_campaigns SET company_id = (SELECT id FROM companies WHERE owner_id = call_campaigns.user_id LIMIT 1)
-3. Repetir para call_logs, call_leads, call_queue
-4. DROP existing RLS policies
-5. CREATE new RLS policies usando is_company_member()
-```
-
-**RLS nova (exemplo para call_campaigns):**
-```text
-SELECT: is_company_member(company_id, auth.uid())
-INSERT: is_company_member(company_id, auth.uid()) -- company_id obrigatorio
-UPDATE: is_company_member(company_id, auth.uid())
-DELETE: is_company_admin(company_id, auth.uid())
-```
-
-### Arquivos Alterados
+## Arquivos Novos
 
 | Arquivo | Descricao |
 |---------|-----------|
-| Nova migracao SQL | Adicionar company_id + migrar dados + RLS |
-| `src/hooks/useCallPanel.ts` | Filtrar por activeCompanyId |
-| `src/hooks/useCallCampaigns.ts` | Filtrar e inserir company_id |
-| `src/hooks/useCallQueuePanel.ts` | Filtrar por activeCompanyId |
-| `src/hooks/useCallQueue.ts` | Inserir company_id |
-| `supabase/functions/queue-executor/index.ts` | Passar company_id |
-| `supabase/functions/call-dial/index.ts` | Passar company_id |
-| `supabase/functions/call-status/index.ts` | Passar company_id |
-| `supabase/functions/reschedule-failed-calls/index.ts` | Passar company_id |
+| `src/hooks/useOperatorCall.ts` | Hook que identifica o operador do usuario logado, escuta Realtime em `call_operators` e `call_logs`, gerencia estado da chamada ativa e timer |
+| `src/components/operator/CallPopup.tsx` | Componente pop-up principal com todos os estados (idle, dialing, ringing, on_call, ended, no_answer, failed) |
+| `src/components/operator/ScriptModal.tsx` | Modal que exibe o roteiro da campanha usando `useCallScript` e `InlineScriptRunner` |
+| `src/components/operator/RegisterActionModal.tsx` | Modal para registrar resultado da ligacao com selecao de acao, observacoes e agendamento |
+| `src/components/operator/CooldownOverlay.tsx` | Subcomponente para exibir countdown do intervalo entre ligacoes |
+
+## Arquivos Alterados
+
+| Arquivo | Descricao |
+|---------|-----------|
+| `src/components/layout/AppLayout.tsx` | Renderizar `<CallPopup />` globalmente dentro do layout |
+
+## Detalhes Tecnicos
+
+### 1. Hook `useOperatorCall`
+
+- Ao montar, busca `call_operators` filtrado por `user_id = auth.uid()` e `company_id = activeCompanyId` para encontrar o operador do usuario logado
+- Se o operador tem `current_call_id != null`, busca `call_logs` com joins em `call_leads(name, phone, email, custom_fields)`, `call_campaigns(name, is_priority, retry_count)`, `call_operators(operator_name)`
+- Subscreve Realtime no canal `call_operators` filtrado pelo `id` do operador:
+  - Quando `current_call_id` muda de null para UUID: busca dados da chamada, seta status
+  - Quando `current_call_id` muda para null: marca como ended/cooldown
+- Subscreve Realtime no canal `call_logs` filtrado pelo `id` da chamada ativa:
+  - Atualiza `call_status` em tempo real (dialing -> ringing -> answered -> completed etc)
+- Timer: `useEffect` com `setInterval` de 1s quando status e `on_call`/`answered`/`in_progress`, calcula duracao desde `started_at`
+- Expoe: `{ operator, currentCall, callStatus, callDuration, isCallActive, cooldownRemaining }`
+
+### 2. Componente `CallPopup`
+
+Fixo no canto inferior direito (`fixed bottom-6 right-6 z-50`), largura ~400px.
+
+**Estados:**
+- `idle`: Barra minima verde "Disponivel - Aguardando..."
+- `dialing`: Card expandido com animacao de loading, dados do lead, botao "Cancelar Ligacao"
+- `ringing`: Card com animacao pulsante, "Aguardando atendimento...", timer de toque
+- `on_call`: Card completo com lead info, custom_fields, botoes [Abrir Roteiro] e [Registrar Acao]
+- `ended/completed`: Card com resultado, countdown do cooldown com barra de progresso
+- `no_answer`: Card com info de tentativa X de Y, countdown para proxima
+- `failed`: Card com mensagem de erro, countdown
+
+Botao de minimizar `[—]` no header que colapsa para barra minima mostrando status + timer.
+
+### 3. ScriptModal
+
+- Dialog fullscreen ou large que renderiza `InlineScriptRunner` existente com `campaignId` e `leadId` da chamada ativa
+- Reutiliza toda a logica existente do script runner (nodes, edges, navegacao)
+
+### 4. RegisterActionModal
+
+- Busca acoes da campanha via `useCallActions(campaignId)`
+- Lista as acoes configuradas na campanha como cards selecionaveis
+- Campo de observacoes (textarea)
+- Ao salvar: atualiza `call_logs` com `action_id`, `notes`, `call_status = 'completed'`
+- Se acao selecionada e de tipo agendamento: mostra campos de data/hora com atalhos (+1h, +3h, Amanha 9h, Amanha 14h)
+- Chama `release_operator` via RPC ao finalizar
+
+### 5. CooldownOverlay
+
+- Recebe `lastCallEndedAt` e `intervalSeconds` do operador
+- Mostra countdown regressivo com barra de progresso (reutiliza logica do `CooldownTimer` existente no `OperatorsPanel`)
+- Botoes: [Pausar] (muda status para "paused") e [Pular intervalo] (muda status para "available")
+
+### 6. AppLayout
+
+- Importa `CallPopup` e renderiza apos `<main>`
+- O CallPopup internamente verifica se o usuario tem operador vinculado; se nao tem, nao renderiza nada
+
+### 7. Realtime
+
+A tabela `call_operators` ja tem Realtime habilitado. A tabela `call_logs` tambem precisa ter Realtime habilitado para atualizar status da chamada em tempo real. Sera necessaria uma migracao SQL:
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE public.call_logs;
+```
+
+### 8. Fluxo Completo
+
+```text
+1. Usuario loga -> AppLayout renderiza CallPopup
+2. CallPopup busca operador do usuario (call_operators where user_id = auth.uid())
+3. Se nao tem operador -> nao renderiza nada
+4. Se tem operador -> mostra barra "Disponivel" (idle)
+5. Queue-executor atribui chamada -> update call_operators.current_call_id
+6. Realtime dispara -> CallPopup detecta nova chamada
+7. Busca dados do call_log + lead + campaign
+8. Mostra pop-up expandido com status "DISCANDO"
+9. call-dial atualiza call_status -> Realtime atualiza para "CHAMANDO"
+10. call-status atualiza -> Realtime atualiza para "EM LIGACAO"
+11. Operador clica "Abrir Roteiro" -> ScriptModal
+12. Operador clica "Registrar Acao" -> RegisterActionModal
+13. Operador salva resultado -> release_operator RPC
+14. Pop-up mostra cooldown -> countdown
+15. Cooldown termina -> volta para "Disponivel"
+```
+
+### Observacoes
+
+- Sem notificacao sonora nesta fase (nao ha arquivos de audio no projeto). Pode ser adicionado posteriormente.
+- Browser notifications podem ser implementados mas sao opcionais nesta fase.
+- O pop-up nao aparece na rota `/call/script/:campaignId/:leadId` (rota de operador legada sem AppLayout).
 
