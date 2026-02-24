@@ -33,6 +33,7 @@ export interface CallData {
   notes: string | null;
   actionId: string | null;
   scheduledFor: string | null;
+  observations: string | null;
 }
 
 const mapDbStatus = (dbStatus: string | null): PopupCallStatus => {
@@ -96,6 +97,7 @@ export function useOperatorCall() {
       notes: data.notes,
       actionId: data.action_id,
       scheduledFor: data.scheduled_for,
+      observations: data.observations || null,
     };
 
     return call;

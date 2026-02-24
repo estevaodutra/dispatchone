@@ -1865,6 +1865,12 @@ print(response.json())
             type: "string",
             required: false,
             description: "Nome do lead para identificação"
+          },
+          {
+            name: "obs",
+            type: "string",
+            required: false,
+            description: "Observações iniciais sobre a ligação (exibidas ao operador)"
           }
         ],
         examples: {
@@ -1874,7 +1880,8 @@ print(response.json())
   -d '{
     "campaign_name": "FN | Carrinho Abandonado",
     "lead_phone": "5512983195531",
-    "lead_name": "Ebonocleiton"
+    "lead_name": "Ebonocleiton",
+    "obs": "Cliente VIP - tratar com prioridade"
   }'`,
           nodejs: `const axios = require('axios');
 
@@ -1883,7 +1890,8 @@ const response = await axios.post(
   {
     campaign_name: 'FN | Carrinho Abandonado',
     lead_phone: '5512983195531',
-    lead_name: 'Ebonocleiton'
+    lead_name: 'Ebonocleiton',
+    obs: 'Cliente VIP - tratar com prioridade'
   },
   {
     headers: {
@@ -1899,7 +1907,8 @@ response = requests.post(
     json={
         'campaign_name': 'FN | Carrinho Abandonado',
         'lead_phone': '5512983195531',
-        'lead_name': 'Ebonocleiton'
+        'lead_name': 'Ebonocleiton',
+        'obs': 'Cliente VIP - tratar com prioridade'
     },
     headers={
         'Content-Type': 'application/json',

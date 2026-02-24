@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
   try {
     // Parse request body
     requestBody = await req.json();
-    const { campaign_name, lead_phone, lead_name } = requestBody;
+    const { campaign_name, lead_phone, lead_name, obs } = requestBody;
 
     console.log('[call-dial] Request received:', { campaign_name, lead_phone, lead_name });
 
@@ -456,6 +456,7 @@ Deno.serve(async (req) => {
           call_status: 'scheduled',
           scheduled_for: scheduledFor,
           started_at: new Date().toISOString(),
+          observations: obs || null,
         })
         .eq('id', existingLog.id);
 
@@ -478,6 +479,7 @@ Deno.serve(async (req) => {
           call_status: 'scheduled',
           scheduled_for: scheduledFor,
           started_at: new Date().toISOString(),
+          observations: obs || null,
         })
         .select('id')
         .single();

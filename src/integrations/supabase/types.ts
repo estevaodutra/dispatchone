@@ -309,6 +309,7 @@ export type Database = {
           max_attempts: number | null
           next_retry_at: string | null
           notes: string | null
+          observations: string | null
           operator_id: string | null
           scheduled_for: string | null
           script_path: Json | null
@@ -331,6 +332,7 @@ export type Database = {
           max_attempts?: number | null
           next_retry_at?: string | null
           notes?: string | null
+          observations?: string | null
           operator_id?: string | null
           scheduled_for?: string | null
           script_path?: Json | null
@@ -353,6 +355,7 @@ export type Database = {
           max_attempts?: number | null
           next_retry_at?: string | null
           notes?: string | null
+          observations?: string | null
           operator_id?: string | null
           scheduled_for?: string | null
           script_path?: Json | null
