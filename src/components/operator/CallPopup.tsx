@@ -24,7 +24,11 @@ const statusConfig: Record<PopupCallStatus, { icon: React.ReactNode; label: stri
   failed: { icon: <AlertTriangle className="h-4 w-4" />, label: "FALHA", color: "text-destructive" },
 };
 
-export function CallPopup() {
+interface CallPopupProps {
+  embedded?: boolean;
+}
+
+export function CallPopup({ embedded = false }: CallPopupProps) {
   const {
     operator, currentCall, callStatus, callDuration,
     cooldownRemaining, isLoading, cooldownTotal, toggleAvailability,
@@ -47,7 +51,9 @@ export function CallPopup() {
     return (
       <div
         className={cn(
-          "fixed bottom-6 right-6 z-50 rounded-lg border shadow-lg px-4 py-2.5 flex items-center gap-3 cursor-pointer transition-all bg-card",
+          "rounded-lg border shadow-lg px-4 py-2.5 flex items-center gap-3 cursor-pointer transition-all bg-card",
+          !embedded && "fixed bottom-6 right-6 z-50",
+          embedded && "w-full shadow-sm",
           isOffline && "border-muted opacity-80",
           callStatus === "idle" && !isOffline && "border-emerald-500/30",
           isActive && "border-primary animate-pulse"
@@ -91,7 +97,11 @@ export function CallPopup() {
   // Expanded card
   return (
     <>
-      <div className="fixed bottom-6 right-6 z-50 w-[380px] rounded-xl border shadow-2xl bg-card overflow-hidden">
+      <div className={cn(
+        "rounded-xl border bg-card overflow-hidden",
+        !embedded && "fixed bottom-6 right-6 z-50 w-[380px] shadow-2xl",
+        embedded && "w-full shadow-sm"
+      )}>
         {/* Header */}
         <div className={cn(
           "flex items-center justify-between px-4 py-3 border-b",

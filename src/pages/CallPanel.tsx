@@ -11,6 +11,7 @@ import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
 import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
+import { CallPopup } from "@/components/operator/CallPopup";
 import { Users, Settings as SettingsIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -601,6 +602,9 @@ export default function CallPanel() {
           </Badge>
         )}
       </div>
+
+      {/* Embedded Operator Popup */}
+      <CallPopup embedded />
 
       {/* Panel Tabs */}
       <Tabs value={panelTab} onValueChange={setPanelTab}>
