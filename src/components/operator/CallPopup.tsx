@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Phone, PhoneOff, Minus, Maximize2, FileText, Target, Loader2, AlertTriangle, PhoneMissed } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useOperatorCall, PopupCallStatus } from "@/hooks/useOperatorCall";
 import { CooldownOverlay } from "./CooldownOverlay";
 import { ScriptModal } from "./ScriptModal";
@@ -27,7 +28,7 @@ const statusConfig: Record<PopupCallStatus, { icon: React.ReactNode; label: stri
 export function CallPopup() {
   const {
     operator, currentCall, callStatus, callDuration,
-    cooldownRemaining, isLoading, cooldownTotal,
+    cooldownRemaining, isLoading, cooldownTotal, toggleAvailability,
   } = useOperatorCall();
 
   const [minimized, setMinimized] = useState(false);
@@ -40,32 +41,50 @@ export function CallPopup() {
   const config = statusConfig[callStatus];
   const isActive = ["dialing", "ringing", "on_call"].includes(callStatus);
   const showCooldown = callStatus === "ended" && cooldownRemaining > 0;
+  const isOnline = operator.status === "available" || operator.status === "on_call" || operator.status === "cooldown";
+  const isOffline = operator.status === "offline";
 
-  // Minimized bar
-  if (minimized || callStatus === "idle") {
+  // Minimized bar or idle/offline
+  if (minimized || callStatus === "idle" || isOffline) {
     return (
       <div
         className={cn(
           "fixed bottom-6 right-6 z-50 rounded-lg border shadow-lg px-4 py-2.5 flex items-center gap-3 cursor-pointer transition-all bg-card",
-          callStatus === "idle" && "border-emerald-500/30",
+          isOffline && "border-muted opacity-80",
+          callStatus === "idle" && !isOffline && "border-emerald-500/30",
           isActive && "border-primary animate-pulse"
         )}
-        onClick={() => { if (callStatus !== "idle") setMinimized(false); }}
+        onClick={() => { if (callStatus !== "idle" && !isOffline) setMinimized(false); }}
       >
-        <span className={cn("flex items-center gap-2 text-sm font-medium", config.color)}>
-          {config.icon}
-          {config.label}
-        </span>
-        {callStatus === "on_call" && (
-          <span className="text-xs font-mono text-muted-foreground">{formatDuration(callDuration)}</span>
-        )}
-        {callStatus === "idle" && (
-          <span className="text-xs text-muted-foreground">Aguardando...</span>
-        )}
-        {isActive && callStatus !== "idle" && (
-          <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setMinimized(false); }}>
-            <Maximize2 className="h-3 w-3" />
-          </Button>
+        <Switch
+          checked={isOnline}
+          onCheckedChange={() => toggleAvailability()}
+          className="data-[state=checked]:bg-emerald-500"
+          onClick={(e) => e.stopPropagation()}
+        />
+        {isOffline ? (
+          <span className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+            <PhoneOff className="h-4 w-4" />
+            Offline
+          </span>
+        ) : (
+          <>
+            <span className={cn("flex items-center gap-2 text-sm font-medium", config.color)}>
+              {config.icon}
+              {config.label}
+            </span>
+            {callStatus === "on_call" && (
+              <span className="text-xs font-mono text-muted-foreground">{formatDuration(callDuration)}</span>
+            )}
+            {callStatus === "idle" && (
+              <span className="text-xs text-muted-foreground">Aguardando...</span>
+            )}
+            {isActive && callStatus !== "idle" && (
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => { e.stopPropagation(); setMinimized(false); }}>
+                <Maximize2 className="h-3 w-3" />
+              </Button>
+            )}
+          </>
         )}
       </div>
     );
