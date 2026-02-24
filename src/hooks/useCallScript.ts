@@ -78,33 +78,46 @@ export function useCallScript(campaignId: string) {
         .from("call_scripts")
         .select("*")
         .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       if (error) throw error;
       
-      if (!data) {
-        // Create initial script if none exists
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) throw new Error("User not authenticated");
-
-        const initialScript = createInitialScript();
-        const { data: newScript, error: createError } = await (supabase as any)
-          .from("call_scripts")
-          .insert({
-            campaign_id: campaignId,
-            user_id: user.id,
-            name: "Roteiro Principal",
-            nodes: initialScript.nodes,
-            edges: initialScript.edges,
-          })
-          .select()
-          .single();
-
-        if (createError) throw createError;
-        return transformDbToFrontend(newScript as DbCallScript);
+      if (data) {
+        return transformDbToFrontend(data as DbCallScript);
       }
-      
-      return transformDbToFrontend(data as DbCallScript);
+
+      // No script exists — only auto-create if the current user owns the campaign
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      const { data: campaign } = await (supabase as any)
+        .from("call_campaigns")
+        .select("user_id")
+        .eq("id", campaignId)
+        .maybeSingle();
+
+      // If operator (not owner), return null instead of creating
+      if (!campaign || campaign.user_id !== user.id) {
+        return null;
+      }
+
+      const initialScript = createInitialScript();
+      const { data: newScript, error: createError } = await (supabase as any)
+        .from("call_scripts")
+        .insert({
+          campaign_id: campaignId,
+          user_id: user.id,
+          name: "Roteiro Principal",
+          nodes: initialScript.nodes,
+          edges: initialScript.edges,
+        })
+        .select()
+        .single();
+
+      if (createError) throw createError;
+      return transformDbToFrontend(newScript as DbCallScript);
     },
     enabled: !!campaignId,
   });
