@@ -1,37 +1,39 @@
 
 
-# Plan: Fix Script Not Loading (Duplicate Script Issue)
+# Plan: Fix "Ligar Agora" Not Sending Webhook
 
 ## Root Cause
 
-The `useCallScript` hook uses `.maybeSingle()` to fetch the script. The database now has **2 scripts** for campaign `f78dc789`:
+The `dialNow` mutation in `src/hooks/useCallPanel.ts` (line 532) calls the external webhook URL directly via `fetch()` from the browser. External webhooks (like n8n) block cross-origin requests (CORS), so the call fails silently. The webhook is never actually sent.
 
-1. Original script (created by admin `3b6be6fe`) — has the full roteiro with questions
-2. Duplicate empty script (created by operator `7848b4ff`) — auto-created when the operator couldn't see the first one (before RLS fix)
+Other webhook calls in the same file already use the `webhook-proxy` Edge Function (line 688) to route requests server-side, avoiding CORS entirely. `dialNow` is the only one that doesn't.
 
-After the RLS fix, both scripts are now visible. `.maybeSingle()` throws an error when it finds 2 rows, causing the infinite loading spinner.
+## Change
 
-## Changes
+**File:** `src/hooks/useCallPanel.ts` — `dialNowMutation`
 
-### 1. Database cleanup (migration)
-Delete duplicate/empty scripts — keep only the oldest (original) script per campaign:
+Replace the direct `fetch(webhookUrl, ...)` call (lines 531-563) with `supabase.functions.invoke("webhook-proxy", { body: { url: webhookUrl, payload } })`.
 
-```sql
-DELETE FROM public.call_scripts
-WHERE id IN (
-  SELECT id FROM (
-    SELECT id, ROW_NUMBER() OVER (PARTITION BY campaign_id ORDER BY created_at ASC) as rn
-    FROM public.call_scripts
-  ) sub
-  WHERE rn > 1
-);
+This matches the existing pattern already used by `registerActionMutation` in the same file.
+
+### Before (broken):
+```typescript
+const response = await fetch(webhookUrl, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(payload),
+});
 ```
 
-Also add a UNIQUE constraint on `campaign_id` to prevent future duplicates.
+### After (fixed):
+```typescript
+const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+  body: { url: webhookUrl, payload },
+});
+if (proxyError) {
+  throw new Error(`Falha ao acionar webhook: ${proxyError.message}`);
+}
+```
 
-### 2. Fix `src/hooks/useCallScript.ts`
-Change `.maybeSingle()` to `.order("created_at", { ascending: true }).limit(1).maybeSingle()` so even if duplicates somehow exist, it picks the oldest one and doesn't error.
-
-### 3. Fix auto-create logic
-The hook's "create if none exists" logic should NOT create a new script if the user isn't the campaign owner. Change to only create for the admin/owner, not for operators viewing scripts.
+The response parsing for `external_call_id` will also be adapted since `webhook-proxy` returns the proxied response in its body.
 
