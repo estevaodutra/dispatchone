@@ -144,6 +144,8 @@ export function useOperatorCall() {
         .eq("user_id", user.id)
         .eq("company_id", activeCompanyId)
         .eq("is_active", true)
+        .order("status", { ascending: true })
+        .limit(1)
         .maybeSingle();
 
       if (error || !data) {
