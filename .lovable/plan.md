@@ -1,39 +1,41 @@
 
 
-## Plano: Listagem cronológica e filtro "Todos" incluindo ligações em andamento
+## Plano: Ordenação híbrida — ligações ativas no topo, depois cronológico
 
-### Problema
-1. A listagem usa `sortByPriority()` que agrupa por categoria de status (em andamento > agendadas > finalizadas), em vez de ordenar por data de criação (mais recente primeiro).
-2. O filtro "Todos" já busca todos os status (incluindo `dialing`, `ringing`, `in_progress`), porém a ordenação por prioridade mascara a ordem cronológica.
+### Entendimento
+O usuário quer:
+1. **Ligações em andamento** (`dialing`, `ringing`, `in_progress`) sempre no topo.
+2. **Próximas a ligar** (`ready`, `scheduled`) logo abaixo.
+3. **Demais** (completed, cancelled, failed, no_answer, etc.) por último.
+4. **Dentro de cada grupo**, ordenar do mais recente para o mais antigo (`createdAt` desc).
 
-### Alterações
+### Alteração
 
-**Arquivo: `src/pages/CallPanel.tsx`**
+**Arquivo: `src/pages/CallPanel.tsx`** — linhas 490-495
 
-1. **Remover a função `sortByPriority`** (linhas 143-188) — não será mais usada.
+Substituir a ordenação puramente cronológica por uma ordenação híbrida com 3 faixas de prioridade:
 
-2. **Substituir a linha 537** que aplica `sortByPriority`:
-   ```typescript
-   // Antes:
-   const sortedEntries = useMemo(() => sortByPriority(isQueueTab ? [] : entries), [entries, isQueueTab]);
-   
-   // Depois:
-   const sortedEntries = useMemo(() => {
-     if (isQueueTab) return [];
-     // Ordenação cronológica: mais recente primeiro (já vem do backend ordenado por created_at desc)
-     return [...entries].sort((a, b) => 
-       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-     );
-   }, [entries, isQueueTab]);
-   ```
+```typescript
+const sortedEntries = useMemo(() => {
+  if (isQueueTab) return [];
 
-Isso garante que:
-- A aba "Todos" mostra **todas** as ligações (incluindo as em andamento/discando) ordenadas do mais recente ao mais antigo.
-- Os filtros individuais (Agendadas, Em andamento, etc.) também respeitam a ordem cronológica.
-- O destaque visual por linha (`getRowClass`) continua funcionando, então ligações em andamento ainda terão a borda verde e fundo destacado, mesmo sem ficarem no topo.
+  const getPriority = (status: string) => {
+    if (['dialing', 'ringing', 'in_progress'].includes(status)) return 0;
+    if (['ready', 'scheduled', 'waiting_operator'].includes(status)) return 1;
+    return 2;
+  };
 
-### Impacto
-- Apenas `src/pages/CallPanel.tsx` é alterado.
-- A função `sortByPriority` é removida (código morto após a mudança).
-- Nenhuma alteração no hook `useCallPanel` — os dados já vêm ordenados por `created_at desc` do banco.
+  return [...entries].sort((a, b) => {
+    const pa = getPriority(a.status);
+    const pb = getPriority(b.status);
+    if (pa !== pb) return pa - pb;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+}, [entries, isQueueTab]);
+```
+
+### Resultado
+- **Aba "Todos"**: mostra primeiro quem está ligando agora, depois os próximos na fila, depois finalizados — tudo cronológico dentro de cada grupo.
+- **Abas filtradas** (ex: "Em andamento"): como só têm um tipo de status, a ordenação será puramente cronológica.
+- Nenhum outro arquivo é alterado.
 
