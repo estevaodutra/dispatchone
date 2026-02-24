@@ -1,76 +1,25 @@
 
 
-## Plano: Campo `obs` no endpoint `/call-dial`
+## Plano: Exibir observações no Painel de Ligações
 
-### Resumo
+### Problema
 
-Adicionar campo opcional `obs` ao endpoint `/call-dial`, salvar em nova coluna `observations` na tabela `call_logs`, exibir no popup do operador e pré-preencher no modal de ação. Atualizar documentação.
+O campo `observations` foi adicionado ao banco e ao hook `useOperatorCall`, mas o fluxo do **Painel de Ligações** (`CallPanel.tsx` + `useCallPanel.ts`) não inclui esse campo. Quando o `ActionDialog` abre, ele sempre inicializa `notes` como string vazia.
 
-### 1. Migração de banco de dados
+### Alterações
 
-Adicionar coluna `observations` (TEXT, nullable) à tabela `call_logs`:
+**1. `src/hooks/useCallPanel.ts`**
 
-```sql
-ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS observations TEXT;
-```
+- Adicionar `observations: string | null` à interface `CallPanelEntry` (linha 32)
+- Adicionar `observations: string | null` à interface `DbCallLogJoined` (linha 57)
+- Mapear `observations: db.observations || null` na função `transformEntry` (linha 105)
 
-### 2. Edge Function `call-dial`
+**2. `src/pages/CallPanel.tsx`**
 
-**Arquivo:** `supabase/functions/call-dial/index.ts`
+- Na função `openActionDialog` (linha 553-555): trocar `setActionNotes("")` por `setActionNotes(entry.observations || "")`
+- Isso faz com que o campo "Observações" venha pré-preenchido com o valor enviado via API
 
-- Linha 87: extrair `obs` do body junto com os outros campos
-- Linhas 454-459 (update existente): adicionar `observations: obs || null`
-- Linhas 472-481 (insert novo): adicionar `observations: obs || null`
+### Resultado
 
-### 3. Hook `useOperatorCall` — expor observations
-
-**Arquivo:** `src/hooks/useOperatorCall.ts`
-
-- Adicionar `observations: string | null` à interface `CallData` (linha 18-36)
-- Na função `fetchCallData`, mapear `data.observations` para o campo (linha ~96)
-
-### 4. Popup do operador — exibir observação
-
-**Arquivo:** `src/components/operator/CallPopup.tsx`
-
-- No bloco `callStatus === "on_call"`, antes dos custom fields, adicionar seção condicional:
-```
-{currentCall?.observations && (
-  <div className="rounded border bg-amber-500/10 border-amber-500/20 p-2">
-    <p className="text-xs font-medium text-amber-600">📝 Observação</p>
-    <p className="text-sm">{currentCall.observations}</p>
-  </div>
-)}
-```
-
-### 5. Modal de ação — pré-preencher notas
-
-**Arquivo:** `src/components/operator/CallActionDialog.tsx`
-
-- Receber prop `initialObservations?: string`
-- Inicializar estado `notes` com `initialObservations || ""`
-- Passar a prop a partir do `CallPopup`
-
-**Arquivo:** `src/components/operator/RegisterActionModal.tsx`
-
-- Mesma lógica: receber `initialObservations` e pré-preencher o campo `notes`
-
-### 6. Documentação da API
-
-**Arquivo:** `src/data/api-endpoints.ts`
-
-- Adicionar atributo `obs` na lista de attributes do endpoint `call-dial` (após `lead_name`, ~linha 1868)
-- Atualizar exemplos curl/nodejs/python para incluir `"obs": "Cliente VIP - tratar com prioridade"`
-
-### Arquivos impactados
-
-| Arquivo | Tipo de alteração |
-|---------|-------------------|
-| Migração SQL | Nova coluna `observations` |
-| `supabase/functions/call-dial/index.ts` | Extrair e salvar `obs` |
-| `src/hooks/useOperatorCall.ts` | Expor `observations` no `CallData` |
-| `src/components/operator/CallPopup.tsx` | Exibir observação no card |
-| `src/components/operator/CallActionDialog.tsx` | Pré-preencher notas |
-| `src/components/operator/RegisterActionModal.tsx` | Pré-preencher notas |
-| `src/data/api-endpoints.ts` | Documentação do novo campo |
+Quando uma ligação tiver `observations` (enviado via `/call-dial` com o campo `obs`), ao abrir o dialog de ação no Painel de Ligações, o campo de notas virá pré-preenchido com esse valor. O operador pode editar/complementar.
 
