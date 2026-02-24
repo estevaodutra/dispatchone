@@ -11,12 +11,13 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Auth check
+  // Auth check (Lovable Cloud signing keys compatible)
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -24,8 +25,14 @@ Deno.serve(async (req) => {
   }
 
   const token = authHeader.replace('Bearer ', '');
-  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !user) {
+  const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data: claimsData, error: claimsError } = await authClient.auth.getClaims(token);
+  const userId = claimsData?.claims?.sub;
+
+  if (claimsError || !userId) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -59,13 +66,13 @@ Deno.serve(async (req) => {
     }
 
     // Check access: either owner or company member
-    let hasAccess = campaign.user_id === user.id;
+    let hasAccess = campaign.user_id === userId;
     if (!hasAccess && campaign.company_id) {
       const { data: membership } = await supabase
         .from('company_members')
         .select('id')
         .eq('company_id', campaign.company_id)
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
         .eq('is_active', true)
         .maybeSingle();
       hasAccess = !!membership;
@@ -80,14 +87,14 @@ Deno.serve(async (req) => {
 
     switch (action) {
       case 'tick': {
-        const result = await processTick(supabase, campaignId, user.id, campaign);
+        const result = await processTick(supabase, campaignId, userId, campaign);
         return new Response(JSON.stringify(result), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
       case 'status': {
-        const result = await getStatus(supabase, campaignId, user.id, campaign);
+        const result = await getStatus(supabase, campaignId, userId, campaign);
         return new Response(JSON.stringify(result), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
