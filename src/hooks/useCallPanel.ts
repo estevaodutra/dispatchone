@@ -29,6 +29,7 @@ export interface CallPanelEntry {
   attemptNumber: number;
   maxAttempts: number;
   isPriority: boolean;
+  observations: string | null;
 }
 
 export interface CallPanelStats {
@@ -56,6 +57,7 @@ interface DbCallLogJoined {
   audio_url: string | null;
   attempt_number: number | null;
   max_attempts: number | null;
+  observations: string | null;
   call_leads: {
     name: string | null;
     phone: string;
@@ -102,6 +104,7 @@ function transformEntry(db: DbCallLogJoined): CallPanelEntry {
     attemptNumber: db.attempt_number ?? 1,
     maxAttempts: db.max_attempts ?? 1,
     isPriority: db.call_campaigns?.is_priority ?? false,
+    observations: db.observations || null,
   };
 }
 

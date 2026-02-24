@@ -552,7 +552,7 @@ export default function CallPanel() {
 
   const openActionDialog = (entry: CallPanelEntry) => {
     setActionEntry(entry);
-    setActionNotes("");
+    setActionNotes(entry.observations || "");
   };
 
   const openEditOperator = (entry: CallPanelEntry) => {
