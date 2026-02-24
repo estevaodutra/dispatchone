@@ -529,20 +529,18 @@ export function useCallPanel(filters?: {
       };
 
       try {
-        const response = await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+        const { data: proxyData, error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: { url: webhookUrl, payload },
         });
 
-        if (!response.ok) {
-          throw new Error(`Webhook respondeu com status ${response.status}`);
+        if (proxyError) {
+          throw new Error(`Webhook respondeu com erro: ${proxyError.message}`);
         }
 
-        // Try to extract external_call_id from response
+        // Try to extract external_call_id from proxied response
         try {
-          const result = await response.json();
-          const externalId = Array.isArray(result) ? result[0]?.id : result?.id;
+          const responseBody = typeof proxyData?.body === "string" ? JSON.parse(proxyData.body) : proxyData?.body;
+          const externalId = Array.isArray(responseBody) ? responseBody[0]?.id : responseBody?.id;
           if (externalId) {
             await (supabase as any)
               .from("call_logs")
