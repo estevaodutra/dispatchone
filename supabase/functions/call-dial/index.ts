@@ -302,7 +302,7 @@ Deno.serve(async (req) => {
     
     const { data: campaign, error: campaignError } = await supabase
       .from('call_campaigns')
-      .select('id, name, status, user_id, dial_delay_minutes')
+      .select('id, name, status, user_id, dial_delay_minutes, company_id')
       .eq('name', campaign_name)
       .eq('user_id', userId)
       .single();
@@ -408,6 +408,7 @@ Deno.serve(async (req) => {
         .upsert({
           campaign_id: campaign.id,
           user_id: userId,
+          company_id: campaign.company_id || null,
           phone: cleanPhone,
           name: lead_name || null,
           status: 'pending'
@@ -473,6 +474,7 @@ Deno.serve(async (req) => {
           lead_id: lead.id,
           operator_id: null,
           user_id: userId,
+          company_id: campaign.company_id || null,
           call_status: 'scheduled',
           scheduled_for: scheduledFor,
           started_at: new Date().toISOString(),

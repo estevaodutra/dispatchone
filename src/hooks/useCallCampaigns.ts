@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useCompany } from "@/contexts/CompanyContext";
 
 export interface CallCampaign {
   id: string;
@@ -67,15 +68,22 @@ const transformDbToFrontend = (db: DbCallCampaign): CallCampaign => ({
 export function useCallCampaigns() {
   const { toast } = useToast();
   const { user } = useAuth();
+  const { activeCompanyId } = useCompany();
   const queryClient = useQueryClient();
 
   const { data: campaigns = [], isLoading, error, refetch } = useQuery({
-    queryKey: ["call_campaigns"],
+    queryKey: ["call_campaigns", activeCompanyId],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      let query = (supabase as any)
         .from("call_campaigns")
         .select("*")
         .order("created_at", { ascending: false });
+
+      if (activeCompanyId) {
+        query = query.eq("company_id", activeCompanyId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
       return (data as DbCallCampaign[]).map(transformDbToFrontend);
@@ -95,6 +103,7 @@ export function useCallCampaigns() {
         .from("call_campaigns")
         .insert({
           user_id: user.id,
+          company_id: activeCompanyId || null,
           name: campaign.name,
           description: campaign.description || null,
           status: "draft",

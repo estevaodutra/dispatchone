@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCompany } from "@/contexts/CompanyContext";
 
 export interface CallQueueEntry {
   id: string;
@@ -16,6 +17,7 @@ export interface CallQueueEntry {
 
 export function useCallQueue(campaignId?: string) {
   const { toast } = useToast();
+  const { activeCompanyId } = useCompany();
   const queryClient = useQueryClient();
 
   const queueQuery = useQuery({
@@ -68,6 +70,7 @@ export function useCallQueue(campaignId?: string) {
       for (let i = 0; i < leadIds.length; i++) {
         const { error } = await supabase.from("call_queue").insert({
           user_id: user.id,
+          company_id: activeCompanyId || null,
           campaign_id: campaignId,
           lead_id: leadIds[i],
           position: startPos + i,

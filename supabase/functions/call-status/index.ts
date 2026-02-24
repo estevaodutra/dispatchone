@@ -347,7 +347,7 @@ Deno.serve(async (req) => {
       console.log('[call-status] Searching for campaign:', campaign_name);
       const { data: campaign, error: campaignError } = await supabase
         .from('call_campaigns')
-        .select('id, name, status')
+        .select('id, name, status, company_id')
         .eq('name', campaign_name)
         .eq('user_id', userId)
         .single();
@@ -397,6 +397,7 @@ Deno.serve(async (req) => {
           .insert({
             campaign_id: campaign.id,
             user_id: userId,
+            company_id: campaign.company_id || null,
             phone: cleanPhone,
             name: lead_name || null,
             status: 'calling'
@@ -419,6 +420,7 @@ Deno.serve(async (req) => {
           campaign_id: campaign.id,
           lead_id: lead.id,
           user_id: userId,
+          company_id: campaign.company_id || null,
           external_call_id,
           call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','answered':'answered','ended':'completed','busy':'busy','not_found':'not_found','voicemail':'voicemail','cancelled':'cancelled','timeout':'timeout','error':'failed' }; return m[status] || status; })(),
           started_at: status === 'dialing' ? new Date().toISOString() : null,
