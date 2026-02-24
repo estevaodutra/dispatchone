@@ -44,7 +44,7 @@ const App = () => {
         <LanguageProvider>
           <AuthProvider>
             <CompanyProvider>
-            <TooltipProvider>
+              <TooltipProvider>
               <Toaster />
               <Sonner />
               <BrowserRouter>
@@ -199,7 +199,7 @@ const App = () => {
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </BrowserRouter>
-            </TooltipProvider>
+              </TooltipProvider>
             </CompanyProvider>
           </AuthProvider>
         </LanguageProvider>
