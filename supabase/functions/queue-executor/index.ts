@@ -44,15 +44,34 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Verify campaign ownership
+    // Verify campaign access (owner or company member)
     const { data: campaign, error: campErr } = await supabase
       .from('call_campaigns')
-      .select('id, name, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior, company_id')
+      .select('id, name, user_id, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior, company_id')
       .eq('id', campaignId)
-      .eq('user_id', user.id)
       .single();
 
     if (campErr || !campaign) {
+      return new Response(JSON.stringify({ error: 'Campaign not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check access: either owner or company member
+    let hasAccess = campaign.user_id === user.id;
+    if (!hasAccess && campaign.company_id) {
+      const { data: membership } = await supabase
+        .from('company_members')
+        .select('id')
+        .eq('company_id', campaign.company_id)
+        .eq('user_id', user.id)
+        .eq('is_active', true)
+        .maybeSingle();
+      hasAccess = !!membership;
+    }
+
+    if (!hasAccess) {
       return new Response(JSON.stringify({ error: 'Campaign not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -68,7 +87,7 @@ Deno.serve(async (req) => {
       }
 
       case 'status': {
-        const result = await getStatus(supabase, campaignId, user.id);
+        const result = await getStatus(supabase, campaignId, user.id, campaign);
         return new Response(JSON.stringify(result), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
@@ -89,18 +108,26 @@ Deno.serve(async (req) => {
   }
 });
 
-async function getStatus(supabase: any, campaignId: string, userId: string) {
+async function getStatus(supabase: any, campaignId: string, userId: string, campaign: any) {
   const { data: state } = await supabase
     .from('queue_execution_state')
     .select('*')
     .eq('campaign_id', campaignId)
     .maybeSingle();
 
-  const { data: operators } = await supabase
+  // Use company_id to find operators if available, otherwise fall back to user_id
+  let operatorQuery = supabase
     .from('call_operators')
     .select('id, operator_name, status, current_call_id, personal_interval_seconds, last_call_ended_at')
-    .eq('user_id', userId)
     .eq('is_active', true);
+
+  if (campaign.company_id) {
+    operatorQuery = operatorQuery.eq('company_id', campaign.company_id);
+  } else {
+    operatorQuery = operatorQuery.eq('user_id', userId);
+  }
+
+  const { data: operators } = await operatorQuery;
 
   const { count: queueRemaining } = await supabase
     .from('call_leads')
@@ -176,12 +203,19 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
   }
 
   // 2. Round-robin: fetch ALL active operators in fixed order
-  const { data: allActiveOps } = await supabase
+  let opsQuery = supabase
     .from('call_operators')
     .select('id, operator_name, extension, status')
-    .eq('user_id', userId)
     .eq('is_active', true)
     .order('created_at', { ascending: true });
+
+  if (campaign.company_id) {
+    opsQuery = opsQuery.eq('company_id', campaign.company_id);
+  } else {
+    opsQuery = opsQuery.eq('user_id', userId);
+  }
+
+  const { data: allActiveOps } = await opsQuery;
 
   if (!allActiveOps || allActiveOps.length === 0) {
     const behavior = campaign.queue_unavailable_behavior || 'wait';
@@ -224,12 +258,19 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 
   // 3a. Check for existing ready call_logs
   // Priority: first try from priority campaigns, then normal
-  const { data: priorityCampaigns } = await supabase
+  let priorityQuery = supabase
     .from('call_campaigns')
     .select('id')
-    .eq('user_id', userId)
     .eq('is_priority', true)
     .eq('status', 'active');
+
+  if (campaign.company_id) {
+    priorityQuery = priorityQuery.eq('company_id', campaign.company_id);
+  } else {
+    priorityQuery = priorityQuery.eq('user_id', userId);
+  }
+
+  const { data: priorityCampaigns } = await priorityQuery;
 
   const priorityIds = (priorityCampaigns || []).map((c: any) => c.id);
 
