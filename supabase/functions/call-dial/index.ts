@@ -491,16 +491,55 @@ Deno.serve(async (req) => {
 
     console.log('[call-dial] Call log ready:', callLog.id);
 
+    // ==================== RESERVE OPERATOR ====================
+    console.log('[call-dial] Attempting to reserve operator via RPC');
+    
+    let reservedOperator: { id: string; name: string; extension: string | null } | null = null;
+    let callStatus = 'scheduled';
+
+    try {
+      const { data: reservation, error: rpcError } = await supabase
+        .rpc('reserve_operator_for_call', {
+          p_call_id: callLog.id,
+          p_campaign_id: campaign.id
+        });
+
+      if (rpcError) {
+        console.error('[call-dial] RPC error:', rpcError.message);
+      } else if (reservation && reservation.length > 0 && reservation[0].success) {
+        reservedOperator = {
+          id: reservation[0].operator_id,
+          name: reservation[0].operator_name,
+          extension: reservation[0].operator_extension
+        };
+        callStatus = 'dialing';
+        console.log('[call-dial] Operator reserved:', reservedOperator);
+
+        // Update call_log with operator and status
+        await supabase
+          .from('call_logs')
+          .update({
+            operator_id: reservedOperator.id,
+            call_status: 'dialing'
+          })
+          .eq('id', callLog.id);
+      } else {
+        console.log('[call-dial] No operator available, keeping scheduled status');
+      }
+    } catch (err) {
+      console.error('[call-dial] Reserve operator error:', err);
+    }
+
     // ==================== UPDATE LEAD STATUS ====================
-    console.log('[call-dial] Updating lead status to calling');
+    console.log('[call-dial] Updating lead status');
     
     const { error: updateLeadError } = await supabase
       .from('call_leads')
       .update({ 
-        status: 'scheduled',
+        status: callStatus === 'dialing' ? 'calling' : 'scheduled',
         last_attempt_at: new Date().toISOString(),
         attempts: (lead as any).attempts ? (lead as any).attempts + 1 : 1,
-        assigned_operator_id: null
+        assigned_operator_id: reservedOperator?.id || null
       })
       .eq('id', lead.id);
 
@@ -523,7 +562,7 @@ Deno.serve(async (req) => {
       action: 'call.dial',
       call: {
         id: callLog.id,
-        status: 'scheduled',
+        status: callStatus,
         scheduled_for: scheduledFor,
         dial_in_minutes: dialDelayMinutes,
       },
@@ -536,7 +575,11 @@ Deno.serve(async (req) => {
         phone: lead.phone,
         name: lead.name || lead_name || null
       },
-      operator: null
+      operator: reservedOperator ? {
+        id: reservedOperator.id,
+        name: reservedOperator.name,
+        extension: reservedOperator.extension
+      } : null
     };
 
     // Call webhook if configured and active
@@ -599,7 +642,7 @@ Deno.serve(async (req) => {
     const responseBody = {
       success: true,
       call_id: callLog.id,
-      status: 'scheduled',
+      status: callStatus,
       scheduled_for: scheduledFor,
       dial_in_minutes: dialDelayMinutes,
       campaign: {
@@ -611,7 +654,11 @@ Deno.serve(async (req) => {
         phone: lead.phone,
         name: lead.name || lead_name || null
       },
-      operator: null,
+      operator: reservedOperator ? {
+        id: reservedOperator.id,
+        name: reservedOperator.name,
+        extension: reservedOperator.extension
+      } : null,
       webhook: webhookResult
     };
 
