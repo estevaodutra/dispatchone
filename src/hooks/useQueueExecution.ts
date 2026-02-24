@@ -103,16 +103,31 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   const tickAllRef = useRef<() => Promise<void>>(async () => {});
 
   const tickAll = useCallback(async () => {
-    if (tickInFlightRef.current) return;
+    if (tickInFlightRef.current) {
+      console.log("[global-queue-tick] skipped (in-flight)");
+      return;
+    }
     const ids = activeIdsRef.current;
     if (ids.length === 0) return;
+
+    console.log(`[global-queue-tick] processing ${ids.length} campaigns`);
     tickInFlightRef.current = true;
     try {
       for (const id of ids) {
-        await supabase.functions.invoke(
-          `queue-executor?campaign_id=${id}&action=tick`,
-          { method: "POST" }
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("tick timeout")), 30000)
         );
+        try {
+          await Promise.race([
+            supabase.functions.invoke(
+              `queue-executor?campaign_id=${id}&action=tick`,
+              { method: "POST" }
+            ),
+            timeoutPromise,
+          ]);
+        } catch (e) {
+          console.error(`[global-queue-tick] error for ${id}:`, e);
+        }
         if (id !== ids[ids.length - 1]) {
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
@@ -120,7 +135,7 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
       queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
       queryClient.invalidateQueries({ queryKey: ["call_operators"] });
     } catch (e) {
-      console.error("[global-queue-tick] error:", e);
+      console.error("[global-queue-tick] fatal error:", e);
     } finally {
       tickInFlightRef.current = false;
     }
@@ -158,9 +173,15 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   useEffect(() => {
     if (activeIds.length === 0) return;
 
+    // Reset in case previous cycle left it stuck
+    tickInFlightRef.current = false;
+
     tickAll();
     const interval = setInterval(tickAll, 8000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      tickInFlightRef.current = false;
+    };
   }, [activeIds.length, tickAll]);
 
   const pauseAllMutation = useMutation({
