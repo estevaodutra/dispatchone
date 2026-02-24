@@ -368,6 +368,7 @@ export type Database = {
       }
       call_operators: {
         Row: {
+          company_id: string | null
           created_at: string | null
           current_call_id: string | null
           current_campaign_id: string | null
@@ -384,6 +385,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          company_id?: string | null
           created_at?: string | null
           current_call_id?: string | null
           current_campaign_id?: string | null
@@ -400,6 +402,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          company_id?: string | null
           created_at?: string | null
           current_call_id?: string | null
           current_campaign_id?: string | null
@@ -415,7 +418,15 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "call_operators_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       call_queue: {
         Row: {
@@ -630,6 +641,65 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      companies: {
+        Row: {
+          created_at: string | null
+          id: string
+          name: string
+          owner_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          name: string
+          owner_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          name?: string
+          owner_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      company_members: {
+        Row: {
+          company_id: string
+          id: string
+          is_active: boolean | null
+          joined_at: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          company_id: string
+          id?: string
+          is_active?: boolean | null
+          joined_at?: string | null
+          role?: string
+          user_id: string
+        }
+        Update: {
+          company_id?: string
+          id?: string
+          is_active?: boolean | null
+          joined_at?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_members_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       dispatch_campaign_contacts: {
         Row: {
@@ -2306,6 +2376,14 @@ export type Database = {
           healed_operator_name: string
           previous_status: string
         }[]
+      }
+      is_company_admin: {
+        Args: { _company_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_company_member: {
+        Args: { _company_id: string; _user_id: string }
+        Returns: boolean
       }
       release_operator: {
         Args: { p_call_id: string; p_force?: boolean }

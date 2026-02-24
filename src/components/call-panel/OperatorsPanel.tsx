@@ -20,6 +20,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { cn } from "@/lib/utils";
 import { CreateOperatorDialog } from "./CreateOperatorDialog";
 import { EditOperatorDialog } from "./EditOperatorDialog";
+import { AddOperatorDialog } from "./AddOperatorDialog";
+import { useCompany } from "@/contexts/CompanyContext";
 
 const statusConfig: Record<OperatorStatus, { label: string; color: string; icon: React.ReactNode }> = {
   available: { label: "Disponível", color: "bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800", icon: <Wifi className="h-3 w-3" /> },
@@ -43,10 +45,12 @@ function getTimeSince(dateStr: string | null): string {
 
 export function OperatorsPanel() {
   const { operators, isLoading, removeOperator } = useCallOperators();
+  const { isAdmin } = useCompany();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [activeFilter, setActiveFilter] = useState("all");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showAddDialog, setShowAddDialog] = useState(false);
   const [editOperator, setEditOperator] = useState<CallOperator | null>(null);
 
   const filtered = operators.filter((op) => {
@@ -87,10 +91,12 @@ export function OperatorsPanel() {
           <h2 className="text-lg font-semibold">Operadores</h2>
           <p className="text-sm text-muted-foreground">Gerencie os operadores de telefonia</p>
         </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Novo Operador
-        </Button>
+        {isAdmin && (
+          <Button onClick={() => setShowAddDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Adicionar Operador
+          </Button>
+        )}
       </div>
 
       {/* Summary cards */}
@@ -169,6 +175,11 @@ export function OperatorsPanel() {
       <CreateOperatorDialog
         open={showCreateDialog}
         onOpenChange={setShowCreateDialog}
+      />
+
+      <AddOperatorDialog
+        open={showAddDialog}
+        onOpenChange={setShowAddDialog}
       />
 
       <EditOperatorDialog
