@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { Phone, PhoneOff, Minus, Maximize2, FileText, Target, Loader2, AlertTriangle, PhoneMissed } from "lucide-react";
+import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useOperatorCall, PopupCallStatus } from "@/hooks/useOperatorCall";
 import { CooldownOverlay } from "./CooldownOverlay";
-import { ScriptModal } from "./ScriptModal";
-import { RegisterActionModal } from "./RegisterActionModal";
+import { CallActionDialog } from "./CallActionDialog";
 import { cn } from "@/lib/utils";
 
 const formatDuration = (s: number) => {
@@ -32,8 +31,7 @@ export function CallPopup() {
   } = useOperatorCall();
 
   const [minimized, setMinimized] = useState(false);
-  const [showScript, setShowScript] = useState(false);
-  const [showAction, setShowAction] = useState(false);
+  const [showCallDialog, setShowCallDialog] = useState(false);
 
   // Don't render if user is not an operator
   if (isLoading || !operator) return null;
@@ -173,14 +171,9 @@ export function CallPopup() {
                   </div>
                 </div>
               )}
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1" onClick={() => setShowScript(true)}>
-                  <FileText className="mr-1 h-3 w-3" /> Roteiro
-                </Button>
-                <Button size="sm" className="flex-1" onClick={() => setShowAction(true)}>
-                  <Target className="mr-1 h-3 w-3" /> Registrar Ação
-                </Button>
-              </div>
+              <Button size="sm" className="w-full" onClick={() => setShowCallDialog(true)}>
+                <LayoutDashboard className="mr-1 h-3 w-3" /> Abrir Painel
+              </Button>
             </>
           )}
 
@@ -219,27 +212,21 @@ export function CallPopup() {
         </div>
       </div>
 
-      {/* Modals */}
+      {/* Unified Call Dialog */}
       {currentCall?.campaignId && currentCall.leadId && (
-        <ScriptModal
-          open={showScript}
-          onOpenChange={setShowScript}
-          campaignId={currentCall.campaignId}
-          leadId={currentCall.leadId}
-          campaignName={currentCall.campaignName}
-        />
-      )}
-
-      {currentCall?.campaignId && (
-        <RegisterActionModal
-          open={showAction}
-          onOpenChange={setShowAction}
+        <CallActionDialog
+          open={showCallDialog}
+          onOpenChange={setShowCallDialog}
           callId={currentCall.id}
           campaignId={currentCall.campaignId}
+          leadId={currentCall.leadId}
           leadName={currentCall.leadName}
           leadPhone={currentCall.leadPhone}
           campaignName={currentCall.campaignName}
           duration={callDuration}
+          attemptNumber={currentCall.attemptNumber}
+          maxAttempts={currentCall.maxAttempts}
+          isPriority={currentCall.isPriority}
         />
       )}
     </>
