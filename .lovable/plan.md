@@ -1,37 +1,67 @@
 
 
-## Plano: Simplificar card de ação — remover etapa "Atendeu/Não Atendeu" e renomear seção
+## Plano: Corrigir fila que não avança automaticamente
 
-### Alterações no arquivo `src/components/operator/CallActionDialog.tsx`
+### Diagnóstico
 
-**1. Renomear título da seção**
-- Linha 219: trocar `"🎯 Resultado da Ligação"` por `"🎯 Ações"`
+Analisando os logs e o comportamento observado:
 
-**2. Remover bloco "O lead atendeu?" (linhas 222-240)**
-- Eliminar os botões "Atendeu" / "Não Atendeu" e o parágrafo "O lead atendeu?"
-- Remover o estado `answered` e suas referências
+1. **Nenhum log do `queue-executor` foi encontrado** — os ticks não estão sendo disparados, ou estão retornando cedo demais sem logar.
+2. **Fluxo observado**: Chamada falha → cooldown do operador (30s) → cooldown termina → operador mostra "Aguardando..." com toggle disponível ligado → **nada acontece**.
+3. **Causa raiz**: O intervalo do tick global é de **15 segundos**, mas quando o `resolve_cooldowns` roda na manutenção (separada), ele resolve o operador mas **não dispara um tick imediato**. Além disso, o tick e a manutenção rodam no mesmo intervalo de 15s, criando um gap onde o cooldown resolve mas o próximo tick pode demorar até 15s.
+4. **Agravante**: Quando o tick roda e não encontra operador disponível, muda o status da fila para `waiting_operator`. Na próxima execução, o tick processa, mas se o `resolve_cooldowns` dentro do tick não resolver ainda (o cooldown não expirou naquele instante exato), a fila fica presa em `waiting_operator` por mais um ciclo de 15s.
 
-**3. Mostrar as ações diretamente (sem condicional `answered === true`)**
-- O bloco de ações (linhas 243-289) perde o wrapper condicional `{answered === true && ...}` e fica sempre visível
-- Remover o parágrafo "Qual foi o resultado?" (linha 245) já que as ações falam por si
+### Alterações
 
-**4. Ajustar lógica de `handleSave`**
-- Remover validação `if (answered === null)` (linha 110-112)
-- Remover validação `if (answered && !selectedActionId)` (linhas 115-118)
-- Adicionar apenas: se `selectedActionId` não foi selecionado, exigir seleção
-- Determinar `call_status` com base na ação selecionada em vez de `answered`:
-  - Se a ação selecionada for uma das fallback `__failure` ou tiver `actionType` indicando não-atendimento, usar `"no_answer"`; caso contrário, usar `"completed"`
-  - Simplificação: sempre usar `"completed"` já que o operador está registrando uma ação concreta
+**Arquivo: `src/hooks/useQueueExecution.ts`**
 
-**5. Ajustar botão "Salvar"**
-- Linha 348: trocar `disabled={answered === null || (answered && !selectedActionId) || isSaving}` por `disabled={!selectedActionId || isSaving}`
+1. **Reduzir intervalo do tick de 15s para 8s** (linha 155) — menor latência entre cooldown resolver e a próxima discagem.
 
-**6. Limpar estado**
-- Remover `const [answered, setAnswered] = useState<boolean | null>(null)` (linha 60)
-- Remover `setAnswered(null)` do `resetState` (linha 154)
+2. **Após manutenção resolver cooldowns, disparar tick imediato** — dentro de `runMaintenance`, se `resolvedOps` tiver resultados E existirem campanhas ativas, chamar `tickAll()` imediatamente em vez de esperar o próximo ciclo de 8s.
 
-### Resumo de impacto
-- Arquivo único: `src/components/operator/CallActionDialog.tsx`
-- UX simplificada: ao abrir o dialog, as ações da campanha já aparecem diretamente, sem etapa intermediária
-- O operador seleciona a ação, opcionalmente escreve notas, e salva
+3. **Reduzir intervalo da manutenção de 15s para 10s** (linha 146) — garantir que cooldowns sejam resolvidos mais rapidamente.
+
+```typescript
+// runMaintenance atualizado:
+const runMaintenance = useCallback(async () => {
+  if (maintenanceInFlightRef.current) return;
+  maintenanceInFlightRef.current = true;
+  try {
+    const { data: resolved } = await (supabase as any).rpc('resolve_cooldowns');
+    await (supabase as any).rpc('heal_stuck_operators', { p_stuck_threshold_minutes: 10 });
+    queryClient.invalidateQueries({ queryKey: ["call_operators"] });
+    
+    // Se cooldowns foram resolvidos e há campanhas ativas, tickar imediatamente
+    if (resolved?.length && activeIdsRef.current.length > 0) {
+      console.log(`[maintenance] Resolved ${resolved.length} cooldowns, triggering immediate tick`);
+      setTimeout(() => tickAll(), 500);
+    }
+  } catch (e) {
+    console.error("[maintenance] error:", e);
+  } finally {
+    maintenanceInFlightRef.current = false;
+  }
+}, [queryClient, tickAll]);
+```
+
+4. **Intervalos atualizados**:
+```typescript
+// Manutenção: 10s em vez de 15s
+const interval = setInterval(runMaintenance, 10000);
+
+// Ticks: 8s em vez de 15s
+const interval = setInterval(tickAll, 8000);
+```
+
+### Resultado esperado
+
+- Após o cooldown expirar, o `resolve_cooldowns` (rodando a cada 10s) detecta e libera o operador
+- Imediatamente após a resolução, um tick é disparado (em vez de esperar mais 8-15s)
+- O tick encontra o operador disponível e disca o próximo lead
+- Tempo máximo de espera após cooldown: ~10s (antes: ~30s ou infinito)
+
+### Impacto
+- Apenas `src/hooks/useQueueExecution.ts` é alterado
+- Sem alteração no backend (edge functions)
+- Maior frequência de polling (10s manutenção + 8s ticks vs 15s+15s)
 
