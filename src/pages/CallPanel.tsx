@@ -1185,7 +1185,7 @@ function MetricCard({ icon, label, value }: { icon: React.ReactNode; label: stri
   );
 }
 
-// ── Action Dialog ──
+// ── Action Dialog (Unified 2-tab layout) ──
 
 function ActionDialog({
   entry,
@@ -1204,142 +1204,216 @@ function ActionDialog({
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
   const [submitting, setSubmitting] = useState(false);
+  const [answered, setAnswered] = useState<boolean | null>(null);
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const hasScript = !!(entry.campaignId && entry.leadId);
-  const [activeTab, setActiveTab] = useState(hasScript ? "script" : "action");
 
-  const handleSelect = async (actionId: string) => {
+  const fallbackActions = [
+    { id: "__success", name: "Sucesso", color: "#10b981", icon: "✅", actionType: "none" as const, sortOrder: 0, actionConfig: null, campaignId: "", createdAt: "" },
+    { id: "__failure", name: "Sem Sucesso", color: "#ef4444", icon: "❌", actionType: "none" as const, sortOrder: 1, actionConfig: null, campaignId: "", createdAt: "" },
+  ];
+  const displayActions = actions.length > 0 ? actions : fallbackActions;
+
+  const handleSave = async () => {
+    if (answered === null) return;
+    if (answered && !selectedActionId) return;
     setSubmitting(true);
     try {
-      await onSelect(actionId);
+      if (!answered) {
+        // No answer — use a dummy action or just register notes
+        await onSelect("__no_answer");
+      } else {
+        await onSelect(selectedActionId!);
+      }
     } finally {
       setSubmitting(false);
     }
   };
 
-  const getActionDescription = (action: CallAction) => {
-    switch (action.actionType) {
-      case "start_sequence": return "Inicia sequência automática";
-      case "add_tag": return `Adiciona tag: "${action.actionConfig?.tag || ""}"`;
-      case "update_status": return `Atualiza status para: "${action.actionConfig?.status || ""}"`;
-      case "webhook": return "Dispara webhook externo";
-      case "none": return "Apenas registra";
-      default: return "";
-    }
-  };
-
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Registrar Ação</DialogTitle>
-          <DialogDescription>
-            <span className="flex items-center gap-2 mt-1">
-              <User className="h-3.5 w-3.5" /> {entry.leadName || "Lead"} — {formatPhone(entry.leadPhone)}
-            </span>
-            {entry.campaignName && (
-              <span className="flex items-center gap-2 mt-0.5">
-                <FolderOpen className="h-3.5 w-3.5" /> {entry.campaignName}
-              </span>
-            )}
-          </DialogDescription>
-        </DialogHeader>
-
-        {entry.audioUrl && (
-          <div className="mb-4 rounded-lg border border-border bg-muted/30 p-3">
-            <p className="text-xs font-medium text-muted-foreground mb-2">🎧 Gravação da chamada</p>
-            <audio controls className="w-full h-8" src={entry.audioUrl} preload="none">
-              Seu navegador não suporta o player de áudio.
-            </audio>
+      <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden">
+        {/* Header destacado */}
+        <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 text-center space-y-2">
+          <div className="flex items-center justify-center gap-2">
+            <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
+              {(entry.leadName || "L").charAt(0).toUpperCase()}
+            </div>
           </div>
-        )}
+          <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
+            {entry.leadName || "Lead"}
+          </h2>
+          <p className="text-lg font-mono text-primary">
+            📞 {formatPhone(entry.leadPhone)}
+          </p>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            {entry.campaignName && (
+              <Badge variant="outline" className="text-xs">📁 {entry.campaignName}</Badge>
+            )}
+            {entry.attemptNumber != null && (
+              <Badge variant="outline" className="text-xs">🔄 x{entry.attemptNumber}/{entry.maxAttempts || "∞"}</Badge>
+            )}
+            {entry.isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
+          </div>
+          {entry.durationSeconds != null && entry.durationSeconds > 0 && (
+            <p className="text-2xl font-semibold font-mono text-emerald-500">
+              ⏱️ {Math.floor(entry.durationSeconds / 60).toString().padStart(2, "0")}:{(entry.durationSeconds % 60).toString().padStart(2, "0")}
+            </p>
+          )}
+          {entry.audioUrl && (
+            <div className="mt-2 rounded-lg border border-border bg-background/50 p-2 mx-auto max-w-md">
+              <p className="text-xs font-medium text-muted-foreground mb-1">🎧 Gravação</p>
+              <audio controls className="w-full h-8" src={entry.audioUrl} preload="none">
+                Seu navegador não suporta o player de áudio.
+              </audio>
+            </div>
+          )}
+        </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="script" disabled={!hasScript}>
-              <FileText className="h-4 w-4 mr-2" />
-              Roteiro
+        {/* Tabs */}
+        <Tabs defaultValue="call" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="mx-6 mt-3 w-auto self-start">
+            <TabsTrigger value="call" className="gap-1.5">
+              <Phone className="h-3.5 w-3.5" /> Ligação
             </TabsTrigger>
-            <TabsTrigger value="action">
-              <Target className="h-4 w-4 mr-2" />
-              Ação
-            </TabsTrigger>
-            <TabsTrigger value="history">
-              <Clock className="h-4 w-4 mr-2" />
-              Histórico
+            <TabsTrigger value="history" className="gap-1.5">
+              <Clock className="h-3.5 w-3.5" /> Histórico
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="script" className="mt-4 max-h-[50vh] overflow-y-auto pr-1">
-            {hasScript ? (
-              <InlineScriptRunner
-                campaignId={entry.campaignId!}
-                leadId={entry.leadId!}
-                onReachEnd={() => setActiveTab("action")}
-              />
-            ) : (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                Roteiro não disponível para esta ligação.
-              </div>
-            )}
-          </TabsContent>
-
-          <TabsContent value="action" className="mt-4">
-            <div className="space-y-3 max-h-[50vh] overflow-y-auto">
-              <button
-                onClick={() => onReschedule(entry)}
-                className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
-              >
-                <div className="flex items-center gap-2">
-                  <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                  <span className="font-medium text-sm">Reagendar</span>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
-              </button>
-
-              {isLoading ? (
-                <p className="text-sm text-muted-foreground">Carregando ações...</p>
-              ) : actions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Nenhuma ação configurada nesta campanha.</p>
-              ) : (
-                actions.map((action) => (
-                  <button
-                    key={action.id}
-                    disabled={submitting}
-                    onClick={() => handleSelect(action.id)}
-                    className={cn(
-                      "w-full text-left rounded-lg border p-3 hover:bg-accent transition-colors",
-                      "disabled:opacity-50"
-                    )}
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full" style={{ backgroundColor: action.color }} />
-                      <span className="font-medium text-sm">{action.name}</span>
+          {/* Call Tab */}
+          <TabsContent value="call" className="flex-1 min-h-0 mt-0">
+            <div className="h-[calc(90vh-380px)] overflow-y-auto px-6 py-4">
+              <div className="space-y-6">
+                {/* Script Section */}
+                {hasScript && (
+                  <>
+                    <div className="space-y-2">
+                      <span className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">📋 Roteiro</span>
+                      <div className="rounded-lg border bg-muted/10 p-3">
+                        <InlineScriptRunner campaignId={entry.campaignId!} leadId={entry.leadId!} />
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1 ml-5">{getActionDescription(action)}</p>
-                  </button>
-                ))
-              )}
-            </div>
+                    <div className="border-t" />
+                  </>
+                )}
 
-            <div className="mt-3">
-              <Label className="text-xs">Observações (opcional)</Label>
-              <Textarea
-                value={notes}
-                onChange={(e) => onNotesChange(e.target.value)}
-                placeholder="Notas sobre a ligação..."
-                rows={2}
-              />
+                {/* Result Section */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Resultado da Ligação</h3>
+
+                  {/* Answered question */}
+                  <div className="space-y-2">
+                    <p className="text-sm text-muted-foreground">O lead atendeu?</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        variant={answered === true ? "default" : "outline"}
+                        className={cn("h-12 text-sm gap-2", answered === true && "ring-2 ring-primary")}
+                        onClick={() => { setAnswered(true); setSelectedActionId(null); }}
+                      >
+                        <Phone className="h-4 w-4" /> Atendeu
+                      </Button>
+                      <Button
+                        variant={answered === false ? "destructive" : "outline"}
+                        className={cn("h-12 text-sm gap-2", answered === false && "ring-2 ring-destructive")}
+                        onClick={() => { setAnswered(false); setSelectedActionId(null); }}
+                      >
+                        <PhoneOff className="h-4 w-4" /> Não Atendeu
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* Campaign Actions (only if answered) */}
+                  {answered === true && (
+                    <div className="space-y-2">
+                      <p className="text-sm text-muted-foreground">Qual foi o resultado?</p>
+
+                      {/* Reschedule option */}
+                      <button
+                        onClick={() => onReschedule(entry)}
+                        className="w-full text-left rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2">
+                          <CalendarClock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                          <span className="font-medium text-sm">Reagendar</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 ml-6">A pessoa não pode falar agora</p>
+                      </button>
+
+                      {isLoading ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">Carregando ações...</p>
+                      ) : (
+                        <>
+                          {actions.length === 0 && (
+                            <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
+                              <p className="text-xs text-muted-foreground">
+                                ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
+                              </p>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-2 gap-2">
+                            {displayActions.map((action) => (
+                              <button
+                                key={action.id}
+                                onClick={() => setSelectedActionId(action.id)}
+                                className={cn(
+                                  "rounded-lg border p-3 text-left transition-all",
+                                  selectedActionId === action.id
+                                    ? "border-primary bg-primary/5 ring-2 ring-primary"
+                                    : "border-border hover:border-primary/50"
+                                )}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <div
+                                    className="h-3 w-3 rounded-full shrink-0"
+                                    style={{ backgroundColor: action.color }}
+                                  />
+                                  <span className="font-medium text-sm">{action.name}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Notes */}
+                  <div>
+                    <Label className="text-sm font-medium">📝 Observações (opcional)</Label>
+                    <Textarea
+                      value={notes}
+                      onChange={(e) => onNotesChange(e.target.value)}
+                      placeholder="Anotações sobre a ligação..."
+                      className="mt-1"
+                      rows={3}
+                    />
+                  </div>
+                </div>
+
+                {/* Footer Buttons */}
+                <div className="flex justify-end gap-2 pt-2 pb-2">
+                  <Button variant="outline" onClick={onClose}>
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    disabled={answered === null || (answered && !selectedActionId) || submitting}
+                  >
+                    {submitting ? "Salvando..." : "✅ Salvar e Encerrar"}
+                  </Button>
+                </div>
+              </div>
             </div>
           </TabsContent>
 
-          <TabsContent value="history" className="mt-4">
-            <LeadCallHistory leadId={entry.leadId} campaignId={entry.campaignId} currentLogId={entry.id} />
+          {/* History Tab */}
+          <TabsContent value="history" className="flex-1 min-h-0 mt-0">
+            <div className="h-[calc(90vh-380px)] overflow-y-auto px-6 py-4">
+              <LeadCallHistory leadId={entry.leadId} campaignId={entry.campaignId} currentLogId={entry.id} />
+            </div>
           </TabsContent>
         </Tabs>
-
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
