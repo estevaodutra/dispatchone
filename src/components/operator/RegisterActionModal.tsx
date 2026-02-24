@@ -22,16 +22,17 @@ interface RegisterActionModalProps {
   leadPhone: string;
   campaignName: string;
   duration: number;
+  initialObservations?: string;
 }
 
 export function RegisterActionModal({
   open, onOpenChange, callId, campaignId,
-  leadName, leadPhone, campaignName, duration,
+  leadName, leadPhone, campaignName, duration, initialObservations,
 }: RegisterActionModalProps) {
   const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
   const { toast } = useToast();
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialObservations || "");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [isSaving, setIsSaving] = useState(false);

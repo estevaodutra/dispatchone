@@ -170,9 +170,15 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
             </div>
           )}
 
-          {/* On call - custom fields + actions */}
+          {/* On call - observations + custom fields + actions */}
           {callStatus === "on_call" && currentCall && (
             <>
+              {currentCall.observations && (
+                <div className="rounded border bg-amber-500/10 border-amber-500/20 p-2">
+                  <p className="text-xs font-medium text-amber-600">📝 Observação</p>
+                  <p className="text-sm">{currentCall.observations}</p>
+                </div>
+              )}
               {Object.keys(currentCall.leadCustomFields).length > 0 && (
                 <div className="space-y-1">
                   <p className="text-xs font-medium text-muted-foreground">📝 Informações</p>
@@ -236,6 +242,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
           leadPhone={currentCall.leadPhone}
           campaignName={currentCall.campaignName}
           duration={callDuration}
+          initialObservations={currentCall.observations || undefined}
           attemptNumber={currentCall.attemptNumber}
           maxAttempts={currentCall.maxAttempts}
           isPriority={currentCall.isPriority}

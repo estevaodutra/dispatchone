@@ -26,6 +26,7 @@ interface CallActionDialogProps {
   leadPhone: string;
   campaignName: string;
   duration: number;
+  initialObservations?: string;
   attemptNumber: number;
   maxAttempts: number;
   isPriority: boolean;
@@ -52,13 +53,13 @@ const formatDuration = (s: number) => {
 export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
-  attemptNumber, maxAttempts, isPriority,
+  initialObservations, attemptNumber, maxAttempts, isPriority,
 }: CallActionDialogProps) {
   const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
   const { toast } = useToast();
 
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(initialObservations || "");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [isSaving, setIsSaving] = useState(false);
