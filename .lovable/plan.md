@@ -1,172 +1,94 @@
 
 
-# Sistema de Companhias e Convite de Operadores
+# Migrar tabelas de chamadas para isolamento por company_id (Fase 2)
 
-## Escopo Geral
+## Problema
 
-Migrar o modelo de dados de isolamento por `user_id` para isolamento por `company_id`. O admin adiciona operadores buscando pelo email ja cadastrado no DispatchOne (sem envio de email automatico).
+Quando o usuario (Mauro Dutra) seleciona a companhia "Estevao Dutra" no seletor lateral, os operadores aparecem corretamente (ja filtrados por `company_id`), mas as ligacoes, campanhas, leads e fila mostram zero dados. Isso acontece porque essas tabelas ainda usam `user_id = auth.uid()` nas politicas RLS, entao so mostram dados do proprio usuario logado.
 
-**Devido ao tamanho desta mudanca, o plano sera executado em fases.** Esta primeira fase foca na fundacao: criacao das tabelas, contexto de companhia, seletor lateral e fluxo de adicionar operador por email.
+## Solucao
 
----
+Adicionar `company_id` nas tabelas `call_campaigns`, `call_logs`, `call_leads` e `call_queue`, migrar os dados existentes, atualizar as RLS policies para usar `is_company_member()`, e atualizar os hooks do frontend para filtrar por `activeCompanyId`.
 
-## Fase 1 (esta implementacao)
+## Alteracoes
 
-### 1. Novas Tabelas
+### 1. Migracao SQL
 
-**`companies`**
-- `id` UUID PK
-- `name` TEXT NOT NULL
-- `owner_id` UUID NOT NULL (referencia auth.users)
-- `created_at`, `updated_at` TIMESTAMPTZ
+Adicionar coluna `company_id UUID` nas 4 tabelas:
+- `call_campaigns` -- migrar com base no `user_id` -> `companies.owner_id`
+- `call_logs` -- migrar via `call_campaigns.company_id` ou `user_id`
+- `call_leads` -- migrar via `call_campaigns.company_id`
+- `call_queue` -- migrar com base no `user_id` -> `companies.owner_id`
 
-**`company_members`**
-- `id` UUID PK
-- `company_id` UUID FK -> companies
-- `user_id` UUID FK -> auth.users (nao referencia diretamente, mesma abordagem das demais tabelas)
-- `role` TEXT DEFAULT 'operator' (valores: 'admin', 'operator')
-- `is_active` BOOLEAN DEFAULT true
-- `joined_at` TIMESTAMPTZ DEFAULT now()
-- UNIQUE(company_id, user_id)
+Atualizar RLS policies de `user_id = auth.uid()` para `is_company_member(company_id, auth.uid())`.
 
-**RLS:** Membros podem ver membros da mesma companhia. Admins podem inserir/remover membros.
+### 2. Hooks do Frontend
 
-**Trigger:** Ao criar usuario (handle_new_user), criar automaticamente uma companhia com o nome do perfil e inserir o usuario como admin.
+**`src/hooks/useCallPanel.ts`**
+- Importar `useCompany` e obter `activeCompanyId`
+- Adicionar filtro `.eq("company_id", activeCompanyId)` na query de `call_logs`
+- Atualizar `queryKey` para incluir `activeCompanyId`
 
-### 2. Adicionar `company_id` na tabela `call_operators`
+**`src/hooks/useCallCampaigns.ts`**
+- Importar `useCompany` e filtrar por `activeCompanyId`
+- Inserir `company_id` ao criar campanha
 
-- Nova coluna `company_id UUID` na tabela `call_operators`
-- Migrar operadores existentes: setar `company_id` baseado no `user_id` do dono
-- Atualizar RLS para filtrar por company_id via funcao de membership
+**`src/hooks/useCallLeads.ts`**
+- Sem mudanca direta (leads sao filtrados por campaign_id que ja pertence a companhia via RLS)
 
-### 3. Contexto de Companhia (`CompanyContext`)
+**`src/hooks/useCallQueuePanel.ts`**
+- Importar `useCompany` e filtrar por `activeCompanyId`
 
-**Novo arquivo:** `src/contexts/CompanyContext.tsx`
-- Provider que carrega as companhias do usuario logado (via `company_members`)
-- Estado: `activeCompanyId`, `companies`, `setActiveCompany`
-- Persiste companhia ativa no `localStorage`
-- Expoe hook `useCompany()` usado por todos os hooks de dados
+**`src/hooks/useCallQueue.ts`**
+- Inserir `company_id` ao adicionar items na fila
 
-### 4. Seletor de Companhias na Sidebar
+**`src/hooks/useCallLogs.ts`**
+- Sem mudanca direta (filtrado por campaign_id)
 
-**Alterar:** `src/components/layout/AppSidebar.tsx`
-- Adicionar dropdown no header da sidebar mostrando companhia ativa
-- Lista de companhias do usuario com indicador da ativa
-- Clicar troca a companhia ativa via `useCompany().setActiveCompany`
+### 3. Edge Functions
 
+**`supabase/functions/queue-executor/index.ts`**
+- Passar `company_id` ao criar `call_logs`
+
+**`supabase/functions/call-dial/index.ts`**
+- Incluir `company_id` ao criar registros
+
+**`supabase/functions/call-status/index.ts`**
+- Incluir `company_id` ao criar registros
+
+**`supabase/functions/reschedule-failed-calls/index.ts`**
+- Incluir `company_id` ao criar novos logs de retentativa
+
+### Detalhes Tecnicos
+
+**Migracao de dados existentes:**
 ```text
-┌─────────────────────┐
-│ ⚡ DispatchOne       │
-├─────────────────────┤
-│ 🏢 FN | Lorran  ▼  │  <- dropdown
-│                     │
-│  ● FN | Lorran      │
-│  ○ IPTV             │
-│  ○ Suporte D²X      │
-└─────────────────────┘
+1. ALTER TABLE call_campaigns ADD COLUMN company_id UUID
+2. UPDATE call_campaigns SET company_id = (SELECT id FROM companies WHERE owner_id = call_campaigns.user_id LIMIT 1)
+3. Repetir para call_logs, call_leads, call_queue
+4. DROP existing RLS policies
+5. CREATE new RLS policies usando is_company_member()
 ```
 
-### 5. Atualizar OperatorsPanel
-
-**Alterar:** `src/components/call-panel/OperatorsPanel.tsx`
-- Botao muda de "Novo Operador" para "Adicionar Operador"
-- Nova dialog: busca por email cadastrado no DispatchOne
-- Se encontrar o usuario, adiciona como `company_member` (role: operator) e cria `call_operator` vinculado a companhia
-- Se nao encontrar, mostra mensagem "Usuario nao encontrado. O operador precisa criar uma conta primeiro."
-- Sub-abas: "Ativos" e "Pendentes" (pendentes = membros sem operador configurado)
-
-**Nova dialog:** `src/components/call-panel/AddOperatorDialog.tsx`
+**RLS nova (exemplo para call_campaigns):**
 ```text
-┌──────────────────────────────────────────┐
-│ Adicionar Operador                   [X] │
-├──────────────────────────────────────────┤
-│                                          │
-│ Busque pelo email do operador.           │
-│ Ele precisa ter uma conta no DispatchOne.│
-│                                          │
-│ Email *                                  │
-│ ┌──────────────────────────────────────┐ │
-│ │ operador@email.com                   │ │
-│ └──────────────────────────────────────┘ │
-│                                          │
-│ Funcao                                   │
-│  ○ Operador                              │
-│  ○ Administrador                         │
-│                                          │
-│ Ramal (opcional)                         │
-│ ┌──────────────────────────────────────┐ │
-│ │ 1003                                 │ │
-│ └──────────────────────────────────────┘ │
-│                                          │
-├──────────────────────────────────────────┤
-│              [Cancelar] [Adicionar]      │
-└──────────────────────────────────────────┘
+SELECT: is_company_member(company_id, auth.uid())
+INSERT: is_company_member(company_id, auth.uid()) -- company_id obrigatorio
+UPDATE: is_company_member(company_id, auth.uid())
+DELETE: is_company_admin(company_id, auth.uid())
 ```
 
-### 6. Edge Function: `company-add-member`
-
-Necessaria porque precisamos buscar na tabela `profiles` por email (que pode pertencer a outro usuario) e depois inserir em `company_members` -- operacao que requer `service_role`.
-
-- Recebe: `{ email, role, extension?, company_id }`
-- Valida que o caller e admin da companhia
-- Busca profile pelo email
-- Se nao encontrar: retorna erro
-- Se ja e membro: retorna erro
-- Cria `company_member` e `call_operator` (se role = operator)
-- Retorna dados do novo membro
-
-### 7. Atualizar `useCallOperators`
-
-- Filtrar por `company_id` da companhia ativa (via `useCompany()`)
-- Inserir `company_id` ao criar operador
-
-### 8. Atualizar RLS e funcoes SQL
-
-- Nova funcao `is_company_member(company_id, user_id)` SECURITY DEFINER
-- Nova funcao `is_company_admin(company_id, user_id)` SECURITY DEFINER
-- RLS de `call_operators`: permitir SELECT para membros da mesma companhia
-- RLS de `company_members`: membros podem ver membros da mesma companhia; admins podem INSERT/DELETE
-
-### 9. Migrar `handle_new_user` trigger
-
-Atualizar para tambem:
-1. Criar uma companhia com `name = full_name || email`
-2. Inserir o usuario como admin da companhia
-
----
-
-## Fase 2 (futura)
-
-- Migrar `company_id` para: `call_campaigns`, `call_logs`, `call_queue`, `leads`, `campaigns`, etc.
-- Atualizar todas as RLS policies
-- Atualizar todos os hooks para filtrar por `activeCompanyId`
-- Remover operador da companhia (soft delete via is_active)
-
----
-
-## Arquivos Novos
+### Arquivos Alterados
 
 | Arquivo | Descricao |
 |---------|-----------|
-| `src/contexts/CompanyContext.tsx` | Provider + hook useCompany |
-| `src/components/call-panel/AddOperatorDialog.tsx` | Dialog para adicionar operador por email |
-| `supabase/functions/company-add-member/index.ts` | Edge function para adicionar membro |
-
-## Arquivos Alterados
-
-| Arquivo | Descricao |
-|---------|-----------|
-| `src/components/layout/AppSidebar.tsx` | Seletor de companhia no header |
-| `src/components/call-panel/OperatorsPanel.tsx` | Botao "Adicionar Operador", sub-abas |
-| `src/hooks/useCallOperators.ts` | Filtrar por company_id |
-| `src/App.tsx` | Wrapping com CompanyProvider |
-| `src/contexts/AuthContext.tsx` | Nenhuma mudanca |
-
-## Migracoes SQL
-
-1. Criar tabelas `companies` e `company_members` com RLS
-2. Criar funcoes `is_company_member` e `is_company_admin`
-3. Adicionar coluna `company_id` em `call_operators`
-4. Atualizar `handle_new_user` para criar companhia automaticamente
-5. Migrar operadores existentes (UPDATE call_operators SET company_id = ...)
+| Nova migracao SQL | Adicionar company_id + migrar dados + RLS |
+| `src/hooks/useCallPanel.ts` | Filtrar por activeCompanyId |
+| `src/hooks/useCallCampaigns.ts` | Filtrar e inserir company_id |
+| `src/hooks/useCallQueuePanel.ts` | Filtrar por activeCompanyId |
+| `src/hooks/useCallQueue.ts` | Inserir company_id |
+| `supabase/functions/queue-executor/index.ts` | Passar company_id |
+| `supabase/functions/call-dial/index.ts` | Passar company_id |
+| `supabase/functions/call-status/index.ts` | Passar company_id |
+| `supabase/functions/reschedule-failed-calls/index.ts` | Passar company_id |
 
