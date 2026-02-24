@@ -1,41 +1,37 @@
 
 
-## Plano: Ordenação híbrida — ligações ativas no topo, depois cronológico
+## Plano: Simplificar card de ação — remover etapa "Atendeu/Não Atendeu" e renomear seção
 
-### Entendimento
-O usuário quer:
-1. **Ligações em andamento** (`dialing`, `ringing`, `in_progress`) sempre no topo.
-2. **Próximas a ligar** (`ready`, `scheduled`) logo abaixo.
-3. **Demais** (completed, cancelled, failed, no_answer, etc.) por último.
-4. **Dentro de cada grupo**, ordenar do mais recente para o mais antigo (`createdAt` desc).
+### Alterações no arquivo `src/components/operator/CallActionDialog.tsx`
 
-### Alteração
+**1. Renomear título da seção**
+- Linha 219: trocar `"🎯 Resultado da Ligação"` por `"🎯 Ações"`
 
-**Arquivo: `src/pages/CallPanel.tsx`** — linhas 490-495
+**2. Remover bloco "O lead atendeu?" (linhas 222-240)**
+- Eliminar os botões "Atendeu" / "Não Atendeu" e o parágrafo "O lead atendeu?"
+- Remover o estado `answered` e suas referências
 
-Substituir a ordenação puramente cronológica por uma ordenação híbrida com 3 faixas de prioridade:
+**3. Mostrar as ações diretamente (sem condicional `answered === true`)**
+- O bloco de ações (linhas 243-289) perde o wrapper condicional `{answered === true && ...}` e fica sempre visível
+- Remover o parágrafo "Qual foi o resultado?" (linha 245) já que as ações falam por si
 
-```typescript
-const sortedEntries = useMemo(() => {
-  if (isQueueTab) return [];
+**4. Ajustar lógica de `handleSave`**
+- Remover validação `if (answered === null)` (linha 110-112)
+- Remover validação `if (answered && !selectedActionId)` (linhas 115-118)
+- Adicionar apenas: se `selectedActionId` não foi selecionado, exigir seleção
+- Determinar `call_status` com base na ação selecionada em vez de `answered`:
+  - Se a ação selecionada for uma das fallback `__failure` ou tiver `actionType` indicando não-atendimento, usar `"no_answer"`; caso contrário, usar `"completed"`
+  - Simplificação: sempre usar `"completed"` já que o operador está registrando uma ação concreta
 
-  const getPriority = (status: string) => {
-    if (['dialing', 'ringing', 'in_progress'].includes(status)) return 0;
-    if (['ready', 'scheduled', 'waiting_operator'].includes(status)) return 1;
-    return 2;
-  };
+**5. Ajustar botão "Salvar"**
+- Linha 348: trocar `disabled={answered === null || (answered && !selectedActionId) || isSaving}` por `disabled={!selectedActionId || isSaving}`
 
-  return [...entries].sort((a, b) => {
-    const pa = getPriority(a.status);
-    const pb = getPriority(b.status);
-    if (pa !== pb) return pa - pb;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
-}, [entries, isQueueTab]);
-```
+**6. Limpar estado**
+- Remover `const [answered, setAnswered] = useState<boolean | null>(null)` (linha 60)
+- Remover `setAnswered(null)` do `resetState` (linha 154)
 
-### Resultado
-- **Aba "Todos"**: mostra primeiro quem está ligando agora, depois os próximos na fila, depois finalizados — tudo cronológico dentro de cada grupo.
-- **Abas filtradas** (ex: "Em andamento"): como só têm um tipo de status, a ordenação será puramente cronológica.
-- Nenhum outro arquivo é alterado.
+### Resumo de impacto
+- Arquivo único: `src/components/operator/CallActionDialog.tsx`
+- UX simplificada: ao abrir o dialog, as ações da campanha já aparecem diretamente, sem etapa intermediária
+- O operador seleciona a ação, opcionalmente escreve notas, e salva
 
