@@ -138,54 +138,7 @@ function getStatusCategory(status: string): "scheduled" | "in_progress" | "compl
   return "failed";
 }
 
-// ── Priority Sort ──
-
-function sortByPriority(entries: CallPanelEntry[]): CallPanelEntry[] {
-  const now = Date.now();
-  return [...entries].sort((a, b) => {
-    const catA = getStatusCategory(a.callStatus);
-    const catB = getStatusCategory(b.callStatus);
-
-    const priorityOrder = { in_progress: 0, scheduled: 1, completed: 2, failed: 2, cancelled: 2 };
-    
-    // For scheduled, split into "AGORA" (timer <= 0) vs "Agendada" (timer > 0)
-    const isNowA = catA === "scheduled" && a.scheduledFor && new Date(a.scheduledFor).getTime() <= now;
-    const isNowB = catB === "scheduled" && b.scheduledFor && new Date(b.scheduledFor).getTime() <= now;
-
-    const getPrio = (cat: string, isNow: boolean | null | undefined) => {
-      if (cat === "in_progress") return 0;
-      if (cat === "scheduled" && isNow) return 1;
-      if (cat === "scheduled") return 2;
-      return 3; // completed, failed, cancelled
-    };
-
-    const prioA = getPrio(catA, isNowA);
-    const prioB = getPrio(catB, isNowB);
-
-    if (prioA !== prioB) return prioA - prioB;
-
-    // Within same priority group, priority campaigns come first
-    if (a.isPriority !== b.isPriority) return a.isPriority ? -1 : 1;
-
-    // Same priority group — sub-sort
-    if (prioA === 0) {
-      // in_progress: most recent startedAt first
-      return new Date(b.startedAt || b.createdAt).getTime() - new Date(a.startedAt || a.createdAt).getTime();
-    }
-    if (prioA === 1) {
-      // AGORA: oldest createdAt first
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    }
-    if (prioA === 2) {
-      // Scheduled: smallest timer first
-      const tA = a.scheduledFor ? new Date(a.scheduledFor).getTime() : Infinity;
-      const tB = b.scheduledFor ? new Date(b.scheduledFor).getTime() : Infinity;
-      return tA - tB;
-    }
-    // Finished: most recent first
-    return new Date(b.endedAt || b.createdAt).getTime() - new Date(a.endedAt || a.createdAt).getTime();
-  });
-}
+// (sortByPriority removed — chronological sort applied inline)
 
 // ── Sound ──
 
@@ -534,7 +487,12 @@ export default function CallPanel() {
   }, [statusFilter, campaignFilter, searchQuery, itemsPerPage]);
 
   // Sorted entries
-  const sortedEntries = useMemo(() => sortByPriority(isQueueTab ? [] : entries), [entries, isQueueTab]);
+  const sortedEntries = useMemo(() => {
+    if (isQueueTab) return [];
+    return [...entries].sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [entries, isQueueTab]);
 
   // Pagination
   const totalPages = Math.ceil(sortedEntries.length / itemsPerPage);
