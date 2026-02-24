@@ -1,41 +1,67 @@
 
 
-# Fix: Toggle de disponibilidade - RLS Policy
+# Fix: Operador nao enviado no webhook do call-dial
 
 ## Diagnostico
 
-O codigo no `OperatorsPanel.tsx` ja esta correto com `try/catch`, `await` e invalidacao de cache. O problema real e a **RLS policy** na tabela `call_operators`: a policy de UPDATE so permite `is_company_admin()`. Operadores nao-admin nao conseguem atualizar seu proprio status.
+O endpoint `call-dial` (Edge Function) agenda chamadas via API externa. Na linha 539, o campo `operator` e hardcoded como `null` porque o endpoint apenas agenda a chamada sem reservar um operador.
+
+O problema e que o webhook externo (n8n) precisa saber qual operador vai atender para rotear a chamada, mas recebe `operator: null` e responde com `operator_unavailable`.
+
+Os outros caminhos (`queue-executor` e `dialNow` no frontend) ja reservam o operador via RPC antes de disparar o webhook e incluem os dados corretamente. Apenas o `call-dial` nao faz isso.
 
 ## Solucao
 
-Adicionar uma migration SQL que permita operadores atualizarem seu proprio registro (onde `user_id = auth.uid()`), mantendo a restricao de admin para atualizar operadores de outros usuarios.
+Modificar `supabase/functions/call-dial/index.ts` para:
 
-### Migration SQL
+1. **Reservar um operador via RPC** (`reserve_operator_for_call`) antes de disparar o webhook
+2. **Incluir os dados do operador** no payload do webhook
+3. **Atualizar o call_log e lead** com o operador reservado
+4. **Se nao houver operador disponivel**, manter o comportamento atual (operator: null) para que a chamada fique agendada e o queue-executor atribua depois
 
-```sql
-DROP POLICY IF EXISTS "Admins can update company operators" ON call_operators;
+### Alteracoes no arquivo `supabase/functions/call-dial/index.ts`
 
-CREATE POLICY "Members can update own or admin can update any"
-  ON call_operators
-  FOR UPDATE
-  USING (
-    (user_id = auth.uid())
-    OR
-    ((company_id IS NOT NULL) AND is_company_admin(company_id, auth.uid()))
-    OR
-    ((company_id IS NULL) AND (user_id = auth.uid()))
-  );
+Apos criar/atualizar o call_log (linha ~492) e antes de montar o webhook payload (linha ~522):
+
+```text
+Fluxo atual:
+  1. Cria call_log com operator_id: null, status: 'scheduled'
+  2. Dispara webhook com operator: null
+  3. n8n recebe operator: null → responde operator_unavailable
+
+Fluxo corrigido:
+  1. Cria call_log com operator_id: null, status: 'scheduled'
+  2. Tenta reservar operador via RPC reserve_operator_for_call
+  3a. Se reservou: atualiza call_log com operator_id e status 'dialing', 
+      dispara webhook com dados do operador
+  3b. Se nao reservou: dispara webhook com operator: null (mantém agendamento)
 ```
 
-Isso permite que:
-- Qualquer usuario atualize seu **proprio** registro de operador (`user_id = auth.uid()`)
-- Admins da empresa atualizem **qualquer** operador da empresa
+### Codigo a inserir (entre linhas ~492 e ~511)
+
+- Chamar `supabase.rpc('reserve_operator_for_call', { p_call_id, p_campaign_id })`
+- Se `reservation[0].success`, atualizar `call_logs` com `operator_id` e `call_status: 'dialing'`
+- Atualizar `call_leads` com `assigned_operator_id`
+- Armazenar dados do operador em variavel para uso no payload
+
+### Alteracao no webhook payload (linhas 522-540)
+
+Substituir `operator: null` por condicional:
+```
+operator: reservedOperator ? {
+  id: reservedOperator.id,
+  name: reservedOperator.name,
+  extension: reservedOperator.extension
+} : null
+```
+
+### Alteracao no status do call (linhas 524-528)
+
+Se operador foi reservado, o status no payload deve ser `'dialing'` em vez de `'scheduled'`.
 
 ### Arquivos alterados
 
-| Tipo | Descricao |
-|------|-----------|
-| Migration SQL | Atualizar RLS policy de UPDATE em `call_operators` para permitir self-update |
-
-Nenhuma alteracao de codigo frontend e necessaria - o codigo ja esta correto.
+| Arquivo | Descricao |
+|---------|-----------|
+| `supabase/functions/call-dial/index.ts` | Reservar operador via RPC antes de disparar webhook e incluir dados no payload |
 
