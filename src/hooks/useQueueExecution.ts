@@ -279,6 +279,79 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
   };
 }
 
+// Lightweight hook — reads shared cache, no tick/maintenance loops
+export function useQueueExecutionData(): QueueExecutionSummary {
+  const queryClient = useQueryClient();
+
+  const { data: states = [], isLoading } = useQuery({
+    queryKey: ["queue_execution_state_all"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("queue_execution_state")
+        .select("*");
+      if (error) throw error;
+      return (data || []).map((d: DbQueueState) => transform(d));
+    },
+    refetchInterval: 5000,
+  });
+
+  const summary = {
+    running: states.filter((s: QueueExecutionState) => s.status === "running").length,
+    paused: states.filter((s: QueueExecutionState) => s.status === "paused").length,
+    stopped: states.filter((s: QueueExecutionState) => s.status === "stopped").length,
+    waiting_operator: states.filter((s: QueueExecutionState) => s.status === "waiting_operator").length,
+    waiting_cooldown: states.filter((s: QueueExecutionState) => s.status === "waiting_cooldown").length,
+  };
+
+  const activeCount = summary.running + summary.waiting_operator + summary.waiting_cooldown;
+  const globalStatus: QueueExecutionSummary["globalStatus"] =
+    activeCount > 0 && summary.paused > 0 ? "mixed"
+    : activeCount > 0 ? "running"
+    : summary.paused > 0 ? "paused"
+    : "stopped";
+
+  const pauseAllMutation = useMutation({
+    mutationFn: async () => {
+      const activeStates = states.filter((s: QueueExecutionState) =>
+        ["running", "waiting_operator", "waiting_cooldown"].includes(s.status)
+      );
+      for (const s of activeStates) {
+        await (supabase as any).from("queue_execution_state")
+          .update({ status: "paused" })
+          .eq("campaign_id", s.campaignId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+    },
+  });
+
+  const resumeAllMutation = useMutation({
+    mutationFn: async () => {
+      const pausedStates = states.filter((s: QueueExecutionState) => s.status === "paused");
+      for (const s of pausedStates) {
+        await (supabase as any).from("queue_execution_state")
+          .update({ status: "running" })
+          .eq("campaign_id", s.campaignId);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+    },
+  });
+
+  return {
+    states,
+    summary,
+    globalStatus,
+    isLoading,
+    pauseAll: pauseAllMutation.mutateAsync,
+    resumeAll: resumeAllMutation.mutateAsync,
+    isPausingAll: pauseAllMutation.isPending,
+    isResumingAll: resumeAllMutation.isPending,
+  };
+}
+
 export function useQueueExecution(campaignId: string, enabled = true) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
