@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCompany } from "@/contexts/CompanyContext";
 
 export type CallLeadStatus = "pending" | "calling" | "in_progress" | "completed" | "no_answer" | "busy" | "failed" | "cancelled";
 
@@ -157,6 +158,7 @@ export interface LeadStats {
 export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { activeCompanyId } = useCompany();
 
   const { data: leads = [], isLoading, refetch } = useQuery({
     queryKey: ["call_leads", campaignId, statusFilter],
@@ -218,6 +220,7 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
         .insert({
           campaign_id: campaignId,
           user_id: user.id,
+          company_id: activeCompanyId || null,
           phone: lead.phone,
           name: lead.name || null,
           email: lead.email || null,
@@ -253,6 +256,7 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
       const inserts = leadsData.map((lead) => ({
         campaign_id: campaignId,
         user_id: user.id,
+        company_id: activeCompanyId || null,
         phone: lead.phone,
         name: lead.name || null,
         email: lead.email || null,
