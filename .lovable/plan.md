@@ -2,70 +2,77 @@
 
 ## Problema
 
-O hook `useQueueExecutionSummary` é instanciado **duas vezes simultaneamente**:
-1. Em `AppLayout.tsx` (global, roda em todas as páginas)
-2. Em `CallPanel.tsx` (quando o operador está no painel de ligações)
+A rotina de manutenção (`runMaintenance`) no hook `useQueueExecutionSummary` (linhas 160-209) possui uma lógica de "orphan-ready" que **força a fila de volta para "running"** sempre que encontra `call_logs` com status `ready` em uma campanha cuja fila não está ativa.
 
-Cada instância cria seus próprios `setInterval` independentes:
-- **Tick loop**: 8s cada → na prática 4s entre ticks (2 instâncias)
-- **Maintenance loop**: 10s cada → 5s entre manutenções
-- **Query refetch**: 5s cada instância
-- **Maintenance resolve_cooldowns** dispara tick imediato → mais sobreposição
-
-Resultado: chamadas ao `queue-executor` se empilham, logs mostram "processing" e "skipped (in-flight)" a cada 2-3 segundos.
-
-## Solução
-
-Fazer o `CallPanel` **reutilizar os dados** do hook global ao invés de criar uma segunda instância com loops próprios.
-
-### 1. `src/hooks/useQueueExecution.ts` — separar dados de loop
-
-Criar um hook leve `useQueueExecutionData()` que apenas lê os dados (usa a mesma `queryKey`), sem criar intervals de tick/maintenance. O `CallPanel` usará esse hook.
-
+Trecho problemático (linhas 180-186):
 ```typescript
-// Hook leve — apenas lê os dados, sem loops
-export function useQueueExecutionData(): QueueExecutionSummary {
-  const queryClient = useQueryClient();
-
-  const { data: states = [], isLoading } = useQuery({
-    queryKey: ["queue_execution_state_all"],  // mesma key = compartilha cache
-    queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("queue_execution_state")
-        .select("*");
-      if (error) throw error;
-      return (data || []).map((d: DbQueueState) => transform(d));
-    },
-    refetchInterval: 5000,
-  });
-
-  // Mesma lógica de summary/globalStatus
-  // Mutations pauseAll/resumeAll
-  // Mas SEM setInterval, SEM tick loop, SEM maintenance loop
+if (existing) {
+  if (!["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
+    // Força para "running" mesmo que esteja "stopped" ou "paused"
+    await supabase.from("queue_execution_state")
+      .update({ status: "running" })
+      .eq("id", existing.id);
+  }
 }
 ```
 
-### 2. `src/pages/CallPanel.tsx` — usar hook leve
+Se o gestor para a fila manualmente (status = `stopped` ou `paused`), e ainda existem `call_logs` com status `ready`, a manutenção roda a cada 10 segundos e reativa a fila automaticamente — ignorando a decisão do operador.
 
-Substituir:
+## Solução
+
+Alterar a condição para **respeitar os status manuais** (`stopped` e `paused`). A lógica de orphan-ready só deve reativar filas que estejam em um estado inconsistente real — ou seja, filas que **não existem** na tabela `queue_execution_state`. Se a fila existe mas está parada ou pausada, é decisão intencional do usuário.
+
+### `src/hooks/useQueueExecution.ts` — linhas 160-209
+
+Remover a reativação automática quando o status é `stopped` ou `paused`. Manter apenas o envio de tick para filas que já estão ativas (running/waiting) mas não estão na lista local `activeIdsRef` (edge case de dessincronização do cache):
+
 ```typescript
-import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
-const queueSummary = useQueueExecutionSummary();
-```
-Por:
-```typescript
-import { useQueueExecutionData } from "@/hooks/useQueueExecution";
-const queueSummary = useQueueExecutionData();
-```
+// Check for orphan "ready" call_logs without active queue
+const { data: readyCalls } = await (supabase as any)
+  .from("call_logs")
+  .select("campaign_id")
+  .eq("call_status", "ready");
 
-### 3. `src/components/layout/AppLayout.tsx` — sem mudanças
+if (readyCalls?.length) {
+  const orphanCampaignIds = [...new Set(readyCalls.map((c: any) => c.campaign_id).filter(Boolean))] as string[];
+  const activeCampaignIds = new Set(activeIdsRef.current);
 
-Continua com `useQueueExecutionSummary()` como único ponto de execução dos loops.
+  for (const cid of orphanCampaignIds) {
+    if (activeCampaignIds.has(cid)) continue;
+
+    const { data: existing } = await (supabase as any)
+      .from("queue_execution_state")
+      .select("id, status")
+      .eq("campaign_id", cid)
+      .maybeSingle();
+
+    // Respect manual stops/pauses — do NOT reactivate
+    if (existing && ["stopped", "paused"].includes(existing.status)) {
+      continue;
+    }
+
+    // Only act on queues that are already in an active state
+    // but weren't picked up by the local cache yet
+    if (existing && ["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
+      try {
+        await supabase.functions.invoke(
+          `queue-executor?campaign_id=${cid}&action=tick`,
+          { method: "POST" }
+        );
+        console.log(`[maintenance] orphan-ready tick sent for campaign ${cid}`);
+      } catch (e) {
+        console.error(`[maintenance] orphan-ready tick error for ${cid}:`, e);
+      }
+    }
+    // If no existing state at all and there are ready calls,
+    // do NOT auto-create — user must start the queue manually
+  }
+
+  queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+}
+```
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useQueueExecution.ts` | Criar `useQueueExecutionData()` — hook que lê dados sem criar loops |
-| `src/pages/CallPanel.tsx` | Trocar `useQueueExecutionSummary` por `useQueueExecutionData` |
-
-Isso elimina a duplicação de intervals e reduz as chamadas ao `queue-executor` pela metade.
+| `src/hooks/useQueueExecution.ts` | Remover reativação automática de filas paradas/pausadas na rotina de orphan-ready (linhas 160-209) |
 
