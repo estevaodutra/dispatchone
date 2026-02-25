@@ -726,9 +726,9 @@ export default function CallPanel() {
                     <XCircle className="h-3.5 w-3.5" /> Cancelar
                   </Button>
                   <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" disabled={bulkDialing} onClick={async () => {
-                    const toEnqueue = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
+                    const toEnqueue = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "cancelled", "failed"].includes(e.callStatus));
                     if (toEnqueue.length === 0) {
-                      toast({ title: "Nenhuma ligação elegível", description: "Selecione ligações com status agendada ou pronta." });
+                      toast({ title: "Nenhuma ligação elegível", description: "Selecione ligações com status agendada, pronta, cancelada ou falha." });
                       return;
                     }
                     setBulkDialing(true);
