@@ -302,7 +302,7 @@ Deno.serve(async (req) => {
     
     const { data: campaign, error: campaignError } = await supabase
       .from('call_campaigns')
-      .select('id, name, status, user_id, dial_delay_minutes, company_id')
+      .select('id, name, status, user_id, dial_delay_minutes, company_id, retry_count')
       .eq('name', campaign_name)
       .eq('user_id', userId)
       .single();
@@ -466,6 +466,8 @@ Deno.serve(async (req) => {
           scheduled_for: scheduledFor,
           started_at: new Date().toISOString(),
           observations: obs || null,
+          attempt_number: 1,
+          max_attempts: campaign.retry_count ?? 3,
         })
         .select('id')
         .single();
