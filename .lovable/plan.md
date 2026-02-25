@@ -2,33 +2,41 @@
 
 ## Diagnóstico
 
-Na linha 729 de `CallPanel.tsx`, o filtro de elegibilidade para o botão "Discar" só aceita `["scheduled", "ready"]`:
+O loop de discagem (`useQueueExecutionSummary`) que envia "ticks" ao `queue-executor` a cada 8 segundos **só está montado dentro de `CallPanel.tsx`** (linha 426). Quando o operador navega para qualquer outra página, o hook desmonta, o `setInterval` é limpo e nenhum tick é enviado — as chamadas param de ser processadas.
 
-```typescript
-const toEnqueue = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready"].includes(e.callStatus));
-```
-
-Chamadas com status `cancelled` são excluídas, gerando a mensagem "Nenhuma ligação elegível".
+O mesmo vale para o polling de `bulkPollingActive` no `useCallPanel` (linha 323), que também só roda enquanto `CallPanel.tsx` está montado.
 
 ## Solução
 
-Adicionar `"cancelled"` e `"failed"` à lista de status elegíveis para discagem em massa, permitindo que o operador redisque leads cancelados ou que falharam.
+Mover a execução global do `useQueueExecutionSummary` para o `AppLayout`, garantindo que o loop de ticks rode **independentemente da página** onde o operador está.
 
-**Arquivo:** `src/pages/CallPanel.tsx` (linha 729)
+### Alterações
 
-Trocar:
-```typescript
-["scheduled", "ready"].includes(e.callStatus)
+#### 1. `src/components/layout/AppLayout.tsx` — Montar o hook globalmente
+
+Importar e invocar `useQueueExecutionSummary()` dentro do `AppLayout`, que é o wrapper de todas as páginas protegidas. O hook já faz todo o trabalho internamente (polling de estado, ticks, manutenção). Basta chamá-lo para que o loop inicie.
+
+```tsx
+import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
+
+export function AppLayout({ children }: AppLayoutProps) {
+  const location = useLocation();
+  const hideFloatingPopup = location.pathname === "/painel-ligacoes";
+
+  // Global queue tick loop — runs on all pages
+  useQueueExecutionSummary();
+
+  return ( /* ... existing JSX ... */ );
+}
 ```
 
-Por:
-```typescript
-["scheduled", "ready", "cancelled", "failed"].includes(e.callStatus)
-```
+#### 2. `src/pages/CallPanel.tsx` — Manter o hook para uso local da UI
 
-Atualizar também a mensagem de erro (linha 731) para refletir os novos status aceitos.
+O `CallPanel.tsx` continua usando `useQueueExecutionSummary()` normalmente para exibir os dados do sumário na interface. Ambas as instâncias do hook compartilham o mesmo `useQuery` (via React Query key `queue_execution_state_all`), então não haverá duplicação de dados. Os intervalos de tick são protegidos pelo flag `tickInFlightRef` que evita execuções simultâneas.
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/pages/CallPanel.tsx` | Incluir `cancelled` e `failed` como status elegíveis para discagem em massa |
+| `src/components/layout/AppLayout.tsx` | Importar e invocar `useQueueExecutionSummary()` para manter o loop de ticks ativo globalmente |
+
+Nenhuma alteração em `CallPanel.tsx` — ele já usa o hook e continuará funcionando normalmente.
 
