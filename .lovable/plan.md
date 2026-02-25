@@ -1,67 +1,110 @@
 
 
-## Diagnóstico: Importação CSV não sincroniza com `call_leads`
+## Plano: Sincronização automática com TODAS as campanhas na importação CSV
 
-### Causa raiz
+### Problema
+Atualmente, a importação CSV só sincroniza leads com `call_leads` para campanhas do tipo `ligacao`. Para campanhas do tipo `despacho`, não cria registros em `dispatch_campaign_contacts`. Para campanhas do tipo `grupos`, não há tabela de contatos dedicada mas o campo `active_campaign_id` já é atribuído.
 
-A mutation `importLeads` no `useLeads.ts` (linhas 308-371) corretamente atribui `active_campaign_id` e `active_campaign_type` na tabela `leads`, mas **não cria os registros correspondentes na tabela `call_leads`**. 
+### Análise das tabelas por tipo de campanha
 
-Comparando com `bulkAddToCampaign` (linhas 264-291), que faz o upsert em `call_leads` quando `campaignType === "ligacao"`, a importação simplesmente ignora essa etapa. Resultado: os leads ficam marcados como pertencendo à campanha "TikTok Shop" na tabela genérica, mas não aparecem na aba de Leads da campanha de ligação porque faltam os registros em `call_leads`.
+| Tipo | Tabela principal | Tabela de contatos | Chave de unicidade |
+|------|-----------------|-------------------|-------------------|
+| `ligacao` | `call_campaigns` | `call_leads` | `phone,campaign_id` |
+| `despacho` | `dispatch_campaigns` | `dispatch_campaign_contacts` | `campaign_id,lead_id` |
+| `grupos` | (group_campaigns) | Sem tabela dedicada | N/A |
 
 ### Solução
 
-Após o loop de importação em `importLeads`, adicionar uma etapa de sincronização com `call_leads` para todos os leads que foram atribuídos a uma campanha do tipo `ligacao`.
+Expandir a lógica de sync pós-importação no `importLeads` (`useLeads.ts`) e no `bulkAddToCampaign` para incluir campanhas de despacho. Para isso, após inserir os leads na tabela `leads`, o sistema precisa:
 
-### Alteração
+1. Para `ligacao`: upsert em `call_leads` (já implementado)
+2. Para `despacho`: upsert em `dispatch_campaign_contacts` usando o `lead_id` dos leads recém-criados/existentes
+3. Para `grupos`: apenas atribuir `active_campaign_id` (já funciona)
 
-#### `src/hooks/useLeads.ts` — Adicionar sync com `call_leads` após importação
+### Alterações
 
-Após o loop `for (const lead of leads)` (depois da linha 362), antes do `return`, adicionar:
+#### `src/hooks/useLeads.ts` — `importLeads` mutation
+
+Após o bloco de sync com `call_leads` (linhas 363-394), adicionar sync com `dispatch_campaign_contacts`:
 
 ```typescript
-// Sync imported leads to call_leads for ligacao campaigns
-const ligacaoLeads = leads.filter(l => {
+// Sync imported leads to dispatch_campaign_contacts for despacho campaigns
+const despachoLeads = leads.filter(l => {
   const cType = l.campaignType || defaultCampaignType;
   const cId = l.campaignId || defaultCampaignId;
-  return cType === "ligacao" && cId;
+  return cType === "despacho" && cId;
 });
 
-if (ligacaoLeads.length > 0) {
-  // Group by campaignId
-  const byCampaign = new Map<string, typeof ligacaoLeads>();
-  for (const l of ligacaoLeads) {
+if (despachoLeads.length > 0) {
+  const byCampaign = new Map<string, typeof despachoLeads>();
+  for (const l of despachoLeads) {
     const cId = (l.campaignId || defaultCampaignId)!;
     if (!byCampaign.has(cId)) byCampaign.set(cId, []);
     byCampaign.get(cId)!.push(l);
   }
 
   for (const [campaignId, campaignLeads] of byCampaign) {
-    for (let i = 0; i < campaignLeads.length; i += 200) {
-      const batch = campaignLeads.slice(i, i + 200);
-      const rows = batch.map(l => ({
+    // Fetch lead IDs by phone
+    const phones = campaignLeads.map(l => l.phone);
+    const leadIds: string[] = [];
+    for (let i = 0; i < phones.length; i += 200) {
+      const batch = phones.slice(i, i + 200);
+      const { data } = await supabase
+        .from("leads").select("id").in("phone", batch).eq("user_id", user.id);
+      leadIds.push(...(data || []).map(d => d.id));
+    }
+
+    // Upsert into dispatch_campaign_contacts
+    for (let i = 0; i < leadIds.length; i += 200) {
+      const batch = leadIds.slice(i, i + 200);
+      const rows = batch.map(leadId => ({
         campaign_id: campaignId,
         user_id: user.id,
-        phone: l.phone,
-        name: l.name || null,
-        email: l.email || null,
-        status: "pending",
+        lead_id: leadId,
+        status: "active",
       }));
-      await supabase.from("call_leads").upsert(rows as any, {
-        onConflict: "phone,campaign_id",
-      });
+      await supabase.from("dispatch_campaign_contacts")
+        .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
     }
   }
 }
 ```
 
-Também adicionar invalidação das queries de `call-leads` no `onSuccess`:
+Adicionar invalidação de queries no `onSuccess`:
+```typescript
+queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
+```
+
+#### `src/hooks/useLeads.ts` — `bulkAddToCampaign` mutation
+
+Após o bloco de sync com `call_leads` (linhas 264-291), adicionar o mesmo padrão para despacho:
 
 ```typescript
-queryClient.invalidateQueries({ queryKey: ["call-leads"] });
-queryClient.invalidateQueries({ queryKey: ["call_leads"] });
+// Sync to dispatch_campaign_contacts if campaign type is despacho
+if (campaignType === "despacho") {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (user) {
+    for (let i = 0; i < toUpdate.length; i += 200) {
+      const batch = toUpdate.slice(i, i + 200);
+      const rows = batch.map(leadId => ({
+        campaign_id: campaignId,
+        user_id: user.id,
+        lead_id: leadId,
+        status: "active",
+      }));
+      await supabase.from("dispatch_campaign_contacts")
+        .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
+    }
+  }
+}
+```
+
+Adicionar invalidação no `onSuccess`:
+```typescript
+queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
 ```
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useLeads.ts` | Adicionar sync `call_leads` no `importLeads` + invalidar cache |
+| `src/hooks/useLeads.ts` | Adicionar sync `dispatch_campaign_contacts` no `importLeads` e `bulkAddToCampaign` + invalidar cache |
 
