@@ -1,66 +1,62 @@
 
 
-## Diagnóstico: Card do operador errado aparecendo
+## Diagnóstico: Card mostra "DISCANDO" mas a ligação não está acontecendo
 
 ### Causa raiz
 
-Todos os operadores criados pelo painel recebem o mesmo `user_id` (o ID do usuário admin logado). Quando o hook `useOperatorCall` busca o operador com:
+Quando o queue-executor reserva um operador e dispara o webhook para o provedor de telefonia, o `call_logs.call_status` é definido como `"dialing"` e o `call_operators.current_call_id` é preenchido. O sistema então aguarda que o provedor envie um callback para `/call-status` para atualizar o status (para `"ringing"`, `"answered"`, `"failed"`, etc.).
 
-```sql
-SELECT * FROM call_operators
-WHERE user_id = '<admin_id>' AND company_id = '...' AND is_active = true
-ORDER BY status ASC
-LIMIT 1
-```
+Se o provedor recebe o webhook mas **não envia o callback** (ou demora), a chamada fica presa em `"dialing"` indefinidamente. A rotina de self-healing (`heal_stuck_operators`) só reverte logs **sem operador** (`operator_id IS NULL`), então chamadas com operador atribuído não são recuperadas.
 
-Ele retorna **qualquer um** dos operadores ativos do admin (o primeiro alfabeticamente por status). Se "Lorran" está com status "on_call" e "Estevão" está com "available", a ordenação alfabética coloca "available" antes de "on_call", então ele pega "Estevão" como operador mas o `current_call_id` pode estar em "Lorran" -- ou vice-versa. O resultado é exibir a chamada do operador errado.
+O resultado: o operador vê "DISCANDO..." no card para sempre, sem que a ligação de fato aconteça.
 
-### Solução proposta
+### Solução em duas frentes
 
-Como todos os operadores compartilham o mesmo `user_id`, o CallPopup **não deve aparecer** quando o usuário tem múltiplos operadores ativos (pois ele é um gestor/admin, não um operador individual). O popup só faz sentido quando existe exatamente **um** operador vinculado àquele usuário.
+#### 1. Frontend — Timeout visual no CallPopup
 
-### Alteração
+No `CallPopup`, detectar quando o status está em `"dialing"` por mais de **45 segundos** e exibir um aviso visual com opção de cancelar a chamada manualmente.
 
 **Arquivo:** `src/hooks/useOperatorCall.ts`
+- Adicionar tracking de `dialingStartedAt` (timestamp de quando entrou em "dialing")
+- Expor `dialingTooLong: boolean` (true se > 45s em dialing)
 
-Na função `fetchOperator` (linhas 159-213), alterar a query para buscar **todos** os operadores do usuário (remover `.limit(1).maybeSingle()`), e só ativar o popup se houver exatamente um resultado:
+**Arquivo:** `src/components/operator/CallPopup.tsx`
+- Quando `dialingTooLong === true`, substituir a animação de bolinhas por um aviso:
+  - "⚠️ Sem resposta do provedor — a ligação pode não ter sido iniciada."
+  - Botão "Cancelar chamada" que chama `release_operator` via RPC e reverte o call_log para `ready` ou `failed`
+
+#### 2. Backend — Expandir self-healing para dialing com operador
+
+**Arquivo:** `supabase/functions/queue-executor/index.ts`
+- Na seção de self-healing (linhas 187-204), adicionar uma segunda query para reverter `call_logs` que estão em `"dialing"` **com operador atribuído** há mais de 3 minutos:
 
 ```typescript
-const fetchOperator = async () => {
-  const { data, error } = await (supabase as any)
-    .from("call_operators")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("company_id", activeCompanyId)
-    .eq("is_active", true);
+// Revert stuck dialing calls WITH operator (provider never responded)
+const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+const { data: stuckDialing } = await supabase
+  .from('call_logs')
+  .select('id, operator_id')
+  .eq('campaign_id', campaignId)
+  .eq('call_status', 'dialing')
+  .not('operator_id', 'is', null)
+  .lt('created_at', threeMinutesAgo);
 
-  if (error || !data || data.length === 0) {
-    setOperator(null);
-    setIsLoading(false);
-    return;
+if (stuckDialing?.length) {
+  for (const log of stuckDialing) {
+    await supabase.rpc('release_operator', { p_call_id: log.id, p_force: true });
+    await supabase
+      .from('call_logs')
+      .update({ call_status: 'failed', notes: 'Timeout: provedor não respondeu' })
+      .eq('id', log.id);
   }
-
-  // If user has multiple operators, they are an admin — don't show popup
-  if (data.length > 1) {
-    setOperator(null);
-    setIsLoading(false);
-    return;
-  }
-
-  const opData = data[0];
-  // ... rest of existing logic with opData
-};
+}
 ```
-
-### Resultado
-
-- Usuário com **1 operador** ativo: CallPopup funciona normalmente, mostrando apenas suas chamadas
-- Usuário com **2+ operadores** ativos (admin/gestor): CallPopup não aparece, evitando exibir chamadas de outros operadores
-- Sem impacto no Painel de Ligações (tabela), que continua listando todas as chamadas de todas as campanhas
 
 ### Arquivos impactados
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useOperatorCall.ts` | Verificar quantidade de operadores antes de ativar o popup |
+| `src/hooks/useOperatorCall.ts` | Adicionar `dialingStartedAt` e `dialingTooLong` |
+| `src/components/operator/CallPopup.tsx` | Mostrar aviso + botão cancelar após 45s em dialing |
+| `supabase/functions/queue-executor/index.ts` | Self-healing para dialing com operador > 3min |
 
