@@ -36,6 +36,7 @@ import {
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useCallCampaignCounts } from "@/hooks/useCallCampaignCounts";
 
 interface CallCampaignListProps {
   campaigns: CallCampaign[];
@@ -68,6 +69,7 @@ export function CallCampaignList({
   onStatusChange,
   onCreateNew,
 }: CallCampaignListProps) {
+  const { data: counts } = useCallCampaignCounts(campaigns.map(c => c.id));
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -230,11 +232,11 @@ export function CallCampaignList({
                 <div className="mt-4 flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
                     <Users className="h-4 w-4" />
-                    <span>0 leads</span>
+                    <span>{counts?.[campaign.id]?.leads ?? 0} leads</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <PhoneCall className="h-4 w-4" />
-                    <span>0 ligações</span>
+                    <span>{counts?.[campaign.id]?.calls ?? 0} ligações</span>
                   </div>
                   {campaign.isPriority && (
                     <div className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
