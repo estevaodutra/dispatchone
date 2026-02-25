@@ -1,61 +1,71 @@
 
 
-## Problema identificado
+## Problema
 
-Os leads de campanhas de ligação (`call_leads`) com `company_id = NULL` não são visíveis para outros membros da empresa. Isso acontece porque:
+O hook `useQueueExecutionSummary` é instanciado **duas vezes simultaneamente**:
+1. Em `AppLayout.tsx` (global, roda em todas as páginas)
+2. Em `CallPanel.tsx` (quando o operador está no painel de ligações)
 
-1. **RLS da tabela `call_leads`**: a policy de SELECT exige `company_id IS NOT NULL AND is_company_member(...)` OU `company_id IS NULL AND user_id = auth.uid()`. Quando Mauro (outro membro da empresa) faz o join, ele não é o `user_id` original e o `company_id` é NULL → join retorna NULL → nome e telefone não aparecem.
+Cada instância cria seus próprios `setInterval` independentes:
+- **Tick loop**: 8s cada → na prática 4s entre ticks (2 instâncias)
+- **Maintenance loop**: 10s cada → 5s entre manutenções
+- **Query refetch**: 5s cada instância
+- **Maintenance resolve_cooldowns** dispara tick imediato → mais sobreposição
 
-2. **1000 de 2152 registros** na tabela `call_leads` têm `company_id = NULL`, apesar de suas campanhas terem `company_id` definido.
-
-3. **O hook `useCallLeads`** não inclui `company_id` no insert de novos leads.
+Resultado: chamadas ao `queue-executor` se empilham, logs mostram "processing" e "skipped (in-flight)" a cada 2-3 segundos.
 
 ## Solução
 
-### 1. Migration SQL — backfill e trigger
+Fazer o `CallPanel` **reutilizar os dados** do hook global ao invés de criar uma segunda instância com loops próprios.
 
-Atualizar os registros existentes e garantir que futuros inserts herdem o `company_id` da campanha:
+### 1. `src/hooks/useQueueExecution.ts` — separar dados de loop
 
-```sql
--- Backfill: copiar company_id da campanha para os leads que estão NULL
-UPDATE call_leads cl
-SET company_id = cc.company_id
-FROM call_campaigns cc
-WHERE cl.campaign_id = cc.id
-  AND cl.company_id IS NULL
-  AND cc.company_id IS NOT NULL;
+Criar um hook leve `useQueueExecutionData()` que apenas lê os dados (usa a mesma `queryKey`), sem criar intervals de tick/maintenance. O `CallPanel` usará esse hook.
 
--- Trigger: auto-preencher company_id no insert se não fornecido
-CREATE OR REPLACE FUNCTION set_call_lead_company_id()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-AS $$
-BEGIN
-  IF NEW.company_id IS NULL AND NEW.campaign_id IS NOT NULL THEN
-    SELECT company_id INTO NEW.company_id
-    FROM call_campaigns
-    WHERE id = NEW.campaign_id;
-  END IF;
-  RETURN NEW;
-END;
-$$;
+```typescript
+// Hook leve — apenas lê os dados, sem loops
+export function useQueueExecutionData(): QueueExecutionSummary {
+  const queryClient = useQueryClient();
 
-CREATE TRIGGER trg_set_call_lead_company_id
-  BEFORE INSERT ON call_leads
-  FOR EACH ROW
-  EXECUTE FUNCTION set_call_lead_company_id();
+  const { data: states = [], isLoading } = useQuery({
+    queryKey: ["queue_execution_state_all"],  // mesma key = compartilha cache
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("queue_execution_state")
+        .select("*");
+      if (error) throw error;
+      return (data || []).map((d: DbQueueState) => transform(d));
+    },
+    refetchInterval: 5000,
+  });
+
+  // Mesma lógica de summary/globalStatus
+  // Mutations pauseAll/resumeAll
+  // Mas SEM setInterval, SEM tick loop, SEM maintenance loop
+}
 ```
 
-### 2. `src/hooks/useCallLeads.ts` — incluir `company_id` nos inserts
+### 2. `src/pages/CallPanel.tsx` — usar hook leve
 
-Adicionar `company_id` do contexto da empresa ativa (via `useCompany()`) em todos os pontos de insert: `addLead`, `bulkAddLeads`, e `bulkEnqueueByStatus`.
+Substituir:
+```typescript
+import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
+const queueSummary = useQueueExecutionSummary();
+```
+Por:
+```typescript
+import { useQueueExecutionData } from "@/hooks/useQueueExecution";
+const queueSummary = useQueueExecutionData();
+```
 
-### Detalhes técnicos
+### 3. `src/components/layout/AppLayout.tsx` — sem mudanças
+
+Continua com `useQueueExecutionSummary()` como único ponto de execução dos loops.
 
 | Arquivo | Alteração |
 |---------|-----------|
-| Migration SQL | Backfill `company_id` nos 1000 registros NULL + trigger para auto-preencher em novos inserts |
-| `src/hooks/useCallLeads.ts` | Incluir `activeCompanyId` nos inserts de `call_leads` |
+| `src/hooks/useQueueExecution.ts` | Criar `useQueueExecutionData()` — hook que lê dados sem criar loops |
+| `src/pages/CallPanel.tsx` | Trocar `useQueueExecutionSummary` por `useQueueExecutionData` |
 
-O trigger garante que mesmo inserções feitas pelas Edge Functions (que não passam `company_id`) sejam corrigidas automaticamente.
+Isso elimina a duplicação de intervals e reduz as chamadas ao `queue-executor` pela metade.
 
