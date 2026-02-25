@@ -2405,6 +2405,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_call_leads_counts: {
+        Args: { p_campaign_ids: string[] }
+        Returns: {
+          campaign_id: string
+          cnt: number
+        }[]
+      }
+      get_call_logs_counts: {
+        Args: { p_campaign_ids: string[] }
+        Returns: {
+          campaign_id: string
+          cnt: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

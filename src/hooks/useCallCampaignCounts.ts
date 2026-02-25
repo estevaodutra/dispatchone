@@ -10,22 +10,16 @@ export function useCallCampaignCounts(campaignIds: string[]) {
 
       if (campaignIds.length === 0) return counts;
 
-      const { data: leadRows } = await (supabase as any)
-        .from("call_leads")
-        .select("campaign_id")
-        .in("campaign_id", campaignIds);
-
-      (leadRows || []).forEach((r: any) => {
-        if (counts[r.campaign_id]) counts[r.campaign_id].leads++;
+      const { data: leadCounts } = await (supabase as any)
+        .rpc("get_call_leads_counts", { p_campaign_ids: campaignIds });
+      (leadCounts || []).forEach((r: any) => {
+        if (counts[r.campaign_id]) counts[r.campaign_id].leads = Number(r.cnt);
       });
 
-      const { data: logRows } = await (supabase as any)
-        .from("call_logs")
-        .select("campaign_id")
-        .in("campaign_id", campaignIds);
-
-      (logRows || []).forEach((r: any) => {
-        if (counts[r.campaign_id]) counts[r.campaign_id].calls++;
+      const { data: logCounts } = await (supabase as any)
+        .rpc("get_call_logs_counts", { p_campaign_ids: campaignIds });
+      (logCounts || []).forEach((r: any) => {
+        if (counts[r.campaign_id]) counts[r.campaign_id].calls = Number(r.cnt);
       });
 
       return counts;
