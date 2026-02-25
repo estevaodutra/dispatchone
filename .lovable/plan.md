@@ -2,77 +2,35 @@
 
 ## Problema
 
-A rotina de manutenção (`runMaintenance`) no hook `useQueueExecutionSummary` (linhas 160-209) possui uma lógica de "orphan-ready" que **força a fila de volta para "running"** sempre que encontra `call_logs` com status `ready` em uma campanha cuja fila não está ativa.
-
-Trecho problemático (linhas 180-186):
-```typescript
-if (existing) {
-  if (!["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
-    // Força para "running" mesmo que esteja "stopped" ou "paused"
-    await supabase.from("queue_execution_state")
-      .update({ status: "running" })
-      .eq("id", existing.id);
-  }
-}
-```
-
-Se o gestor para a fila manualmente (status = `stopped` ou `paused`), e ainda existem `call_logs` com status `ready`, a manutenção roda a cada 10 segundos e reativa a fila automaticamente — ignorando a decisão do operador.
+O botão "Upload Foto" na ConfigTab está hardcoded como `disabled` (linha 163), então não faz nada ao clicar.
 
 ## Solução
 
-Alterar a condição para **respeitar os status manuais** (`stopped` e `paused`). A lógica de orphan-ready só deve reativar filas que estejam em um estado inconsistente real — ou seja, filas que **não existem** na tabela `queue_execution_state`. Se a fila existe mas está parada ou pausada, é decisão intencional do usuário.
+Integrar o hook `useMediaUpload("image")` que já existe no projeto para permitir upload da foto do grupo, e salvar a URL no campo `groupPhotoUrl` da campanha via `onUpdate`.
 
-### `src/hooks/useQueueExecution.ts` — linhas 160-209
+## Alterações
 
-Remover a reativação automática quando o status é `stopped` ou `paused`. Manter apenas o envio de tick para filas que já estão ativas (running/waiting) mas não estão na lista local `activeIdsRef` (edge case de dessincronização do cache):
+### `src/components/group-campaigns/tabs/ConfigTab.tsx`
 
-```typescript
-// Check for orphan "ready" call_logs without active queue
-const { data: readyCalls } = await (supabase as any)
-  .from("call_logs")
-  .select("campaign_id")
-  .eq("call_status", "ready");
+1. Importar `useMediaUpload` e adicionar um `useRef<HTMLInputElement>` para o input de arquivo oculto
+2. Criar handler `handlePhotoUpload` que:
+   - Recebe o arquivo do input
+   - Chama `upload(file)` do hook
+   - Se sucesso, chama `onUpdate(campaign.id, { groupPhotoUrl: result.url })`
+3. Substituir o botão `disabled` por um botão funcional que dispara o click no input oculto
+4. Mostrar indicador de progresso durante upload
+5. Adicionar botão de remover foto quando já houver uma
 
-if (readyCalls?.length) {
-  const orphanCampaignIds = [...new Set(readyCalls.map((c: any) => c.campaign_id).filter(Boolean))] as string[];
-  const activeCampaignIds = new Set(activeIdsRef.current);
-
-  for (const cid of orphanCampaignIds) {
-    if (activeCampaignIds.has(cid)) continue;
-
-    const { data: existing } = await (supabase as any)
-      .from("queue_execution_state")
-      .select("id, status")
-      .eq("campaign_id", cid)
-      .maybeSingle();
-
-    // Respect manual stops/pauses — do NOT reactivate
-    if (existing && ["stopped", "paused"].includes(existing.status)) {
-      continue;
-    }
-
-    // Only act on queues that are already in an active state
-    // but weren't picked up by the local cache yet
-    if (existing && ["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
-      try {
-        await supabase.functions.invoke(
-          `queue-executor?campaign_id=${cid}&action=tick`,
-          { method: "POST" }
-        );
-        console.log(`[maintenance] orphan-ready tick sent for campaign ${cid}`);
-      } catch (e) {
-        console.error(`[maintenance] orphan-ready tick error for ${cid}:`, e);
-      }
-    }
-    // If no existing state at all and there are ready calls,
-    // do NOT auto-create — user must start the queue manually
-  }
-
-  queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
-}
+```
+Fluxo:
+[Botão Upload] → click → <input type="file" hidden> → onChange
+  → useMediaUpload.upload(file) → Supabase Storage
+  → onUpdate(id, { groupPhotoUrl: url }) → DB
 ```
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useQueueExecution.ts` | Remover reativação automática de filas paradas/pausadas na rotina de orphan-ready (linhas 160-209) |
+| `src/components/group-campaigns/tabs/ConfigTab.tsx` | Integrar `useMediaUpload("image")`, adicionar input file oculto, habilitar botão, salvar URL no campo `groupPhotoUrl` |
+
+Nenhuma alteração de banco de dados necessária — o campo `group_photo_url` já existe na tabela e o bucket `sequence-media` já está configurado.
 
