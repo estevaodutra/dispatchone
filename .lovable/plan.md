@@ -1,79 +1,67 @@
 
 
-## Problema identificado
+## Problema
 
-A query do hook `useCallCampaignCounts` busca **todas as linhas individuais** de `call_leads` e `call_logs` e conta no cliente. O Supabase/PostgREST tem um limite padrão de **1000 linhas por query**. 
+O `fireDialWebhook` no `queue-executor` busca o webhook na tabela `webhook_configs` filtrando por `user_id` do dono da campanha. Mas o webhook de ligações é **global da DispatchOne** — existe apenas uma configuração (do usuário `3b6be6fe...`) que deve ser usada para **todas** as campanhas, independente de quem as criou.
 
-Confirmação pela rede: a query retorna exatamente 1000 linhas, todas do campaign_id `95c32f25...` (que tem 934 leads no banco). Os leads das outras campanhas (incluindo "TikTok Shop") ficam fora do resultado truncado, resultando em contagem 0.
+O mesmo problema existe no `call-dial` (Edge Function).
 
-Dados reais no banco:
-- `fe64c750`: 1000 leads
-- `95c32f25`: 934 leads  
-- `f78dc789`: 180 leads
-- `d56a9383`: 38 leads
+Resultado atual: campanhas de outros usuários (como `7848b4ff...`) não encontram webhook → operador fica preso em "dialing" → loop infinito.
 
 ## Solução
 
-Criar uma **função RPC no banco** que faz `COUNT(*) ... GROUP BY campaign_id`, retornando contagens exatas sem limite de linhas. Atualizar o hook para chamar essas RPCs.
+Alterar `fireDialWebhook` no `queue-executor` e a seção de webhook no `call-dial` para buscar o webhook de calls **sem filtrar por user_id** — simplesmente pegar qualquer configuração ativa da categoria `calls`.
 
-### 1. Migration SQL — criar duas RPCs
+### 1. `supabase/functions/queue-executor/index.ts` — `fireDialWebhook`
 
-```sql
-CREATE OR REPLACE FUNCTION get_call_leads_counts(p_campaign_ids uuid[])
-RETURNS TABLE(campaign_id uuid, cnt bigint)
-LANGUAGE sql STABLE SECURITY DEFINER
-AS $$
-  SELECT cl.campaign_id, count(*) as cnt
-  FROM call_leads cl
-  WHERE cl.campaign_id = ANY(p_campaign_ids)
-  GROUP BY cl.campaign_id;
-$$;
-
-CREATE OR REPLACE FUNCTION get_call_logs_counts(p_campaign_ids uuid[])
-RETURNS TABLE(campaign_id uuid, cnt bigint)
-LANGUAGE sql STABLE SECURITY DEFINER
-AS $$
-  SELECT cl.campaign_id, count(*) as cnt
-  FROM call_logs cl
-  WHERE cl.campaign_id = ANY(p_campaign_ids)
-  GROUP BY cl.campaign_id;
-$$;
-```
-
-### 2. `src/hooks/useCallCampaignCounts.ts` — usar RPCs
-
-Substituir as queries `.from().select().in()` por chamadas `.rpc()`:
+Substituir a busca por `user_id` do campaign owner (linhas 583-598) por uma busca global:
 
 ```typescript
-export function useCallCampaignCounts(campaignIds: string[]) {
-  return useQuery({
-    queryKey: ["call-campaign-counts", campaignIds],
-    queryFn: async () => {
-      const counts: Record<string, { leads: number; calls: number }> = {};
-      campaignIds.forEach(id => { counts[id] = { leads: 0, calls: 0 }; });
-      if (campaignIds.length === 0) return counts;
+// Before (broken):
+const { data: webhookConfig } = await supabase
+  .from('webhook_configs')
+  .select('url, is_active')
+  .eq('user_id', campaignOwnerId)
+  .eq('category', 'calls')
+  .maybeSingle();
 
-      const { data: leadCounts } = await (supabase as any)
-        .rpc("get_call_leads_counts", { p_campaign_ids: campaignIds });
-      (leadCounts || []).forEach((r: any) => {
-        if (counts[r.campaign_id]) counts[r.campaign_id].leads = Number(r.cnt);
-      });
+// After (global):
+const { data: webhookConfig } = await supabase
+  .from('webhook_configs')
+  .select('url, is_active')
+  .eq('category', 'calls')
+  .eq('is_active', true)
+  .limit(1)
+  .maybeSingle();
+```
 
-      const { data: logCounts } = await (supabase as any)
-        .rpc("get_call_logs_counts", { p_campaign_ids: campaignIds });
-      (logCounts || []).forEach((r: any) => {
-        if (counts[r.campaign_id]) counts[r.campaign_id].calls = Number(r.cnt);
-      });
+Isso também elimina a query extra para buscar o `campaignOwnerId` (linhas 584-591), simplificando a função.
 
-      return counts;
-    },
-    enabled: campaignIds.length > 0,
-  });
-}
+### 2. `supabase/functions/call-dial/index.ts` — seção webhook
+
+Mesma mudança: remover o filtro `.eq('user_id', userId)` na busca do webhook (linha ~353):
+
+```typescript
+// Before:
+const { data: webhookConfig } = await supabase
+  .from('webhook_configs')
+  .select('url, is_active')
+  .eq('user_id', userId)
+  .eq('category', 'calls')
+  .maybeSingle();
+
+// After:
+const { data: webhookConfig } = await supabase
+  .from('webhook_configs')
+  .select('url, is_active')
+  .eq('category', 'calls')
+  .eq('is_active', true)
+  .limit(1)
+  .maybeSingle();
 ```
 
 | Arquivo | Alteração |
 |---------|-----------|
-| Migration SQL | Criar RPCs `get_call_leads_counts` e `get_call_logs_counts` |
-| `src/hooks/useCallCampaignCounts.ts` | Substituir queries por chamadas RPC |
+| `supabase/functions/queue-executor/index.ts` | Remover filtro `user_id` e query extra do campaign owner na resolução do webhook |
+| `supabase/functions/call-dial/index.ts` | Remover filtro `user_id` na busca do webhook de calls |
 
