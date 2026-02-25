@@ -155,6 +155,59 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
         console.log(`[maintenance] Resolved ${resolved.length} cooldowns, triggering immediate tick`);
         setTimeout(() => tickAllRef.current(), 500);
       }
+
+      // Check for orphan "ready" call_logs without active queue
+      const { data: readyCalls } = await (supabase as any)
+        .from("call_logs")
+        .select("campaign_id")
+        .eq("call_status", "ready");
+
+      if (readyCalls?.length) {
+        const orphanCampaignIds = [...new Set(readyCalls.map((c: any) => c.campaign_id).filter(Boolean))] as string[];
+        const activeCampaignIds = new Set(activeIdsRef.current);
+
+        for (const cid of orphanCampaignIds) {
+          if (activeCampaignIds.has(cid)) continue;
+
+          const { data: existing } = await (supabase as any)
+            .from("queue_execution_state")
+            .select("id, status")
+            .eq("campaign_id", cid)
+            .maybeSingle();
+
+          const { data: { user } } = await supabase.auth.getUser();
+
+          if (existing) {
+            if (!["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
+              await (supabase as any)
+                .from("queue_execution_state")
+                .update({ status: "running" })
+                .eq("id", existing.id);
+            }
+          } else if (user) {
+            await (supabase as any)
+              .from("queue_execution_state")
+              .insert({
+                campaign_id: cid,
+                user_id: user.id,
+                status: "running",
+                session_started_at: new Date().toISOString(),
+              });
+          }
+
+          try {
+            await supabase.functions.invoke(
+              `queue-executor?campaign_id=${cid}&action=tick`,
+              { method: "POST" }
+            );
+            console.log(`[maintenance] orphan-ready tick sent for campaign ${cid}`);
+          } catch (e) {
+            console.error(`[maintenance] orphan-ready tick error for ${cid}:`, e);
+          }
+        }
+
+        queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
+      }
     } catch (e) {
       console.error("[maintenance] error:", e);
     } finally {
