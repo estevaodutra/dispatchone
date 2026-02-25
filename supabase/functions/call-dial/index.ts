@@ -540,11 +540,13 @@ Deno.serve(async (req) => {
     // ==================== WEBHOOK INTEGRATION ====================
     console.log('[call-dial] Checking for webhook configuration');
     
+    // Webhook de calls é global da DispatchOne — buscar qualquer config ativa
     const { data: webhookConfig } = await supabase
       .from('webhook_configs')
       .select('url, is_active')
-      .eq('user_id', userId)
       .eq('category', 'calls')
+      .eq('is_active', true)
+      .limit(1)
       .maybeSingle();
 
     // Build standardized webhook payload
