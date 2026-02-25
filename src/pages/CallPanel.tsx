@@ -8,7 +8,7 @@ import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
 import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
-import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
+import { useQueueExecutionData } from "@/hooks/useQueueExecution";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
 import { CallPopup } from "@/components/operator/CallPopup";
@@ -423,7 +423,7 @@ export default function CallPanel() {
     campaignFilter !== "all" ? campaignFilter : undefined,
     searchQuery || undefined
   );
-  const queueSummary = useQueueExecutionSummary();
+  const queueSummary = useQueueExecutionData();
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
 
