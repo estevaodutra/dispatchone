@@ -1,42 +1,90 @@
 
 
-## Diagnóstico
+## Diagnóstico: Calls com status "AGORA!" (ready) não são discadas automaticamente
 
-O loop de discagem (`useQueueExecutionSummary`) que envia "ticks" ao `queue-executor` a cada 8 segundos **só está montado dentro de `CallPanel.tsx`** (linha 426). Quando o operador navega para qualquer outra página, o hook desmonta, o `setInterval` é limpo e nenhum tick é enviado — as chamadas param de ser processadas.
+### Causa raiz
 
-O mesmo vale para o polling de `bulkPollingActive` no `useCallPanel` (linha 323), que também só roda enquanto `CallPanel.tsx` está montado.
+O loop global de ticks (`useQueueExecutionSummary` no `AppLayout`) só processa campanhas que possuem um `queue_execution_state` com status `running`, `waiting_operator` ou `waiting_cooldown`. 
 
-## Solução
+Quando uma chamada é marcada como `ready` (AGORA!) — seja pela API `call-dial`, por agendamento, ou por retry — mas a campanha **não tem uma fila ativa**, nenhum tick é enviado e a chamada fica parada indefinidamente.
 
-Mover a execução global do `useQueueExecutionSummary` para o `AppLayout`, garantindo que o loop de ticks rode **independentemente da página** onde o operador está.
+O mecanismo `bulkPollingActive` no `useCallPanel` resolve isso parcialmente, mas só funciona quando o CallPanel está montado E o polling foi ativado manualmente por um "Discar" em massa.
+
+### Solução
+
+Adicionar ao loop de manutenção global (`runMaintenance` no `useQueueExecutionSummary`) uma verificação de chamadas "ready" órfãs. Para cada campanha com calls `ready` sem fila ativa, o sistema deve:
+
+1. Criar/ativar o `queue_execution_state` para essa campanha
+2. Disparar um tick imediato
+
+Isso garante que **qualquer call com status `ready` será processada automaticamente** sempre que houver um operador disponível, independentemente da página.
 
 ### Alterações
 
-#### 1. `src/components/layout/AppLayout.tsx` — Montar o hook globalmente
+#### `src/hooks/useQueueExecution.ts` — Expandir `runMaintenance`
 
-Importar e invocar `useQueueExecutionSummary()` dentro do `AppLayout`, que é o wrapper de todas as páginas protegidas. O hook já faz todo o trabalho internamente (polling de estado, ticks, manutenção). Basta chamá-lo para que o loop inicie.
+No callback `runMaintenance`, após resolver cooldowns e heal operators, adicionar:
 
-```tsx
-import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
+```typescript
+// Check for orphan "ready" call_logs without active queue
+const { data: readyCalls } = await (supabase as any)
+  .from("call_logs")
+  .select("campaign_id")
+  .eq("call_status", "ready");
 
-export function AppLayout({ children }: AppLayoutProps) {
-  const location = useLocation();
-  const hideFloatingPopup = location.pathname === "/painel-ligacoes";
+if (readyCalls?.length) {
+  const orphanCampaignIds = [...new Set(readyCalls.map((c: any) => c.campaign_id).filter(Boolean))];
+  const activeCampaignIds = new Set(activeIdsRef.current);
+  
+  for (const cid of orphanCampaignIds) {
+    if (activeCampaignIds.has(cid)) continue; // already being ticked
+    
+    // Ensure queue_execution_state exists and is running
+    const { data: existing } = await (supabase as any)
+      .from("queue_execution_state")
+      .select("id, status")
+      .eq("campaign_id", cid)
+      .maybeSingle();
 
-  // Global queue tick loop — runs on all pages
-  useQueueExecutionSummary();
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (existing) {
+      if (!["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
+        await (supabase as any)
+          .from("queue_execution_state")
+          .update({ status: "running" })
+          .eq("id", existing.id);
+      }
+    } else if (user) {
+      await (supabase as any)
+        .from("queue_execution_state")
+        .insert({
+          campaign_id: cid,
+          user_id: user.id,
+          status: "running",
+          session_started_at: new Date().toISOString(),
+        });
+    }
 
-  return ( /* ... existing JSX ... */ );
+    // Trigger immediate tick
+    try {
+      await supabase.functions.invoke(
+        `queue-executor?campaign_id=${cid}&action=tick`,
+        { method: "POST" }
+      );
+    } catch (e) {
+      console.error(`[maintenance] orphan-ready tick error for ${cid}:`, e);
+    }
+  }
+
+  // Refresh state so next tick loop picks them up
+  queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
 }
 ```
 
-#### 2. `src/pages/CallPanel.tsx` — Manter o hook para uso local da UI
-
-O `CallPanel.tsx` continua usando `useQueueExecutionSummary()` normalmente para exibir os dados do sumário na interface. Ambas as instâncias do hook compartilham o mesmo `useQuery` (via React Query key `queue_execution_state_all`), então não haverá duplicação de dados. Os intervalos de tick são protegidos pelo flag `tickInFlightRef` que evita execuções simultâneas.
+Isso faz com que o loop de manutenção (que roda a cada 10s globalmente) detecte calls "AGORA!" órfãs e force a execução, garantindo que leads prioritários sejam discados imediatamente quando houver operador online.
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/components/layout/AppLayout.tsx` | Importar e invocar `useQueueExecutionSummary()` para manter o loop de ticks ativo globalmente |
-
-Nenhuma alteração em `CallPanel.tsx` — ele já usa o hook e continuará funcionando normalmente.
+| `src/hooks/useQueueExecution.ts` | Expandir `runMaintenance` para detectar calls `ready` órfãs e ativar ticks automaticamente |
 
