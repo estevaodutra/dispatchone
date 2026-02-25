@@ -1,8 +1,6 @@
-import { useLocation } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
-import { CallPopup } from "@/components/operator/CallPopup";
 import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
 
 interface AppLayoutProps {
@@ -10,9 +8,6 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const location = useLocation();
-  const hideFloatingPopup = location.pathname === "/painel-ligacoes";
-
   // Global queue tick loop — runs on all pages
   useQueueExecutionSummary();
 
@@ -25,7 +20,6 @@ export function AppLayout({ children }: AppLayoutProps) {
           <main className="flex-1 p-6">{children}</main>
         </div>
       </div>
-      {!hideFloatingPopup && <CallPopup />}
     </SidebarProvider>
   );
 }
