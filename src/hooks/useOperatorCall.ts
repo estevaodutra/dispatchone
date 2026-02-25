@@ -349,11 +349,17 @@ export function useOperatorCall() {
     if (!currentCall) return;
     // Release operator via RPC
     await (supabase as any).rpc("release_operator", { p_call_id: currentCall.id, p_force: true });
-    // Revert call_log to failed
+    // Mark as failed
     await (supabase as any)
       .from("call_logs")
       .update({ call_status: "failed", notes: "Cancelado: provedor não respondeu" })
       .eq("id", currentCall.id);
+    // Trigger rescheduling so retry logic runs
+    try {
+      await supabase.functions.invoke("reschedule-failed-calls");
+    } catch (e) {
+      console.error("Failed to invoke reschedule-failed-calls:", e);
+    }
   }, [currentCall]);
 
   // Cleanup on unmount

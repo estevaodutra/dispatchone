@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     // Verify campaign access (owner or company member)
     const { data: campaign, error: campErr } = await supabase
       .from('call_campaigns')
-      .select('id, name, user_id, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior, company_id')
+      .select('id, name, user_id, queue_execution_enabled, queue_interval_seconds, queue_unavailable_behavior, company_id, retry_count, retry_interval_minutes')
       .eq('id', campaignId)
       .single();
 
@@ -207,19 +207,62 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
   const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
   const { data: stuckDialing } = await supabase
     .from('call_logs')
-    .select('id, operator_id')
-    .eq('campaign_id', campaignId)
-    .eq('call_status', 'dialing')
-    .not('operator_id', 'is', null)
-    .lt('created_at', threeMinutesAgo);
+      .select('id, operator_id, lead_id, attempt_number, max_attempts')
+      .eq('campaign_id', campaignId)
+      .eq('call_status', 'dialing')
+      .not('operator_id', 'is', null)
+      .lt('created_at', threeMinutesAgo);
 
   if (stuckDialing?.length) {
+    // Fetch campaign retry config for rescheduling
+    const { data: campRetryConfig } = await supabase
+      .from('call_campaigns')
+      .select('retry_count, retry_interval_minutes')
+      .eq('id', campaignId)
+      .single();
+
+    const retryCount = campRetryConfig?.retry_count ?? 3;
+    const retryIntervalMinutes = campRetryConfig?.retry_interval_minutes ?? 30;
+
     for (const log of stuckDialing) {
       await supabase.rpc('release_operator', { p_call_id: log.id, p_force: true });
-      await supabase
-        .from('call_logs')
-        .update({ call_status: 'failed', notes: 'Timeout: provedor não respondeu' })
-        .eq('id', log.id);
+
+      const currentAttempt = log.attempt_number ?? 1;
+
+      if (currentAttempt < retryCount) {
+        // Schedule retry
+        const nextRetryAt = new Date(Date.now() + retryIntervalMinutes * 60 * 1000).toISOString();
+        await supabase
+          .from('call_logs')
+          .update({ call_status: 'failed_rescheduled', notes: 'Timeout: provedor não respondeu' })
+          .eq('id', log.id);
+
+        await supabase
+          .from('call_logs')
+          .insert({
+            user_id: userId,
+            company_id: campaign.company_id || null,
+            campaign_id: campaignId,
+            lead_id: log.lead_id,
+            call_status: 'scheduled',
+            scheduled_for: nextRetryAt,
+            attempt_number: currentAttempt + 1,
+            max_attempts: retryCount,
+            next_retry_at: nextRetryAt,
+          });
+
+        if (log.lead_id) {
+          await supabase
+            .from('call_leads')
+            .update({ status: 'pending' })
+            .eq('id', log.lead_id);
+        }
+      } else {
+        await supabase
+          .from('call_logs')
+          .update({ call_status: 'failed', notes: 'Timeout: provedor não respondeu (max tentativas)' })
+          .eq('id', log.id);
+      }
     }
     console.log(`[queue-executor] Released ${stuckDialing.length} stuck dialing calls with operator`);
   }
@@ -455,6 +498,8 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
       lead_id: nextLead.id,
       call_status: 'ready',
       scheduled_for: scheduledFor,
+      attempt_number: 1,
+      max_attempts: campaign.retry_count ?? 3,
     })
     .select('id')
     .single();
