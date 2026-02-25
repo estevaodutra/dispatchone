@@ -105,6 +105,18 @@ export function useLeads(filters: LeadFilters = {}) {
     },
   });
 
+  const tagNamesQuery = useQuery({
+    queryKey: ["leads-tag-names"],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("leads")
+        .select("tags")
+        .not("tags", "eq", "{}");
+      const allTags = (data || []).flatMap(d => d.tags || []);
+      return [...new Set(allTags)].sort() as string[];
+    },
+  });
+
   const statsQuery = useQuery({
     queryKey: ["leads-stats"],
     queryFn: async () => {
@@ -469,6 +481,7 @@ export function useLeads(filters: LeadFilters = {}) {
     totalCount: leadsQuery.data?.count || 0,
     stats: statsQuery.data || { total: 0, active: 0, inCampaign: 0, inactive: 0 },
     groupNames: groupNamesQuery.data || [],
+    availableTags: tagNamesQuery.data || [],
     isLoading: leadsQuery.isLoading,
     createLead,
     updateLead,
