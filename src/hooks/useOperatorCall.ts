@@ -68,6 +68,7 @@ export function useOperatorCall() {
 
   const currentCallIdRef = useRef<string | null>(null);
   const callLogChannelRef = useRef<any>(null);
+  const terminalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch call data by call_log id
   const fetchCallData = useCallback(async (callId: string) => {
@@ -123,6 +124,22 @@ export function useOperatorCall() {
           // Update call data
           if (payload.new?.started_at) {
             setCurrentCall(prev => prev ? { ...prev, callStatus: newStatus, startedAt: payload.new.started_at } : prev);
+          }
+
+          // Terminal status — clear card after brief delay if operator channel hasn't handled it
+          if (["ended", "no_answer", "failed"].includes(mapped)) {
+            if (terminalTimerRef.current) clearTimeout(terminalTimerRef.current);
+            terminalTimerRef.current = setTimeout(() => {
+              setCurrentCall(prev => {
+                if (prev?.id === callId) {
+                  setCallDuration(0);
+                  return null;
+                }
+                return prev;
+              });
+              setCallStatus(prev => ["ended", "no_answer", "failed"].includes(prev) ? "idle" : prev);
+              terminalTimerRef.current = null;
+            }, 2000);
           }
         }
       )
@@ -232,6 +249,11 @@ export function useOperatorCall() {
           // Call released (operator went to cooldown or available)
           if (!newCallId && prevCallId) {
             currentCallIdRef.current = null;
+            // Cancel terminal timer — operator channel is handling the transition
+            if (terminalTimerRef.current) {
+              clearTimeout(terminalTimerRef.current);
+              terminalTimerRef.current = null;
+            }
             if (callLogChannelRef.current) {
               supabase.removeChannel(callLogChannelRef.current);
               callLogChannelRef.current = null;
@@ -306,6 +328,9 @@ export function useOperatorCall() {
     return () => {
       if (callLogChannelRef.current) {
         supabase.removeChannel(callLogChannelRef.current);
+      }
+      if (terminalTimerRef.current) {
+        clearTimeout(terminalTimerRef.current);
       }
     };
   }, []);
