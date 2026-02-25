@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { useInstances } from "@/hooks/useInstances";
+import { useMediaUpload } from "@/hooks/useMediaUpload";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, Copy, RefreshCw, Upload, Link2 } from "lucide-react";
+import { Loader2, Copy, RefreshCw, Upload, Link2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
 
 interface ConfigTabProps {
   campaign: GroupCampaign;
@@ -25,6 +27,8 @@ interface ConfigTabProps {
 export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
   const { toast } = useToast();
   const { instances } = useInstances();
+  const { upload, isUploading, progress, acceptedTypes } = useMediaUpload("image");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const connectedInstances = instances.filter((i) => i.status === "connected");
 
   const [isUpdating, setIsUpdating] = useState(false);
@@ -71,6 +75,20 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
       navigator.clipboard.writeText(campaign.inviteLink);
       toast({ title: "Link copiado!", description: "Link de convite copiado para a área de transferência." });
     }
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const result = await upload(file);
+    if (result?.url) {
+      await onUpdate(campaign.id, { groupPhotoUrl: result.url });
+    }
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleRemovePhoto = async () => {
+    await onUpdate(campaign.id, { groupPhotoUrl: "" });
   };
 
   return (
@@ -148,8 +166,15 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
 
           <div className="space-y-2">
             <Label>Foto do Grupo</Label>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={acceptedTypes}
+              className="hidden"
+              onChange={handlePhotoUpload}
+            />
             <div className="flex items-center gap-4">
-              <div className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center">
+              <div className="h-20 w-20 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
                 {campaign.groupPhotoUrl ? (
                   <img
                     src={campaign.groupPhotoUrl}
@@ -160,11 +185,28 @@ export function ConfigTab({ campaign, onUpdate }: ConfigTabProps) {
                   <Upload className="h-6 w-6 text-muted-foreground" />
                 )}
               </div>
-              <Button variant="outline" disabled>
-                <Upload className="mr-2 h-4 w-4" />
-                Upload Foto
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  variant="outline"
+                  disabled={isUploading}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {isUploading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="mr-2 h-4 w-4" />
+                  )}
+                  {isUploading ? "Enviando..." : "Upload Foto"}
+                </Button>
+                {campaign.groupPhotoUrl && (
+                  <Button variant="ghost" size="sm" onClick={handleRemovePhoto}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Remover
+                  </Button>
+                )}
+              </div>
             </div>
+            {isUploading && <Progress value={progress} className="h-1" />}
           </div>
         </CardContent>
       </Card>
