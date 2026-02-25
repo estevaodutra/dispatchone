@@ -1,63 +1,66 @@
 
 
-## Plano: Transição imediata do card após ligação encerrar
+## Diagnóstico: Card do operador errado aparecendo
 
-### Problema
+### Causa raiz
 
-Quando a ligação termina (status terminal no `call_logs`), o card do operador continua exibindo todas as informações da chamada ("FINALIZADA" + dados do lead) porque o frontend aguarda a atualização do `call_operators` via Realtime para iniciar o cooldown. Existe um gap entre:
+Todos os operadores criados pelo painel recebem o mesmo `user_id` (o ID do usuário admin logado). Quando o hook `useOperatorCall` busca o operador com:
 
-1. `call_logs` atualiza para status terminal → UI mostra "FINALIZADA" mas mantém card expandido
-2. `release_operator` RPC executa → `call_operators` atualiza para "cooldown"
-3. Realtime do `call_operators` dispara → UI finalmente mostra cooldown
+```sql
+SELECT * FROM call_operators
+WHERE user_id = '<admin_id>' AND company_id = '...' AND is_active = true
+ORDER BY status ASC
+LIMIT 1
+```
 
-O delay está entre os passos 1 e 3, que pode levar vários segundos dependendo da latência do backend + Realtime.
+Ele retorna **qualquer um** dos operadores ativos do admin (o primeiro alfabeticamente por status). Se "Lorran" está com status "on_call" e "Estevão" está com "available", a ordenação alfabética coloca "available" antes de "on_call", então ele pega "Estevão" como operador mas o `current_call_id` pode estar em "Lorran" -- ou vice-versa. O resultado é exibir a chamada do operador errado.
 
-### Solução
+### Solução proposta
 
-No handler de Realtime do `call_logs` (dentro de `useOperatorCall.ts`, linhas 118-127), ao detectar um status terminal, limpar o `currentCall` imediatamente e forçar a transição para o estado correto sem aguardar o Realtime do `call_operators`.
+Como todos os operadores compartilham o mesmo `user_id`, o CallPopup **não deve aparecer** quando o usuário tem múltiplos operadores ativos (pois ele é um gestor/admin, não um operador individual). O popup só faz sentido quando existe exatamente **um** operador vinculado àquele usuário.
 
 ### Alteração
 
 **Arquivo:** `src/hooks/useOperatorCall.ts`
 
-Na subscription do `call_logs` (linhas 115-131), expandir o handler para:
-
-1. Quando o status mapeado for `"ended"`, `"no_answer"` ou `"failed"` (terminais), limpar `currentCall` após 2 segundos com um timer
-2. Se durante esses 2 segundos o operador já transicionar para cooldown (via o outro canal Realtime), o timer é cancelado naturalmente
+Na função `fetchOperator` (linhas 159-213), alterar a query para buscar **todos** os operadores do usuário (remover `.limit(1).maybeSingle()`), e só ativar o popup se houver exatamente um resultado:
 
 ```typescript
-// Dentro do handler de call_logs UPDATE:
-const mapped = mapDbStatus(newStatus);
-setCallStatus(mapped);
+const fetchOperator = async () => {
+  const { data, error } = await (supabase as any)
+    .from("call_operators")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("company_id", activeCompanyId)
+    .eq("is_active", true);
 
-// Terminal status detected — clear card after brief delay
-if (["ended", "no_answer", "failed"].includes(mapped)) {
-  setTimeout(() => {
-    // Only clear if still showing same call (operator channel may have already handled it)
-    setCurrentCall(prev => {
-      if (prev?.id === callId) {
-        setCallDuration(0);
-        return null;
-      }
-      return prev;
-    });
-    // If not already in cooldown, go to idle
-    setCallStatus(prev => prev !== "idle" && prev !== "ended" ? prev : "idle");
-  }, 2000);
-}
+  if (error || !data || data.length === 0) {
+    setOperator(null);
+    setIsLoading(false);
+    return;
+  }
+
+  // If user has multiple operators, they are an admin — don't show popup
+  if (data.length > 1) {
+    setOperator(null);
+    setIsLoading(false);
+    return;
+  }
+
+  const opData = data[0];
+  // ... rest of existing logic with opData
+};
 ```
-
-Também adicionar um `useRef` para o timer, para poder cancelá-lo quando o canal do `call_operators` disparar o cooldown (evitando conflito).
 
 ### Resultado
 
-- Card some em ~2 segundos após status terminal, mesmo se o Realtime do operador demorar
-- Se o cooldown chegar antes dos 2s, o timer é ignorado (estado já mudou)
-- Não afeta o fluxo normal: cooldown continua funcionando via canal do operador
+- Usuário com **1 operador** ativo: CallPopup funciona normalmente, mostrando apenas suas chamadas
+- Usuário com **2+ operadores** ativos (admin/gestor): CallPopup não aparece, evitando exibir chamadas de outros operadores
+- Sem impacto no Painel de Ligações (tabela), que continua listando todas as chamadas de todas as campanhas
 
 ### Arquivos impactados
 
 | Arquivo | Alteração |
 |---------|-----------|
-| `src/hooks/useOperatorCall.ts` | Adicionar timer de auto-clear no handler de call_logs terminal |
+| `src/hooks/useOperatorCall.ts` | Verificar quantidade de operadores antes de ativar o popup |
 
