@@ -3,6 +3,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
 import { CallPopup } from "@/components/operator/CallPopup";
+import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -11,6 +12,9 @@ interface AppLayoutProps {
 export function AppLayout({ children }: AppLayoutProps) {
   const location = useLocation();
   const hideFloatingPopup = location.pathname === "/painel-ligacoes";
+
+  // Global queue tick loop — runs on all pages
+  useQueueExecutionSummary();
 
   return (
     <SidebarProvider defaultOpen>
