@@ -360,11 +360,46 @@ export function useLeads(filters: LeadFilters = {}) {
           imported++;
         }
       }
+      // Sync imported leads to call_leads for ligacao campaigns
+      const ligacaoLeads = leads.filter(l => {
+        const cType = l.campaignType || defaultCampaignType;
+        const cId = l.campaignId || defaultCampaignId;
+        return cType === "ligacao" && cId;
+      });
+
+      if (ligacaoLeads.length > 0) {
+        const byCampaign = new Map<string, typeof ligacaoLeads>();
+        for (const l of ligacaoLeads) {
+          const cId = (l.campaignId || defaultCampaignId)!;
+          if (!byCampaign.has(cId)) byCampaign.set(cId, []);
+          byCampaign.get(cId)!.push(l);
+        }
+
+        for (const [campaignId, campaignLeads] of byCampaign) {
+          for (let i = 0; i < campaignLeads.length; i += 200) {
+            const batch = campaignLeads.slice(i, i + 200);
+            const rows = batch.map(l => ({
+              campaign_id: campaignId,
+              user_id: user.id,
+              phone: l.phone,
+              name: l.name || null,
+              email: l.email || null,
+              status: "pending",
+            }));
+            await supabase.from("call_leads").upsert(rows as any, {
+              onConflict: "phone,campaign_id",
+            });
+          }
+        }
+      }
+
       return { imported, updated, skipped };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
       queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["call-leads"] });
+      queryClient.invalidateQueries({ queryKey: ["call_leads"] });
       toast({ title: "Importação concluída", description: `${result.imported} importados, ${result.updated} atualizados, ${result.skipped} ignorados` });
     },
     onError: () => toast({ title: "Erro na importação", variant: "destructive" }),
