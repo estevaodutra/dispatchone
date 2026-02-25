@@ -55,7 +55,7 @@ function isValidPhone(phone: string): boolean {
 }
 
 // Valid call statuses
-const VALID_STATUSES = ['dialing', 'answered', 'ended', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout', 'error'];
+const VALID_STATUSES = ['dialing', 'ringing', 'answered', 'ended', 'completed', 'busy', 'no_answer', 'not_found', 'voicemail', 'cancelled', 'timeout', 'error', 'failed'];
 
 Deno.serve(async (req) => {
   const startTime = Date.now();
@@ -422,7 +422,7 @@ Deno.serve(async (req) => {
           user_id: userId,
           company_id: campaign.company_id || null,
           external_call_id,
-          call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','answered':'answered','ended':'completed','busy':'busy','not_found':'not_found','voicemail':'voicemail','cancelled':'cancelled','timeout':'timeout','error':'failed' }; return m[status] || status; })(),
+          call_status: (() => { const m: Record<string,string> = { 'dialing':'dialing','ringing':'ringing','answered':'on_call','ended':'completed','completed':'completed','busy':'busy','no_answer':'no_answer','not_found':'not_found','voicemail':'voicemail','cancelled':'cancelled','timeout':'timeout','error':'failed','failed':'failed' }; return m[status] || status; })(),
           started_at: status === 'dialing' ? new Date().toISOString() : null,
           ...(audio_url ? { audio_url } : {}),
         })
@@ -443,14 +443,18 @@ Deno.serve(async (req) => {
     // Mapear status do provedor para status interno
     const statusMap: Record<string, string> = {
       'dialing': 'dialing',
-      'answered': 'answered',
+      'ringing': 'ringing',
+      'answered': 'on_call',
       'ended': 'completed',
+      'completed': 'completed',
       'busy': 'busy',
+      'no_answer': 'no_answer',
       'not_found': 'not_found',
       'voicemail': 'voicemail',
       'cancelled': 'cancelled',
       'timeout': 'timeout',
       'error': 'failed',
+      'failed': 'failed',
     };
     let mappedStatus = statusMap[status] || status;
 
@@ -464,25 +468,22 @@ Deno.serve(async (req) => {
       if (!callLog.started_at) {
         updateData.started_at = new Date().toISOString();
       }
+    } else if (status === 'ringing') {
+      // Ringing — no special handling needed
     } else if (status === 'answered') {
-      // Detect if "answered" comes with finalization data (duration_seconds)
-      // Some providers send a single "answered" callback with all final data
+      // answered = lead picked up, call is IN PROGRESS (on_call)
+      // If provider sends duration_seconds with answered, treat as completed
       if (duration_seconds !== undefined && duration_seconds !== null) {
         console.log('[call-status] "answered" with duration_seconds detected — treating as completed');
         mappedStatus = 'completed';
         updateData.call_status = 'completed';
         updateData.ended_at = new Date().toISOString();
         updateData.duration_seconds = duration_seconds;
-        if (!callLog.started_at) {
-          updateData.started_at = new Date().toISOString();
-        }
-      } else {
-        // Ongoing call, no duration yet
-        if (!callLog.started_at) {
-          updateData.started_at = new Date().toISOString();
-        }
       }
-    } else if (status === 'ended') {
+      if (!callLog.started_at) {
+        updateData.started_at = new Date().toISOString();
+      }
+    } else if (status === 'ended' || status === 'completed') {
       updateData.ended_at = new Date().toISOString();
       if (duration_seconds !== undefined && duration_seconds !== null) {
         updateData.duration_seconds = duration_seconds;
@@ -491,12 +492,14 @@ Deno.serve(async (req) => {
         const endedAt = new Date();
         updateData.duration_seconds = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
       }
+    } else if (status === 'no_answer') {
+      updateData.ended_at = new Date().toISOString();
     } else if (['busy', 'not_found', 'voicemail', 'cancelled', 'timeout'].includes(status)) {
       updateData.ended_at = new Date().toISOString();
       if (error_message && ['not_found', 'voicemail', 'timeout'].includes(status)) {
         updateData.notes = error_message;
       }
-    } else if (status === 'error') {
+    } else if (status === 'error' || status === 'failed') {
       updateData.ended_at = new Date().toISOString();
       if (error_message) {
         updateData.notes = error_message;
@@ -517,11 +520,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // ==================== RELEASE OPERATOR ON TERMINAL STATUS (ATOMIC RPC) ====================
-    const TERMINAL_STATUSES = ['completed', 'failed', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout'];
-    if (TERMINAL_STATUSES.includes(mappedStatus) && callLog.operator_id) {
-      console.log('[call-status] Releasing operator via RPC for call:', callLog.id);
+    // ==================== RELEASE OPERATOR ON TERMINAL STATUS ====================
+    const TERMINAL_WITH_COOLDOWN = ['completed', 'no_answer', 'voicemail'];
+    const TERMINAL_NO_COOLDOWN = ['failed', 'busy', 'not_found', 'cancelled', 'timeout'];
 
+    if (TERMINAL_WITH_COOLDOWN.includes(mappedStatus) && callLog.operator_id) {
+      // Release with cooldown via RPC
+      console.log('[call-status] Releasing operator WITH cooldown for call:', callLog.id);
       const { data: releaseResult, error: releaseError } = await supabase.rpc('release_operator', {
         p_call_id: callLog.id,
         p_force: false,
@@ -533,8 +538,28 @@ Deno.serve(async (req) => {
         console.log('[call-status] Operator released:', releaseResult[0].released_operator_id, 'new_status:', releaseResult[0].new_status, 'cooldown:', releaseResult[0].cooldown_seconds);
       } else {
         console.log('[call-status] release_operator returned no match, trying force release');
-        // Fallback: force release
         await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
+      }
+    } else if (TERMINAL_NO_COOLDOWN.includes(mappedStatus) && callLog.operator_id) {
+      // Release immediately without cooldown — operator goes straight to available
+      console.log('[call-status] Releasing operator IMMEDIATELY (no cooldown) for call:', callLog.id);
+      const { error: releaseError } = await supabase
+        .from('call_operators')
+        .update({
+          status: 'available',
+          current_call_id: null,
+          current_campaign_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', callLog.operator_id)
+        .eq('current_call_id', callLog.id);
+
+      if (releaseError) {
+        console.error('[call-status] Immediate release error:', releaseError);
+        // Fallback: force release via RPC
+        await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
+      } else {
+        console.log('[call-status] Operator immediately released to available');
       }
     }
 
@@ -543,7 +568,9 @@ Deno.serve(async (req) => {
       let leadStatus = 'calling';
       if (mappedStatus === 'completed') {
         leadStatus = 'completed';
-      } else if (['failed', 'busy', 'not_found', 'voicemail', 'cancelled', 'timeout'].includes(mappedStatus)) {
+      } else if (['no_answer', 'voicemail'].includes(mappedStatus)) {
+        leadStatus = 'pending'; // will have retry
+      } else if (['failed', 'busy', 'not_found', 'cancelled', 'timeout'].includes(mappedStatus)) {
         leadStatus = 'failed';
       }
 
@@ -554,7 +581,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== RETRY LOGIC (REPLACES OLD RESCHEDULING) ====================
-    const FAILURE_STATUSES = ['failed', 'busy', 'not_found', 'voicemail', 'timeout'];
+    const FAILURE_STATUSES = ['failed', 'busy', 'no_answer', 'not_found', 'voicemail', 'timeout'];
     let rescheduled = false;
 
     if (FAILURE_STATUSES.includes(mappedStatus) && callLog.lead_id && callLog.campaign_id) {
