@@ -162,47 +162,53 @@ export function useOperatorCall() {
         .select("*")
         .eq("user_id", user.id)
         .eq("company_id", activeCompanyId)
-        .eq("is_active", true)
-        .order("status", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .eq("is_active", true);
 
-      if (error || !data) {
+      if (error || !data || data.length === 0) {
         setOperator(null);
         setIsLoading(false);
         return;
       }
 
+      // If user has multiple operators, they are an admin — don't show popup
+      if (data.length > 1) {
+        setOperator(null);
+        setIsLoading(false);
+        return;
+      }
+
+      const opData = data[0];
+
       // Auto-set available if offline and active
-      if (data.status === "offline" && data.is_active) {
+      if (opData.status === "offline" && opData.is_active) {
         await (supabase as any)
           .from("call_operators")
           .update({ status: "available" })
-          .eq("id", data.id);
-        data.status = "available";
+          .eq("id", opData.id);
+        opData.status = "available";
       }
 
       const op: OperatorData = {
-        id: data.id,
-        operatorName: data.operator_name,
-        status: data.status || "offline",
-        personalIntervalSeconds: data.personal_interval_seconds,
-        lastCallEndedAt: data.last_call_ended_at,
-        currentCallId: data.current_call_id,
-        currentCampaignId: data.current_campaign_id,
+        id: opData.id,
+        operatorName: opData.operator_name,
+        status: opData.status || "offline",
+        personalIntervalSeconds: opData.personal_interval_seconds,
+        lastCallEndedAt: opData.last_call_ended_at,
+        currentCallId: opData.current_call_id,
+        currentCampaignId: opData.current_campaign_id,
       };
       setOperator(op);
 
       // If operator already has an active call, load it
-      if (data.current_call_id) {
-        currentCallIdRef.current = data.current_call_id;
-        const callData = await fetchCallData(data.current_call_id);
+      if (opData.current_call_id) {
+        currentCallIdRef.current = opData.current_call_id;
+        const callData = await fetchCallData(opData.current_call_id);
         if (callData) {
           setCurrentCall(callData);
           setCallStatus(mapDbStatus(callData.callStatus));
-          subscribeToCallLog(data.current_call_id);
+          subscribeToCallLog(opData.current_call_id);
         }
-      } else if (data.status === "cooldown") {
+      } else if (opData.status === "cooldown") {
         setCallStatus("ended");
       }
 
