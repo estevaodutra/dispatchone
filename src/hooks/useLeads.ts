@@ -290,6 +290,24 @@ export function useLeads(filters: LeadFilters = {}) {
         }
       }
 
+      // Sync to dispatch_campaign_contacts if campaign type is despacho
+      if (campaignType === "despacho") {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          for (let i = 0; i < toUpdate.length; i += 200) {
+            const batch = toUpdate.slice(i, i + 200);
+            const rows = batch.map(leadId => ({
+              campaign_id: campaignId,
+              user_id: user.id,
+              lead_id: leadId,
+              status: "active",
+            }));
+            await supabase.from("dispatch_campaign_contacts")
+              .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
+          }
+        }
+      }
+
       return { added: toUpdate.length, skipped: ids.length - toUpdate.length };
     },
     onSuccess: (result) => {
@@ -297,6 +315,7 @@ export function useLeads(filters: LeadFilters = {}) {
       queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       queryClient.invalidateQueries({ queryKey: ["call-leads"] });
       queryClient.invalidateQueries({ queryKey: ["call_leads"] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
       const msg = result
         ? `${result.added} leads adicionados${result.skipped > 0 ? `, ${result.skipped} ignorados` : ""}`
         : "Leads adicionados à campanha";
@@ -393,6 +412,45 @@ export function useLeads(filters: LeadFilters = {}) {
         }
       }
 
+      // Sync imported leads to dispatch_campaign_contacts for despacho campaigns
+      const despachoLeads = leads.filter(l => {
+        const cType = l.campaignType || defaultCampaignType;
+        const cId = l.campaignId || defaultCampaignId;
+        return cType === "despacho" && cId;
+      });
+
+      if (despachoLeads.length > 0) {
+        const byCampaignD = new Map<string, typeof despachoLeads>();
+        for (const l of despachoLeads) {
+          const cId = (l.campaignId || defaultCampaignId)!;
+          if (!byCampaignD.has(cId)) byCampaignD.set(cId, []);
+          byCampaignD.get(cId)!.push(l);
+        }
+
+        for (const [dCampaignId, dCampaignLeads] of byCampaignD) {
+          const phones = dCampaignLeads.map(l => l.phone);
+          const leadIds: string[] = [];
+          for (let i = 0; i < phones.length; i += 200) {
+            const batch = phones.slice(i, i + 200);
+            const { data } = await supabase
+              .from("leads").select("id").in("phone", batch).eq("user_id", user.id);
+            leadIds.push(...(data || []).map(d => d.id));
+          }
+
+          for (let i = 0; i < leadIds.length; i += 200) {
+            const batch = leadIds.slice(i, i + 200);
+            const rows = batch.map(leadId => ({
+              campaign_id: dCampaignId,
+              user_id: user.id,
+              lead_id: leadId,
+              status: "active",
+            }));
+            await supabase.from("dispatch_campaign_contacts")
+              .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
+          }
+        }
+      }
+
       return { imported, updated, skipped };
     },
     onSuccess: (result) => {
@@ -400,6 +458,7 @@ export function useLeads(filters: LeadFilters = {}) {
       queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       queryClient.invalidateQueries({ queryKey: ["call-leads"] });
       queryClient.invalidateQueries({ queryKey: ["call_leads"] });
+      queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
       toast({ title: "Importação concluída", description: `${result.imported} importados, ${result.updated} atualizados, ${result.skipped} ignorados` });
     },
     onError: () => toast({ title: "Erro na importação", variant: "destructive" }),
