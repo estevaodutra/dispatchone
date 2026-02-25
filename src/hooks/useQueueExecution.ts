@@ -175,35 +175,26 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
             .eq("campaign_id", cid)
             .maybeSingle();
 
-          const { data: { user } } = await supabase.auth.getUser();
+          // Respect manual stops/pauses — do NOT reactivate
+          if (existing && ["stopped", "paused"].includes(existing.status)) {
+            continue;
+          }
 
-          if (existing) {
-            if (!["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
-              await (supabase as any)
-                .from("queue_execution_state")
-                .update({ status: "running" })
-                .eq("id", existing.id);
+          // Only act on queues that are already in an active state
+          // but weren't picked up by the local cache yet
+          if (existing && ["running", "waiting_operator", "waiting_cooldown"].includes(existing.status)) {
+            try {
+              await supabase.functions.invoke(
+                `queue-executor?campaign_id=${cid}&action=tick`,
+                { method: "POST" }
+              );
+              console.log(`[maintenance] orphan-ready tick sent for campaign ${cid}`);
+            } catch (e) {
+              console.error(`[maintenance] orphan-ready tick error for ${cid}:`, e);
             }
-          } else if (user) {
-            await (supabase as any)
-              .from("queue_execution_state")
-              .insert({
-                campaign_id: cid,
-                user_id: user.id,
-                status: "running",
-                session_started_at: new Date().toISOString(),
-              });
           }
-
-          try {
-            await supabase.functions.invoke(
-              `queue-executor?campaign_id=${cid}&action=tick`,
-              { method: "POST" }
-            );
-            console.log(`[maintenance] orphan-ready tick sent for campaign ${cid}`);
-          } catch (e) {
-            console.error(`[maintenance] orphan-ready tick error for ${cid}:`, e);
-          }
+          // If no existing state at all and there are ready calls,
+          // do NOT auto-create — user must start the queue manually
         }
 
         queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
