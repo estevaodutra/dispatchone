@@ -203,6 +203,27 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     console.log(`[queue-executor] Reverted ${orphanIds.length} orphan call_logs to ready`);
   }
 
+  // 0c. Self-healing: revert stuck dialing calls WITH operator (provider never responded, >3min)
+  const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+  const { data: stuckDialing } = await supabase
+    .from('call_logs')
+    .select('id, operator_id')
+    .eq('campaign_id', campaignId)
+    .eq('call_status', 'dialing')
+    .not('operator_id', 'is', null)
+    .lt('created_at', threeMinutesAgo);
+
+  if (stuckDialing?.length) {
+    for (const log of stuckDialing) {
+      await supabase.rpc('release_operator', { p_call_id: log.id, p_force: true });
+      await supabase
+        .from('call_logs')
+        .update({ call_status: 'failed', notes: 'Timeout: provedor não respondeu' })
+        .eq('id', log.id);
+    }
+    console.log(`[queue-executor] Released ${stuckDialing.length} stuck dialing calls with operator`);
+  }
+
   // 1. Resolve cooldowns via RPC (atomic)
   const { data: resolvedOps } = await supabase.rpc('resolve_cooldowns');
   if (resolvedOps?.length) {

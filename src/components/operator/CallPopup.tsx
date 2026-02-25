@@ -32,6 +32,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
   const {
     operator, currentCall, callStatus, callDuration,
     cooldownRemaining, isLoading, cooldownTotal, toggleAvailability,
+    dialingTooLong, cancelDialing,
   } = useOperatorCall();
 
   const [minimized, setMinimized] = useState(false);
@@ -151,7 +152,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
           )}
 
           {/* Dialing state */}
-          {callStatus === "dialing" && (
+          {callStatus === "dialing" && !dialingTooLong && (
             <div className="text-center space-y-2 py-2">
               <div className="flex justify-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -159,6 +160,28 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
                 <span className="h-2 w-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: "300ms" }} />
               </div>
               <p className="text-xs text-muted-foreground">⏳ Conectando com o número...</p>
+            </div>
+          )}
+
+          {/* Dialing timeout warning */}
+          {callStatus === "dialing" && dialingTooLong && (
+            <div className="space-y-2 py-2">
+              <div className="rounded border border-amber-500/30 bg-amber-500/10 p-2.5 text-center space-y-1.5">
+                <p className="text-xs font-medium text-amber-600 flex items-center justify-center gap-1">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Sem resposta do provedor
+                </p>
+                <p className="text-xs text-muted-foreground">A ligação pode não ter sido iniciada.</p>
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full"
+                onClick={() => cancelDialing()}
+              >
+                <PhoneOff className="h-3.5 w-3.5 mr-1.5" />
+                Cancelar chamada
+              </Button>
             </div>
           )}
 
