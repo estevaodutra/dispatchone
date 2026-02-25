@@ -581,20 +581,13 @@ async function fireDialWebhook(
   operator: any,
 ) {
   try {
-    // Fetch campaign to get owner's user_id for webhook resolution
-    const { data: campaignRow } = await supabase
-      .from('call_campaigns')
-      .select('user_id')
-      .eq('id', campaignId)
-      .single();
-
-    const campaignOwnerId = campaignRow?.user_id || userId;
-
+    // Webhook de calls é global da DispatchOne — buscar qualquer config ativa
     const { data: webhookConfig } = await supabase
       .from('webhook_configs')
       .select('url, is_active')
-      .eq('user_id', campaignOwnerId)
       .eq('category', 'calls')
+      .eq('is_active', true)
+      .limit(1)
       .maybeSingle();
 
     if (!webhookConfig?.is_active || !webhookConfig?.url) {
