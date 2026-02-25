@@ -254,7 +254,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
       </div>
 
       {/* Unified Call Dialog */}
-      {isActive && currentCall?.campaignId && currentCall.leadId && (
+      {currentCall?.campaignId && currentCall.leadId && (
         <CallActionDialog
           open={showCallDialog}
           onOpenChange={setShowCallDialog}
