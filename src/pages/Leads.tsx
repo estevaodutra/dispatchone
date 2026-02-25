@@ -69,6 +69,7 @@ export default function Leads() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [groupFilter, setGroupFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectAllResults, setSelectAllResults] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -88,11 +89,12 @@ export default function Leads() {
     campaignType: typeFilter !== "all" ? typeFilter : undefined,
     sourceType: sourceFilter !== "all" ? sourceFilter : undefined,
     sourceGroupName: groupFilter !== "all" ? groupFilter : undefined,
+    tags: tagFilter !== "all" ? [tagFilter] : undefined,
     page,
   };
 
   const {
-    leads, totalCount, stats, isLoading, groupNames,
+    leads, totalCount, stats, isLoading, groupNames, availableTags,
     createLead, updateLead, deleteLead, bulkDelete, bulkAddTags, bulkRemoveTags, bulkAddToCampaign, importLeads, pageSize,
   } = useLeads(filters);
 
@@ -300,6 +302,16 @@ export default function Leads() {
             <SelectItem value="manual">Manual</SelectItem>
             <SelectItem value="call_campaign">Campanha Ligação</SelectItem>
             <SelectItem value="dispatch_campaign">Campanha Despacho</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={tagFilter} onValueChange={(v) => { setTagFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Tag" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas as tags</SelectItem>
+            {availableTags.map(tag => (
+              <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
