@@ -65,6 +65,7 @@ export function useOperatorCall() {
   const [callDuration, setCallDuration] = useState(0);
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [dialingTooLong, setDialingTooLong] = useState(false);
 
   const currentCallIdRef = useRef<string | null>(null);
   const callLogChannelRef = useRef<any>(null);
@@ -329,6 +330,32 @@ export function useOperatorCall() {
     return () => clearInterval(interval);
   }, [operator?.status, operator?.lastCallEndedAt, operator?.personalIntervalSeconds]);
 
+  // Dialing timeout detector (45s)
+  useEffect(() => {
+    if (callStatus !== "dialing") {
+      setDialingTooLong(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setDialingTooLong(true);
+    }, 45_000);
+
+    return () => clearTimeout(timer);
+  }, [callStatus, currentCall?.id]);
+
+  // Cancel stuck dialing call
+  const cancelDialing = useCallback(async () => {
+    if (!currentCall) return;
+    // Release operator via RPC
+    await (supabase as any).rpc("release_operator", { p_call_id: currentCall.id, p_force: true });
+    // Revert call_log to failed
+    await (supabase as any)
+      .from("call_logs")
+      .update({ call_status: "failed", notes: "Cancelado: provedor não respondeu" })
+      .eq("id", currentCall.id);
+  }, [currentCall]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -364,5 +391,7 @@ export function useOperatorCall() {
     isLoading,
     cooldownTotal: operator?.personalIntervalSeconds ?? 30,
     toggleAvailability,
+    dialingTooLong,
+    cancelDialing,
   };
 }
