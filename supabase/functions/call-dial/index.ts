@@ -372,34 +372,20 @@ Deno.serve(async (req) => {
     let lead: { id: string; phone: string; name: string | null; status: string };
 
     if (existingLead) {
-      // Check lead status
-      if (existingLead.status === 'calling') {
-        console.log('[call-dial] Lead already in call');
-        const responseBody = {
-          success: false,
-          error: 'lead_already_calling',
-          message: 'Lead já está em ligação'
-        };
-        await logApiCall(supabase, {
-          method: req.method,
-          endpoint: '/call-dial',
-          statusCode: 400,
-          responseTimeMs: Date.now() - startTime,
-          userId,
-          apiKeyId,
-          ipAddress,
-          requestBody,
-          responseBody,
-          errorMessage: 'Lead already calling',
-        });
-        return new Response(JSON.stringify(responseBody), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      // Update lead info if provided
+      const updates: Record<string, any> = {};
+      if (lead_name && lead_name !== existingLead.name) {
+        updates.name = lead_name;
+      }
+      if (Object.keys(updates).length > 0) {
+        await supabase
+          .from('call_leads')
+          .update(updates)
+          .eq('id', existingLead.id);
       }
 
-      lead = existingLead;
-      console.log('[call-dial] Found existing lead:', lead.id);
+      lead = { ...existingLead, ...updates };
+      console.log('[call-dial] Found and updated existing lead:', lead.id);
     } else {
       // Create new lead
       console.log('[call-dial] Creating new lead');
