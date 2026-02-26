@@ -568,9 +568,9 @@ Deno.serve(async (req) => {
       let leadStatus = 'calling';
       if (mappedStatus === 'completed') {
         leadStatus = 'completed';
-      } else if (['no_answer', 'voicemail'].includes(mappedStatus)) {
+      } else if (['no_answer', 'voicemail', 'cancelled'].includes(mappedStatus)) {
         leadStatus = 'pending'; // will have retry
-      } else if (['failed', 'busy', 'not_found', 'cancelled', 'timeout'].includes(mappedStatus)) {
+      } else if (['failed', 'busy', 'not_found', 'timeout'].includes(mappedStatus)) {
         leadStatus = 'failed';
       }
 
@@ -581,7 +581,7 @@ Deno.serve(async (req) => {
     }
 
     // ==================== RETRY LOGIC (REPLACES OLD RESCHEDULING) ====================
-    const FAILURE_STATUSES = ['failed', 'busy', 'no_answer', 'not_found', 'voicemail', 'timeout'];
+    const FAILURE_STATUSES = ['failed', 'busy', 'no_answer', 'not_found', 'voicemail', 'timeout', 'cancelled'];
     let rescheduled = false;
 
     if (FAILURE_STATUSES.includes(mappedStatus) && callLog.lead_id && callLog.campaign_id) {

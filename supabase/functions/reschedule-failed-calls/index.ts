@@ -24,6 +24,7 @@ Deno.serve(async (req) => {
       "voicemail",
       "timeout",
       "not_found",
+      "cancelled",
     ];
 
     // Get failed call logs with campaign retry config
