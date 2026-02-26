@@ -1,22 +1,26 @@
 
 
-## Diagnóstico
+## Dados encontrados
 
-O status `cancelled` **não está incluído** nas listas de retry em dois lugares:
+| Tabela | Registros |
+|--------|-----------|
+| leads | 2.754 |
+| call_leads | 2.158 |
+| call_logs | 1.814 |
+| call_queue | 0 |
+| dispatch_campaign_contacts | 1 |
+| lead_campaign_history | 0 |
 
-1. **`supabase/functions/call-status/index.ts` (linha 584)**: `FAILURE_STATUSES` não inclui `cancelled` — quando o provedor envia `cancelled`, o retry não é acionado.
-2. **`supabase/functions/reschedule-failed-calls/index.ts` (linha 20-27)**: `failedStatuses` não inclui `cancelled` — o cron de 30min também ignora chamadas canceladas.
+## Plano de exclusão
 
-Além disso, na linha 573-574 do `call-status`, `cancelled` marca o lead como `failed` em vez de `pending`, impedindo retentativas.
+Executar DELETEs na ordem correta (tabelas dependentes primeiro):
 
-## Alterações
+1. **call_logs** — 1.814 registros (histórico de ligações)
+2. **call_queue** — 0 registros
+3. **call_leads** — 2.158 registros (leads das campanhas de ligação)
+4. **dispatch_campaign_contacts** — 1 registro
+5. **lead_campaign_history** — 0 registros
+6. **leads** — 2.754 registros (leads principais)
 
-### 1. `supabase/functions/call-status/index.ts`
-- **Linha 584**: Adicionar `'cancelled'` ao array `FAILURE_STATUSES`
-- **Linha 573**: Mover `'cancelled'` do grupo que marca lead como `failed` para o grupo que marca como `pending` (junto com `no_answer`/`voicemail`)
-
-### 2. `supabase/functions/reschedule-failed-calls/index.ts`
-- **Linha 20-27**: Adicionar `'cancelled'` ao array `failedStatuses`
-
-Resultado: chamadas canceladas pelo provedor seguirão a mesma lógica de retentativa das demais falhas, respeitando `retry_count`, `retry_interval_minutes` e `retry_exceeded_behavior` da campanha.
+Todas as exclusões serão feitas via operações de dados no banco (DELETE sem WHERE de user_id, removendo tudo). Nenhuma alteração de código necessária.
 
