@@ -12,7 +12,7 @@ import { useCallActions } from "@/hooks/useCallActions";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock } from "lucide-react";
+import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addHours, format, setHours, setMinutes, addDays } from "date-fns";
 
@@ -30,6 +30,8 @@ interface CallActionDialogProps {
   attemptNumber: number;
   maxAttempts: number;
   isPriority: boolean;
+  callStatus?: string;
+  externalCallId?: string | null;
 }
 
 interface CallLogEntry {
@@ -54,9 +56,17 @@ export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
   initialObservations, attemptNumber, maxAttempts, isPriority,
+  callStatus, externalCallId,
 }: CallActionDialogProps) {
   const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
   const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const copyExternalId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(initialObservations || "");
@@ -172,7 +182,21 @@ export function CallActionDialog({
             <Badge variant="outline" className="text-xs">📁 {campaignName}</Badge>
             <Badge variant="outline" className="text-xs">🔄 x{attemptNumber}/{maxAttempts}</Badge>
             {isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
+            {callStatus && <Badge variant="outline" className="text-xs">📡 {callStatus}</Badge>}
           </div>
+          {externalCallId && (
+            <div className="flex items-center justify-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-mono truncate max-w-[280px]">
+                🆔 {externalCallId}
+              </span>
+              <button
+                onClick={() => copyExternalId(externalCallId)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+              </button>
+            </div>
+          )}
           <p className="text-2xl font-semibold font-mono text-emerald-500">
             ⏱️ {formatDuration(duration)}
           </p>
