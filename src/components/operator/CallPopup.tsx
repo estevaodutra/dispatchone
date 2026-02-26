@@ -296,6 +296,8 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
           attemptNumber={currentCall.attemptNumber}
           maxAttempts={currentCall.maxAttempts}
           isPriority={currentCall.isPriority}
+          callStatus={currentCall.callStatus}
+          externalCallId={currentCall.externalCallId}
         />
       )}
     </>
