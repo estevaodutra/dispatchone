@@ -34,6 +34,7 @@ export interface CallData {
   actionId: string | null;
   scheduledFor: string | null;
   observations: string | null;
+  externalCallId: string | null;
 }
 
 const mapDbStatus = (dbStatus: string | null): PopupCallStatus => {
@@ -100,6 +101,7 @@ export function useOperatorCall() {
       actionId: data.action_id,
       scheduledFor: data.scheduled_for,
       observations: data.observations || null,
+      externalCallId: data.external_call_id || null,
     };
 
     return call;
@@ -123,9 +125,12 @@ export function useOperatorCall() {
           setCallStatus(mapped);
 
           // Update call data
-          if (payload.new?.started_at) {
-            setCurrentCall(prev => prev ? { ...prev, callStatus: newStatus, startedAt: payload.new.started_at } : prev);
-          }
+          setCurrentCall(prev => prev ? {
+            ...prev,
+            callStatus: newStatus,
+            startedAt: payload.new?.started_at || prev.startedAt,
+            externalCallId: payload.new?.external_call_id || prev.externalCallId,
+          } : prev);
 
           // Terminal status — clear card after brief delay if operator channel hasn't handled it
           if (["ended", "no_answer", "failed"].includes(mapped)) {

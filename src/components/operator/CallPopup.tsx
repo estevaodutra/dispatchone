@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, ExternalLink } from "lucide-react";
+import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, ExternalLink, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -37,6 +37,13 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
 
   const [minimized, setMinimized] = useState(false);
   const [showCallDialog, setShowCallDialog] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const copyExternalId = (id: string) => {
+    navigator.clipboard.writeText(id);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   // Don't render if user is not an operator
   if (isLoading || !operator) return null;
@@ -147,6 +154,26 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
                 <Badge variant="outline" className="text-xs">📁 {currentCall.campaignName}</Badge>
                 <Badge variant="outline" className="text-xs">🔄 x{currentCall.attemptNumber}</Badge>
                 {currentCall.isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
+              </div>
+              {/* Raw status + External ID */}
+              <div className="space-y-1 pt-1.5 border-t border-border/50 mt-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Status DB:</span>
+                  <Badge variant="outline" className="text-xs font-mono">{currentCall.callStatus}</Badge>
+                </div>
+                {currentCall.externalCallId && (
+                  <div className="flex items-center justify-between text-xs gap-1">
+                    <span className="text-muted-foreground shrink-0">ID Externo:</span>
+                    <button
+                      onClick={() => copyExternalId(currentCall.externalCallId!)}
+                      className="flex items-center gap-1 font-mono text-xs text-muted-foreground hover:text-foreground truncate max-w-[200px] transition-colors"
+                      title={currentCall.externalCallId}
+                    >
+                      <span className="truncate">{currentCall.externalCallId}</span>
+                      {copied ? <Check className="h-3 w-3 text-emerald-500 shrink-0" /> : <Copy className="h-3 w-3 shrink-0" />}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
