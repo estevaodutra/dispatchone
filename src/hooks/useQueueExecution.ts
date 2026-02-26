@@ -148,7 +148,6 @@ export function useQueueExecutionSummary(): QueueExecutionSummary {
     maintenanceInFlightRef.current = true;
     try {
       const { data: resolved } = await (supabase as any).rpc('resolve_cooldowns');
-      await (supabase as any).rpc('heal_stuck_operators', { p_stuck_threshold_minutes: 10 });
       queryClient.invalidateQueries({ queryKey: ["call_operators"] });
       
       if (resolved?.length && activeIdsRef.current.length > 0) {
