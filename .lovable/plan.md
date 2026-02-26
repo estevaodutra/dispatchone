@@ -1,30 +1,30 @@
 
 
-## Plano: Botão de Executar/Pausar para chamadas "AGORA!"
+## Diagnóstico
 
-### O que será feito
+O `CallActionDialog` (modal do operador para registrar ação pós-ligação) **não executa automações**. Ele apenas salva o `action_id` no `call_logs` e libera o operador, mas nunca chama o webhook configurado na ação.
 
-Adicionar um botão de ação rápida acima da tabela de chamadas (ao lado dos filtros ou abaixo dos cards de métricas) que permite:
-- **Discar todas** as chamadas com status "AGORA!" (scheduled/ready com `scheduledFor <= now`) de uma vez, enviando-as para a fila de execução
-- **Pausar** a execução quando a fila estiver rodando
+O código correto já existe no `registerActionMutation` dentro de `useCallPanel.ts` (linhas 664-774), que executa webhook, sequência, tag e status. Porém o `CallActionDialog` usa seu próprio `handleSave` que ignora completamente a automação.
 
-O botão será contextual:
-- Quando há chamadas "AGORA!" e a fila está parada → mostra **"▶ Discar AGORA! (N)"** (verde)
-- Quando a fila está rodando → mostra **"⏸ Pausar"** (amarelo)
-- Quando a fila está pausada → mostra **"▶ Retomar"** (verde)
+## Plano
 
-### Alterações
+### Arquivo: `src/components/operator/CallActionDialog.tsx`
 
-**`src/pages/CallPanel.tsx`**:
-1. Calcular `agoraEntries` — filtrar entries com status `scheduled`/`ready` onde `getTimeRemaining().isUrgent === true`
-2. Adicionar um bloco de botão entre os filtros e a tabela (ao lado do banner de status ou como um novo mini-banner):
-   - Botão "Discar AGORA! (N)" que chama `bulkEnqueue({ callIds })` com os IDs das entradas "AGORA!"
-   - Botão "Pausar" que chama `queueSummary.pauseAll()`
-   - Botão "Retomar" que chama `queueSummary.resumeAll()`
-3. O botão só aparece quando existem chamadas "AGORA!" ou quando a fila está ativa
+Após salvar o `call_logs` e liberar o operador (linha ~146), adicionar a execução da automação:
+
+1. Buscar os dados da ação (`action_type`, `action_config`) de `call_script_actions` pelo `selectedActionId`
+2. Se `action_type === "webhook"` e `action_config.url` existe, invocar `webhook-proxy` com os dados do lead
+3. Se `action_type === "start_sequence"`, invocar a edge function correspondente (dispatch ou group)
+4. Se `action_type === "add_tag"`, atualizar `custom_fields.tags` do lead
+5. Se `action_type === "update_status"`, atualizar o status do lead
+6. Mostrar toast de erro se a automação falhar (sem bloquear o registro da ligação)
+
+Isso reutiliza a mesma lógica que já funciona no `registerActionMutation` do `useCallPanel.ts`.
 
 ### Detalhes técnicos
-- Reutiliza `bulkEnqueue` do `useCallPanel` (já existente) para enviar chamadas para fila
-- Reutiliza `pauseAll`/`resumeAll` do `useQueueExecutionData` (já existente)
-- Contagem de "AGORA!" usa `getTimeRemaining(entry.scheduledFor).isUrgent && ["scheduled", "ready"].includes(entry.callStatus)`
+
+- Importar `supabase.functions.invoke("webhook-proxy", ...)` para o caso webhook
+- Buscar dados do lead via `call_leads` para enviar no payload
+- O `leadId` já está disponível nas props do componente
+- A automação roda após o save principal, dentro de um try/catch separado para não bloquear o registro
 
