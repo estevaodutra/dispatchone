@@ -1,19 +1,15 @@
 
 
-## Alterações
+## Diagnóstico
 
-### 1. `src/hooks/useOperatorCall.ts` — Adicionar `externalCallId` ao `CallData`
+O `CallActionDialog` (o popup que o usuário vê na screenshot) **não recebe** as props `callStatus` nem `externalCallId`. Esses campos só aparecem no card pequeno do `CallPopup`, que fica atrás do dialog quando aberto.
 
-- Adicionar `externalCallId: string | null` na interface `CallData`
-- Mapear `data.external_call_id` no `fetchCallData`
+## Solução
 
-### 2. `src/components/operator/CallPopup.tsx` — Mostrar status e ID externo no card
+### 1. `src/components/operator/CallActionDialog.tsx`
+- Adicionar props `callStatus?: string` e `externalCallId?: string | null`
+- Exibir no header do dialog, abaixo dos badges de campanha/tentativa, o status DB e o ID externo (com botão de copiar)
 
-- Exibir o `call_status` real do banco (ex: "dialing", "ringing", "cancelled") como texto visível no card expandido, abaixo das informações do lead
-- Exibir o `externalCallId` (ID da ligação retornado pelo webhook) quando disponível, com texto copiável
-
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/hooks/useOperatorCall.ts` | Adicionar `externalCallId` ao `CallData` e popular no fetch |
-| `src/components/operator/CallPopup.tsx` | Mostrar status raw e external_call_id no card |
+### 2. `src/components/operator/CallPopup.tsx`
+- Passar `callStatus={currentCall.callStatus}` e `externalCallId={currentCall.externalCallId}` ao `CallActionDialog`
 
