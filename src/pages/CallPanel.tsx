@@ -12,7 +12,7 @@ import { useQueueExecutionData } from "@/hooks/useQueueExecution";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
 import { CallPopup } from "@/components/operator/CallPopup";
-import { Users, Settings as SettingsIcon } from "lucide-react";
+import { Users, Settings as SettingsIcon, Copy } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1239,7 +1239,20 @@ function ActionDialog({
               <Badge variant="outline" className="text-xs">🔄 x{entry.attemptNumber}/{entry.maxAttempts || "∞"}</Badge>
             )}
             {entry.isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
+            {entry.callStatus && (
+              <Badge variant="outline" className="text-xs">📡 {entry.callStatus}</Badge>
+            )}
           </div>
+          {entry.externalCallId && (
+            <div className="flex items-center justify-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-mono truncate max-w-[280px]">
+                🆔 {entry.externalCallId}
+              </span>
+              <button onClick={() => { navigator.clipboard.writeText(entry.externalCallId!); }} className="hover:text-primary transition-colors">
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          )}
           {entry.durationSeconds != null && entry.durationSeconds > 0 && (
             <p className="text-2xl font-semibold font-mono text-emerald-500">
               ⏱️ {Math.floor(entry.durationSeconds / 60).toString().padStart(2, "0")}:{(entry.durationSeconds % 60).toString().padStart(2, "0")}
