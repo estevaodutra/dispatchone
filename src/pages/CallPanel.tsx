@@ -376,6 +376,88 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
   );
 }
 
+// ── Agora Action Bar ──
+
+function AgoraActionBar({ entries, queueSummary, bulkEnqueue, bulkDialing, setBulkDialing }: {
+  entries: CallPanelEntry[];
+  queueSummary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
+  bulkEnqueue: (params: { callIds: string[]; operatorId?: string }) => Promise<any>;
+  bulkDialing: boolean;
+  setBulkDialing: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+
+  const agoraEntries = useMemo(() =>
+    entries.filter(e =>
+      ["scheduled", "ready"].includes(e.callStatus) &&
+      getTimeRemaining(e.scheduledFor).isUrgent
+    ),
+    [entries]
+  );
+
+  const { globalStatus, isPausingAll, isResumingAll, pauseAll, resumeAll } = queueSummary;
+  const isQueueActive = globalStatus === "running" || globalStatus === "mixed";
+  const isQueuePaused = globalStatus === "paused";
+  const hasAgora = agoraEntries.length > 0;
+
+  if (!hasAgora && !isQueueActive && !isQueuePaused) return null;
+
+  const handleDiscarAgora = async () => {
+    if (agoraEntries.length === 0) return;
+    setBulkDialing(true);
+    try {
+      await bulkEnqueue({ callIds: agoraEntries.map(e => e.id) });
+      toast({ title: "Chamadas enfileiradas", description: `${agoraEntries.length} chamada(s) enviada(s) para a fila.` });
+    } catch (err: any) {
+      toast({ title: "Erro", description: err.message, variant: "destructive" });
+    } finally {
+      setBulkDialing(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      {isQueueActive ? (
+        <Button
+          onClick={() => pauseAll()}
+          disabled={isPausingAll}
+          className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
+        >
+          <Pause className="h-4 w-4" />
+          {isPausingAll ? "Pausando..." : "Pausar Fila"}
+        </Button>
+      ) : isQueuePaused ? (
+        <Button
+          onClick={() => resumeAll()}
+          disabled={isResumingAll}
+          className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+        >
+          <Play className="h-4 w-4" />
+          {isResumingAll ? "Retomando..." : "Retomar Fila"}
+        </Button>
+      ) : null}
+
+      {hasAgora && !isQueueActive && (
+        <Button
+          onClick={handleDiscarAgora}
+          disabled={bulkDialing}
+          className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
+        >
+          <Play className="h-4 w-4" />
+          {bulkDialing ? "Enfileirando..." : `Discar AGORA! (${agoraEntries.length})`}
+        </Button>
+      )}
+
+      {hasAgora && isQueueActive && (
+        <Badge variant="secondary" className="gap-1 text-xs">
+          <Target className="h-3 w-3" />
+          {agoraEntries.length} AGORA! na fila
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ──
 
 export default function CallPanel() {
@@ -645,6 +727,15 @@ export default function CallPanel() {
       {queueSummary.globalStatus !== "stopped" && (
         <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
       )}
+
+      {/* Discar AGORA! / Pausar / Retomar button */}
+      <AgoraActionBar
+        entries={entries}
+        queueSummary={queueSummary}
+        bulkEnqueue={bulkEnqueue}
+        bulkDialing={bulkDialing}
+        setBulkDialing={setBulkDialing}
+      />
 
       {/* Filters & Status */}
       <div className="space-y-3">
