@@ -458,6 +458,32 @@ Deno.serve(async (req) => {
     };
     let mappedStatus = statusMap[status] || status;
 
+    // ==================== GUARD: REJECT DIALING/RINGING WITHOUT OPERATOR ====================
+    if (['dialing', 'ringing'].includes(mappedStatus) && !callLog.operator_id && !isCreated) {
+      console.log('[call-status] Ignoring dialing/ringing update: call has no operator assigned. call_log:', callLog.id);
+      const responseBody = {
+        success: true,
+        message: 'Status ignorado: ligação sem operador atribuído',
+        call_log_id: callLog.id,
+        ignored: true,
+      };
+      await logApiCall(supabase, {
+        method: req.method,
+        endpoint: '/call-status',
+        statusCode: 200,
+        responseTimeMs: Date.now() - startTime,
+        userId,
+        apiKeyId,
+        ipAddress,
+        requestBody,
+        responseBody,
+      });
+      return new Response(JSON.stringify(responseBody), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const updateData: any = {
       call_status: mappedStatus,
       ...(audio_url ? { audio_url } : {}),
