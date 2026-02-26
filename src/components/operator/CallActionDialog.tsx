@@ -116,6 +116,90 @@ export function CallActionDialog({
     fetchHistory();
   }, [open, leadId, campaignId]);
 
+  const executeAutomation = async (actionId: string) => {
+    if (actionId.startsWith("__")) return;
+
+    try {
+      const { data: actionData } = await (supabase as any)
+        .from("call_script_actions")
+        .select("action_type, action_config")
+        .eq("id", actionId)
+        .maybeSingle();
+
+      if (!actionData) return;
+
+      // Webhook
+      if (actionData.action_type === "webhook" && actionData.action_config?.url) {
+        const { data: leadData } = await (supabase as any)
+          .from("call_leads")
+          .select("*")
+          .eq("id", leadId)
+          .single();
+
+        const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: { url: actionData.action_config.url, payload: { lead: leadData, campaignId, actionType: "webhook" } },
+        });
+
+        if (proxyError) {
+          toast({ title: "Webhook falhou", description: proxyError.message, variant: "destructive" });
+        }
+      }
+      // Start sequence
+      else if (actionData.action_type === "start_sequence" && actionData.action_config) {
+        const { campaignId: seqCampaignId, campaignType, sequenceId } = actionData.action_config as {
+          campaignId?: string; campaignType?: string; sequenceId?: string;
+        };
+
+        if (campaignType === "dispatch" && sequenceId && leadPhone) {
+          const { data: result, error: fnError } = await supabase.functions.invoke("execute-dispatch-sequence", {
+            body: { campaignId: seqCampaignId, sequenceId, contactPhone: leadPhone, contactName: leadName || "" },
+          });
+          if (fnError || result?.error) {
+            toast({ title: "Erro na sequência", description: result?.error || fnError?.message, variant: "destructive" });
+          }
+        } else if (campaignType === "group" && sequenceId && seqCampaignId) {
+          const { error: fnError } = await supabase.functions.invoke("execute-message", {
+            body: {
+              campaignId: seqCampaignId, sequenceId,
+              triggerContext: {
+                respondentPhone: leadPhone || "", respondentName: leadName || "",
+                respondentJid: leadPhone ? `${leadPhone}@s.whatsapp.net` : "",
+                groupJid: "", sendPrivate: true,
+              },
+            },
+          });
+          if (fnError) {
+            toast({ title: "Erro na sequência de grupo", description: fnError.message, variant: "destructive" });
+          }
+        }
+      }
+      // Add tag
+      else if (actionData.action_type === "add_tag" && actionData.action_config?.tag) {
+        const tag = actionData.action_config.tag as string;
+        const { data: leadData } = await (supabase as any)
+          .from("call_leads").select("custom_fields").eq("id", leadId).single();
+        const currentFields = (leadData?.custom_fields as Record<string, unknown>) || {};
+        const currentTags = Array.isArray(currentFields.tags) ? currentFields.tags : [];
+        if (!currentTags.includes(tag)) {
+          await (supabase as any).from("call_leads")
+            .update({ custom_fields: { ...currentFields, tags: [...currentTags, tag] } })
+            .eq("id", leadId);
+        }
+      }
+      // Update status
+      else if (actionData.action_type === "update_status" && actionData.action_config?.status) {
+        const newStatus = String(actionData.action_config.status);
+        await (supabase as any).from("call_leads").update({ status: newStatus }).eq("id", leadId);
+        if (newStatus !== "completed") {
+          await (supabase as any).from("call_logs").update({ call_status: newStatus }).eq("id", callId);
+        }
+      }
+    } catch (err: any) {
+      console.error("[CallActionDialog] Automation failed:", err);
+      toast({ title: "Erro na automação", description: err.message, variant: "destructive" });
+    }
+  };
+
   const handleSave = async () => {
     if (!selectedActionId) {
       toast({ title: "Selecione uma ação", variant: "destructive" });
@@ -144,6 +228,9 @@ export function CallActionDialog({
         .eq("id", callId);
 
       await (supabase as any).rpc("release_operator", { p_call_id: callId });
+
+      // Execute automation (webhook, sequence, tag, status) without blocking
+      await executeAutomation(selectedActionId);
 
       toast({ title: "Ação registrada", description: "Ligação finalizada com sucesso." });
       onOpenChange(false);
