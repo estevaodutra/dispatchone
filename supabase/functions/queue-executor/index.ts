@@ -536,11 +536,18 @@ async function fireDialWebhook(
     };
 
     console.log('[queue-executor] Calling webhook:', webhookConfig.url);
+
+    // 60-second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
     const response = await fetch(webhookConfig.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
+    clearTimeout(timeoutId);
 
     const responseText = await response.text();
     console.log('[queue-executor] Webhook response:', response.status, responseText);
@@ -583,9 +590,22 @@ async function fireDialWebhook(
       // Response not JSON, ignore
     }
   } catch (error) {
-    console.error('[queue-executor] Webhook error:', error);
-    // On webhook failure, release operator but do NOT alter call_status
-    // The call stays as 'dialing' — the provider/n8n will send the real status via /call-status
+    const isTimeout = error instanceof DOMException && error.name === 'AbortError';
+    const failReason = isTimeout ? 'Timeout no acionamento da ligação (60s)' : 'Falha no acionamento da ligação';
+    console.error('[queue-executor] Webhook error:', failReason, error);
+
+    // Mark call as failed, release operator, revert lead to pending
+    await supabase.from('call_logs').update({
+      call_status: 'failed',
+      notes: failReason,
+      ended_at: new Date().toISOString(),
+      operator_id: null,
+    }).eq('id', callLogId);
+
     await supabase.rpc('release_operator', { p_call_id: callLogId, p_force: true });
+
+    if (lead?.id) {
+      await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+    }
   }
 }

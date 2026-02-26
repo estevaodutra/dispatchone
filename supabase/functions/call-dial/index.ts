@@ -538,96 +538,124 @@ Deno.serve(async (req) => {
     }
 
     // ==================== WEBHOOK INTEGRATION ====================
-    console.log('[call-dial] Checking for webhook configuration');
-    
-    // Webhook de calls é global da DispatchOne — buscar qualquer config ativa
-    const { data: webhookConfig } = await supabase
-      .from('webhook_configs')
-      .select('url, is_active')
-      .eq('category', 'calls')
-      .eq('is_active', true)
-      .limit(1)
-      .maybeSingle();
-
-    // Build standardized webhook payload
-    const webhookPayload = {
-      action: 'call.dial',
-      call: {
-        id: callLog.id,
-        status: callStatus,
-        scheduled_for: scheduledFor,
-        dial_in_minutes: dialDelayMinutes,
-      },
-      campaign: {
-        id: campaign.id,
-        name: campaign.name
-      },
-      lead: {
-        id: lead.id,
-        phone: lead.phone,
-        name: lead.name || lead_name || null
-      },
-      operator: reservedOperator ? {
-        id: reservedOperator.id,
-        name: reservedOperator.name,
-        extension: reservedOperator.extension
-      } : null
-    };
-
-    // Call webhook if configured and active
+    // Only fire webhook if an operator was actually reserved
     let webhookResult: { called: boolean; url?: string; status?: number; response?: string; error?: string; reason?: string } = { 
       called: false, 
-      reason: 'no_webhook_configured' 
+      reason: reservedOperator ? 'no_webhook_configured' : 'no_operator_reserved'
     };
 
-    if (webhookConfig?.is_active && webhookConfig?.url) {
-      console.log('[call-dial] Calling webhook:', webhookConfig.url);
-      try {
-        const webhookResponse = await fetch(webhookConfig.url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(webhookPayload)
-        });
-        
-        const webhookData = await webhookResponse.text();
-        webhookResult = {
-          called: true,
-          url: webhookConfig.url,
-          status: webhookResponse.status,
-          response: webhookData
-        };
-        console.log('[call-dial] Webhook response:', webhookResult);
+    if (reservedOperator) {
+      console.log('[call-dial] Operator reserved, checking for webhook configuration');
+      
+      const { data: webhookConfig } = await supabase
+        .from('webhook_configs')
+        .select('url, is_active')
+        .eq('category', 'calls')
+        .eq('is_active', true)
+        .limit(1)
+        .maybeSingle();
 
-        // Parse response and extract external call ID
-        // Expected format: [{ "id": "uuid", "message": "successfull" }]
-        try {
-          const parsedResponse = JSON.parse(webhookData);
-          if (Array.isArray(parsedResponse) && parsedResponse[0]?.id) {
-            const externalCallId = parsedResponse[0].id;
-            console.log('[call-dial] External call ID received:', externalCallId);
-            
-            // Update call_log with external ID and status
-            await supabase
-              .from('call_logs')
-              .update({ 
-                external_call_id: externalCallId,
-                call_status: 'dialing'
-              })
-              .eq('id', callLog.id);
-          }
-        } catch (parseError) {
-          console.log('[call-dial] Could not parse webhook response as JSON');
+      const webhookPayload = {
+        action: 'call.dial',
+        call: {
+          id: callLog.id,
+          status: callStatus,
+          scheduled_for: scheduledFor,
+          dial_in_minutes: dialDelayMinutes,
+        },
+        campaign: {
+          id: campaign.id,
+          name: campaign.name
+        },
+        lead: {
+          id: lead.id,
+          phone: lead.phone,
+          name: lead.name || lead_name || null
+        },
+        operator: {
+          id: reservedOperator.id,
+          name: reservedOperator.name,
+          extension: reservedOperator.extension
         }
-      } catch (error) {
-        console.error('[call-dial] Webhook error:', error);
-        webhookResult = {
-          called: true,
-          url: webhookConfig.url,
-          error: error instanceof Error ? error.message : 'Unknown error'
-        };
+      };
+
+      if (webhookConfig?.is_active && webhookConfig?.url) {
+        console.log('[call-dial] Calling webhook:', webhookConfig.url);
+        try {
+          // 60-second timeout
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+          const webhookResponse = await fetch(webhookConfig.url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(webhookPayload),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+          
+          const webhookData = await webhookResponse.text();
+          webhookResult = {
+            called: true,
+            url: webhookConfig.url,
+            status: webhookResponse.status,
+            response: webhookData
+          };
+          console.log('[call-dial] Webhook response:', webhookResult);
+
+          // Parse response and extract external call ID
+          try {
+            const parsedResponse = JSON.parse(webhookData);
+            if (Array.isArray(parsedResponse) && parsedResponse[0]?.id) {
+              // Detect operator_unavailable
+              if (parsedResponse[0]?.message === 'operator_unavailable') {
+                console.log('[call-dial] Operator unavailable from webhook, reverting');
+                await supabase.from('call_logs').update({ call_status: 'scheduled', started_at: null, operator_id: null }).eq('id', callLog.id);
+                await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
+                await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+                callStatus = 'scheduled';
+                reservedOperator = null;
+              } else {
+                const externalCallId = parsedResponse[0].id;
+                console.log('[call-dial] External call ID received:', externalCallId);
+                await supabase
+                  .from('call_logs')
+                  .update({ external_call_id: externalCallId })
+                  .eq('id', callLog.id);
+              }
+            }
+          } catch (parseError) {
+            console.log('[call-dial] Could not parse webhook response as JSON');
+          }
+        } catch (error) {
+          // Timeout or network failure → mark as failed, release operator, revert lead
+          const isTimeout = error instanceof DOMException && error.name === 'AbortError';
+          const failReason = isTimeout ? 'Timeout no acionamento da ligação (60s)' : 'Falha no acionamento da ligação';
+          console.error('[call-dial] Webhook error:', failReason, error);
+
+          await supabase.from('call_logs').update({
+            call_status: 'failed',
+            notes: failReason,
+            ended_at: new Date().toISOString(),
+            operator_id: null,
+          }).eq('id', callLog.id);
+
+          await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
+          await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+
+          callStatus = 'failed';
+          reservedOperator = null;
+          webhookResult = {
+            called: true,
+            url: webhookConfig.url,
+            error: failReason
+          };
+        }
+      } else {
+        console.log('[call-dial] No active webhook configured for calls category');
       }
     } else {
-      console.log('[call-dial] No active webhook configured for calls category');
+      console.log('[call-dial] No operator available, lead stays scheduled for queue processing');
     }
 
     // ==================== SUCCESS RESPONSE ====================
