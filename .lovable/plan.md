@@ -1,102 +1,74 @@
 
 
-## Problema
+## Diagnóstico
 
-1. O status `answered` está sendo mapeado para `answered` no `call_logs` (linha 446) — e quando vem com `duration_seconds`, é tratado como `completed` (linhas 467-484). O correto é: `answered` sem duração = `on_call` (em ligação); `answered` com duração = `completed` (finalizada com dados do provedor).
-2. A liberação do operador acontece no `call-status` apenas para status terminais, mas o `answered` puro (sem duração) não atualiza para `on_call` — fica como `answered` no DB, e o pop-up precisa mapear manualmente.
-3. O `useOperatorCall` tem um timeout de 45s para dialing que é um workaround, mas é válido como fallback de UI (não libera operador, só mostra aviso). Isso pode ser mantido.
+O botão "Ligar Agora" (`dialNow` no `useCallPanel.ts`) **não passa pela Edge Function `call-dial`**. Ele executa tudo no frontend:
+
+1. Reserva operador via RPC (`reserve_operator_for_call`)
+2. Chama `webhook-proxy` diretamente
+3. Mostra toast de sucesso
+
+Consequências:
+- **Não cria entrada em `api_logs`** (somente `call-dial` e `call-status` logam)
+- **Não valida max attempts** (os leads da screenshot mostram "2/2 ❌" mas o botão continua ativando)
+- O toast "Ligação iniciada / Webhook acionado com sucesso" aparece porque o `webhook-proxy` retorna 200, mas a ligação pode não ter sido efetivamente iniciada pelo provedor
 
 ## Solução
 
-### 1. `supabase/functions/call-status/index.ts` — Corrigir mapeamento de status
+Adicionar logging de API e validação de tentativas no fluxo `dialNow`.
 
-**Linha 444-454** — Atualizar `statusMap`:
+### 1. `src/hooks/useCallPanel.ts` — `dialNowMutation`
+
+**Validar max attempts** antes de prosseguir:
 ```typescript
-const statusMap: Record<string, string> = {
-  'dialing': 'dialing',
-  'answered': 'on_call',     // ← CORRIGIDO: era 'answered', agora 'on_call'
-  'ended': 'completed',
-  'busy': 'busy',
-  'not_found': 'not_found',
-  'voicemail': 'voicemail',
-  'cancelled': 'cancelled',
-  'timeout': 'timeout',
-  'error': 'failed',
-  'ringing': 'ringing',      // ← ADICIONADO
-  'no_answer': 'no_answer',  // ← ADICIONADO
-  'completed': 'completed',  // ← ADICIONADO (alias)
-  'failed': 'failed',        // ← ADICIONADO (alias)
-};
-```
+// Antes de reservar operador
+const { data: logData } = await supabase
+  .from("call_logs")
+  .select("attempt_number, max_attempts")
+  .eq("id", callId)
+  .single();
 
-**Linha 58** — Adicionar `ringing`, `no_answer`, `completed`, `failed` aos VALID_STATUSES:
-```typescript
-const VALID_STATUSES = [
-  'dialing', 'ringing', 'answered', 'ended', 'completed',
-  'busy', 'no_answer', 'not_found', 'voicemail', 'cancelled',
-  'timeout', 'error', 'failed'
-];
-```
-
-**Linhas 467-484** — Ajustar bloco `answered`:
-- `answered` sem `duration_seconds` → `on_call` (não é terminal, não libera operador)
-- `answered` com `duration_seconds` → `completed` (terminal, libera operador com cooldown)
-
-**Linha 425** — Corrigir mapeamento no bloco de criação de novo call_log:
-- Atualizar o inline map para usar `'answered': 'on_call'` e adicionar novos status.
-
-**Linhas 520-538** — Ajustar lista de terminais para incluir `no_answer` e garantir que `on_call` NÃO está na lista:
-```typescript
-const TERMINAL_STATUSES = [
-  'completed', 'failed', 'busy', 'no_answer',
-  'not_found', 'voicemail', 'cancelled', 'timeout'
-];
-```
-
-**Linhas 546-548** — Adicionar `no_answer` ao tratamento de lead status:
-- `no_answer` → `pending` (vai ter retry) ao invés de `failed`
-
-**Linha 557** — Adicionar `no_answer` à lista de FAILURE_STATUSES para retry:
-```typescript
-const FAILURE_STATUSES = ['failed', 'busy', 'no_answer', 'not_found', 'voicemail', 'timeout'];
-```
-
-**Falhas sem cooldown**: Para `busy`, `failed`, `error`, `timeout`, `cancelled` → liberar operador direto para `available` sem cooldown. Para `no_answer`, `voicemail`, `completed`/`ended` → liberar com cooldown via RPC.
-
-Atualizar o bloco de liberação (linhas 520-538) para diferenciar:
-```typescript
-const TERMINAL_WITH_COOLDOWN = ['completed', 'no_answer', 'voicemail'];
-const TERMINAL_NO_COOLDOWN = ['failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-
-if (TERMINAL_WITH_COOLDOWN.includes(mappedStatus) && callLog.operator_id) {
-  // Release via RPC (aplica cooldown)
-  await supabase.rpc('release_operator', { p_call_id: callLog.id });
-} else if (TERMINAL_NO_COOLDOWN.includes(mappedStatus) && callLog.operator_id) {
-  // Release imediato (sem cooldown)
-  await supabase.from('call_operators')
-    .update({ status: 'available', current_call_id: null, current_campaign_id: null })
-    .eq('id', callLog.operator_id)
-    .eq('current_call_id', callLog.id);
+if (logData && logData.max_attempts && logData.attempt_number >= logData.max_attempts) {
+  throw new Error("Máximo de tentativas atingido para este lead");
 }
 ```
 
-### 2. `src/hooks/useOperatorCall.ts` — Sem mudanças estruturais
+**Adicionar log em `api_logs`** após webhook (sucesso ou erro):
+```typescript
+// Após o webhook-proxy retornar
+await supabase.from("api_logs").insert({
+  method: "POST",
+  endpoint: "/call-dial",
+  status_code: proxyData?.status || 200,
+  response_time_ms: Date.now() - startTs,
+  user_id: user?.id,
+  request_body: payload,
+  response_body: { source: "dialNow", call_id: callId, webhook_status: proxyData?.status },
+});
+```
 
-O hook já mapeia corretamente `on_call` → popup `on_call` (linha 44-45). A mudança no `call-status` vai fazer o DB gravar `on_call` ao invés de `answered`, e o Realtime vai propagar automaticamente.
+**Logar também em caso de erro do webhook**:
+```typescript
+// No catch do webhook
+await supabase.from("api_logs").insert({
+  method: "POST",
+  endpoint: "/call-dial",
+  status_code: 502,
+  response_time_ms: Date.now() - startTs,
+  user_id: user?.id,
+  request_body: payload,
+  error_message: webhookError.message,
+});
+```
 
-O timeout de 45s para dialing (linhas 333-345) é mantido como fallback de UI — não libera operador, apenas mostra botão de cancelar.
+### 2. Desabilitar botão "Ligar" visualmente para 2/2
 
-### 3. `src/components/operator/CallPopup.tsx` — Sem mudanças
-
-O popup já tem os status corretos mapeados. Vai funcionar automaticamente com a correção no backend.
+Na UI do `CallPanel.tsx`, desabilitar o ícone de discagem quando `attempt_number >= max_attempts`.
 
 ---
 
-## Resumo
-
 | Arquivo | Alteração |
 |---------|-----------|
-| `supabase/functions/call-status/index.ts` | Corrigir mapeamento `answered→on_call`, adicionar status `ringing`/`no_answer`/`completed`/`failed` aos válidos, diferenciar liberação com/sem cooldown, tratar `no_answer` como retriable |
-
-Nenhuma mudança no frontend — o Realtime já propaga o status correto do DB para o popup.
+| `src/hooks/useCallPanel.ts` | Adicionar validação de max attempts e logging em `api_logs` no `dialNowMutation` |
+| `src/pages/CallPanel.tsx` | Desabilitar botão "Ligar" quando tentativas esgotadas |
 
