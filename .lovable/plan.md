@@ -2,14 +2,37 @@
 
 ## Diagnóstico
 
-O `CallActionDialog` (o popup que o usuário vê na screenshot) **não recebe** as props `callStatus` nem `externalCallId`. Esses campos só aparecem no card pequeno do `CallPopup`, que fica atrás do dialog quando aberto.
+O problema está no **`ActionDialog`** dentro de `src/pages/CallPanel.tsx` (linha 1162+). Este é o popup que o admin vê ao clicar em uma ligação na tabela do painel. Ele **não exibe** `callStatus` nem `externalCallId`, apesar de o `CallPanelEntry` já conter esses campos.
 
-## Solução
+O `CallActionDialog` do operador (em `src/components/operator/CallActionDialog.tsx`) já foi corrigido e exibe ambos. Mas o `ActionDialog` do painel principal nunca recebeu essa atualização.
 
-### 1. `src/components/operator/CallActionDialog.tsx`
-- Adicionar props `callStatus?: string` e `externalCallId?: string | null`
-- Exibir no header do dialog, abaixo dos badges de campanha/tentativa, o status DB e o ID externo (com botão de copiar)
+## Alterações
 
-### 2. `src/components/operator/CallPopup.tsx`
-- Passar `callStatus={currentCall.callStatus}` e `externalCallId={currentCall.externalCallId}` ao `CallActionDialog`
+### `src/pages/CallPanel.tsx` — `ActionDialog` (linha ~1234)
+
+Adicionar no header do dialog, logo após os badges de campanha/tentativa/prioridade:
+
+1. Badge com `entry.callStatus` (📡 Status DB)
+2. Badge/texto com `entry.externalCallId` (🆔 ID Externo) com botão de copiar
+
+Inserir entre a linha dos badges (1241) e a linha de duração (1243):
+
+```tsx
+{entry.callStatus && (
+  <Badge variant="outline" className="text-xs">📡 {entry.callStatus}</Badge>
+)}
+</div>
+{entry.externalCallId && (
+  <div className="flex items-center justify-center gap-1.5">
+    <span className="text-xs text-muted-foreground font-mono truncate max-w-[280px]">
+      🆔 {entry.externalCallId}
+    </span>
+    <button onClick={() => { navigator.clipboard.writeText(entry.externalCallId!); }}>
+      <Copy className="h-3 w-3" />
+    </button>
+  </div>
+)}
+```
+
+Nenhuma alteração de banco ou hook necessária — os dados já estão disponíveis no `entry`.
 
