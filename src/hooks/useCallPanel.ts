@@ -430,8 +430,20 @@ export function useCallPanel(filters?: {
 
   const dialNowMutation = useMutation({
     mutationFn: async (callId: string) => {
+      const startTs = Date.now();
       const entry = entries.find((e) => e.id === callId);
       if (!entry) throw new Error("Ligação não encontrada");
+
+      // Validar max attempts antes de prosseguir
+      const { data: logData } = await (supabase as any)
+        .from("call_logs")
+        .select("attempt_number, max_attempts")
+        .eq("id", callId)
+        .maybeSingle();
+
+      if (logData && logData.max_attempts && logData.attempt_number >= logData.max_attempts) {
+        throw new Error("Máximo de tentativas atingido para este lead");
+      }
 
       // CAMADA 3: Limpeza preventiva — cancelar call_logs ativos do operador antes de reservar
       if (entry.operatorId) {
@@ -563,7 +575,29 @@ export function useCallPanel(filters?: {
         } catch {
           // Response may not be JSON, that's fine
         }
+
+        // Log sucesso em api_logs
+        await (supabase as any).from("api_logs").insert({
+          method: "POST",
+          endpoint: "/call-dial",
+          status_code: proxyData?.status || 200,
+          response_time_ms: Date.now() - startTs,
+          user_id: user?.id,
+          request_body: payload,
+          response_body: { source: "dialNow", call_id: callId, webhook_status: proxyData?.status },
+        });
       } catch (webhookError: any) {
+        // Log erro em api_logs
+        await (supabase as any).from("api_logs").insert({
+          method: "POST",
+          endpoint: "/call-dial",
+          status_code: 502,
+          response_time_ms: Date.now() - startTs,
+          user_id: user?.id,
+          request_body: payload,
+          error_message: webhookError.message,
+        });
+
         // Revert status to "ready" on webhook failure and release operator via RPC
         await (supabase as any)
           .from("call_logs")

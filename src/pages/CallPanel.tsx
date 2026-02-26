@@ -890,6 +890,7 @@ export default function CallPanel() {
                                 className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
                                 onClick={() => dialNow(entry.id)}
                                 title="Ligar agora"
+                                disabled={entry.maxAttempts > 1 && entry.attemptNumber >= entry.maxAttempts}
                               >
                                 <Phone className="h-3.5 w-3.5" />
                               </Button>
@@ -921,6 +922,7 @@ export default function CallPanel() {
                                 className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
                                 onClick={() => dialNow(entry.id)}
                                 title="Ligar novamente"
+                                disabled={entry.maxAttempts > 1 && entry.attemptNumber >= entry.maxAttempts}
                               >
                                 <Phone className="h-3.5 w-3.5" />
                               </Button>
