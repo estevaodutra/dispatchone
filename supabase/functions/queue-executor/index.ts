@@ -184,89 +184,6 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     console.log(`[queue-executor] Healed ${healedOps.length} stuck operators`);
   }
 
-  // 0b. Self-healing: revert orphan call_logs (dialing/ringing without operator)
-  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-  const { data: orphanLogs } = await supabase
-    .from('call_logs')
-    .select('id')
-    .eq('campaign_id', campaignId)
-    .in('call_status', ['dialing', 'ringing'])
-    .is('operator_id', null)
-    .lt('created_at', twoMinutesAgo);
-
-  if (orphanLogs?.length) {
-    const orphanIds = orphanLogs.map((l: any) => l.id);
-    await supabase
-      .from('call_logs')
-      .update({ call_status: 'ready', started_at: null })
-      .in('id', orphanIds);
-    console.log(`[queue-executor] Reverted ${orphanIds.length} orphan call_logs to ready`);
-  }
-
-  // 0c. Self-healing: revert stuck dialing calls WITH operator (provider never responded, >3min)
-  const threeMinutesAgo = new Date(Date.now() - 3 * 60 * 1000).toISOString();
-  const { data: stuckDialing } = await supabase
-    .from('call_logs')
-      .select('id, operator_id, lead_id, attempt_number, max_attempts')
-      .eq('campaign_id', campaignId)
-      .eq('call_status', 'dialing')
-      .not('operator_id', 'is', null)
-      .lt('created_at', threeMinutesAgo);
-
-  if (stuckDialing?.length) {
-    // Fetch campaign retry config for rescheduling
-    const { data: campRetryConfig } = await supabase
-      .from('call_campaigns')
-      .select('retry_count, retry_interval_minutes')
-      .eq('id', campaignId)
-      .single();
-
-    const retryCount = campRetryConfig?.retry_count ?? 3;
-    const retryIntervalMinutes = campRetryConfig?.retry_interval_minutes ?? 30;
-
-    for (const log of stuckDialing) {
-      await supabase.rpc('release_operator', { p_call_id: log.id, p_force: true });
-
-      const currentAttempt = log.attempt_number ?? 1;
-
-      if (currentAttempt < retryCount) {
-        // Schedule retry
-        const nextRetryAt = new Date(Date.now() + retryIntervalMinutes * 60 * 1000).toISOString();
-        await supabase
-          .from('call_logs')
-          .update({ call_status: 'failed_rescheduled', notes: 'Timeout: provedor não respondeu' })
-          .eq('id', log.id);
-
-        await supabase
-          .from('call_logs')
-          .insert({
-            user_id: userId,
-            company_id: campaign.company_id || null,
-            campaign_id: campaignId,
-            lead_id: log.lead_id,
-            call_status: 'scheduled',
-            scheduled_for: nextRetryAt,
-            attempt_number: currentAttempt + 1,
-            max_attempts: retryCount,
-            next_retry_at: nextRetryAt,
-          });
-
-        if (log.lead_id) {
-          await supabase
-            .from('call_leads')
-            .update({ status: 'pending' })
-            .eq('id', log.lead_id);
-        }
-      } else {
-        await supabase
-          .from('call_logs')
-          .update({ call_status: 'failed', notes: 'Timeout: provedor não respondeu (max tentativas)' })
-          .eq('id', log.id);
-      }
-    }
-    console.log(`[queue-executor] Released ${stuckDialing.length} stuck dialing calls with operator`);
-  }
-
   // 1. Resolve cooldowns via RPC (atomic)
   const { data: resolvedOps } = await supabase.rpc('resolve_cooldowns');
   if (resolvedOps?.length) {
@@ -667,7 +584,8 @@ async function fireDialWebhook(
     }
   } catch (error) {
     console.error('[queue-executor] Webhook error:', error);
-    // On webhook failure, release operator via RPC
+    // On webhook failure, release operator but do NOT alter call_status
+    // The call stays as 'dialing' — the provider/n8n will send the real status via /call-status
     await supabase.rpc('release_operator', { p_call_id: callLogId, p_force: true });
   }
 }
