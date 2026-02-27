@@ -244,6 +244,25 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     return { success: true, action: 'waiting', reason: 'No operator available', new_status: newStatus };
   }
 
+  // 2b. Promote scheduled calls whose time has arrived
+  const { data: dueScheduled } = await supabase
+    .from('call_logs')
+    .select('id, lead_id')
+    .eq('campaign_id', campaignId)
+    .eq('call_status', 'scheduled')
+    .lte('scheduled_for', new Date().toISOString())
+    .limit(5);
+
+  if (dueScheduled?.length) {
+    for (const sc of dueScheduled) {
+      await supabase.from('call_logs').update({ call_status: 'ready' }).eq('id', sc.id);
+      if (sc.lead_id) {
+        await supabase.from('call_leads').update({ status: 'pending' }).eq('id', sc.lead_id);
+      }
+    }
+    console.log(`[queue-executor] Promoted ${dueScheduled.length} scheduled calls to ready`);
+  }
+
   // 3a. Check for existing ready call_logs
   // Priority: first try from priority campaigns, then normal
   let priorityQuery = supabase
