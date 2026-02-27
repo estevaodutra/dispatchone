@@ -6,7 +6,7 @@ import { useInstances } from "@/hooks/useInstances";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
-import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
+import { useWebhookConfigs } from "@/hooks/useWebhookConfigs";
 import { buildGroupPayload } from "@/lib/webhook-utils";
 import { toast } from "sonner";
 
@@ -229,7 +229,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
     setSelectedGroupJids(new Set());
 
     try {
-      const webhookUrl = getWebhookUrlForCategory("groups", configs);
+      const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent";
       const payload = buildGroupPayload({
         action: "group.list",
         instance: {
@@ -242,15 +242,22 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
         },
       });
 
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const { data: proxyData, error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+        body: { url: webhookUrl, payload },
       });
 
-      if (!response.ok) throw new Error("Falha ao buscar grupos");
+      if (proxyError) throw new Error("Falha ao buscar grupos");
 
-      const data = await response.json();
+      console.log("fetchGroups proxy response:", JSON.stringify(proxyData).substring(0, 500));
+
+      // webhook-proxy returns { success, status, body } — body is a JSON string
+      let data: any;
+      try {
+        data = typeof proxyData.body === "string" ? JSON.parse(proxyData.body) : proxyData.body;
+      } catch {
+        data = proxyData;
+      }
+
       const rawGroups = data.groups || data || [];
       const groupsOnly = rawGroups.filter((item: WhatsAppGroup) => item.isGroup === true);
       setGroups(groupsOnly);
@@ -286,7 +293,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
       setExtractProgress(Math.round(((gi) / selectedArr.length) * 100));
 
       try {
-        const webhookUrl = getWebhookUrlForCategory("groups", configs);
+        const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent";
         const payload = buildGroupPayload({
           action: "group.members",
           instance: {
@@ -300,31 +307,30 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
           group: { jid },
         });
 
-        const response = await fetch(webhookUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+        const { data: proxyData, error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: { url: webhookUrl, payload },
         });
 
-        if (!response.ok) {
-          console.error(`Webhook error for group ${groupName}: ${response.status}`);
+        if (proxyError || !proxyData) {
+          console.error(`Webhook proxy error for group ${groupName}:`, proxyError);
           toast.error(`Falha ao buscar membros de "${groupName}"`);
           await new Promise(r => setTimeout(r, 500));
           continue;
         }
 
-        const responseText = await response.text();
+        console.log(`extractMembers proxy response for ${groupName}:`, JSON.stringify(proxyData).substring(0, 500));
+
         let data: any;
-        if (responseText && responseText.trim()) {
-          try {
-            data = JSON.parse(responseText);
-          } catch (parseError) {
-            console.error(`JSON parse error for group ${groupName}:`, parseError);
-            toast.error(`Resposta inválida para "${groupName}"`);
-            await new Promise(r => setTimeout(r, 500));
-            continue;
-          }
-        } else {
+        try {
+          data = typeof proxyData.body === "string" ? JSON.parse(proxyData.body) : proxyData.body;
+        } catch {
+          console.error(`JSON parse error for group ${groupName}`);
+          toast.error(`Resposta inválida para "${groupName}"`);
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
+
+        if (!data) {
           console.warn(`Empty response for group ${groupName}`);
           await new Promise(r => setTimeout(r, 500));
           continue;
