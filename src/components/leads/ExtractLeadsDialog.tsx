@@ -306,9 +306,29 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
           body: JSON.stringify(payload),
         });
 
-        if (!response.ok) throw new Error(`Falha ao buscar membros de ${groupName}`);
+        if (!response.ok) {
+          console.error(`Webhook error for group ${groupName}: ${response.status}`);
+          toast.error(`Falha ao buscar membros de "${groupName}"`);
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
 
-        const data = await response.json();
+        const responseText = await response.text();
+        let data: any;
+        if (responseText && responseText.trim()) {
+          try {
+            data = JSON.parse(responseText);
+          } catch (parseError) {
+            console.error(`JSON parse error for group ${groupName}:`, parseError);
+            toast.error(`Resposta inválida para "${groupName}"`);
+            await new Promise(r => setTimeout(r, 500));
+            continue;
+          }
+        } else {
+          console.warn(`Empty response for group ${groupName}`);
+          await new Promise(r => setTimeout(r, 500));
+          continue;
+        }
 
         // Parse response (same pattern as GroupsListTab)
         let membersList: any[] = [];
@@ -355,6 +375,9 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
             groupName,
           });
         }
+
+        // Delay between groups to avoid rate limiting
+        await new Promise(r => setTimeout(r, 500));
       } catch (error) {
         console.error(`Erro ao extrair membros de ${groupName}:`, error);
         toast.error(`Falha ao extrair membros de "${groupName}"`);
