@@ -1,50 +1,30 @@
 
 
-## Plano: Ajustes no Painel de Ligações
+## Plano: Extrair Leads de Grupos do WhatsApp
 
-### 1. Adicionar filtro de status (dropdown)
-**`src/pages/CallPanel.tsx`**:
-- Adicionar estado `statusDropdownFilter` (default `"all"`)
-- Adicionar `<Select>` ao lado do filtro de campanhas com opções: Todos os status, Agendada, AGORA!, Em Andamento, Atendida, Não Atendeu, Reagendada, Aguardando Operador
-- Passar esse filtro para `useCallPanel` ou filtrar client-side nos `sortedEntries`
+### Dados existentes (sem migração necessária)
+- `campaign_groups`: grupos vinculados (group_jid, group_name, campaign_id)
+- `group_members`: membros dos grupos (phone, name, is_admin, group_campaign_id)
+- `leads`: já tem source_type, source_group_id, source_group_name
 
-### 2. Adicionar filtro de data (date range picker)
-**`src/pages/CallPanel.tsx`**:
-- Adicionar estados `dateFrom` e `dateTo`
-- Usar `Popover` + `Calendar` com atalhos rápidos (Hoje, Ontem, 7 dias, Este mês, Limpar)
-- Filtrar entries client-side por `createdAt` dentro do range selecionado
+### Alterações
 
-### 3. Alterar formato da coluna "Entrada"
-**`src/pages/CallPanel.tsx`** (linha ~908):
-- Mudar `format(new Date(entry.createdAt), "HH:mm")` para `format(new Date(entry.createdAt), "dd/MM/yyyy HH:mm:ss")`
-- Ajustar largura da coluna `Entrada` de `w-[70px]` para `w-[160px]`
+**1. Novo componente `src/components/leads/ExtractLeadsDialog.tsx`**
+- Modal com 3 passos: Selecionar Grupos → Configurar → Prévia
+- Query `campaign_groups` + contagem de `group_members` por grupo para listar grupos disponíveis com busca e seleção múltipla
+- Configuração: campanha destino (agrupada por tipo), tags opcionais, checkboxes (ignorar existentes, ignorar inválidos, ignorar admins, manter referência)
+- Prévia: calcula totais antes de executar
+- Progresso: barra de progresso por grupo durante extração
+- Resultado: tabela resumo com detalhes por grupo
+- Lógica de extração: busca membros de `group_members`, valida, upsert em `leads` com source_type="whatsapp_group", sincroniza com `call_leads`/`dispatch_campaign_contacts` conforme tipo de campanha
 
-### 4. Reorganizar abas (remover Falhas/Canceladas, adicionar Histórico)
-**`src/pages/CallPanel.tsx`** (linhas ~761-773):
-- Remover `TabsTrigger` de "Falhas" e "Canceladas"
-- Adicionar `TabsTrigger` "Histórico" com valor `"history"`
-- Adicionar lógica: quando `statusFilter === "history"`, buscar `call_logs` com status terminais (`completed`, `no_answer`, `busy`, `voicemail`, `failed`, `cancelled`, `timeout`, `max_attempts_exceeded`) ordenados por `ended_at DESC`
+**2. Atualizar `src/pages/Leads.tsx`**
+- Substituir botão "Sincronizar" por dropdown "📥 Extrair" com 3 opções:
+  - "De Grupos do WhatsApp" → abre ExtractLeadsDialog
+  - "De Planilha (CSV/Excel)" → abre ImportLeadsDialog existente
+  - "De API Externa" → placeholder/toast
+- Adicionar estado `extractOpen` e renderizar `ExtractLeadsDialog`
 
-### 5. Implementar aba "Histórico"
-**`src/pages/CallPanel.tsx`**:
-- Adicionar query separada via `useQuery` para buscar logs com status terminais (sem deduplicação, sem limite de 200)
-- Renderizar tabela com colunas: Entrada (data completa), Status (badge colorido), Lead, Telefone, Campanha, Duração, Operador, Ações
-- Respeitar filtros de campanha, busca e data
-
-### 6. Badges de status para o Histórico
-**`src/pages/CallPanel.tsx`**:
-- Criar componente `HistoryStatusBadge` com mapeamento:
-  - `completed` → verde "Atendida"
-  - `no_answer` → laranja "N/Atendeu"
-  - `busy` → vermelho "Ocupado"
-  - `voicemail` → amarelo "Cx. Postal"
-  - `failed` → vermelho "Falhou"
-  - `cancelled` → cinza "Cancelada"
-  - `timeout` → cinza "Timeout"
-  - `max_attempts_exceeded` → vermelho escuro "Esgotado"
-
-### 7. Atualizar `useCallPanel`
-**`src/hooks/useCallPanel.ts`**:
-- Adicionar suporte a filtro `dateFrom`/`dateTo` (range) no query, usando `gte`/`lte` em `created_at`
-- Adicionar status `"history"` ao switch de status para buscar os status terminais
+**3. Atualizar `src/components/leads/index.ts`**
+- Exportar `ExtractLeadsDialog`
 
