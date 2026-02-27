@@ -225,6 +225,10 @@ export default function Leads() {
         description="Consulte, crie, modifique ou remova seus leads"
         actions={
           <div className="flex gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing}>
+              <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
+              Sync
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="gap-2">
