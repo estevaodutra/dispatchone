@@ -1,10 +1,13 @@
 import { useState, useMemo, useCallback } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useInstances } from "@/hooks/useInstances";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
+import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
+import { buildGroupPayload } from "@/lib/webhook-utils";
 import { toast } from "sonner";
 
 import {
@@ -13,24 +16,58 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Users, Search, Download, Check, X, AlertTriangle, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  SelectGroup,
+  SelectLabel,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Users,
+  Search,
+  Check,
+  X,
+  Loader2,
+  Smartphone,
+  RefreshCw,
+  ArrowLeft,
+  ArrowRight,
+  Download,
+  Eye,
+} from "lucide-react";
 
-interface GroupWithCount {
-  campaignId: string;
-  campaignName: string;
+// ── Types ──
+
+interface WhatsAppGroup {
+  phone: string;
+  name: string;
+  isGroup: boolean;
+  messagesUnread: string;
+}
+
+interface ExtractedMember {
+  phone: string;
+  name: string | null;
+  isAdmin: boolean;
   groupJid: string;
   groupName: string;
-  memberCount: number;
-  lastSync: string | null;
 }
 
 interface ExtractionResult {
@@ -41,7 +78,7 @@ interface ExtractionResult {
   invalid: number;
 }
 
-type Step = "select" | "configure" | "executing" | "done";
+type Step = 1 | 2 | 3 | 4 | "importing" | "done";
 
 interface Props {
   open: boolean;
@@ -51,296 +88,84 @@ interface Props {
 export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-
-  // Step state
-  const [step, setStep] = useState<Step>("select");
-  const [search, setSearch] = useState("");
-  const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
-
-  // Config
-  const [campaignId, setCampaignId] = useState("");
-  const [campaignType, setCampaignType] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [tagInput, setTagInput] = useState("");
-  const [ignoreExisting, setIgnoreExisting] = useState(true);
-  const [ignoreInvalid, setIgnoreInvalid] = useState(true);
-  const [ignoreAdmins, setIgnoreAdmins] = useState(false);
-  const [keepReference, setKeepReference] = useState(true);
-
-  // Execution
-  const [progress, setProgress] = useState(0);
-  const [currentGroup, setCurrentGroup] = useState("");
-  const [currentGroupIndex, setCurrentGroupIndex] = useState(0);
-  const [results, setResults] = useState<ExtractionResult[]>([]);
-
-  // Campaigns
+  const { instances } = useInstances();
+  const { configs } = useWebhookConfigs();
   const { campaigns: callCampaigns } = useCallCampaigns();
   const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
   const { campaigns: groupCampaigns } = useGroupCampaigns();
 
-  // Fetch groups with member counts
-  const { data: groups = [], isLoading: groupsLoading } = useQuery({
-    queryKey: ["extract-groups-list"],
-    queryFn: async () => {
-      const { data: cGroups } = await supabase
-        .from("campaign_groups")
-        .select("campaign_id, group_jid, group_name, added_at")
-        .order("group_name");
+  // ── Step state ──
+  const [step, setStep] = useState<Step>(1);
 
-      if (!cGroups?.length) return [];
+  // Step 1 – Instance
+  const [selectedInstanceId, setSelectedInstanceId] = useState("");
 
-      // Get campaign names
-      const campaignIds = [...new Set(cGroups.map(g => g.campaign_id))];
-      const { data: campaigns } = await supabase
-        .from("group_campaigns")
-        .select("id, name")
-        .in("id", campaignIds);
-      const campaignMap = new Map((campaigns || []).map(c => [c.id, c.name]));
+  // Step 2 – Groups
+  const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsFetched, setGroupsFetched] = useState(false);
+  const [selectedGroupJids, setSelectedGroupJids] = useState<Set<string>>(new Set());
+  const [groupSearch, setGroupSearch] = useState("");
 
-      // Get member counts per group_campaign_id
-      const { data: members } = await supabase
-        .from("group_members")
-        .select("group_campaign_id, phone")
-        .eq("status", "active");
+  // Step 3 – Extract
+  const [ignoreInvalid, setIgnoreInvalid] = useState(true);
+  const [ignoreAdmins, setIgnoreAdmins] = useState(false);
+  const [keepReference, setKeepReference] = useState(true);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState("");
+  const [extractedMembers, setExtractedMembers] = useState<ExtractedMember[]>([]);
+  const [extractionStats, setExtractionStats] = useState({ total: 0, valid: 0, duplicates: 0, invalid: 0 });
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [extractProgress, setExtractProgress] = useState(0);
+  const [extractCurrentGroup, setExtractCurrentGroup] = useState("");
 
-      const countMap = new Map<string, number>();
-      (members || []).forEach(m => {
-        if (!m.phone.includes("-group")) {
-          countMap.set(m.group_campaign_id, (countMap.get(m.group_campaign_id) || 0) + 1);
-        }
-      });
+  // Step 4 – Campaign
+  const [campaignId, setCampaignId] = useState("");
+  const [campaignType, setCampaignType] = useState("");
+  const [ignoreCampaignExisting, setIgnoreCampaignExisting] = useState(true);
 
-      return cGroups.map(g => ({
-        campaignId: g.campaign_id,
-        campaignName: campaignMap.get(g.campaign_id) || "—",
-        groupJid: g.group_jid,
-        groupName: g.group_name,
-        memberCount: countMap.get(g.campaign_id) || 0,
-        lastSync: g.added_at,
-      })) as GroupWithCount[];
-    },
-    enabled: open,
-  });
+  // Importing
+  const [importProgress, setImportProgress] = useState(0);
+  const [importResults, setImportResults] = useState<ExtractionResult[]>([]);
 
-  const filteredGroups = useMemo(() =>
-    groups.filter(g => g.groupName.toLowerCase().includes(search.toLowerCase())),
-    [groups, search]
+  // ── Derived ──
+  const connectedInstances = useMemo(
+    () => instances?.filter((i) => i.status === "connected") || [],
+    [instances]
   );
 
-  const selectedTotal = useMemo(() =>
-    groups.filter(g => selectedGroups.has(g.campaignId)).reduce((s, g) => s + g.memberCount, 0),
-    [groups, selectedGroups]
+  const selectedInstance = useMemo(
+    () => instances?.find((i) => i.id === selectedInstanceId),
+    [instances, selectedInstanceId]
   );
 
-  const toggleGroup = (id: string) => {
-    const next = new Set(selectedGroups);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    setSelectedGroups(next);
-  };
+  const filteredGroups = useMemo(
+    () => groups.filter((g) => g.name.toLowerCase().includes(groupSearch.toLowerCase())),
+    [groups, groupSearch]
+  );
 
-  const toggleAll = () => {
-    if (selectedGroups.size === groups.length) setSelectedGroups(new Set());
-    else setSelectedGroups(new Set(groups.map(g => g.campaignId)));
-  };
+  const selectedGroupsData = useMemo(
+    () => groups.filter((g) => selectedGroupJids.has(g.phone)),
+    [groups, selectedGroupJids]
+  );
 
-  const addTag = () => {
-    const t = tagInput.trim();
-    if (t && !tags.includes(t)) setTags([...tags, t]);
-    setTagInput("");
-  };
+  const totalMembers = useMemo(
+    () => selectedGroupsData.reduce((s, g) => s + parseInt(g.messagesUnread || "0", 10), 0),
+    [selectedGroupsData]
+  );
 
-  const handleCampaignChange = (val: string) => {
-    // format: type::id
-    const [type, id] = val.split("::");
-    setCampaignType(type);
-    setCampaignId(id);
-  };
-
-  const resetState = () => {
-    setStep("select");
-    setSearch("");
-    setSelectedGroups(new Set());
-    setCampaignId("");
-    setCampaignType("");
-    setTags([]);
-    setTagInput("");
-    setIgnoreExisting(true);
-    setIgnoreInvalid(true);
-    setIgnoreAdmins(false);
-    setKeepReference(true);
-    setProgress(0);
-    setResults([]);
-  };
-
-  const handleClose = (o: boolean) => {
-    if (!o) resetState();
-    onOpenChange(o);
-  };
-
-  const execute = useCallback(async () => {
-    if (!user) return;
-    setStep("executing");
-    const selected = groups.filter(g => selectedGroups.has(g.campaignId));
-    const allResults: ExtractionResult[] = [];
-    let totalExtracted = 0;
-
-    for (let gi = 0; gi < selected.length; gi++) {
-      const group = selected[gi];
-      setCurrentGroup(group.groupName);
-      setCurrentGroupIndex(gi);
-      setProgress(0);
-
-      const result: ExtractionResult = {
-        groupName: group.groupName,
-        total: 0,
-        extracted: 0,
-        ignored: 0,
-        invalid: 0,
-      };
-
-      // Fetch members
-      let query = supabase
-        .from("group_members")
-        .select("phone, name, is_admin")
-        .eq("group_campaign_id", group.campaignId)
-        .eq("status", "active");
-
-      const { data: members } = await query;
-      const validMembers = (members || []).filter(m => !m.phone.includes("-group"));
-      
-      if (ignoreAdmins) {
-        const filtered = validMembers.filter(m => !m.is_admin);
-        result.total = validMembers.length;
-        const adminsRemoved = validMembers.length - filtered.length;
-        // We'll process filtered only
-        validMembers.length = 0;
-        validMembers.push(...filtered);
-      } else {
-        result.total = validMembers.length;
-      }
-
-      // Get existing phones if ignoring
-      let existingPhones = new Set<string>();
-      if (ignoreExisting && campaignId) {
-        const { data: existing } = await supabase
-          .from("leads")
-          .select("phone")
-          .eq("active_campaign_id", campaignId)
-          .eq("user_id", user.id);
-        existingPhones = new Set((existing || []).map(e => e.phone));
-      }
-
-      // Process in batches
-      const batchSize = 100;
-      for (let i = 0; i < validMembers.length; i += batchSize) {
-        const batch = validMembers.slice(i, i + batchSize);
-        const toInsert: any[] = [];
-
-        for (const member of batch) {
-          const phone = member.phone.replace(/\D/g, "");
-
-          if (ignoreInvalid && phone.length < 10) {
-            result.invalid++;
-            continue;
-          }
-
-          if (existingPhones.has(phone)) {
-            result.ignored++;
-            continue;
-          }
-
-          const leadData: any = {
-            user_id: user.id,
-            phone,
-            name: member.name || null,
-            status: "active",
-            source_type: "whatsapp_group",
-            tags: tags.length > 0 ? tags : [],
-          };
-
-          if (campaignId) {
-            leadData.active_campaign_id = campaignId;
-            leadData.active_campaign_type = campaignType;
-          }
-
-          if (keepReference) {
-            leadData.source_group_id = group.campaignId;
-            leadData.source_group_name = group.groupName;
-            leadData.source_name = group.campaignName;
-          }
-
-          toInsert.push(leadData);
-          existingPhones.add(phone); // prevent duplicates within same extraction
-        }
-
-        if (toInsert.length > 0) {
-          const { data: upserted, error } = await supabase
-            .from("leads")
-            .upsert(toInsert, { onConflict: "phone,user_id", ignoreDuplicates: false })
-            .select("id, phone");
-
-          if (!error && upserted) {
-            result.extracted += upserted.length;
-
-            // Sync to campaign-specific tables
-            if (campaignType === "ligacao" && campaignId) {
-              const rows = upserted.map(l => ({
-                campaign_id: campaignId,
-                user_id: user.id,
-                phone: l.phone,
-                status: "pending",
-              }));
-              await supabase.from("call_leads").upsert(rows as any, { onConflict: "phone,campaign_id" });
-            }
-
-            if (campaignType === "despacho" && campaignId) {
-              const rows = upserted.map(l => ({
-                campaign_id: campaignId,
-                user_id: user.id,
-                lead_id: l.id,
-                status: "active",
-              }));
-              await supabase.from("dispatch_campaign_contacts").upsert(rows as any, { onConflict: "campaign_id,lead_id" });
-            }
-          } else if (error) {
-            // If upsert fails, count as ignored
-            result.ignored += toInsert.length;
-          }
-        }
-
-        setProgress(Math.round(((i + batch.length) / validMembers.length) * 100));
-      }
-
-      // Members that were admins and skipped
-      if (ignoreAdmins) {
-        const adminsCount = result.total - validMembers.length;
-        // already accounted in total but not processed
-      }
-
-      allResults.push(result);
-      totalExtracted += result.extracted;
-    }
-
-    setResults(allResults);
-    setStep("done");
-
-    // Invalidate queries
-    queryClient.invalidateQueries({ queryKey: ["leads"] });
-    queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
-    queryClient.invalidateQueries({ queryKey: ["call-leads"] });
-    queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
-
-    toast.success(`${totalExtracted} leads extraídos com sucesso!`);
-  }, [user, groups, selectedGroups, campaignId, campaignType, tags, ignoreExisting, ignoreInvalid, ignoreAdmins, keepReference, queryClient]);
-
-  const totalResults = useMemo(() =>
-    results.reduce((acc, r) => ({
-      total: acc.total + r.total,
-      extracted: acc.extracted + r.extracted,
-      ignored: acc.ignored + r.ignored,
-      invalid: acc.invalid + r.invalid,
-    }), { total: 0, extracted: 0, ignored: 0, invalid: 0 }),
-    [results]
+  const totalResults = useMemo(
+    () =>
+      importResults.reduce(
+        (acc, r) => ({
+          total: acc.total + r.total,
+          extracted: acc.extracted + r.extracted,
+          ignored: acc.ignored + r.ignored,
+          invalid: acc.invalid + r.invalid,
+        }),
+        { total: 0, extracted: 0, ignored: 0, invalid: 0 }
+      ),
+    [importResults]
   );
 
   const selectedCampaignLabel = useMemo(() => {
@@ -350,8 +175,335 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
       ...dispatchCampaigns.map((c: any) => ({ id: c.id, name: c.name })),
       ...groupCampaigns.map((c: any) => ({ id: c.id, name: c.name })),
     ];
-    return all.find(c => c.id === campaignId)?.name || "";
+    return all.find((c) => c.id === campaignId)?.name || "";
   }, [campaignId, callCampaigns, dispatchCampaigns, groupCampaigns]);
+
+  // ── Helpers ──
+  const resetState = () => {
+    setStep(1);
+    setSelectedInstanceId("");
+    setGroups([]);
+    setGroupsLoading(false);
+    setGroupsFetched(false);
+    setSelectedGroupJids(new Set());
+    setGroupSearch("");
+    setIgnoreInvalid(true);
+    setIgnoreAdmins(false);
+    setKeepReference(true);
+    setTags([]);
+    setTagInput("");
+    setExtractedMembers([]);
+    setExtractionStats({ total: 0, valid: 0, duplicates: 0, invalid: 0 });
+    setIsExtracting(false);
+    setExtractProgress(0);
+    setExtractCurrentGroup("");
+    setCampaignId("");
+    setCampaignType("");
+    setIgnoreCampaignExisting(true);
+    setImportProgress(0);
+    setImportResults([]);
+  };
+
+  const handleClose = (o: boolean) => {
+    if (!o) resetState();
+    onOpenChange(o);
+  };
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (t && !tags.includes(t)) setTags([...tags, t]);
+    setTagInput("");
+  };
+
+  const handleCampaignChange = (val: string) => {
+    const [type, id] = val.split("::");
+    setCampaignType(type);
+    setCampaignId(id);
+  };
+
+  // ── Step 2: Fetch groups from WhatsApp API ──
+  const fetchGroups = async () => {
+    if (!selectedInstance) return;
+    setGroupsLoading(true);
+    setGroupsFetched(true);
+    setSelectedGroupJids(new Set());
+
+    try {
+      const webhookUrl = getWebhookUrlForCategory("groups", configs);
+      const payload = buildGroupPayload({
+        action: "group.list",
+        instance: {
+          id: selectedInstance.id,
+          name: selectedInstance.name,
+          phone: selectedInstance.phoneNumber || "",
+          provider: selectedInstance.provider,
+          externalId: selectedInstance.idInstance || "",
+          externalToken: selectedInstance.tokenInstance || "",
+        },
+      });
+
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) throw new Error("Falha ao buscar grupos");
+
+      const data = await response.json();
+      const rawGroups = data.groups || data || [];
+      const groupsOnly = rawGroups.filter((item: WhatsAppGroup) => item.isGroup === true);
+      setGroups(groupsOnly);
+      toast.success(`${groupsOnly.length} grupo(s) encontrado(s)!`);
+    } catch (error) {
+      console.error("Erro ao listar grupos:", error);
+      toast.error("Falha ao listar grupos. Tente novamente.");
+      setGroups([]);
+    } finally {
+      setGroupsLoading(false);
+    }
+  };
+
+  // ── Step 3: Extract members from selected groups ──
+  const extractMembers = useCallback(async () => {
+    if (!selectedInstance) return;
+    setIsExtracting(true);
+    setExtractProgress(0);
+
+    const allMembers: ExtractedMember[] = [];
+    const selectedArr = Array.from(selectedGroupJids);
+    const phoneSet = new Set<string>();
+    let totalCount = 0;
+    let validCount = 0;
+    let dupCount = 0;
+    let invalidCount = 0;
+
+    for (let gi = 0; gi < selectedArr.length; gi++) {
+      const jid = selectedArr[gi];
+      const groupData = groups.find((g) => g.phone === jid);
+      const groupName = groupData?.name || jid;
+      setExtractCurrentGroup(groupName);
+      setExtractProgress(Math.round(((gi) / selectedArr.length) * 100));
+
+      try {
+        const webhookUrl = getWebhookUrlForCategory("groups", configs);
+        const payload = buildGroupPayload({
+          action: "group.members",
+          instance: {
+            id: selectedInstance.id,
+            name: selectedInstance.name,
+            phone: selectedInstance.phoneNumber || "",
+            provider: selectedInstance.provider,
+            externalId: selectedInstance.idInstance || "",
+            externalToken: selectedInstance.tokenInstance || "",
+          },
+          group: { jid },
+        });
+
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) throw new Error(`Falha ao buscar membros de ${groupName}`);
+
+        const data = await response.json();
+
+        // Parse response (same pattern as GroupsListTab)
+        let membersList: any[] = [];
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            if (item.participants && Array.isArray(item.participants)) {
+              membersList.push(...item.participants);
+            }
+          }
+        } else if (data.participants) {
+          membersList = data.participants;
+        } else if (data.members) {
+          membersList = data.members;
+        }
+
+        for (const m of membersList) {
+          if (!m.phone || m.phone.includes("-group")) continue;
+          const phone = m.phone.replace(/\D/g, "");
+          totalCount++;
+
+          const isAdmin = m.isAdmin || m.isSuperAdmin || false;
+          if (ignoreAdmins && isAdmin) {
+            invalidCount++;
+            continue;
+          }
+
+          if (ignoreInvalid && phone.length < 10) {
+            invalidCount++;
+            continue;
+          }
+
+          if (phoneSet.has(phone)) {
+            dupCount++;
+            continue;
+          }
+
+          phoneSet.add(phone);
+          validCount++;
+          allMembers.push({
+            phone,
+            name: m.name || null,
+            isAdmin,
+            groupJid: jid,
+            groupName,
+          });
+        }
+      } catch (error) {
+        console.error(`Erro ao extrair membros de ${groupName}:`, error);
+        toast.error(`Falha ao extrair membros de "${groupName}"`);
+      }
+    }
+
+    setExtractProgress(100);
+    setExtractedMembers(allMembers);
+    setExtractionStats({ total: totalCount, valid: validCount, duplicates: dupCount, invalid: invalidCount });
+    setIsExtracting(false);
+  }, [selectedInstance, selectedGroupJids, groups, configs, ignoreAdmins, ignoreInvalid]);
+
+  // ── Step 4: Import to campaign ──
+  const importLeads = useCallback(async () => {
+    if (!user || !campaignId) return;
+    setStep("importing");
+    setImportProgress(0);
+
+    // Group members by source group for detailed results
+    const groupMap = new Map<string, ExtractedMember[]>();
+    for (const m of extractedMembers) {
+      const arr = groupMap.get(m.groupJid) || [];
+      arr.push(m);
+      groupMap.set(m.groupJid, arr);
+    }
+
+    // Check existing leads in campaign if needed
+    let existingPhones = new Set<string>();
+    if (ignoreCampaignExisting) {
+      const { data: existing } = await supabase
+        .from("leads")
+        .select("phone")
+        .eq("active_campaign_id", campaignId)
+        .eq("user_id", user.id);
+      existingPhones = new Set((existing || []).map((e) => e.phone));
+    }
+
+    const allResults: ExtractionResult[] = [];
+    let totalExtracted = 0;
+    const groupEntries = Array.from(groupMap.entries());
+
+    for (let gi = 0; gi < groupEntries.length; gi++) {
+      const [jid, members] = groupEntries[gi];
+      const groupName = members[0]?.groupName || jid;
+      const result: ExtractionResult = { groupName, total: members.length, extracted: 0, ignored: 0, invalid: 0 };
+
+      const toInsert: any[] = [];
+      for (const member of members) {
+        if (existingPhones.has(member.phone)) {
+          result.ignored++;
+          continue;
+        }
+
+        const leadData: any = {
+          user_id: user.id,
+          phone: member.phone,
+          name: member.name || null,
+          status: "active",
+          source_type: "whatsapp_group",
+          tags: tags.length > 0 ? tags : [],
+          active_campaign_id: campaignId,
+          active_campaign_type: campaignType,
+        };
+
+        if (keepReference) {
+          leadData.source_group_id = jid;
+          leadData.source_group_name = groupName;
+        }
+
+        toInsert.push(leadData);
+        existingPhones.add(member.phone);
+      }
+
+      // Batch upsert
+      if (toInsert.length > 0) {
+        const batchSize = 100;
+        for (let i = 0; i < toInsert.length; i += batchSize) {
+          const batch = toInsert.slice(i, i + batchSize);
+          const { data: upserted, error } = await supabase
+            .from("leads")
+            .upsert(batch, { onConflict: "phone,user_id", ignoreDuplicates: false })
+            .select("id, phone");
+
+          if (!error && upserted) {
+            result.extracted += upserted.length;
+
+            if (campaignType === "ligacao") {
+              const rows = upserted.map((l) => ({
+                campaign_id: campaignId,
+                user_id: user.id,
+                phone: l.phone,
+                status: "pending",
+              }));
+              await supabase.from("call_leads").upsert(rows as any, { onConflict: "phone,campaign_id" });
+            }
+
+            if (campaignType === "despacho") {
+              const rows = upserted.map((l) => ({
+                campaign_id: campaignId,
+                user_id: user.id,
+                lead_id: l.id,
+                status: "active",
+              }));
+              await supabase.from("dispatch_campaign_contacts").upsert(rows as any, { onConflict: "campaign_id,lead_id" });
+            }
+          } else if (error) {
+            result.ignored += batch.length;
+          }
+        }
+      }
+
+      allResults.push(result);
+      totalExtracted += result.extracted;
+      setImportProgress(Math.round(((gi + 1) / groupEntries.length) * 100));
+    }
+
+    setImportResults(allResults);
+    setStep("done");
+
+    queryClient.invalidateQueries({ queryKey: ["leads"] });
+    queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
+    queryClient.invalidateQueries({ queryKey: ["call-leads"] });
+    queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
+
+    toast.success(`${totalExtracted} leads importados com sucesso!`);
+  }, [user, extractedMembers, campaignId, campaignType, tags, keepReference, ignoreCampaignExisting, queryClient]);
+
+  // ── Toggle helpers ──
+  const toggleGroup = (jid: string) => {
+    const next = new Set(selectedGroupJids);
+    if (next.has(jid)) next.delete(jid);
+    else next.add(jid);
+    setSelectedGroupJids(next);
+  };
+
+  const toggleAllGroups = () => {
+    if (selectedGroupJids.size === filteredGroups.length) setSelectedGroupJids(new Set());
+    else setSelectedGroupJids(new Set(filteredGroups.map((g) => g.phone)));
+  };
+
+  // ── Step indicator ──
+  const stepLabels = [
+    { num: 1, label: "Instância" },
+    { num: 2, label: "Listar Grupos" },
+    { num: 3, label: "Extrair Leads" },
+    { num: 4, label: "Atribuir Campanha" },
+  ];
+
+  const currentStepNum = typeof step === "number" ? step : step === "importing" ? 4 : 4;
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -359,82 +511,327 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            {step === "done" ? "✅ Extração Concluída!" : step === "executing" ? "Extraindo Leads..." : "Extrair Leads de Grupos"}
+            {step === "done"
+              ? "✅ Importação Concluída!"
+              : step === "importing"
+              ? "Importando Leads..."
+              : "Extrair Leads de Grupos"}
           </DialogTitle>
-          {step === "select" && (
+          {step === 1 && (
             <DialogDescription>
               Extraia membros de grupos do WhatsApp e transforme em leads para suas campanhas.
             </DialogDescription>
           )}
         </DialogHeader>
 
-        {/* STEP: SELECT */}
-        {step === "select" && (
+        {/* Step indicator */}
+        {step !== "done" && (
+          <div className="flex items-center gap-1 mb-2">
+            {stepLabels.map((s, i) => (
+              <div key={s.num} className="flex items-center gap-1">
+                <div
+                  className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${
+                    s.num < currentStepNum
+                      ? "bg-primary/20 text-primary"
+                      : s.num === currentStepNum
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {s.num < currentStepNum ? <Check className="h-3 w-3" /> : null}
+                  {s.label}
+                </div>
+                {i < stepLabels.length - 1 && <div className="w-4 h-px bg-border" />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ═══ STEP 1: Select Instance ═══ */}
+        {step === 1 && (
           <div className="space-y-4">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Passo 1 — Selecionar Grupos</h3>
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Passo 1 — Selecionar Instância
+            </h3>
+            <p className="text-sm text-muted-foreground">
+              Selecione a instância do WhatsApp para buscar os grupos:
+            </p>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto">
+              {instances?.length === 0 ? (
+                <p className="text-center text-sm text-muted-foreground py-8">Nenhuma instância cadastrada.</p>
+              ) : (
+                instances?.map((inst) => {
+                  const isConnected = inst.status === "connected";
+                  return (
+                    <div
+                      key={inst.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                        selectedInstanceId === inst.id
+                          ? "border-primary bg-primary/5"
+                          : isConnected
+                          ? "border-border hover:bg-muted/50 cursor-pointer"
+                          : "border-border opacity-50 cursor-not-allowed"
+                      }`}
+                      onClick={() => isConnected && setSelectedInstanceId(inst.id)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Smartphone className="h-5 w-5 text-muted-foreground" />
+                        <div>
+                          <p className="font-medium text-sm">{inst.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {inst.provider} • {inst.phoneNumber || "Sem número"}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant={isConnected ? "default" : "secondary"}
+                        className={`text-xs ${
+                          isConnected
+                            ? "bg-green-500/20 text-green-400 border-green-500/30"
+                            : inst.status === "waitingConnection"
+                            ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
+                            : "bg-red-500/20 text-red-400 border-red-500/30"
+                        }`}
+                      >
+                        {isConnected ? "🟢 Conectado" : inst.status === "waitingConnection" ? "🟡 Aguardando" : "🔴 Desconectado"}
+                      </Badge>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">⚠️ Apenas instâncias conectadas podem listar grupos.</p>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => handleClose(false)}>Cancelar</Button>
+              <Button disabled={!selectedInstanceId} onClick={() => { setStep(2); fetchGroups(); }}>
+                Continuar <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ STEP 2: List Groups ═══ */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                Passo 2 — Listar Grupos
+              </h3>
+              <Button variant="ghost" size="sm" onClick={fetchGroups} disabled={groupsLoading}>
+                <RefreshCw className={`h-4 w-4 mr-1 ${groupsLoading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+            </div>
+
+            <p className="text-sm text-muted-foreground">
+              📱 Instância: <strong>{selectedInstance?.name}</strong>{" "}
+              {selectedInstance?.phoneNumber && `(${selectedInstance.phoneNumber})`}
+            </p>
 
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Buscar grupo..." className="pl-9" value={search} onChange={e => setSearch(e.target.value)} />
+              <Input placeholder="Buscar grupo..." className="pl-9" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} />
             </div>
 
-            <div className="max-h-64 overflow-y-auto space-y-2 border rounded-lg p-2">
+            <div className="max-h-64 overflow-y-auto space-y-1 border rounded-lg p-2">
               {groupsLoading ? (
-                <p className="text-center text-sm text-muted-foreground py-4">Carregando grupos...</p>
+                <div className="flex items-center justify-center py-8 gap-2 text-muted-foreground">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span className="text-sm">Buscando grupos da instância...</span>
+                </div>
               ) : filteredGroups.length === 0 ? (
-                <p className="text-center text-sm text-muted-foreground py-4">Nenhum grupo encontrado.</p>
+                <p className="text-center text-sm text-muted-foreground py-8">
+                  {groupsFetched ? "Nenhum grupo encontrado." : "Clique em Atualizar para buscar grupos."}
+                </p>
               ) : (
-                filteredGroups.map(g => (
+                filteredGroups.map((g) => (
                   <div
-                    key={g.campaignId}
-                    className="flex items-center justify-between p-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => toggleGroup(g.campaignId)}
+                    key={g.phone}
+                    className={`flex items-center justify-between p-3 rounded-lg cursor-pointer transition-colors ${
+                      selectedGroupJids.has(g.phone) ? "bg-primary/10" : "hover:bg-muted/50"
+                    }`}
+                    onClick={() => toggleGroup(g.phone)}
                   >
-                    <div className="flex items-center gap-3">
-                      <Checkbox checked={selectedGroups.has(g.campaignId)} />
-                      <div>
-                        <p className="font-medium text-sm">{g.groupName}</p>
-                        <p className="text-xs text-muted-foreground">{g.campaignName}</p>
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      <Checkbox checked={selectedGroupJids.has(g.phone)} />
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">{g.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{g.phone}</p>
                       </div>
                     </div>
-                    <Badge variant="secondary" className="text-xs">👥 {g.memberCount} membros</Badge>
+                    <Badge variant="secondary" className="text-xs shrink-0 ml-2">
+                      👥 {g.messagesUnread || "?"}
+                    </Badge>
                   </div>
                 ))
               )}
             </div>
 
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer text-sm">
-                <Checkbox
-                  checked={groups.length > 0 && selectedGroups.size === groups.length}
-                  onCheckedChange={toggleAll}
-                />
-                Selecionar todos ({groups.length} grupos)
-              </label>
-              <p className="text-sm text-muted-foreground">
-                📊 {selectedGroups.size} grupos │ {selectedTotal} membros
-              </p>
+            {filteredGroups.length > 0 && (
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <Checkbox
+                    checked={filteredGroups.length > 0 && selectedGroupJids.size === filteredGroups.length}
+                    onCheckedChange={toggleAllGroups}
+                  />
+                  Selecionar todos ({filteredGroups.length} grupos)
+                </label>
+                <p className="text-sm text-muted-foreground">
+                  📊 {selectedGroupJids.size} grupos selecionados
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-between pt-2">
+              <Button variant="outline" onClick={() => setStep(1)}>
+                <ArrowLeft className="mr-1 h-4 w-4" /> Voltar
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => handleClose(false)}>Cancelar</Button>
+                <Button disabled={selectedGroupJids.size === 0} onClick={() => setStep(3)}>
+                  Continuar <ArrowRight className="ml-1 h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* STEP: CONFIGURE */}
-        {step === "configure" && (
-          <div className="space-y-5">
-            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Passo 2 — Configurar Extração</h3>
+        {/* ═══ STEP 3: Extract Leads ═══ */}
+        {step === 3 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Passo 3 — Extrair Leads
+            </h3>
+
+            <div className="text-sm text-muted-foreground space-y-1">
+              <p>📱 Instância: <strong>{selectedInstance?.name}</strong></p>
+              <p>👥 Grupos: <strong>{selectedGroupJids.size} selecionados</strong></p>
+            </div>
+
+            <div className="space-y-3 border rounded-lg p-4">
+              <p className="text-sm font-medium">Opções de Extração</p>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={ignoreInvalid} onCheckedChange={(v) => setIgnoreInvalid(!!v)} />
+                Ignorar números inválidos (menos de 10 dígitos)
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={ignoreAdmins} onCheckedChange={(v) => setIgnoreAdmins(!!v)} />
+                Ignorar administradores dos grupos
+              </label>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={keepReference} onCheckedChange={(v) => setKeepReference(!!v)} />
+                Manter referência do grupo de origem
+              </label>
+            </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Atribuir à Campanha *</label>
+              <label className="text-sm font-medium">Adicionar Tags (opcional)</label>
+              <div className="flex flex-wrap gap-1 mb-1">
+                {tags.map((t) => (
+                  <Badge key={t} variant="secondary" className="gap-1">
+                    {t}
+                    <X className="h-3 w-3 cursor-pointer" onClick={() => setTags(tags.filter((x) => x !== t))} />
+                  </Badge>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="Nova tag..."
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTag())}
+                  className="flex-1"
+                />
+                <Button variant="outline" size="sm" onClick={addTag} disabled={!tagInput.trim()}>
+                  Adicionar
+                </Button>
+              </div>
+            </div>
+
+            {/* Extraction progress / results */}
+            {isExtracting && (
+              <div className="border rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Processando: <strong>{extractCurrentGroup}</strong>
+                </div>
+                <Progress value={extractProgress} className="h-2" />
+                <p className="text-xs text-muted-foreground text-center">{extractProgress}%</p>
+              </div>
+            )}
+
+            {!isExtracting && extractedMembers.length > 0 && (
+              <div className="border rounded-lg p-4 space-y-3">
+                <p className="text-sm font-medium">✅ Membros extraídos!</p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="text-center p-2 bg-muted/50 rounded-lg">
+                    <p className="text-lg font-bold">{extractionStats.total}</p>
+                    <p className="text-xs text-muted-foreground">Total</p>
+                  </div>
+                  <div className="text-center p-2 bg-green-500/10 rounded-lg">
+                    <p className="text-lg font-bold text-green-500">{extractionStats.valid}</p>
+                    <p className="text-xs text-muted-foreground">Válidos</p>
+                  </div>
+                  <div className="text-center p-2 bg-yellow-500/10 rounded-lg">
+                    <p className="text-lg font-bold text-yellow-500">{extractionStats.duplicates}</p>
+                    <p className="text-xs text-muted-foreground">Duplicados</p>
+                  </div>
+                  <div className="text-center p-2 bg-red-500/10 rounded-lg">
+                    <p className="text-lg font-bold text-red-500">{extractionStats.invalid}</p>
+                    <p className="text-xs text-muted-foreground">Inválidos</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-between pt-2">
+              <Button variant="outline" onClick={() => { setExtractedMembers([]); setStep(2); }}>
+                <ArrowLeft className="mr-1 h-4 w-4" /> Voltar
+              </Button>
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => handleClose(false)}>Cancelar</Button>
+                {extractedMembers.length === 0 ? (
+                  <Button onClick={extractMembers} disabled={isExtracting}>
+                    {isExtracting ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Download className="mr-1 h-4 w-4" />}
+                    Extrair Membros
+                  </Button>
+                ) : (
+                  <Button onClick={() => setStep(4)}>
+                    Continuar <ArrowRight className="ml-1 h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ STEP 4: Assign Campaign ═══ */}
+        {step === 4 && (
+          <div className="space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Passo 4 — Atribuir a Campanha
+            </h3>
+
+            <p className="text-sm text-muted-foreground">
+              📊 <strong>{extractionStats.valid}</strong> leads prontos para importar
+            </p>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Selecione a campanha de destino *</label>
               <Select value={campaignId ? `${campaignType}::${campaignId}` : ""} onValueChange={handleCampaignChange}>
-                <SelectTrigger><SelectValue placeholder="Selecione uma campanha..." /></SelectTrigger>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma campanha..." />
+                </SelectTrigger>
                 <SelectContent>
                   {callCampaigns.length > 0 && (
                     <SelectGroup>
                       <SelectLabel>📞 Campanhas de Ligação</SelectLabel>
                       {callCampaigns.map((c: any) => (
                         <SelectItem key={c.id} value={`ligacao::${c.id}`}>
-                          {c.name}
-                          <span className="ml-2 text-xs text-muted-foreground">[{c.status}]</span>
+                          {c.name} <span className="ml-1 text-xs text-muted-foreground">[{c.status}]</span>
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -444,8 +841,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
                       <SelectLabel>📱 Campanhas de Despacho</SelectLabel>
                       {dispatchCampaigns.map((c: any) => (
                         <SelectItem key={c.id} value={`despacho::${c.id}`}>
-                          {c.name}
-                          <span className="ml-2 text-xs text-muted-foreground">[{c.status}]</span>
+                          {c.name} <span className="ml-1 text-xs text-muted-foreground">[{c.status}]</span>
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -455,8 +851,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
                       <SelectLabel>👥 Campanhas de Grupo</SelectLabel>
                       {groupCampaigns.map((c: any) => (
                         <SelectItem key={c.id} value={`grupos::${c.id}`}>
-                          {c.name}
-                          <span className="ml-2 text-xs text-muted-foreground">[{c.status}]</span>
+                          {c.name} <span className="ml-1 text-xs text-muted-foreground">[{c.status}]</span>
                         </SelectItem>
                       ))}
                     </SelectGroup>
@@ -465,151 +860,113 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Adicionar Tags (opcional)</label>
-              <div className="flex flex-wrap gap-1 mb-2">
-                {tags.map(t => (
-                  <Badge key={t} variant="secondary" className="gap-1">
-                    {t}
-                    <X className="h-3 w-3 cursor-pointer" onClick={() => setTags(tags.filter(x => x !== t))} />
-                  </Badge>
-                ))}
-              </div>
+            <div className="space-y-3 border rounded-lg p-4">
+              <p className="text-sm font-medium">Opções de Importação</p>
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <Checkbox checked={ignoreCampaignExisting} onCheckedChange={(v) => setIgnoreCampaignExisting(!!v)} />
+                Ignorar leads que já existem nesta campanha
+              </label>
+            </div>
+
+            <div className="flex justify-between pt-2">
+              <Button variant="outline" onClick={() => setStep(3)}>
+                <ArrowLeft className="mr-1 h-4 w-4" /> Voltar
+              </Button>
               <div className="flex gap-2">
-                <Input
-                  placeholder="Digite uma tag..."
-                  value={tagInput}
-                  onChange={e => setTagInput(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && (e.preventDefault(), addTag())}
-                />
-                <Button variant="outline" size="sm" onClick={addTag}>Adicionar</Button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <label className="text-sm font-medium">Opções de Extração</label>
-              <div className="space-y-2">
-                {[
-                  { checked: ignoreExisting, set: setIgnoreExisting, label: "Ignorar leads que já existem na campanha" },
-                  { checked: ignoreInvalid, set: setIgnoreInvalid, label: "Ignorar números inválidos (menos de 10 dígitos)" },
-                  { checked: ignoreAdmins, set: setIgnoreAdmins, label: "Ignorar administradores dos grupos" },
-                  { checked: keepReference, set: setKeepReference, label: "Manter referência do grupo de origem" },
-                ].map(opt => (
-                  <label key={opt.label} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Checkbox checked={opt.checked} onCheckedChange={(v) => opt.set(!!v)} />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border p-4 bg-muted/30">
-              <p className="text-sm font-medium mb-2">📊 Prévia</p>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-muted-foreground">Grupos:</span> {selectedGroups.size}</div>
-                <div><span className="text-muted-foreground">Membros:</span> {selectedTotal}</div>
-                <div><span className="text-muted-foreground">Campanha:</span> {selectedCampaignLabel || "—"}</div>
-                <div><span className="text-muted-foreground">Tags:</span> {tags.length > 0 ? tags.join(", ") : "—"}</div>
+                <Button variant="outline" onClick={() => handleClose(false)}>Cancelar</Button>
+                <Button disabled={!campaignId} onClick={importLeads}>
+                  <Check className="mr-1 h-4 w-4" />
+                  Importar {extractionStats.valid} Leads
+                </Button>
               </div>
             </div>
           </div>
         )}
 
-        {/* STEP: EXECUTING */}
-        {step === "executing" && (
+        {/* ═══ IMPORTING ═══ */}
+        {step === "importing" && (
           <div className="space-y-4 py-4">
-            <div className="text-center space-y-2">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-              <p className="text-sm text-muted-foreground">
-                Processando grupo {currentGroupIndex + 1} de {selectedGroups.size}...
-              </p>
-              <p className="font-medium">{currentGroup}</p>
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Importando leads para a campanha...
             </div>
-            <Progress value={progress} className="h-2" />
-            <p className="text-center text-sm text-muted-foreground">{progress}%</p>
+            <Progress value={importProgress} className="h-3" />
+            <p className="text-center text-sm text-muted-foreground">{importProgress}%</p>
           </div>
         )}
 
-        {/* STEP: DONE */}
+        {/* ═══ DONE ═══ */}
         {step === "done" && (
           <div className="space-y-4">
             <div className="text-center py-4">
-              <div className="h-12 w-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mx-auto mb-3">
-                <Check className="h-6 w-6 text-emerald-600" />
-              </div>
-              <p className="text-lg font-semibold">{totalResults.extracted} leads extraídos com sucesso!</p>
+              <div className="text-4xl mb-2">✅</div>
+              <p className="text-xl font-bold">{totalResults.extracted} leads importados</p>
+              <p className="text-sm text-muted-foreground">com sucesso!</p>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
-              {[
-                { icon: "👥", value: totalResults.total, label: "Total" },
-                { icon: "✅", value: totalResults.extracted, label: "Extraídos" },
-                { icon: "⚠️", value: totalResults.ignored, label: "Ignorados" },
-                { icon: "❌", value: totalResults.invalid, label: "Inválidos" },
-              ].map(m => (
-                <div key={m.label} className="text-center p-3 border rounded-lg">
-                  <p className="text-lg font-bold">{m.icon} {m.value}</p>
-                  <p className="text-xs text-muted-foreground">{m.label}</p>
+            <div className="border rounded-lg p-4 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">📱 Instância</span>
+                <span className="font-medium">{selectedInstance?.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">👥 Grupos</span>
+                <span className="font-medium">{selectedGroupJids.size} grupos</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">📁 Campanha</span>
+                <span className="font-medium">{selectedCampaignLabel}</span>
+              </div>
+              {tags.length > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">🏷️ Tags</span>
+                  <span className="font-medium">{tags.join(", ")}</span>
                 </div>
-              ))}
+              )}
             </div>
 
-            {results.length > 1 && (
-              <div className="border rounded-lg">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Grupo</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Extraídos</TableHead>
-                      <TableHead className="text-right">Ignorados</TableHead>
-                      <TableHead className="text-right">Inválidos</TableHead>
+            {importResults.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Grupo</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                    <TableHead className="text-right">Importados</TableHead>
+                    <TableHead className="text-right">Ignorados</TableHead>
+                    <TableHead className="text-right">Inválidos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {importResults.map((r, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-medium max-w-[180px] truncate">{r.groupName}</TableCell>
+                      <TableCell className="text-right">{r.total}</TableCell>
+                      <TableCell className="text-right text-green-500">{r.extracted}</TableCell>
+                      <TableCell className="text-right text-yellow-500">{r.ignored}</TableCell>
+                      <TableCell className="text-right text-red-500">{r.invalid}</TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {results.map(r => (
-                      <TableRow key={r.groupName}>
-                        <TableCell className="font-medium">{r.groupName}</TableCell>
-                        <TableCell className="text-right">{r.total}</TableCell>
-                        <TableCell className="text-right">{r.extracted}</TableCell>
-                        <TableCell className="text-right">{r.ignored}</TableCell>
-                        <TableCell className="text-right">{r.invalid}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                  ))}
+                  <TableRow className="font-bold">
+                    <TableCell>TOTAL</TableCell>
+                    <TableCell className="text-right">{totalResults.total}</TableCell>
+                    <TableCell className="text-right text-green-500">{totalResults.extracted}</TableCell>
+                    <TableCell className="text-right text-yellow-500">{totalResults.ignored}</TableCell>
+                    <TableCell className="text-right text-red-500">{totalResults.invalid}</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
             )}
 
-            <div className="text-sm text-muted-foreground space-y-1">
-              <p>📁 Campanha: {selectedCampaignLabel || "—"}</p>
-              {tags.length > 0 && <p>🏷️ Tags: {tags.join(", ")}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => handleClose(false)}>
+                Fechar
+              </Button>
+              <Button onClick={() => { handleClose(false); window.location.href = "/leads"; }}>
+                <Eye className="mr-1 h-4 w-4" /> Ver Leads
+              </Button>
             </div>
           </div>
         )}
-
-        <DialogFooter>
-          {step === "select" && (
-            <>
-              <Button variant="outline" onClick={() => handleClose(false)}>Cancelar</Button>
-              <Button disabled={selectedGroups.size === 0} onClick={() => setStep("configure")}>
-                Continuar
-              </Button>
-            </>
-          )}
-          {step === "configure" && (
-            <>
-              <Button variant="outline" onClick={() => setStep("select")}>Voltar</Button>
-              <Button disabled={!campaignId} onClick={execute}>
-                <Download className="h-4 w-4 mr-2" />
-                Extrair {selectedTotal} Leads
-              </Button>
-            </>
-          )}
-          {step === "done" && (
-            <Button onClick={() => handleClose(false)}>Fechar</Button>
-          )}
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
