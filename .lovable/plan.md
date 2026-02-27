@@ -1,30 +1,50 @@
 
 
-## Diagnóstico
+## Plano: Ajustes no Painel de Ligações
 
-O `CallActionDialog` (modal do operador para registrar ação pós-ligação) **não executa automações**. Ele apenas salva o `action_id` no `call_logs` e libera o operador, mas nunca chama o webhook configurado na ação.
+### 1. Adicionar filtro de status (dropdown)
+**`src/pages/CallPanel.tsx`**:
+- Adicionar estado `statusDropdownFilter` (default `"all"`)
+- Adicionar `<Select>` ao lado do filtro de campanhas com opções: Todos os status, Agendada, AGORA!, Em Andamento, Atendida, Não Atendeu, Reagendada, Aguardando Operador
+- Passar esse filtro para `useCallPanel` ou filtrar client-side nos `sortedEntries`
 
-O código correto já existe no `registerActionMutation` dentro de `useCallPanel.ts` (linhas 664-774), que executa webhook, sequência, tag e status. Porém o `CallActionDialog` usa seu próprio `handleSave` que ignora completamente a automação.
+### 2. Adicionar filtro de data (date range picker)
+**`src/pages/CallPanel.tsx`**:
+- Adicionar estados `dateFrom` e `dateTo`
+- Usar `Popover` + `Calendar` com atalhos rápidos (Hoje, Ontem, 7 dias, Este mês, Limpar)
+- Filtrar entries client-side por `createdAt` dentro do range selecionado
 
-## Plano
+### 3. Alterar formato da coluna "Entrada"
+**`src/pages/CallPanel.tsx`** (linha ~908):
+- Mudar `format(new Date(entry.createdAt), "HH:mm")` para `format(new Date(entry.createdAt), "dd/MM/yyyy HH:mm:ss")`
+- Ajustar largura da coluna `Entrada` de `w-[70px]` para `w-[160px]`
 
-### Arquivo: `src/components/operator/CallActionDialog.tsx`
+### 4. Reorganizar abas (remover Falhas/Canceladas, adicionar Histórico)
+**`src/pages/CallPanel.tsx`** (linhas ~761-773):
+- Remover `TabsTrigger` de "Falhas" e "Canceladas"
+- Adicionar `TabsTrigger` "Histórico" com valor `"history"`
+- Adicionar lógica: quando `statusFilter === "history"`, buscar `call_logs` com status terminais (`completed`, `no_answer`, `busy`, `voicemail`, `failed`, `cancelled`, `timeout`, `max_attempts_exceeded`) ordenados por `ended_at DESC`
 
-Após salvar o `call_logs` e liberar o operador (linha ~146), adicionar a execução da automação:
+### 5. Implementar aba "Histórico"
+**`src/pages/CallPanel.tsx`**:
+- Adicionar query separada via `useQuery` para buscar logs com status terminais (sem deduplicação, sem limite de 200)
+- Renderizar tabela com colunas: Entrada (data completa), Status (badge colorido), Lead, Telefone, Campanha, Duração, Operador, Ações
+- Respeitar filtros de campanha, busca e data
 
-1. Buscar os dados da ação (`action_type`, `action_config`) de `call_script_actions` pelo `selectedActionId`
-2. Se `action_type === "webhook"` e `action_config.url` existe, invocar `webhook-proxy` com os dados do lead
-3. Se `action_type === "start_sequence"`, invocar a edge function correspondente (dispatch ou group)
-4. Se `action_type === "add_tag"`, atualizar `custom_fields.tags` do lead
-5. Se `action_type === "update_status"`, atualizar o status do lead
-6. Mostrar toast de erro se a automação falhar (sem bloquear o registro da ligação)
+### 6. Badges de status para o Histórico
+**`src/pages/CallPanel.tsx`**:
+- Criar componente `HistoryStatusBadge` com mapeamento:
+  - `completed` → verde "Atendida"
+  - `no_answer` → laranja "N/Atendeu"
+  - `busy` → vermelho "Ocupado"
+  - `voicemail` → amarelo "Cx. Postal"
+  - `failed` → vermelho "Falhou"
+  - `cancelled` → cinza "Cancelada"
+  - `timeout` → cinza "Timeout"
+  - `max_attempts_exceeded` → vermelho escuro "Esgotado"
 
-Isso reutiliza a mesma lógica que já funciona no `registerActionMutation` do `useCallPanel.ts`.
-
-### Detalhes técnicos
-
-- Importar `supabase.functions.invoke("webhook-proxy", ...)` para o caso webhook
-- Buscar dados do lead via `call_leads` para enviar no payload
-- O `leadId` já está disponível nas props do componente
-- A automação roda após o save principal, dentro de um try/catch separado para não bloquear o registro
+### 7. Atualizar `useCallPanel`
+**`src/hooks/useCallPanel.ts`**:
+- Adicionar suporte a filtro `dateFrom`/`dateTo` (range) no query, usando `gte`/`lte` em `created_at`
+- Adicionar status `"history"` ao switch de status para buscar os status terminais
 
