@@ -458,7 +458,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
         };
 
         if (keepReference) {
-          leadData.source_group_id = jid;
+          // source_group_id é uuid, não pode receber JID string
           leadData.source_group_name = groupName;
         }
 
@@ -499,6 +499,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
               await supabase.from("dispatch_campaign_contacts").upsert(rows as any, { onConflict: "campaign_id,lead_id" });
             }
           } else if (error) {
+            console.error("[ExtractLeads] Upsert error:", error.message, error);
             result.ignored += batch.length;
           }
         }
