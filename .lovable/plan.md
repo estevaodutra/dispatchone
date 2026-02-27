@@ -1,30 +1,29 @@
 
 
-## Plano: Extrair Leads de Grupos do WhatsApp
+## Plano: Reescrever ExtractLeadsDialog com 4 Passos
 
-### Dados existentes (sem migração necessária)
-- `campaign_groups`: grupos vinculados (group_jid, group_name, campaign_id)
-- `group_members`: membros dos grupos (phone, name, is_admin, group_campaign_id)
-- `leads`: já tem source_type, source_group_id, source_group_name
+O modal atual lista grupos do banco de dados (`campaign_groups`). O correto é buscar grupos em tempo real da API do WhatsApp, usando o mesmo padrão do `GroupsListTab`.
 
-### Alterações
+### Arquivo: `src/components/leads/ExtractLeadsDialog.tsx` (reescrever)
 
-**1. Novo componente `src/components/leads/ExtractLeadsDialog.tsx`**
-- Modal com 3 passos: Selecionar Grupos → Configurar → Prévia
-- Query `campaign_groups` + contagem de `group_members` por grupo para listar grupos disponíveis com busca e seleção múltipla
-- Configuração: campanha destino (agrupada por tipo), tags opcionais, checkboxes (ignorar existentes, ignorar inválidos, ignorar admins, manter referência)
-- Prévia: calcula totais antes de executar
-- Progresso: barra de progresso por grupo durante extração
-- Resultado: tabela resumo com detalhes por grupo
-- Lógica de extração: busca membros de `group_members`, valida, upsert em `leads` com source_type="whatsapp_group", sincroniza com `call_leads`/`dispatch_campaign_contacts` conforme tipo de campanha
+**4 passos em vez de 3:**
 
-**2. Atualizar `src/pages/Leads.tsx`**
-- Substituir botão "Sincronizar" por dropdown "📥 Extrair" com 3 opções:
-  - "De Grupos do WhatsApp" → abre ExtractLeadsDialog
-  - "De Planilha (CSV/Excel)" → abre ImportLeadsDialog existente
-  - "De API Externa" → placeholder/toast
-- Adicionar estado `extractOpen` e renderizar `ExtractLeadsDialog`
+1. **Passo 1 — Selecionar Instância**: Listar instâncias de `useInstances()`, filtrar conectadas, permitir selecionar uma. Mostrar nome, provider, telefone e status com badge colorido.
 
-**3. Atualizar `src/components/leads/index.ts`**
-- Exportar `ExtractLeadsDialog`
+2. **Passo 2 — Listar Grupos**: Usar `buildGroupPayload({ action: "group.list", ... })` + `getWebhookUrlForCategory("groups", configs)` (mesmo padrão do `GroupsListTab`). Filtrar `isGroup === true`. Exibir com checkbox, nome do grupo, JID e badge "👥 X membros" (usar `messagesUnread` ou dados retornados). Busca por nome. Selecionar todos.
+
+3. **Passo 3 — Extrair Leads**: Para cada grupo selecionado, buscar membros via `buildGroupPayload({ action: "group.members", ... group: { jid } })`. Opções: ignorar inválidos, ignorar admins, manter referência, tags. Barra de progresso por grupo. Prévia com resumo (total, válidos, duplicados, inválidos).
+
+4. **Passo 4 — Atribuir Campanha**: Selecionar campanha destino (agrupada por tipo: ligação/despacho/grupo). Checkbox "ignorar leads que já existem nesta campanha". Botão "Importar X Leads". Upsert em `leads` + sync para `call_leads`/`dispatch_campaign_contacts` conforme tipo.
+
+**Resultado final**: Tela de sucesso com detalhes (instância, grupos, campanha, tags, importados/existentes/inválidos). Botões "Ver Leads" e "Fechar".
+
+### Dependências reutilizadas
+- `useInstances()` para lista de instâncias
+- `useWebhookConfigs()` + `getWebhookUrlForCategory("groups")` para URL do webhook
+- `buildGroupPayload()` de `webhook-utils.ts` para payload padronizado
+- `useCallCampaigns()`, `useDispatchCampaigns()`, `useGroupCampaigns()` para dropdown de campanhas
+
+### Sem migração de banco necessária
+A tabela `leads` já possui `source_type`, `source_group_name`, `source_group_id`.
 
