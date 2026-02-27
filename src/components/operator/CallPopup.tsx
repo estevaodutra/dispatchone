@@ -1,13 +1,11 @@
 import { useState } from "react";
-import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, ExternalLink, Copy, Check, History } from "lucide-react";
+import { Phone, PhoneOff, Minus, Maximize2, Loader2, AlertTriangle, PhoneMissed, ExternalLink, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useOperatorCall, PopupCallStatus } from "@/hooks/useOperatorCall";
 import { CooldownOverlay } from "./CooldownOverlay";
 import { CallActionDialog } from "./CallActionDialog";
-import { InlineReschedule } from "./InlineReschedule";
-import { PreviousCallsSheet } from "./PreviousCallsSheet";
 import { cn } from "@/lib/utils";
 
 const formatDuration = (s: number) => {
@@ -39,7 +37,6 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
 
   const [minimized, setMinimized] = useState(false);
   const [showCallDialog, setShowCallDialog] = useState(false);
-  const [showPreviousCalls, setShowPreviousCalls] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const copyExternalId = (id: string) => {
@@ -126,12 +123,6 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
             <span className={cn("font-semibold text-sm", config.color)}>{config.label}</span>
           </div>
           <div className="flex items-center gap-1">
-            {operator && (
-              <Button variant="ghost" size="sm" className="h-6 text-xs gap-1 px-2" onClick={() => setShowPreviousCalls(true)}>
-                <History className="h-3 w-3" />
-                Anteriores
-              </Button>
-            )}
             {callStatus === "on_call" && (
               <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">⏱️ {formatDuration(callDuration)}</span>
             )}
@@ -187,10 +178,6 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
             </div>
           )}
 
-          {/* Inline Reschedule - visible during active call */}
-          {isActive && currentCall && (
-            <InlineReschedule callId={currentCall.id} />
-          )}
 
           {/* Dialing state */}
           {callStatus === "dialing" && !dialingTooLong && (
@@ -312,17 +299,10 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
           isPriority={currentCall.isPriority}
           callStatus={currentCall.callStatus}
           externalCallId={currentCall.externalCallId}
+          operatorId={operator?.id}
         />
       )}
 
-      {/* Previous Calls Sheet */}
-      {operator && (
-        <PreviousCallsSheet
-          open={showPreviousCalls}
-          onOpenChange={setShowPreviousCalls}
-          operatorId={operator.id}
-        />
-      )}
     </>
   );
 }

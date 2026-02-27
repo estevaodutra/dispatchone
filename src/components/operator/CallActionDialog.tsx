@@ -12,9 +12,11 @@ import { useCallActions } from "@/hooks/useCallActions";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check } from "lucide-react";
+import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addHours, format, setHours, setMinutes, addDays } from "date-fns";
+import { InlineReschedule } from "./InlineReschedule";
+import { PreviousCallsSheet } from "./PreviousCallsSheet";
 
 interface CallActionDialogProps {
   open: boolean;
@@ -32,6 +34,7 @@ interface CallActionDialogProps {
   isPriority: boolean;
   callStatus?: string;
   externalCallId?: string | null;
+  operatorId?: string;
 }
 
 interface CallLogEntry {
@@ -56,11 +59,12 @@ export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
   initialObservations, attemptNumber, maxAttempts, isPriority,
-  callStatus, externalCallId,
+  callStatus, externalCallId, operatorId,
 }: CallActionDialogProps) {
   const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [showPreviousCalls, setShowPreviousCalls] = useState(false);
 
   const copyExternalId = (id: string) => {
     navigator.clipboard.writeText(id);
@@ -250,14 +254,20 @@ export function CallActionDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetState(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden">
         {/* Lead Header */}
-        <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 text-center space-y-2">
-          <div className="flex items-center justify-center gap-2">
+        <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 space-y-2">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={() => setShowPreviousCalls(true)}>
+              <History className="h-3 w-3" />
+              Anteriores
+            </Button>
             <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
               {leadName.charAt(0).toUpperCase()}
             </div>
+            <div className="w-[85px]" /> {/* spacer for balance */}
           </div>
           <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
             {leadName}
@@ -316,6 +326,11 @@ export function CallActionDialog({
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
+
+                <div className="border-t" />
+
+                {/* Inline Reschedule */}
+                <InlineReschedule callId={callId} />
 
                 <div className="border-t" />
 
@@ -502,5 +517,13 @@ export function CallActionDialog({
         </Tabs>
       </DialogContent>
     </Dialog>
+    {operatorId && (
+      <PreviousCallsSheet
+        open={showPreviousCalls}
+        onOpenChange={setShowPreviousCalls}
+        operatorId={operatorId}
+      />
+    )}
+    </>
   );
 }
