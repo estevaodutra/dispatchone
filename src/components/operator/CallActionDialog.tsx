@@ -16,7 +16,20 @@ import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check,
 import { cn } from "@/lib/utils";
 import { addHours, format, setHours, setMinutes, addDays } from "date-fns";
 import { InlineReschedule } from "./InlineReschedule";
-import { PreviousCallsSheet } from "./PreviousCallsSheet";
+
+interface PreviousCallData {
+  id: string;
+  campaign_id: string;
+  lead_id: string;
+  attempt_number: number;
+  duration_seconds: number;
+  notes: string | null;
+  call_status: string | null;
+  external_call_id: string | null;
+  operator_id: string | null;
+  call_leads: { name: string | null; phone: string } | null;
+  call_campaigns: { name: string; retry_count: number | null; is_priority: boolean | null } | null;
+}
 
 interface CallActionDialogProps {
   open: boolean;
@@ -35,6 +48,7 @@ interface CallActionDialogProps {
   callStatus?: string;
   externalCallId?: string | null;
   operatorId?: string;
+  depth?: number;
 }
 
 interface CallLogEntry {
@@ -59,17 +73,46 @@ export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
   initialObservations, attemptNumber, maxAttempts, isPriority,
-  callStatus, externalCallId, operatorId,
+  callStatus, externalCallId, operatorId, depth = 0,
 }: CallActionDialogProps) {
   const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
-  const [showPreviousCalls, setShowPreviousCalls] = useState(false);
+  const [previousCallData, setPreviousCallData] = useState<PreviousCallData | null>(null);
+  const [showPreviousDialog, setShowPreviousDialog] = useState(false);
+  const [loadingPrevious, setLoadingPrevious] = useState(false);
 
   const copyExternalId = (id: string) => {
     navigator.clipboard.writeText(id);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const fetchPreviousCall = async () => {
+    if (!operatorId) return;
+    setLoadingPrevious(true);
+    try {
+      const { data } = await (supabase as any)
+        .from("call_logs")
+        .select("id, campaign_id, lead_id, attempt_number, duration_seconds, notes, call_status, external_call_id, operator_id, call_leads(name, phone), call_campaigns!call_logs_campaign_id_fkey(name, retry_count, is_priority)")
+        .eq("operator_id", operatorId)
+        .neq("id", callId)
+        .in("call_status", ["completed", "no_answer", "failed", "cancelled", "scheduled", "busy", "voicemail", "timeout"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        setPreviousCallData(data);
+        setShowPreviousDialog(true);
+      } else {
+        toast({ title: "Nenhuma ligação anterior encontrada" });
+      }
+    } catch (err: any) {
+      toast({ title: "Erro ao buscar anterior", description: err.message, variant: "destructive" });
+    } finally {
+      setLoadingPrevious(false);
+    }
   };
 
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
@@ -260,10 +303,12 @@ export function CallActionDialog({
         {/* Lead Header */}
         <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 space-y-2">
           <div className="flex items-center justify-between">
-            <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={() => setShowPreviousCalls(true)}>
-              <History className="h-3 w-3" />
-              Anteriores
-            </Button>
+            {depth < 3 && operatorId ? (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={fetchPreviousCall} disabled={loadingPrevious}>
+                {loadingPrevious ? <Loader2 className="h-3 w-3 animate-spin" /> : <History className="h-3 w-3" />}
+                Anterior
+              </Button>
+            ) : <div />}
             <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
               {leadName.charAt(0).toUpperCase()}
             </div>
@@ -517,11 +562,25 @@ export function CallActionDialog({
         </Tabs>
       </DialogContent>
     </Dialog>
-    {operatorId && (
-      <PreviousCallsSheet
-        open={showPreviousCalls}
-        onOpenChange={setShowPreviousCalls}
+    {showPreviousDialog && previousCallData && (
+      <CallActionDialog
+        open={showPreviousDialog}
+        onOpenChange={setShowPreviousDialog}
+        callId={previousCallData.id}
+        campaignId={previousCallData.campaign_id}
+        leadId={previousCallData.lead_id}
+        leadName={previousCallData.call_leads?.name || "—"}
+        leadPhone={previousCallData.call_leads?.phone || "—"}
+        campaignName={previousCallData.call_campaigns?.name || "—"}
+        duration={previousCallData.duration_seconds || 0}
+        initialObservations={previousCallData.notes || ""}
+        attemptNumber={previousCallData.attempt_number || 1}
+        maxAttempts={previousCallData.call_campaigns?.retry_count || 3}
+        isPriority={previousCallData.call_campaigns?.is_priority || false}
+        callStatus={previousCallData.call_status || undefined}
+        externalCallId={previousCallData.external_call_id}
         operatorId={operatorId}
+        depth={depth + 1}
       />
     )}
     </>
