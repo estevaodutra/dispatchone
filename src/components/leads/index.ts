@@ -7,3 +7,4 @@ export { BulkActionsBar } from "./BulkActionsBar";
 export { LeadHistoryDialog } from "./LeadHistoryDialog";
 export { AddToCampaignDialog } from "./AddToCampaignDialog";
 export { BulkTagDialog } from "./BulkTagDialog";
+export { ExtractLeadsDialog } from "./ExtractLeadsDialog";
