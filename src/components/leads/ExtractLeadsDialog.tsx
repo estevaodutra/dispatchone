@@ -336,23 +336,32 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
           continue;
         }
 
-        // Parse response (same pattern as GroupsListTab)
+        // Parse response — support multiple response structures
         let membersList: any[] = [];
-        if (Array.isArray(data)) {
-          for (const item of data) {
+        const src = data.data || data; // unwrap common data.data wrapper
+        if (Array.isArray(src)) {
+          for (const item of src) {
             if (item.participants && Array.isArray(item.participants)) {
               membersList.push(...item.participants);
+            } else if (item.id || item.phone) {
+              // direct array of member objects
+              membersList.push(item);
             }
           }
-        } else if (data.participants) {
-          membersList = data.participants;
-        } else if (data.members) {
-          membersList = data.members;
+        } else if (src.participants) {
+          membersList = src.participants;
+        } else if (src.members) {
+          membersList = src.members;
         }
 
+        console.log(`[ExtractLeads] Group "${groupName}": ${membersList.length} members found`, membersList[0]);
+
         for (const m of membersList) {
-          if (!m.phone || m.phone.includes("-group")) continue;
-          const phone = m.phone.replace(/\D/g, "");
+          // Normalizar: o webhook pode retornar phone OU id (JID format)
+          const rawPhone = m.phone || m.id || "";
+          if (!rawPhone || rawPhone.includes("-group") || rawPhone.includes("@g.us")) continue;
+          const phone = rawPhone.replace(/@s\.whatsapp\.net$/, "").replace(/\D/g, "");
+          if (!phone) continue;
           totalCount++;
 
           const isAdmin = m.isAdmin || m.isSuperAdmin || false;
@@ -375,7 +384,7 @@ export function ExtractLeadsDialog({ open, onOpenChange }: Props) {
           validCount++;
           allMembers.push({
             phone,
-            name: m.name || null,
+            name: m.name || m.pushName || m.notify || null,
             isAdmin,
             groupJid: jid,
             groupName,
