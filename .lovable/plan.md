@@ -1,32 +1,31 @@
 
 
-## Plano: Corrigir URL do webhook e usar webhook-proxy
+## Plano: Corrigir parsing de membros na extração
 
-### Problema
-1. O `ExtractLeadsDialog` envia requisições diretamente do browser (`fetch(webhookUrl)`) em vez de usar a Edge Function `webhook-proxy`, causando problemas de CORS
-2. A URL usada é a da categoria "groups" (`/webhook/groups`), mas o correto é `https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent`
+### Problema raiz
+O webhook retorna membros com campo `id` (ex: `5511999999999@s.whatsapp.net`) em vez de `phone`. O código na linha 354 verifica `m.phone` que não existe, então **todos os membros são ignorados** pelo `continue`. O resultado é 0 leads extraídos, e portanto nada é importado no passo 4.
 
 ### Correções em `src/components/leads/ExtractLeadsDialog.tsx`
 
-**1. Substituir `fetch()` direto por `supabase.functions.invoke("webhook-proxy")`** — tanto em `fetchGroups()` (linha ~245) quanto em `extractMembers()` (linha ~303):
-
+**1. Extrair telefone de `m.id` ou `m.phone` (linha ~353-355):**
 ```typescript
-// Antes:
-const response = await fetch(webhookUrl, { method: "POST", ... });
-
-// Depois:
-const webhookUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent";
-const { data, error } = await supabase.functions.invoke("webhook-proxy", {
-  body: { url: webhookUrl, payload },
-});
+// Normalizar: o webhook pode retornar phone OU id (JID format)
+const rawPhone = m.phone || m.id || "";
+if (!rawPhone || rawPhone.includes("-group") || rawPhone.includes("@g.us")) continue;
+const phone = rawPhone.replace(/@s\.whatsapp\.net$/, "").replace(/\D/g, "");
 ```
 
-**2. Ajustar parsing da resposta** — o `webhook-proxy` retorna `{ data }` diretamente em vez de um `Response` object, então o parsing de JSON muda:
-- Remover `response.text()` / `JSON.parse()` 
-- Usar `data` diretamente do retorno do invoke
+**2. Expandir parsing de `membersList` (linha ~340-351):**
+Adicionar suporte para:
+- `data.data` (wrapper comum de APIs)
+- `data.data.participants`
+- Array de objetos com `id` direto (sem wrapper `participants`)
 
-**3. Adicionar import do supabase client:**
-```typescript
-import { supabase } from "@/integrations/supabase/client";
-```
+**3. Adicionar fallback para `m.name` (linha ~378):**
+Usar `m.name || m.pushName || m.notify || null` para cobrir diferentes formatos.
+
+**4. Adicionar `console.log` do `membersList.length` e do primeiro membro** para diagnóstico futuro.
+
+### Sem outras mudanças necessárias
+A lógica de upsert (passo 4), invalidação de queries e sync com `call_leads`/`dispatch_campaign_contacts` já está correta — o problema é exclusivamente que `extractedMembers` fica vazio porque o campo `phone` não existe nos dados retornados.
 
