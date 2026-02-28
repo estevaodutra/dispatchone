@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,23 +12,25 @@ import { useCallActions } from "@/hooks/useCallActions";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check, History } from "lucide-react";
+import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check, History, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addHours, format, setHours, setMinutes, addDays } from "date-fns";
 import { InlineReschedule } from "./InlineReschedule";
 
-interface PreviousCallData {
-  id: string;
-  campaign_id: string;
-  lead_id: string;
-  attempt_number: number;
-  duration_seconds: number;
-  notes: string | null;
-  call_status: string | null;
-  external_call_id: string | null;
-  operator_id: string | null;
-  call_leads: { name: string | null; phone: string } | null;
-  call_campaigns: { name: string; retry_count: number | null; is_priority: boolean | null } | null;
+interface CallDialogData {
+  callId: string;
+  campaignId: string;
+  leadId: string;
+  leadName: string;
+  leadPhone: string;
+  campaignName: string;
+  duration: number;
+  notes: string;
+  attemptNumber: number;
+  maxAttempts: number;
+  isPriority: boolean;
+  callStatus?: string;
+  externalCallId?: string | null;
 }
 
 interface CallActionDialogProps {
@@ -48,7 +50,7 @@ interface CallActionDialogProps {
   callStatus?: string;
   externalCallId?: string | null;
   operatorId?: string;
-  depth?: number;
+  depth?: number; // kept for backwards compat but unused
 }
 
 interface CallLogEntry {
@@ -73,14 +75,61 @@ export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
   initialObservations, attemptNumber, maxAttempts, isPriority,
-  callStatus, externalCallId, operatorId, depth = 0,
+  callStatus, externalCallId, operatorId,
 }: CallActionDialogProps) {
-  const { actions, isLoading: actionsLoading } = useCallActions(campaignId);
+  // --- Navigation state ---
+  const initialData: CallDialogData = {
+    callId, campaignId, leadId, leadName, leadPhone, campaignName,
+    duration, notes: initialObservations || "", attemptNumber, maxAttempts,
+    isPriority, callStatus, externalCallId,
+  };
+
+  const [currentData, setCurrentData] = useState<CallDialogData>(initialData);
+  const [forwardStack, setForwardStack] = useState<CallDialogData[]>([]);
+  const [loadingPrevious, setLoadingPrevious] = useState(false);
+
+  // Keep currentData in sync with props when dialog reopens
+  useEffect(() => {
+    if (open) {
+      setCurrentData({
+        callId, campaignId, leadId, leadName, leadPhone, campaignName,
+        duration, notes: initialObservations || "", attemptNumber, maxAttempts,
+        isPriority, callStatus, externalCallId,
+      });
+      setForwardStack([]);
+    }
+  }, [open, callId]);
+
+  // --- Per-view state ---
+  const { actions, isLoading: actionsLoading } = useCallActions(currentData.campaignId);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
-  const [previousCallData, setPreviousCallData] = useState<PreviousCallData | null>(null);
-  const [showPreviousDialog, setShowPreviousDialog] = useState(false);
-  const [loadingPrevious, setLoadingPrevious] = useState(false);
+  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
+  const [notes, setNotes] = useState(currentData.notes);
+  const [scheduledDate, setScheduledDate] = useState("");
+  const [scheduledTime, setScheduledTime] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [history, setHistory] = useState<CallLogEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  // Reset per-view state when currentData changes
+  useEffect(() => {
+    setSelectedActionId(null);
+    setNotes(currentData.notes);
+    setScheduledDate("");
+    setScheduledTime("");
+    setCopied(false);
+  }, [currentData.callId]);
+
+  const selectedAction = actions.find(a => a.id === selectedActionId);
+  const isScheduleType = selectedAction?.actionType === "none" &&
+    selectedAction?.name?.toLowerCase().includes("agend");
+
+  const fallbackActions = [
+    { id: "__success", name: "Sucesso", color: "#10b981", icon: "✅", actionType: "none" as const },
+    { id: "__failure", name: "Sem Sucesso", color: "#ef4444", icon: "❌", actionType: "none" as const },
+  ];
+  const displayActions = actions.length > 0 ? actions : fallbackActions;
 
   const copyExternalId = (id: string) => {
     navigator.clipboard.writeText(id);
@@ -88,23 +137,47 @@ export function CallActionDialog({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const fetchPreviousCall = async () => {
+  const setScheduleShortcut = (date: Date) => {
+    setScheduledDate(format(date, "yyyy-MM-dd"));
+    setScheduledTime(format(date, "HH:mm"));
+  };
+
+  // --- Navigation handlers ---
+  const handleGoBack = async () => {
     if (!operatorId) return;
     setLoadingPrevious(true);
     try {
+      // Collect all call IDs already in the forwardStack + current to exclude
+      const excludeIds = [currentData.callId, ...forwardStack.map(d => d.callId)];
+
       const { data } = await (supabase as any)
         .from("call_logs")
         .select("id, campaign_id, lead_id, attempt_number, duration_seconds, notes, call_status, external_call_id, operator_id, call_leads(name, phone), call_campaigns!call_logs_campaign_id_fkey(name, retry_count, is_priority)")
         .eq("operator_id", operatorId)
-        .neq("id", callId)
+        .not("id", "in", `(${excludeIds.join(",")})`)
         .in("call_status", ["completed", "no_answer", "failed", "cancelled", "scheduled", "busy", "voicemail", "timeout"])
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (data) {
-        setPreviousCallData(data);
-        setShowPreviousDialog(true);
+        // Push current to forward stack
+        setForwardStack(prev => [...prev, currentData]);
+        setCurrentData({
+          callId: data.id,
+          campaignId: data.campaign_id,
+          leadId: data.lead_id,
+          leadName: data.call_leads?.name || "—",
+          leadPhone: data.call_leads?.phone || "—",
+          campaignName: data.call_campaigns?.name || "—",
+          duration: data.duration_seconds || 0,
+          notes: data.notes || "",
+          attemptNumber: data.attempt_number || 1,
+          maxAttempts: data.call_campaigns?.retry_count || 3,
+          isPriority: data.call_campaigns?.is_priority || false,
+          callStatus: data.call_status || undefined,
+          externalCallId: data.external_call_id,
+        });
       } else {
         toast({ title: "Nenhuma ligação anterior encontrada" });
       }
@@ -115,41 +188,24 @@ export function CallActionDialog({
     }
   };
 
-  const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
-  const [notes, setNotes] = useState(initialObservations || "");
-  const [scheduledDate, setScheduledDate] = useState("");
-  const [scheduledTime, setScheduledTime] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [history, setHistory] = useState<CallLogEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-
-  const selectedAction = actions.find(a => a.id === selectedActionId);
-  const isScheduleType = selectedAction?.actionType === "none" &&
-    selectedAction?.name?.toLowerCase().includes("agend");
-
-  // Default fallback actions when campaign has none
-  const fallbackActions = [
-    { id: "__success", name: "Sucesso", color: "#10b981", icon: "✅", actionType: "none" as const },
-    { id: "__failure", name: "Sem Sucesso", color: "#ef4444", icon: "❌", actionType: "none" as const },
-  ];
-
-  const displayActions = actions.length > 0 ? actions : fallbackActions;
-
-  const setScheduleShortcut = (date: Date) => {
-    setScheduledDate(format(date, "yyyy-MM-dd"));
-    setScheduledTime(format(date, "HH:mm"));
+  const handleGoForward = () => {
+    if (forwardStack.length === 0) return;
+    const next = [...forwardStack];
+    const item = next.pop()!;
+    setForwardStack(next);
+    setCurrentData(item);
   };
 
-  // Fetch history
+  // Fetch history for current lead/campaign
   useEffect(() => {
-    if (!open || !leadId || !campaignId) return;
+    if (!open || !currentData.leadId || !currentData.campaignId) return;
     const fetchHistory = async () => {
       setHistoryLoading(true);
       const { data } = await (supabase as any)
         .from("call_logs")
         .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, created_at, call_operators!call_logs_operator_id_fkey(operator_name)")
-        .eq("lead_id", leadId)
-        .eq("campaign_id", campaignId)
+        .eq("lead_id", currentData.leadId)
+        .eq("campaign_id", currentData.campaignId)
         .order("created_at", { ascending: false });
 
       if (data) {
@@ -161,7 +217,7 @@ export function CallActionDialog({
       setHistoryLoading(false);
     };
     fetchHistory();
-  }, [open, leadId, campaignId]);
+  }, [open, currentData.leadId, currentData.campaignId, currentData.callId]);
 
   const executeAutomation = async (actionId: string) => {
     if (actionId.startsWith("__")) return;
@@ -175,31 +231,28 @@ export function CallActionDialog({
 
       if (!actionData) return;
 
-      // Webhook
       if (actionData.action_type === "webhook" && actionData.action_config?.url) {
         const { data: leadData } = await (supabase as any)
           .from("call_leads")
           .select("*")
-          .eq("id", leadId)
+          .eq("id", currentData.leadId)
           .single();
 
         const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
-          body: { url: actionData.action_config.url, payload: { lead: leadData, campaignId, actionType: "webhook" } },
+          body: { url: actionData.action_config.url, payload: { lead: leadData, campaignId: currentData.campaignId, actionType: "webhook" } },
         });
 
         if (proxyError) {
           toast({ title: "Webhook falhou", description: proxyError.message, variant: "destructive" });
         }
-      }
-      // Start sequence
-      else if (actionData.action_type === "start_sequence" && actionData.action_config) {
+      } else if (actionData.action_type === "start_sequence" && actionData.action_config) {
         const { campaignId: seqCampaignId, campaignType, sequenceId } = actionData.action_config as {
           campaignId?: string; campaignType?: string; sequenceId?: string;
         };
 
-        if (campaignType === "dispatch" && sequenceId && leadPhone) {
+        if (campaignType === "dispatch" && sequenceId && currentData.leadPhone) {
           const { data: result, error: fnError } = await supabase.functions.invoke("execute-dispatch-sequence", {
-            body: { campaignId: seqCampaignId, sequenceId, contactPhone: leadPhone, contactName: leadName || "" },
+            body: { campaignId: seqCampaignId, sequenceId, contactPhone: currentData.leadPhone, contactName: currentData.leadName || "" },
           });
           if (fnError || result?.error) {
             toast({ title: "Erro na sequência", description: result?.error || fnError?.message, variant: "destructive" });
@@ -209,8 +262,8 @@ export function CallActionDialog({
             body: {
               campaignId: seqCampaignId, sequenceId,
               triggerContext: {
-                respondentPhone: leadPhone || "", respondentName: leadName || "",
-                respondentJid: leadPhone ? `${leadPhone}@s.whatsapp.net` : "",
+                respondentPhone: currentData.leadPhone || "", respondentName: currentData.leadName || "",
+                respondentJid: currentData.leadPhone ? `${currentData.leadPhone}@s.whatsapp.net` : "",
                 groupJid: "", sendPrivate: true,
               },
             },
@@ -219,26 +272,22 @@ export function CallActionDialog({
             toast({ title: "Erro na sequência de grupo", description: fnError.message, variant: "destructive" });
           }
         }
-      }
-      // Add tag
-      else if (actionData.action_type === "add_tag" && actionData.action_config?.tag) {
+      } else if (actionData.action_type === "add_tag" && actionData.action_config?.tag) {
         const tag = actionData.action_config.tag as string;
         const { data: leadData } = await (supabase as any)
-          .from("call_leads").select("custom_fields").eq("id", leadId).single();
+          .from("call_leads").select("custom_fields").eq("id", currentData.leadId).single();
         const currentFields = (leadData?.custom_fields as Record<string, unknown>) || {};
         const currentTags = Array.isArray(currentFields.tags) ? currentFields.tags : [];
         if (!currentTags.includes(tag)) {
           await (supabase as any).from("call_leads")
             .update({ custom_fields: { ...currentFields, tags: [...currentTags, tag] } })
-            .eq("id", leadId);
+            .eq("id", currentData.leadId);
         }
-      }
-      // Update status
-      else if (actionData.action_type === "update_status" && actionData.action_config?.status) {
+      } else if (actionData.action_type === "update_status" && actionData.action_config?.status) {
         const newStatus = String(actionData.action_config.status);
-        await (supabase as any).from("call_leads").update({ status: newStatus }).eq("id", leadId);
+        await (supabase as any).from("call_leads").update({ status: newStatus }).eq("id", currentData.leadId);
         if (newStatus !== "completed") {
-          await (supabase as any).from("call_logs").update({ call_status: newStatus }).eq("id", callId);
+          await (supabase as any).from("call_logs").update({ call_status: newStatus }).eq("id", currentData.callId);
         }
       }
     } catch (err: any) {
@@ -272,16 +321,14 @@ export function CallActionDialog({
       await (supabase as any)
         .from("call_logs")
         .update(updates)
-        .eq("id", callId);
+        .eq("id", currentData.callId);
 
-      await (supabase as any).rpc("release_operator", { p_call_id: callId });
+      await (supabase as any).rpc("release_operator", { p_call_id: currentData.callId });
 
-      // Execute automation (webhook, sequence, tag, status) without blocking
       await executeAutomation(selectedActionId);
 
       toast({ title: "Ação registrada", description: "Ligação finalizada com sucesso." });
       onOpenChange(false);
-      resetState();
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -294,45 +341,52 @@ export function CallActionDialog({
     setNotes("");
     setScheduledDate("");
     setScheduledTime("");
+    setForwardStack([]);
   };
 
   return (
-    <>
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) resetState(); }}>
       <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden">
         {/* Lead Header */}
         <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 space-y-2">
           <div className="flex items-center justify-between">
-            {depth < 3 && operatorId ? (
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={fetchPreviousCall} disabled={loadingPrevious}>
-                {loadingPrevious ? <Loader2 className="h-3 w-3 animate-spin" /> : <History className="h-3 w-3" />}
+            {operatorId ? (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={handleGoBack} disabled={loadingPrevious}>
+                {loadingPrevious ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronLeft className="h-3 w-3" />}
                 Anterior
               </Button>
             ) : <div />}
             <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
-              {leadName.charAt(0).toUpperCase()}
+              {currentData.leadName.charAt(0).toUpperCase()}
             </div>
-            <div className="w-[85px]" /> {/* spacer for balance */}
+            {forwardStack.length > 0 ? (
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={handleGoForward}>
+                Avançar
+                <ChevronRight className="h-3 w-3" />
+              </Button>
+            ) : (
+              <div className="w-[85px]" />
+            )}
           </div>
           <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
-            {leadName}
+            {currentData.leadName}
           </h2>
           <p className="text-lg font-mono text-primary">
-            📞 {leadPhone}
+            📞 {currentData.leadPhone}
           </p>
           <div className="flex items-center justify-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-xs">📁 {campaignName}</Badge>
-            <Badge variant="outline" className="text-xs">🔄 x{attemptNumber}/{maxAttempts}</Badge>
-            {isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
-            {callStatus && <Badge variant="outline" className="text-xs">📡 {callStatus}</Badge>}
+            <Badge variant="outline" className="text-xs">📁 {currentData.campaignName}</Badge>
+            <Badge variant="outline" className="text-xs">🔄 x{currentData.attemptNumber}/{currentData.maxAttempts}</Badge>
+            {currentData.isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
+            {currentData.callStatus && <Badge variant="outline" className="text-xs">📡 {currentData.callStatus}</Badge>}
           </div>
-          {externalCallId && (
+          {currentData.externalCallId && (
             <div className="flex items-center justify-center gap-1.5">
               <span className="text-xs text-muted-foreground font-mono truncate max-w-[280px]">
-                🆔 {externalCallId}
+                🆔 {currentData.externalCallId}
               </span>
               <button
-                onClick={() => copyExternalId(externalCallId)}
+                onClick={() => copyExternalId(currentData.externalCallId!)}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
@@ -340,7 +394,7 @@ export function CallActionDialog({
             </div>
           )}
           <p className="text-2xl font-semibold font-mono text-emerald-500">
-            ⏱️ {formatDuration(duration)}
+            ⏱️ {formatDuration(currentData.duration)}
           </p>
         </div>
 
@@ -367,7 +421,7 @@ export function CallActionDialog({
                   </CollapsibleTrigger>
                   <CollapsibleContent className="mt-3">
                     <div className="rounded-lg border bg-muted/10 p-3">
-                      <InlineScriptRunner campaignId={campaignId} leadId={leadId} />
+                      <InlineScriptRunner campaignId={currentData.campaignId} leadId={currentData.leadId} />
                     </div>
                   </CollapsibleContent>
                 </Collapsible>
@@ -375,7 +429,7 @@ export function CallActionDialog({
                 <div className="border-t" />
 
                 {/* Inline Reschedule */}
-                <InlineReschedule callId={callId} />
+                <InlineReschedule callId={currentData.callId} />
 
                 <div className="border-t" />
 
@@ -383,51 +437,50 @@ export function CallActionDialog({
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Ações</h3>
 
-                  {/* Campaign Actions */}
                   <div className="space-y-2">
-                      {actionsLoading ? (
-                        <div className="flex justify-center py-4">
-                          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                        </div>
-                      ) : (
-                        <>
-                          {actions.length === 0 && (
-                            <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
-                              <p className="text-xs text-muted-foreground">
-                                ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
-                              </p>
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-2">
-                            {displayActions.map((action) => (
-                              <button
-                                key={action.id}
-                                onClick={() => setSelectedActionId(action.id)}
-                                className={cn(
-                                  "rounded-lg border p-3 text-left transition-all",
-                                  selectedActionId === action.id
-                                    ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                    : "border-border hover:border-primary/50"
-                                )}
-                              >
-                                <div className="flex items-center gap-2">
-                                  <div
-                                    className="h-3 w-3 rounded-full shrink-0"
-                                    style={{ backgroundColor: action.color }}
-                                  />
-                                  <span className="font-medium text-sm">{action.name}</span>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                          {actions.length > 0 && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              ℹ️ Ações carregadas da campanha "{campaignName}"
+                    {actionsLoading ? (
+                      <div className="flex justify-center py-4">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : (
+                      <>
+                        {actions.length === 0 && (
+                          <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
+                            <p className="text-xs text-muted-foreground">
+                              ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
                             </p>
-                          )}
-                        </>
-                      )}
-                    </div>
+                          </div>
+                        )}
+                        <div className="grid grid-cols-2 gap-2">
+                          {displayActions.map((action) => (
+                            <button
+                              key={action.id}
+                              onClick={() => setSelectedActionId(action.id)}
+                              className={cn(
+                                "rounded-lg border p-3 text-left transition-all",
+                                selectedActionId === action.id
+                                  ? "border-primary bg-primary/5 ring-2 ring-primary"
+                                  : "border-border hover:border-primary/50"
+                              )}
+                            >
+                              <div className="flex items-center gap-2">
+                                <div
+                                  className="h-3 w-3 rounded-full shrink-0"
+                                  style={{ backgroundColor: action.color }}
+                                />
+                                <span className="font-medium text-sm">{action.name}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                        {actions.length > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ℹ️ Ações carregadas da campanha "{currentData.campaignName}"
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
 
                   {/* Schedule fields */}
                   {isScheduleType && selectedActionId && (
@@ -512,7 +565,7 @@ export function CallActionDialog({
                 ) : (
                   <div className="space-y-3">
                     {history.map((entry, idx) => {
-                      const isCurrent = entry.id === callId;
+                      const isCurrent = entry.id === currentData.callId;
                       return (
                         <div
                           key={entry.id}
@@ -536,7 +589,7 @@ export function CallActionDialog({
                           </div>
                           <div className="grid grid-cols-2 gap-x-4 text-xs text-muted-foreground">
                             <span>Operador: {entry.operator_name}</span>
-                            <span>Duração: {entry.duration_seconds != null ? formatDuration(entry.duration_seconds) : isCurrent ? formatDuration(duration) + " (em andamento)" : "—"}</span>
+                            <span>Duração: {entry.duration_seconds != null ? formatDuration(entry.duration_seconds) : isCurrent ? formatDuration(currentData.duration) + " (em andamento)" : "—"}</span>
                           </div>
                           <div className="text-xs">
                             <span className="text-muted-foreground">Resultado: </span>
@@ -562,27 +615,5 @@ export function CallActionDialog({
         </Tabs>
       </DialogContent>
     </Dialog>
-    {showPreviousDialog && previousCallData && (
-      <CallActionDialog
-        open={showPreviousDialog}
-        onOpenChange={setShowPreviousDialog}
-        callId={previousCallData.id}
-        campaignId={previousCallData.campaign_id}
-        leadId={previousCallData.lead_id}
-        leadName={previousCallData.call_leads?.name || "—"}
-        leadPhone={previousCallData.call_leads?.phone || "—"}
-        campaignName={previousCallData.call_campaigns?.name || "—"}
-        duration={previousCallData.duration_seconds || 0}
-        initialObservations={previousCallData.notes || ""}
-        attemptNumber={previousCallData.attempt_number || 1}
-        maxAttempts={previousCallData.call_campaigns?.retry_count || 3}
-        isPriority={previousCallData.call_campaigns?.is_priority || false}
-        callStatus={previousCallData.call_status || undefined}
-        externalCallId={previousCallData.external_call_id}
-        operatorId={operatorId}
-        depth={depth + 1}
-      />
-    )}
-    </>
   );
 }
