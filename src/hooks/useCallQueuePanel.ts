@@ -157,6 +157,31 @@ export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string)
     onError: () => toast({ title: "Erro ao esvaziar fila", variant: "destructive" }),
   });
 
+  const sendToEndOfQueue = useMutation({
+    mutationFn: async ({ entryId, currentAttempts }: { entryId: string; currentAttempts: number }) => {
+      const { data: maxPosData } = await (supabase as any)
+        .from("call_queue")
+        .select("position")
+        .order("position", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const nextPosition = (maxPosData?.position || 0) + 1;
+
+      const { error } = await supabase
+        .from("call_queue")
+        .update({ position: nextPosition, attempts: currentAttempts + 1 } as any)
+        .eq("id", entryId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call-queue-panel"] });
+      queryClient.invalidateQueries({ queryKey: ["call-queue"] });
+      toast({ title: "Lead movido para o final da fila" });
+    },
+    onError: () => toast({ title: "Erro ao mover lead", variant: "destructive" }),
+  });
+
   return {
     entries,
     isLoading,
@@ -164,5 +189,6 @@ export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string)
     removeFromQueue: removeFromQueue.mutateAsync,
     clearQueue: clearQueue.mutateAsync,
     isClearingQueue: clearQueue.isPending,
+    sendToEndOfQueue: sendToEndOfQueue.mutateAsync,
   };
 }
