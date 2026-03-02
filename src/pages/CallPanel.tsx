@@ -2019,7 +2019,7 @@ function BulkOperatorDialog({
 
 // ── Queue Card ──
 
-function QueueCard({ entry, onRemove, onSendToEnd }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void>; onSendToEnd: (params: { entryId: string; currentAttempts: number }) => Promise<void> }) {
+function QueueCard({ entry, onRemove, onSendToEnd }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void>; onSendToEnd: (params: { entryId: string; currentAttempts: number; status: string }) => Promise<void> }) {
   const [removing, setRemoving] = useState(false);
   const [sendingToEnd, setSendingToEnd] = useState(false);
 
@@ -2035,7 +2035,7 @@ function QueueCard({ entry, onRemove, onSendToEnd }: { entry: QueuePanelEntry; o
   const handleSendToEnd = async () => {
     setSendingToEnd(true);
     try {
-      await onSendToEnd({ entryId: entry.id, currentAttempts: entry.attempts });
+      await onSendToEnd({ entryId: entry.id, currentAttempts: entry.attempts, status: entry.status });
     } finally {
       setSendingToEnd(false);
     }
