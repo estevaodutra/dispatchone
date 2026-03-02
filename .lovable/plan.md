@@ -1,20 +1,17 @@
 
 
-## Plano: Adicionar opção de renomear lead no CallActionDialog
+## Diagnóstico
 
-### O que fazer
+O lápis foi adicionado apenas no `CallActionDialog.tsx` (componente do operador), mas o dialog que aparece no screenshot é o `ActionDialog` dentro de `src/pages/CallPanel.tsx` (linha ~1641). São dois componentes diferentes. O `ActionDialog` do CallPanel não recebeu a edição.
 
-Adicionar um botão de edição (ícone lápis) ao lado do nome do lead no header do `CallActionDialog.tsx`. Ao clicar, o nome vira um `Input` editável. Ao confirmar (Enter ou blur), atualiza o nome em `call_leads` e no estado local.
+## Correção
 
-### Alterações
+**`src/pages/CallPanel.tsx`** — No `ActionDialog`, na linha 1641-1643:
 
-**`src/components/operator/CallActionDialog.tsx`**:
+1. Adicionar estados `isEditingName` + `editName`
+2. Substituir o `<h2>` estático do nome pelo mesmo padrão de toggle (texto + ícone lápis ↔ Input editável)
+3. Na confirmação, atualizar `call_leads.name` via Supabase e o estado local do `entry`
+4. Importar `Pencil` do lucide-react
 
-1. Adicionar estado `isEditingName` + `editName`
-2. No `<h2>` do nome do lead (linha 371-373), alternar entre texto estático e `<Input>` editável
-3. Adicionar ícone `Pencil` (lucide) ao lado do nome
-4. Na confirmação, fazer `supabase.from("call_leads").update({ name: editName }).eq("id", currentData.leadId)` e atualizar `currentData.leadName`
-5. Importar `Pencil` do lucide-react
-
-Nenhuma migration necessária. O campo `name` já existe em `call_leads`.
+Mesma lógica já implementada no `CallActionDialog.tsx`, aplicada agora ao dialog correto.
 
