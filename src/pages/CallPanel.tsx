@@ -272,7 +272,7 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
 
 // ── Queue Status Banner ──
 
-function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting }: {
+function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting, onStartQueue, isStarting, queueItems }: {
   summary: { globalStatus: string; summary: { running: number; paused: number; stopped: number; waiting_operator: number; waiting_cooldown: number }; isLoading: boolean };
   operators: import("@/hooks/useCallOperators").CallOperator[];
   onRefresh: () => void;
@@ -284,6 +284,9 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
   onClearQueue: () => void;
   isClearingQueue: boolean;
   totalWaiting: number;
+  onStartQueue: (campaignId: string) => Promise<void>;
+  isStarting: boolean;
+  queueItems: QueueItem[];
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   if (summary.isLoading) return null;
@@ -354,6 +357,21 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
         >
           <Play className="h-3.5 w-3.5" />
           {isResumingAll ? "Retomando..." : "Retomar"}
+        </Button>
+      )}
+      {globalStatus === "stopped" && totalWaiting > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const firstItem = queueItems[0];
+            if (firstItem) onStartQueue(firstItem.campaignId);
+          }}
+          disabled={isStarting || queueItems.length === 0}
+          className="shrink-0 gap-1.5 text-xs h-7 px-2.5 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/10 dark:text-emerald-400"
+        >
+          <Play className="h-3.5 w-3.5" />
+          {isStarting ? "Iniciando..." : "Iniciar Fila"}
         </Button>
       )}
       <Button
@@ -861,8 +879,8 @@ export default function CallPanel() {
       </div>
 
       {/* Queue Status Banner (visible in Calls tab) */}
-      {queueSummary.globalStatus !== "stopped" && (
-        <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
+      {(queueSummary.globalStatus !== "stopped" || totalWaiting > 0) && (
+        <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} onStartQueue={(cId) => callQueue.startQueue(cId)} isStarting={callQueue.isStarting} queueItems={queueEntries} />
       )}
 
       {/* Discar AGORA! / Pausar / Retomar button */}
@@ -1047,7 +1065,7 @@ export default function CallPanel() {
             {/* Queue Status Banner */}
             <div className="flex items-center gap-2">
               <div className="flex-1">
-                <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
+                <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} onStartQueue={(cId) => callQueue.startQueue(cId)} isStarting={callQueue.isStarting} queueItems={queueEntries} />
               </div>
               <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => setShowCreateQueue(true)}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar Leads
@@ -1570,9 +1588,9 @@ export default function CallPanel() {
       <CreateQueueDialog
         open={showCreateQueue}
         onOpenChange={setShowCreateQueue}
-        onStartQueue={(cId) => {
-          // Start queue via edge function or existing mechanism
-          toast({ title: "Fila iniciada", description: "A execução da fila foi ativada." });
+      onStartQueue={async (cId) => {
+          await callQueue.startQueue(cId);
+          setPanelTab("queue");
         }}
       />
           </div>
