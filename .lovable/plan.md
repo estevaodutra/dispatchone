@@ -1,21 +1,20 @@
 
 
-## Diagnóstico
+## Plano: Adicionar opção de renomear lead no CallActionDialog
 
-A edge function `queue-processor` **não está sendo chamada com sucesso**. Todas as requests retornam "Failed to fetch".
+### O que fazer
 
-**Causa raiz**: O `queue-processor` não está registrado no `supabase/config.toml`. Sem isso:
-- A função pode não ter sido deployada corretamente
-- O JWT verification fica ativado por padrão, rejeitando os tokens do Lovable Cloud
+Adicionar um botão de edição (ícone lápis) ao lado do nome do lead no header do `CallActionDialog.tsx`. Ao clicar, o nome vira um `Input` editável. Ao confirmar (Enter ou blur), atualiza o nome em `call_leads` e no estado local.
 
-O `config.toml` ainda tem a entrada do antigo `queue-executor` (que foi deletado) mas falta a do `queue-processor`.
+### Alterações
 
-## Correção
+**`src/components/operator/CallActionDialog.tsx`**:
 
-**1. Atualizar `supabase/config.toml`**
+1. Adicionar estado `isEditingName` + `editName`
+2. No `<h2>` do nome do lead (linha 371-373), alternar entre texto estático e `<Input>` editável
+3. Adicionar ícone `Pencil` (lucide) ao lado do nome
+4. Na confirmação, fazer `supabase.from("call_leads").update({ name: editName }).eq("id", currentData.leadId)` e atualizar `currentData.leadName`
+5. Importar `Pencil` do lucide-react
 
-- Remover a entrada `[functions.queue-executor]` (função deletada)
-- Adicionar `[functions.queue-processor]` com `verify_jwt = false`
-
-Isso é tudo. A função já está escrita e correta. Só precisa ser registrada para deploy com JWT desabilitado.
+Nenhuma migration necessária. O campo `name` já existe em `call_leads`.
 
