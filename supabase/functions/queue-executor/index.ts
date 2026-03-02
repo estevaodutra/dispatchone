@@ -244,6 +244,110 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     return { success: true, action: 'waiting', reason: 'No operator available', new_status: newStatus };
   }
 
+  // 3-pre. Check call_queue table for position-ordered entries (manual ordering)
+  const { data: queueEntry } = await supabase
+    .from('call_queue')
+    .select('id, lead_id, campaign_id')
+    .eq('campaign_id', campaignId)
+    .eq('status', 'waiting')
+    .order('position', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (queueEntry) {
+    // Fetch lead data from call_leads
+    const { data: queueLead } = await supabase
+      .from('call_leads')
+      .select('id, phone, name')
+      .eq('id', queueEntry.lead_id)
+      .maybeSingle();
+
+    if (queueLead) {
+      // Create call_log
+      const { data: queueCallLog, error: queueLogErr } = await supabase
+        .from('call_logs')
+        .insert({
+          user_id: userId,
+          company_id: campaign.company_id || null,
+          campaign_id: queueEntry.campaign_id || campaignId,
+          lead_id: queueLead.id,
+          call_status: 'ready',
+          scheduled_for: new Date().toISOString(),
+          attempt_number: 1,
+          max_attempts: campaign.retry_count ?? 3,
+        })
+        .select('id')
+        .single();
+
+      if (!queueLogErr && queueCallLog) {
+        // Reserve operator atomically
+        const { data: qReservation } = await supabase.rpc('reserve_operator_for_call', {
+          p_call_id: queueCallLog.id,
+          p_campaign_id: campaignId,
+        });
+
+        if (qReservation?.[0]?.success) {
+          const qOp = qReservation[0];
+
+          // Update call_log to dialing
+          await supabase.from('call_logs').update({
+            operator_id: qOp.operator_id,
+            call_status: 'dialing',
+            started_at: new Date().toISOString(),
+          }).eq('id', queueCallLog.id);
+
+          // Update lead status
+          await supabase.from('call_leads').update({
+            status: 'calling',
+            assigned_operator_id: qOp.operator_id,
+            last_attempt_at: new Date().toISOString(),
+          }).eq('id', queueLead.id);
+
+          // Remove from call_queue
+          await supabase.from('call_queue').delete().eq('id', queueEntry.id);
+
+          // Fire webhook
+          const qOpObj = { id: qOp.operator_id, operator_name: qOp.operator_name, extension: qOp.operator_extension };
+          await fireDialWebhook(supabase, userId, queueCallLog.id, campaignId, campaign, queueLead, qOpObj);
+
+          // Update queue state
+          await supabase.from('queue_execution_state').update({
+            last_dial_at: new Date().toISOString(),
+            calls_made: (state.calls_made || 0) + 1,
+            current_position: (state.current_position || 0) + 1,
+            current_operator_index: nextIndex,
+            status: 'running',
+          }).eq('campaign_id', campaignId);
+
+          console.log(`[queue-executor] Dialed from call_queue position ${queueEntry.id}`);
+
+          return {
+            success: true,
+            action: 'dialed',
+            call_id: queueCallLog.id,
+            operator: qOp.operator_name,
+            lead: { name: queueLead.name, phone: queueLead.phone },
+            source: 'call_queue',
+          };
+        } else {
+          // No operator — revert call_log to ready, keep queue entry
+          await supabase.from('call_logs').update({ call_status: 'ready', started_at: null }).eq('id', queueCallLog.id);
+
+          const behavior = campaign.queue_unavailable_behavior || 'wait';
+          const newStatus = behavior === 'pause' ? 'paused' : 'waiting_operator';
+          if (state.status !== newStatus) {
+            await supabase.from('queue_execution_state').update({ status: newStatus }).eq('campaign_id', campaignId);
+          }
+          return { success: true, action: 'waiting', reason: qReservation?.[0]?.error_code || 'no_operator_available', source: 'call_queue' };
+        }
+      }
+    } else {
+      // Lead not found in call_leads — remove stale queue entry
+      await supabase.from('call_queue').delete().eq('id', queueEntry.id);
+      console.log(`[queue-executor] Removed stale call_queue entry ${queueEntry.id} (lead not found)`);
+    }
+  }
+
   // 2b. Promote scheduled calls whose time has arrived
   const { data: dueScheduled } = await supabase
     .from('call_logs')
