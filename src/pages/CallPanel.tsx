@@ -96,6 +96,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsDown,
+  ChevronsUp,
   ListOrdered,
   Trash2,
   Eye,
@@ -530,7 +531,7 @@ export default function CallPanel() {
     search: searchQuery || undefined,
   });
 
-  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, sendToEndOfQueue } = useCallQueuePanel(
+  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, sendToEndOfQueue, sendToStartOfQueue } = useCallQueuePanel(
     campaignFilter !== "all" ? campaignFilter : undefined,
     searchQuery || undefined
   );
@@ -1034,9 +1035,78 @@ export default function CallPanel() {
           <div className="space-y-3">
             {/* Queue Status Banner */}
             <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
-            {paginatedQueue.map((qe) => (
-              <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} onSendToEnd={sendToEndOfQueue} />
-            ))}
+            <div className="rounded-lg border bg-card shadow-sm">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[60px]">#</TableHead>
+                    <TableHead>Lead</TableHead>
+                    <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                    <TableHead className="hidden lg:table-cell">Campanha</TableHead>
+                    <TableHead className="hidden md:table-cell w-[90px]">Tentativas</TableHead>
+                    <TableHead className="hidden lg:table-cell">Últ. Resultado</TableHead>
+                    <TableHead className="w-[60px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedQueue.map((qe) => {
+                    const lastResultLabel: Record<string, string> = {
+                      no_answer: "Não atendeu",
+                      busy: "Ocupado",
+                      failed: "Falhou",
+                      voicemail: "Caixa postal",
+                    };
+                    return (
+                      <TableRow key={qe.id}>
+                        <TableCell className="font-mono text-xs text-muted-foreground py-2">
+                          {qe.position}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
+                          {formatPhone(qe.leadPhone)}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell py-2">
+                          <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
+                            {qe.campaignName || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-center py-2">
+                          <span className="text-xs font-mono">{qe.attempts}</span>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell py-2">
+                          <span className="text-xs text-muted-foreground">
+                            {qe.lastResult ? (lastResultLabel[qe.lastResult] || qe.lastResult) : "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => sendToStartOfQueue({ entryId: qe.id, status: qe.status })}>
+                                <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => sendToEndOfQueue({ entryId: qe.id, currentAttempts: qe.attempts, status: qe.status })}>
+                                <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
+                                <Trash2 className="h-4 w-4 mr-2" /> Remover
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )
       ) : (
@@ -2017,93 +2087,4 @@ function BulkOperatorDialog({
   );
 }
 
-// ── Queue Card ──
-
-function QueueCard({ entry, onRemove, onSendToEnd }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void>; onSendToEnd: (params: { entryId: string; currentAttempts: number; status: string }) => Promise<void> }) {
-  const [removing, setRemoving] = useState(false);
-  const [sendingToEnd, setSendingToEnd] = useState(false);
-
-  const handleRemove = async () => {
-    setRemoving(true);
-    try {
-      await onRemove(entry.id);
-    } finally {
-      setRemoving(false);
-    }
-  };
-
-  const handleSendToEnd = async () => {
-    setSendingToEnd(true);
-    try {
-      await onSendToEnd({ entryId: entry.id, currentAttempts: entry.attempts, status: entry.status });
-    } finally {
-      setSendingToEnd(false);
-    }
-  };
-
-  const lastResultLabel: Record<string, string> = {
-    no_answer: "Não atendeu",
-    busy: "Ocupado",
-    failed: "Falhou",
-    voicemail: "Caixa postal",
-  };
-
-  return (
-    <Card className="border-l-4 border-l-blue-500">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
-                <ListOrdered className="h-3 w-3" /> #{entry.position}
-              </Badge>
-              {entry.attempts > 0 && (
-                <Badge variant="outline" className="text-xs">
-                  {entry.attempts} tentativa{entry.attempts > 1 ? "s" : ""}
-                </Badge>
-              )}
-              {entry.lastResult && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  {lastResultLabel[entry.lastResult] || entry.lastResult}
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-4 text-sm pt-1">
-              <span className="flex items-center gap-1 font-medium">
-                <User className="h-3.5 w-3.5 text-muted-foreground" /> {entry.leadName || "Sem nome"}
-              </span>
-              <span className="flex items-center gap-1 text-muted-foreground">
-                <Phone className="h-3.5 w-3.5" /> {formatPhone(entry.leadPhone)}
-              </span>
-            </div>
-            {entry.campaignName && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <FolderOpen className="h-3 w-3" /> {entry.campaignName}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSendToEnd}
-              disabled={sendingToEnd}
-              className="gap-1 text-xs"
-            >
-              <ChevronsDown className="h-3.5 w-3.5" /> Para o final
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRemove}
-              disabled={removing}
-              className="gap-1 text-destructive hover:text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remover
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+// QueueCard removed – queue now uses table layout

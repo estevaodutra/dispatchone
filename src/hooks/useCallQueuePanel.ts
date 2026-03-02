@@ -193,6 +193,40 @@ export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string)
     onError: () => toast({ title: "Erro ao mover lead", variant: "destructive" }),
   });
 
+  const sendToStartOfQueue = useMutation({
+    mutationFn: async ({ entryId, status }: { entryId: string; status: string }) => {
+      if (status === "ready") {
+        const farPast = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { error } = await (supabase as any)
+          .from("call_logs")
+          .update({ scheduled_for: farPast })
+          .eq("id", entryId);
+        if (error) throw error;
+      } else {
+        const { data: minPosData } = await (supabase as any)
+          .from("call_queue")
+          .select("position")
+          .order("position", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        const prevPosition = (minPosData?.position ?? 1) - 1;
+
+        const { error } = await supabase
+          .from("call_queue")
+          .update({ position: prevPosition } as any)
+          .eq("id", entryId);
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call-queue-panel"] });
+      queryClient.invalidateQueries({ queryKey: ["call-queue"] });
+      toast({ title: "Lead movido para o início da fila" });
+    },
+    onError: () => toast({ title: "Erro ao mover lead", variant: "destructive" }),
+  });
+
   return {
     entries,
     isLoading,
@@ -201,5 +235,6 @@ export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string)
     clearQueue: clearQueue.mutateAsync,
     isClearingQueue: clearQueue.isPending,
     sendToEndOfQueue: sendToEndOfQueue.mutateAsync,
+    sendToStartOfQueue: sendToStartOfQueue.mutateAsync,
   };
 }
