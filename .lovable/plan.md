@@ -1,62 +1,115 @@
 
 
-## Problema
+## Plano: Fila Única — Simplificação Total
 
-O `queue-executor` (edge function que processa a fila de discagem) **nunca consulta a tabela `call_queue`**. Ele seleciona leads de duas fontes:
+### Diagnóstico
 
-1. `call_logs` com `call_status = 'ready'` (ordenado por `scheduled_for`)
-2. `call_leads` com `status = 'pending'` (ordenado por `created_at`)
-
-A tabela `call_queue` e sua ordenação por `position` são completamente ignoradas. Isso significa que mover leads "para o início" ou "para o final" na aba Fila não tem efeito na ordem real de discagem.
-
-## Solução
-
-Modificar o `queue-executor` para consultar a tabela `call_queue` **antes** das outras fontes. Se existirem entradas `waiting` na `call_queue`, usar a ordem de `position` para determinar o próximo lead a discar.
+O sistema atual tem 3 fontes de leads para discagem (`call_queue` → `call_logs` ready → `call_leads` pending), 5 hooks no frontend, e a integração entre eles falha silenciosamente. A proposta do usuário está correta: unificar tudo em uma tabela + um hook + um processador.
 
 ### Alterações
 
-**1. `supabase/functions/queue-executor/index.ts`** — Adicionar etapa 3a-pre: consultar `call_queue`
+**1. Migration: Reestruturar `call_queue`**
 
-Entre a resolução de cooldowns (etapa 2) e a busca de `call_logs` ready (etapa 3a), inserir:
+Recriar a tabela com campos auto-suficientes (phone, lead_name direto na fila), SERIAL para position, constraint de unicidade, e source para rastrear origem.
 
+```sql
+DROP TABLE IF EXISTS call_queue CASCADE;
+
+CREATE TABLE call_queue (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id UUID,
+  campaign_id UUID NOT NULL REFERENCES call_campaigns(id) ON DELETE CASCADE,
+  lead_id UUID REFERENCES call_leads(id) ON DELETE SET NULL,
+  phone VARCHAR(20) NOT NULL,
+  lead_name VARCHAR(255),
+  position SERIAL,
+  is_priority BOOLEAN DEFAULT false,
+  scheduled_for TIMESTAMPTZ,
+  attempt_number INT DEFAULT 1,
+  max_attempts INT DEFAULT 3,
+  observations TEXT,
+  status VARCHAR(20) DEFAULT 'waiting',
+  source VARCHAR(50) DEFAULT 'manual',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(company_id, campaign_id, phone, attempt_number)
+);
+
+ALTER TABLE call_queue ENABLE ROW LEVEL SECURITY;
+-- Re-criar as mesmas RLS policies
 ```
-// 3-pre. Check call_queue table for position-ordered entries
-const { data: queueEntry } = await supabase
-  .from('call_queue')
-  .select('id, lead_id, campaign_id')
-  .eq('campaign_id', campaignId)
-  .eq('status', 'waiting')
-  .order('position', { ascending: true })
-  .limit(1)
-  .maybeSingle();
-```
 
-Se encontrar uma entrada:
-- Buscar dados do lead em `call_leads`
-- Criar `call_log` com status `ready`
-- Reservar operador via RPC
-- Disparar webhook
-- **Remover a entrada da `call_queue`** após discar com sucesso (ou marcar como `processing`)
-- Atualizar `queue_execution_state`
+**2. Edge Function: `queue-processor`** (nova, substitui `queue-executor`)
 
-Isso garante que leads na `call_queue` (com posição manual) sejam processados **antes** dos `call_logs` ready genéricos, respeitando a ordenação por `position`.
+Lógica linear e simples:
+1. Verificar `queue_execution_state` — está rodando?
+2. `heal_stuck_operators` + `resolve_cooldowns` (RPCs existentes)
+3. Buscar operador disponível (round-robin)
+4. `SELECT ... FROM call_queue WHERE campaign_id = $1 AND status = 'waiting' ORDER BY is_priority DESC, position ASC LIMIT 1`
+5. Criar `call_log` (histórico)
+6. `reserve_operator_for_call` (RPC existente)
+7. `fireDialWebhook` (mesma lógica)
+8. `DELETE FROM call_queue WHERE id = $1`
+9. Atualizar `queue_execution_state`
 
-**2. Manter fallback existente** — Se a `call_queue` estiver vazia, o fluxo continua como hoje (call_logs ready → call_leads pending).
+Sem fallback para `call_logs` ready ou `call_leads` pending. Uma fonte. Um fluxo.
+
+**3. Hook único: `src/hooks/useCallQueue.ts`** (reescrever)
+
+Substitui os 5 hooks por 1 com:
+- Query da fila (`call_queue` WHERE status = 'waiting')
+- Query do estado (`queue_execution_state`)
+- Mutations: `startQueue`, `pauseQueue`, `resumeQueue`, `stopQueue`
+- Mutations: `addToQueue`, `removeFromQueue`, `moveToStart`, `moveToEnd`, `clearQueue`
+- Computed: `isRunning`, `isPaused`, `totalWaiting`, `availableOperators`
+- Loop de ticks (invoca `queue-processor`)
+
+**4. Atualizar consumidores**
+
+| Arquivo | De | Para |
+|---------|-----|------|
+| `AppLayout.tsx` | `useQueueExecutionSummary()` | `useCallQueue()` (loop global) |
+| `CallPanel.tsx` | `useCallQueuePanel` + `useQueueExecutionData` | `useCallQueue()` |
+| `QueueControlPanel.tsx` | `useQueueExecution(campaignId)` | `useCallQueue(campaignId)` |
+| `Leads.tsx` | `useCallQueue()` (addToQueue) | `useCallQueue()` (mesma API) |
+
+**5. Atualizar `useCallLeads.ts`** — `bulkEnqueueByStatus`
+
+Em vez de criar `call_logs` com status `ready`, inserir diretamente na `call_queue` com os dados do lead (phone, name).
+
+**6. Remover código antigo**
+
+- `src/hooks/useCallQueuePanel.ts` — deletar
+- `src/hooks/useQueueExecution.ts` — deletar
+- `supabase/functions/queue-executor/` — deletar (substituído por `queue-processor`)
 
 ### Fluxo resultante
 
 ```text
-Tick →
-  1. Heal stuck operators
-  2. Resolve cooldowns  
-  3. Check call_queue (ordered by position) ← NOVO
-  4. Check call_logs ready (ordered by scheduled_for)
-  5. Check call_leads pending (ordered by created_at)
+Tick (8s) →
+  1. heal_stuck_operators()
+  2. resolve_cooldowns()
+  3. Busca operador disponível
+  4. SELECT FROM call_queue WHERE waiting ORDER BY is_priority DESC, position ASC
+  5. Cria call_log + reserva operador + webhook
+  6. DELETE FROM call_queue
 ```
 
-### Detalhes técnicos
+```text
+Hooks:
+  useCallQueue() — 1 hook para tudo
+    ├── items[]        (lista da fila)
+    ├── state          (running/paused/stopped)
+    ├── start/pause/resume/stop
+    ├── add/remove/moveToStart/moveToEnd/clear
+    └── tick loop      (quando global=true)
+```
 
-- Ao consumir uma entrada da `call_queue`, remover o registro (`DELETE FROM call_queue WHERE id = ?`) para evitar processamento duplicado
-- Atualizar o status do lead em `call_leads` para `calling`
-- O lead na `call_queue` referencia `lead_id` que aponta para `call_leads`, de onde se obtém `phone` e `name`
+### Ordem de implementação
+
+1. Migration da tabela
+2. Edge function `queue-processor`
+3. Hook `useCallQueue` (reescrita)
+4. Atualizar CallPanel, QueueControlPanel, AppLayout, Leads
+5. Atualizar `useCallLeads.bulkEnqueueByStatus`
+6. Deletar arquivos antigos
 
