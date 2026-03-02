@@ -224,7 +224,69 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
     }
   }
 
+  // Helper: get phones from leads table that have any of the selected tags
+  async function getLeadPhonesByTags(cId: string, tags: string[]): Promise<Set<string>> {
+    const matchedPhones = new Set<string>();
+    if (tags.length === 0) return matchedPhones;
+
+    // First get all phones from call_leads of this campaign
+    const { data: clPhones } = await (supabase as any)
+      .from("call_leads")
+      .select("phone")
+      .eq("campaign_id", cId);
+
+    if (!clPhones || clPhones.length === 0) return matchedPhones;
+
+    const uniquePhones = [...new Set(clPhones.map((l: any) => l.phone).filter(Boolean))] as string[];
+
+    // Query leads table in batches to find which phones have the selected tags
+    for (let i = 0; i < uniquePhones.length; i += 200) {
+      const batch = uniquePhones.slice(i, i + 200);
+      const { data: leadsWithTags } = await supabase
+        .from("leads")
+        .select("phone, tags")
+        .in("phone", batch)
+        .overlaps("tags", tags);
+
+      if (leadsWithTags) {
+        for (const lead of leadsWithTags) {
+          matchedPhones.add(lead.phone);
+        }
+      }
+    }
+
+    return matchedPhones;
+  }
+
   async function loadFilteredCount() {
+    if (selectedTags.length > 0) {
+      // When tags are selected, we need to match by phone against leads table
+      const matchedPhones = await getLeadPhonesByTags(campaignId, selectedTags);
+
+      // Also fetch call_leads that have tags in custom_fields
+      const { data: allLeads } = await (supabase as any)
+        .from("call_leads")
+        .select("phone, custom_fields")
+        .eq("campaign_id", campaignId)
+        .in("status", selectedStatuses.length > 0 ? selectedStatuses : ["pending", "no_answer", "completed", "scheduled", "failed"]);
+
+      if (allLeads) {
+        const filtered = allLeads.filter((l: any) => {
+          // Match if phone is in leads table matches
+          if (matchedPhones.has(l.phone)) return true;
+          // Or if custom_fields.tags contains selected tag
+          const cfTags = l.custom_fields?.tags;
+          if (Array.isArray(cfTags) && selectedTags.some(t => cfTags.includes(t))) return true;
+          return false;
+        });
+        setFilteredCount(filtered.length);
+        return;
+      }
+      setFilteredCount(0);
+      return;
+    }
+
+    // No tags selected - simple count by status
     let query = (supabase as any)
       .from("call_leads")
       .select("id", { count: "exact", head: true })
@@ -234,28 +296,7 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
       query = query.in("status", selectedStatuses);
     }
 
-    // Tags filter needs to be done differently since tags are in JSONB
     const { count } = await query;
-    
-    // If tags selected, we need a more precise count
-    if (selectedTags.length > 0 && count && count > 0) {
-      const { data: tagLeads } = await (supabase as any)
-        .from("call_leads")
-        .select("custom_fields")
-        .eq("campaign_id", campaignId)
-        .in("status", selectedStatuses.length > 0 ? selectedStatuses : ["pending", "no_answer", "completed", "scheduled", "failed"]);
-
-      if (tagLeads) {
-        const tagFiltered = tagLeads.filter((l: any) => {
-          const tags = l.custom_fields?.tags;
-          if (!Array.isArray(tags)) return false;
-          return selectedTags.some(t => tags.includes(t));
-        });
-        setFilteredCount(tagFiltered.length);
-        return;
-      }
-    }
-
     setFilteredCount(count ?? 0);
   }
 
@@ -314,12 +355,14 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
 
       let leads = allLeads || [];
 
-      // Filter by tags client-side
+      // Filter by tags client-side (check both custom_fields.tags AND leads table tags)
       if (selectedTags.length > 0) {
+        const matchedPhones = await getLeadPhonesByTags(campaignId, selectedTags);
         leads = leads.filter((l: any) => {
-          const tags = l.custom_fields?.tags;
-          if (!Array.isArray(tags)) return false;
-          return selectedTags.some(t => tags.includes(t));
+          if (matchedPhones.has(l.phone)) return true;
+          const cfTags = l.custom_fields?.tags;
+          if (Array.isArray(cfTags) && selectedTags.some(t => cfTags.includes(t))) return true;
+          return false;
         });
       }
 
