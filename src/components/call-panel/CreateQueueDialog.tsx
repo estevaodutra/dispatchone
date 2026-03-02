@@ -155,7 +155,7 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
     // Status counts
     const { data: leads } = await (supabase as any)
       .from("call_leads")
-      .select("status, custom_fields, lead_id:id")
+      .select("status, custom_fields, phone")
       .eq("campaign_id", cId);
 
     if (leads) {
@@ -177,21 +177,37 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
         }
       }
 
-      // Also fetch tags from leads table (leads.tags array column)
+      // Also fetch tags from leads table for leads linked to this campaign (by phone)
       try {
-        const { data: leadsWithTags } = await supabase
-          .from("leads")
-          .select("tags")
-          .not("tags", "eq", "{}");
-
-        if (leadsWithTags) {
-          for (const lead of leadsWithTags) {
-            if (Array.isArray(lead.tags)) {
-              for (const tag of lead.tags) {
-                if (typeof tag === "string" && tag.trim() && !tagMap.has(tag)) {
-                  tagMap.set(tag, 0);
+        const phones = leads.map((l: any) => l.phone).filter(Boolean);
+        if (phones.length > 0) {
+          const uniquePhones = [...new Set(phones)] as string[];
+          const leadTagMap = new Map<string, number>();
+          for (let i = 0; i < uniquePhones.length; i += 200) {
+            const batch = uniquePhones.slice(i, i + 200);
+            const { data: leadsWithTags } = await supabase
+              .from("leads")
+              .select("tags")
+              .in("phone", batch)
+              .not("tags", "eq", "{}");
+            if (leadsWithTags) {
+              for (const lead of leadsWithTags) {
+                if (Array.isArray(lead.tags)) {
+                  for (const tag of lead.tags) {
+                    if (typeof tag === "string" && tag.trim()) {
+                      leadTagMap.set(tag, (leadTagMap.get(tag) || 0) + 1);
+                    }
+                  }
                 }
               }
+            }
+          }
+          // Merge: if tag already in tagMap, take the max; otherwise use leads count
+          for (const [tag, count] of leadTagMap) {
+            if (!tagMap.has(tag)) {
+              tagMap.set(tag, count);
+            } else {
+              tagMap.set(tag, Math.max(tagMap.get(tag)!, count));
             }
           }
         }
