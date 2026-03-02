@@ -152,13 +152,24 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
   }, [campaignId, ignoreExisting]);
 
   async function loadCampaignMeta(cId: string) {
-    // Status counts
-    const { data: leads } = await (supabase as any)
-      .from("call_leads")
-      .select("status, custom_fields, phone")
-      .eq("campaign_id", cId);
+    // Status counts — paginate to handle >1000 call_leads
+    const PAGE = 1000;
+    let allLeads: any[] = [];
+    let from = 0;
+    while (true) {
+      const { data } = await (supabase as any)
+        .from("call_leads")
+        .select("status, custom_fields, phone")
+        .eq("campaign_id", cId)
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      allLeads.push(...data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
 
-    if (leads) {
+    const leads = allLeads;
+    if (leads.length > 0) {
       const counts: Record<string, number> = {};
       const tagMap = new Map<string, number>();
 
@@ -185,12 +196,16 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
           const leadTagMap = new Map<string, number>();
           for (let i = 0; i < uniquePhones.length; i += 200) {
             const batch = uniquePhones.slice(i, i + 200);
-            const { data: leadsWithTags } = await supabase
-              .from("leads")
-              .select("tags")
-              .in("phone", batch)
-              .not("tags", "eq", "{}");
-            if (leadsWithTags) {
+            // Paginate each batch query to handle >1000 results
+            let batchFrom = 0;
+            while (true) {
+              const { data: leadsWithTags } = await supabase
+                .from("leads")
+                .select("tags")
+                .in("phone", batch)
+                .not("tags", "eq", "{}")
+                .range(batchFrom, batchFrom + PAGE - 1);
+              if (!leadsWithTags || leadsWithTags.length === 0) break;
               for (const lead of leadsWithTags) {
                 if (Array.isArray(lead.tags)) {
                   for (const tag of lead.tags) {
@@ -200,6 +215,8 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
                   }
                 }
               }
+              if (leadsWithTags.length < PAGE) break;
+              batchFrom += PAGE;
             }
           }
           // Merge: if tag already in tagMap, take the max; otherwise use leads count
@@ -229,29 +246,43 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
     const matchedPhones = new Set<string>();
     if (tags.length === 0) return matchedPhones;
 
-    // First get all phones from call_leads of this campaign
-    const { data: clPhones } = await (supabase as any)
-      .from("call_leads")
-      .select("phone")
-      .eq("campaign_id", cId);
+    // Paginate call_leads phones
+    const PAGE = 1000;
+    let allClPhones: any[] = [];
+    let from = 0;
+    while (true) {
+      const { data } = await (supabase as any)
+        .from("call_leads")
+        .select("phone")
+        .eq("campaign_id", cId)
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      allClPhones.push(...data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
 
-    if (!clPhones || clPhones.length === 0) return matchedPhones;
+    if (allClPhones.length === 0) return matchedPhones;
 
-    const uniquePhones = [...new Set(clPhones.map((l: any) => l.phone).filter(Boolean))] as string[];
+    const uniquePhones = [...new Set(allClPhones.map((l: any) => l.phone).filter(Boolean))] as string[];
 
-    // Query leads table in batches to find which phones have the selected tags
+    // Query leads table in batches, with pagination per batch
     for (let i = 0; i < uniquePhones.length; i += 200) {
       const batch = uniquePhones.slice(i, i + 200);
-      const { data: leadsWithTags } = await supabase
-        .from("leads")
-        .select("phone, tags")
-        .in("phone", batch)
-        .overlaps("tags", tags);
-
-      if (leadsWithTags) {
+      let batchFrom = 0;
+      while (true) {
+        const { data: leadsWithTags } = await supabase
+          .from("leads")
+          .select("phone, tags")
+          .in("phone", batch)
+          .overlaps("tags", tags)
+          .range(batchFrom, batchFrom + PAGE - 1);
+        if (!leadsWithTags || leadsWithTags.length === 0) break;
         for (const lead of leadsWithTags) {
           matchedPhones.add(lead.phone);
         }
+        if (leadsWithTags.length < PAGE) break;
+        batchFrom += PAGE;
       }
     }
 
@@ -263,26 +294,31 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
       // When tags are selected, we need to match by phone against leads table
       const matchedPhones = await getLeadPhonesByTags(campaignId, selectedTags);
 
-      // Also fetch call_leads that have tags in custom_fields
-      const { data: allLeads } = await (supabase as any)
-        .from("call_leads")
-        .select("phone, custom_fields")
-        .eq("campaign_id", campaignId)
-        .in("status", selectedStatuses.length > 0 ? selectedStatuses : ["pending", "no_answer", "completed", "scheduled", "failed"]);
-
-      if (allLeads) {
-        const filtered = allLeads.filter((l: any) => {
-          // Match if phone is in leads table matches
-          if (matchedPhones.has(l.phone)) return true;
-          // Or if custom_fields.tags contains selected tag
-          const cfTags = l.custom_fields?.tags;
-          if (Array.isArray(cfTags) && selectedTags.some(t => cfTags.includes(t))) return true;
-          return false;
-        });
-        setFilteredCount(filtered.length);
-        return;
+      // Also fetch call_leads that have tags in custom_fields (paginated)
+      const PAGE = 1000;
+      let allLeads: any[] = [];
+      let from = 0;
+      const statuses = selectedStatuses.length > 0 ? selectedStatuses : ["pending", "no_answer", "completed", "scheduled", "failed"];
+      while (true) {
+        const { data } = await (supabase as any)
+          .from("call_leads")
+          .select("phone, custom_fields")
+          .eq("campaign_id", campaignId)
+          .in("status", statuses)
+          .range(from, from + PAGE - 1);
+        if (!data || data.length === 0) break;
+        allLeads.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
       }
-      setFilteredCount(0);
+
+      const filtered = allLeads.filter((l: any) => {
+        if (matchedPhones.has(l.phone)) return true;
+        const cfTags = l.custom_fields?.tags;
+        if (Array.isArray(cfTags) && selectedTags.some(t => cfTags.includes(t))) return true;
+        return false;
+      });
+      setFilteredCount(filtered.length);
       return;
     }
 
@@ -334,26 +370,36 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
     setProgressText("Buscando leads filtrados...");
 
     try {
-      // 1. Fetch filtered leads
-      let query = (supabase as any)
-        .from("call_leads")
-        .select("id, phone, name, status, custom_fields, attempts, created_at")
-        .eq("campaign_id", campaignId);
+      // 1. Fetch filtered leads (paginated)
+      const PAGE = 1000;
+      let allLeads: any[] = [];
+      let from = 0;
+      while (true) {
+        let query = (supabase as any)
+          .from("call_leads")
+          .select("id, phone, name, status, custom_fields, attempts, created_at")
+          .eq("campaign_id", campaignId);
 
-      if (selectedStatuses.length > 0) {
-        query = query.in("status", selectedStatuses);
+        if (selectedStatuses.length > 0) {
+          query = query.in("status", selectedStatuses);
+        }
+
+        switch (orderBy) {
+          case "recent": query = query.order("created_at", { ascending: false }); break;
+          case "oldest": query = query.order("created_at", { ascending: true }); break;
+          case "least_attempts": query = query.order("attempts", { ascending: true }); break;
+        }
+
+        query = query.range(from, from + PAGE - 1);
+        const { data, error: fetchError } = await query;
+        if (fetchError) throw fetchError;
+        if (!data || data.length === 0) break;
+        allLeads.push(...data);
+        if (data.length < PAGE) break;
+        from += PAGE;
       }
 
-      switch (orderBy) {
-        case "recent": query = query.order("created_at", { ascending: false }); break;
-        case "oldest": query = query.order("created_at", { ascending: true }); break;
-        case "least_attempts": query = query.order("attempts", { ascending: true }); break;
-      }
-
-      const { data: allLeads, error: fetchError } = await query;
-      if (fetchError) throw fetchError;
-
-      let leads = allLeads || [];
+      let leads = allLeads;
 
       // Filter by tags client-side (check both custom_fields.tags AND leads table tags)
       if (selectedTags.length > 0) {
@@ -377,14 +423,18 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
       // 2. If ignoreExisting, get phones already in queue
       let existingPhones = new Set<string>();
       if (ignoreExisting) {
-        const { data: existing } = await (supabase as any)
-          .from("call_queue")
-          .select("phone")
-          .eq("campaign_id", campaignId)
-          .eq("status", "waiting");
-
-        if (existing) {
-          existingPhones = new Set(existing.map((e: any) => e.phone));
+        let exFrom = 0;
+        while (true) {
+          const { data: existing } = await (supabase as any)
+            .from("call_queue")
+            .select("phone")
+            .eq("campaign_id", campaignId)
+            .eq("status", "waiting")
+            .range(exFrom, exFrom + PAGE - 1);
+          if (!existing || existing.length === 0) break;
+          for (const e of existing) existingPhones.add(e.phone);
+          if (existing.length < PAGE) break;
+          exFrom += PAGE;
         }
       }
 
