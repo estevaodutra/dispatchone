@@ -95,6 +95,7 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  ChevronsDown,
   ListOrdered,
   Trash2,
   Eye,
@@ -529,7 +530,7 @@ export default function CallPanel() {
     search: searchQuery || undefined,
   });
 
-  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue } = useCallQueuePanel(
+  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, sendToEndOfQueue } = useCallQueuePanel(
     campaignFilter !== "all" ? campaignFilter : undefined,
     searchQuery || undefined
   );
@@ -1034,7 +1035,7 @@ export default function CallPanel() {
             {/* Queue Status Banner */}
             <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
             {paginatedQueue.map((qe) => (
-              <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
+              <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} onSendToEnd={sendToEndOfQueue} />
             ))}
           </div>
         )
@@ -2018,8 +2019,9 @@ function BulkOperatorDialog({
 
 // ── Queue Card ──
 
-function QueueCard({ entry, onRemove }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void> }) {
+function QueueCard({ entry, onRemove, onSendToEnd }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void>; onSendToEnd: (params: { entryId: string; currentAttempts: number }) => Promise<void> }) {
   const [removing, setRemoving] = useState(false);
+  const [sendingToEnd, setSendingToEnd] = useState(false);
 
   const handleRemove = async () => {
     setRemoving(true);
@@ -2027,6 +2029,15 @@ function QueueCard({ entry, onRemove }: { entry: QueuePanelEntry; onRemove: (id:
       await onRemove(entry.id);
     } finally {
       setRemoving(false);
+    }
+  };
+
+  const handleSendToEnd = async () => {
+    setSendingToEnd(true);
+    try {
+      await onSendToEnd({ entryId: entry.id, currentAttempts: entry.attempts });
+    } finally {
+      setSendingToEnd(false);
     }
   };
 
@@ -2072,6 +2083,15 @@ function QueueCard({ entry, onRemove }: { entry: QueuePanelEntry; onRemove: (id:
             )}
           </div>
           <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleSendToEnd}
+              disabled={sendingToEnd}
+              className="gap-1 text-xs"
+            >
+              <ChevronsDown className="h-3.5 w-3.5" /> Para o final
+            </Button>
             <Button
               variant="outline"
               size="sm"
