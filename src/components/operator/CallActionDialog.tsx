@@ -12,7 +12,7 @@ import { useCallActions } from "@/hooks/useCallActions";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check, History, ChevronLeft, ChevronRight } from "lucide-react";
+import { Loader2, Calendar, Phone, PhoneMissed, ChevronDown, Clock, Copy, Check, History, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addHours, format, setHours, setMinutes, addDays } from "date-fns";
 import { InlineReschedule } from "./InlineReschedule";
@@ -104,6 +104,8 @@ export function CallActionDialog({
   const { actions, isLoading: actionsLoading } = useCallActions(currentData.campaignId);
   const { toast } = useToast();
   const [copied, setCopied] = useState(false);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(currentData.leadName);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(currentData.notes);
   const [scheduledDate, setScheduledDate] = useState("");
@@ -116,6 +118,8 @@ export function CallActionDialog({
   useEffect(() => {
     setSelectedActionId(null);
     setNotes(currentData.notes);
+    setEditName(currentData.leadName);
+    setIsEditingName(false);
     setScheduledDate("");
     setScheduledTime("");
     setCopied(false);
@@ -368,9 +372,38 @@ export function CallActionDialog({
               <div className="w-[85px]" />
             )}
           </div>
-          <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
-            {currentData.leadName}
-          </h2>
+          {isEditingName ? (
+            <Input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") { setEditName(currentData.leadName); setIsEditingName(false); }
+              }}
+              onBlur={async () => {
+                const trimmed = editName.trim();
+                if (trimmed && trimmed !== currentData.leadName) {
+                  await (supabase as any).from("call_leads").update({ name: trimmed }).eq("id", currentData.leadId);
+                  setCurrentData(prev => ({ ...prev, leadName: trimmed }));
+                  toast({ title: "Nome atualizado" });
+                } else {
+                  setEditName(currentData.leadName);
+                }
+                setIsEditingName(false);
+              }}
+              className="text-center text-2xl font-bold uppercase max-w-[300px] mx-auto"
+            />
+          ) : (
+            <div className="flex items-center justify-center gap-2">
+              <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
+                {currentData.leadName}
+              </h2>
+              <button onClick={() => { setEditName(currentData.leadName); setIsEditingName(true); }} className="text-muted-foreground hover:text-foreground transition-colors">
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <p className="text-lg font-mono text-primary">
             📞 {currentData.leadPhone}
           </p>
