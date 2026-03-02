@@ -158,21 +158,32 @@ export function useCallQueuePanel(campaignFilter?: string, searchQuery?: string)
   });
 
   const sendToEndOfQueue = useMutation({
-    mutationFn: async ({ entryId, currentAttempts }: { entryId: string; currentAttempts: number }) => {
-      const { data: maxPosData } = await (supabase as any)
-        .from("call_queue")
-        .select("position")
-        .order("position", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    mutationFn: async ({ entryId, currentAttempts, status }: { entryId: string; currentAttempts: number; status: string }) => {
+      if (status === "ready") {
+        // Entry comes from call_logs – push scheduled_for far into the future
+        const farFuture = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        const { error } = await (supabase as any)
+          .from("call_logs")
+          .update({ scheduled_for: farFuture })
+          .eq("id", entryId);
+        if (error) throw error;
+      } else {
+        // Entry comes from call_queue
+        const { data: maxPosData } = await (supabase as any)
+          .from("call_queue")
+          .select("position")
+          .order("position", { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      const nextPosition = (maxPosData?.position || 0) + 1;
+        const nextPosition = (maxPosData?.position || 0) + 1;
 
-      const { error } = await supabase
-        .from("call_queue")
-        .update({ position: nextPosition, attempts: currentAttempts + 1 } as any)
-        .eq("id", entryId);
-      if (error) throw error;
+        const { error } = await supabase
+          .from("call_queue")
+          .update({ position: nextPosition, attempts: currentAttempts + 1 } as any)
+          .eq("id", entryId);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call-queue-panel"] });
