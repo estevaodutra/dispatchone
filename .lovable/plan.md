@@ -1,17 +1,19 @@
 
 
-## Plano: Sempre exibir filtro de tags no CreateQueueDialog
+## Problema
 
-### Problema
+Na função `loadCampaignMeta` (linha 181-200), as tags vindas da tabela `leads` são adicionadas com `count: 0` hardcoded. Além disso, tags existentes no `call_leads.custom_fields.tags` só contam os call_leads, não os leads vinculados.
 
-O filtro de tags (linha 539) só aparece quando `availableTags.length > 0`. Se os leads da campanha não têm tags em `custom_fields.tags`, a seção fica invisível. O usuário quer que a opção esteja sempre disponível.
+## Correção
 
-### Alterações
+**`src/components/call-panel/CreateQueueDialog.tsx`** — linhas 180-200:
 
-**`src/components/call-panel/CreateQueueDialog.tsx`**:
+1. Buscar tags da tabela `leads` apenas para leads vinculados à campanha (via `lead_id` dos `call_leads` já carregados)
+2. Contar quantos leads têm cada tag, em vez de hardcodar `0`
+3. Mesclar as contagens: se a tag já existe no `tagMap` (do custom_fields), somar; se não, usar a contagem da tabela leads
 
-1. **Remover a condição `availableTags.length > 0`** (linha 539) — sempre exibir a seção de tags
-2. **Buscar tags também da tabela `leads`** — no `loadCampaignMeta`, além de extrair tags de `custom_fields.tags` dos `call_leads`, também buscar tags dos leads vinculados (via `lead_id` → `leads.tags`) para cobrir o caso onde as tags estão na tabela principal
-3. **Mostrar estado vazio** — quando não há tags, exibir "Nenhuma tag disponível nesta campanha" dentro da seção
-4. **Permitir input manual de tag** — adicionar um input para digitar uma tag manualmente caso não existam tags pré-definidas, como fallback
+Lógica:
+- Coletar todos os `lead_id` dos call_leads carregados
+- Buscar `leads` com `id in (lead_ids)` e `tags != {}`  
+- Para cada tag encontrada, contar quantos leads a possuem e atualizar o `tagMap`
 
