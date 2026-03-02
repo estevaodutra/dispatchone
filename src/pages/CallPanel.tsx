@@ -9,8 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
-import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
-import { useQueueExecutionData } from "@/hooks/useQueueExecution";
+import { useCallQueue, QueueItem } from "@/hooks/useCallQueue";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
 import { CallPopup } from "@/components/operator/CallPopup";
@@ -273,7 +272,7 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
 // ── Queue Status Banner ──
 
 function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting }: {
-  summary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
+  summary: { globalStatus: string; summary: { running: number; paused: number; stopped: number; waiting_operator: number; waiting_cooldown: number }; isLoading: boolean };
   operators: import("@/hooks/useCallOperators").CallOperator[];
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -407,7 +406,7 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
 
 function AgoraActionBar({ entries, queueSummary, bulkEnqueue, bulkDialing, setBulkDialing }: {
   entries: CallPanelEntry[];
-  queueSummary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
+  queueSummary: { globalStatus: string; isPausingAll: boolean; isResumingAll: boolean; pauseAll: () => Promise<void>; resumeAll: () => Promise<void> };
   bulkEnqueue: (params: { callIds: string[]; operatorId?: string }) => Promise<any>;
   bulkDialing: boolean;
   setBulkDialing: (v: boolean) => void;
@@ -531,11 +530,12 @@ export default function CallPanel() {
     search: searchQuery || undefined,
   });
 
-  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, sendToEndOfQueue, sendToStartOfQueue } = useCallQueuePanel(
-    campaignFilter !== "all" ? campaignFilter : undefined,
-    searchQuery || undefined
-  );
-  const queueSummary = useQueueExecutionData();
+  const callQueue = useCallQueue({
+    campaignFilter: campaignFilter !== "all" ? campaignFilter : undefined,
+    searchQuery: searchQuery || undefined,
+  });
+  const { items: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, moveToEnd: sendToEndOfQueue, moveToStart: sendToStartOfQueue } = callQueue;
+  const queueSummary = { globalStatus: callQueue.globalStatus, summary: callQueue.summary, isLoading: callQueue.isLoading, isPausingAll: callQueue.isPausingAll, isResumingAll: callQueue.isResumingAll, pauseAll: callQueue.pauseAll, resumeAll: callQueue.resumeAll };
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
 
@@ -1044,7 +1044,7 @@ export default function CallPanel() {
                     <TableHead className="hidden md:table-cell">Telefone</TableHead>
                     <TableHead className="hidden lg:table-cell">Campanha</TableHead>
                     <TableHead className="hidden md:table-cell w-[90px]">Tentativas</TableHead>
-                    <TableHead className="hidden lg:table-cell">Últ. Resultado</TableHead>
+                    <TableHead className="hidden lg:table-cell">Origem</TableHead>
                     <TableHead className="w-[60px]">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1065,7 +1065,7 @@ export default function CallPanel() {
                           <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
-                          {formatPhone(qe.leadPhone)}
+                          {formatPhone(qe.phone)}
                         </TableCell>
                         <TableCell className="hidden lg:table-cell py-2">
                           <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
@@ -1073,11 +1073,11 @@ export default function CallPanel() {
                           </span>
                         </TableCell>
                         <TableCell className="hidden md:table-cell text-center py-2">
-                          <span className="text-xs font-mono">{qe.attempts}</span>
+                          <span className="text-xs font-mono">{qe.attemptNumber}</span>
                         </TableCell>
                         <TableCell className="hidden lg:table-cell py-2">
                           <span className="text-xs text-muted-foreground">
-                            {qe.lastResult ? (lastResultLabel[qe.lastResult] || qe.lastResult) : "—"}
+                            {qe.source || "—"}
                           </span>
                         </TableCell>
                         <TableCell className="py-2">
@@ -1088,10 +1088,10 @@ export default function CallPanel() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => sendToStartOfQueue({ entryId: qe.id, status: qe.status })}>
+                              <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
                                 <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
                               </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => sendToEndOfQueue({ entryId: qe.id, currentAttempts: qe.attempts, status: qe.status })}>
+                              <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
                                 <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
