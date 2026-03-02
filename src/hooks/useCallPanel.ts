@@ -345,7 +345,7 @@ export function useCallPanel(filters?: {
             .eq("campaign_id", campaignId);
 
           await supabase.functions.invoke(
-            `queue-executor?campaign_id=${campaignId}&action=tick`
+            `queue-processor?campaign_id=${campaignId}&action=tick`
           );
         } catch { /* ignore */ }
       }
@@ -407,13 +407,13 @@ export function useCallPanel(filters?: {
               });
           }
 
-          // Trigger queue-executor tick
+          // Trigger queue-processor tick
           try {
             await supabase.functions.invoke(
-              `queue-executor?campaign_id=${campaignId}&action=tick`,
+              `queue-processor?campaign_id=${campaignId}&action=tick`,
             );
           } catch {
-            // queue-executor may not be available, calls are still enqueued
+            // queue-processor may not be available, calls are still enqueued
           }
         }
       }
