@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
+  import {
   FolderOpen,
   Filter,
   Hash,
@@ -37,6 +37,7 @@ import {
   Play,
   BarChart3,
   Search,
+  Tag,
 } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
@@ -81,6 +82,7 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(["pending", "no_answer"]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagSearch, setTagSearch] = useState("");
+  const [manualTag, setManualTag] = useState("");
   const [quantityMode, setQuantityMode] = useState<"all" | "limit">("all");
   const [quantityLimit, setQuantityLimit] = useState(50);
   const [orderBy, setOrderBy] = useState<OrderBy>("recent");
@@ -153,7 +155,7 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
     // Status counts
     const { data: leads } = await (supabase as any)
       .from("call_leads")
-      .select("status, custom_fields")
+      .select("status, custom_fields, lead_id:id")
       .eq("campaign_id", cId);
 
     if (leads) {
@@ -173,6 +175,28 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
             }
           }
         }
+      }
+
+      // Also fetch tags from leads table (leads.tags array column)
+      try {
+        const { data: leadsWithTags } = await supabase
+          .from("leads")
+          .select("tags")
+          .not("tags", "eq", "{}");
+
+        if (leadsWithTags) {
+          for (const lead of leadsWithTags) {
+            if (Array.isArray(lead.tags)) {
+              for (const tag of lead.tags) {
+                if (typeof tag === "string" && tag.trim() && !tagMap.has(tag)) {
+                  tagMap.set(tag, 0);
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Ignore errors fetching from leads table
       }
 
       setStatusCounts(counts);
@@ -536,21 +560,21 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
                     </div>
                   </div>
 
-                  {availableTags.length > 0 && (
-                    <div className="space-y-2">
-                      <Label className="text-xs font-medium">Filtrar por Tags</Label>
-                      <div className="rounded-lg border p-3 space-y-2">
-                        {availableTags.length > 5 && (
-                          <div className="relative mb-2">
-                            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                            <Input
-                              placeholder="Buscar tag..."
-                              value={tagSearch}
-                              onChange={e => setTagSearch(e.target.value)}
-                              className="h-8 pl-8 text-xs"
-                            />
-                          </div>
-                        )}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium">Filtrar por Tags</Label>
+                    <div className="rounded-lg border p-3 space-y-2">
+                      {availableTags.length > 5 && (
+                        <div className="relative mb-2">
+                          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                          <Input
+                            placeholder="Buscar tag..."
+                            value={tagSearch}
+                            onChange={e => setTagSearch(e.target.value)}
+                            className="h-8 pl-8 text-xs"
+                          />
+                        </div>
+                      )}
+                      {availableTags.length > 0 ? (
                         <div className="max-h-[140px] overflow-y-auto space-y-1.5">
                           {filteredTags.map(({ tag, count }) => (
                             <label key={tag} className="flex items-center gap-3 cursor-pointer">
@@ -567,14 +591,60 @@ export function CreateQueueDialog({ open, onOpenChange, onStartQueue }: CreateQu
                             </label>
                           ))}
                         </div>
-                        {selectedTags.length > 0 && (
-                          <p className="text-[11px] text-muted-foreground pt-1 border-t">
-                            Selecionadas: {selectedTags.join(", ")}
-                          </p>
-                        )}
+                      ) : (
+                        <p className="text-xs text-muted-foreground py-2 text-center">
+                          Nenhuma tag disponível nesta campanha
+                        </p>
+                      )}
+                      {/* Manual tag input */}
+                      <div className="flex items-center gap-2 pt-1 border-t">
+                        <Tag className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <Input
+                          placeholder="Adicionar tag manualmente..."
+                          value={manualTag}
+                          onChange={e => setManualTag(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === "Enter" && manualTag.trim()) {
+                              e.preventDefault();
+                              const tag = manualTag.trim();
+                              if (!selectedTags.includes(tag)) {
+                                setSelectedTags(prev => [...prev, tag]);
+                              }
+                              if (!availableTags.some(t => t.tag === tag)) {
+                                setAvailableTags(prev => [...prev, { tag, count: 0 }]);
+                              }
+                              setManualTag("");
+                            }
+                          }}
+                          className="h-7 text-xs flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          disabled={!manualTag.trim()}
+                          onClick={() => {
+                            const tag = manualTag.trim();
+                            if (tag && !selectedTags.includes(tag)) {
+                              setSelectedTags(prev => [...prev, tag]);
+                            }
+                            if (tag && !availableTags.some(t => t.tag === tag)) {
+                              setAvailableTags(prev => [...prev, { tag, count: 0 }]);
+                            }
+                            setManualTag("");
+                          }}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
                       </div>
+                      {selectedTags.length > 0 && (
+                        <p className="text-[11px] text-muted-foreground pt-1 border-t">
+                          Selecionadas: {selectedTags.join(", ")}
+                        </p>
+                      )}
                     </div>
-                  )}
+                  </div>
                 </section>
 
                 {/* STEP 3 — Quantity & Order */}
