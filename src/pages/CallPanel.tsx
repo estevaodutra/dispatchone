@@ -1590,9 +1590,13 @@ function ActionDialog({
   onRescheduleConfirm: (entry: CallPanelEntry, scheduledFor: string) => Promise<void>;
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
+  const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const hasScript = !!(entry.campaignId && entry.leadId);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(entry.leadName || "");
+  const [localEntry, setLocalEntry] = useState(entry);
 
   // Inline reschedule state
   const [showReschedule, setShowReschedule] = useState(false);
@@ -1638,9 +1642,40 @@ function ActionDialog({
               {(entry.leadName || "L").charAt(0).toUpperCase()}
             </div>
           </div>
-          <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
-            {entry.leadName || "Lead"}
-          </h2>
+          {isEditingName ? (
+            <Input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") { setEditName(localEntry.leadName || ""); setIsEditingName(false); }
+              }}
+              onBlur={async () => {
+                const trimmed = editName.trim();
+                if (trimmed && trimmed !== (localEntry.leadName || "")) {
+                  if (localEntry.leadId) {
+                    await (supabase as any).from("call_leads").update({ name: trimmed }).eq("id", localEntry.leadId);
+                  }
+                  setLocalEntry(prev => ({ ...prev, leadName: trimmed }));
+                  toast({ title: "Nome atualizado" });
+                } else {
+                  setEditName(localEntry.leadName || "");
+                }
+                setIsEditingName(false);
+              }}
+              className="text-center text-2xl font-bold uppercase max-w-[300px] mx-auto"
+            />
+          ) : (
+            <div className="flex items-center justify-center gap-2">
+              <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
+                {localEntry.leadName || "Lead"}
+              </h2>
+              <button onClick={() => { setEditName(localEntry.leadName || ""); setIsEditingName(true); }} className="text-muted-foreground hover:text-foreground transition-colors">
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <p className="text-lg font-mono text-primary">
             📞 {formatPhone(entry.leadPhone)}
           </p>
