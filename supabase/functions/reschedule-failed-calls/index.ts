@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
           exceededCount++;
         }
       } catch (e) {
-        errors.push(`Call ${call.id}: ${e.message}`);
+        errors.push(`Call ${call.id}: ${(e as Error).message}`);
       }
     }
 
@@ -214,9 +214,9 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (error) {
-    console.error("Reschedule error:", error.message);
+    console.error("Reschedule error:", (error as Error).message);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
