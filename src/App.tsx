@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,30 +10,29 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { CompanyProvider } from "@/contexts/CompanyContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { AppLayout } from "@/components/layout";
+import { Loader2 } from "lucide-react";
 
-// Pages
-import Dashboard from "./pages/Dashboard";
-import Leads from "./pages/Leads";
-import {
-  CampaignsHub,
-  DispatchCampaigns,
-  GroupCampaignsPage,
-  PirateCampaigns,
-  URACampaigns,
-  CallCampaigns,
-} from "./pages/campaigns";
-import PhoneNumbers from "./pages/PhoneNumbers";
-import Logs from "./pages/Logs";
-import Instances from "./pages/Instances";
-import Alerts from "./pages/Alerts";
-import Billing from "./pages/Billing";
-import Settings from "./pages/Settings";
-import ApiDocs from "./pages/ApiDocs";
-import WebhookEvents from "./pages/WebhookEvents";
-import Auth from "./pages/Auth";
-import OperatorScript from "./pages/OperatorScript";
-import CallPanel from "./pages/CallPanel";
-import NotFound from "./pages/NotFound";
+// Lazy-loaded pages
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Leads = lazy(() => import("./pages/Leads"));
+const CampaignsHub = lazy(() => import("./pages/campaigns/CampaignsHub"));
+const DispatchCampaigns = lazy(() => import("./pages/campaigns/DispatchCampaigns"));
+const GroupCampaignsPage = lazy(() => import("./pages/campaigns/GroupCampaignsPage"));
+const PirateCampaigns = lazy(() => import("./pages/campaigns/PirateCampaigns"));
+const URACampaigns = lazy(() => import("./pages/campaigns/URACampaigns"));
+const CallCampaigns = lazy(() => import("./pages/campaigns/CallCampaigns"));
+const PhoneNumbers = lazy(() => import("./pages/PhoneNumbers"));
+const Logs = lazy(() => import("./pages/Logs"));
+const Instances = lazy(() => import("./pages/Instances"));
+const Alerts = lazy(() => import("./pages/Alerts"));
+const Billing = lazy(() => import("./pages/Billing"));
+const Settings = lazy(() => import("./pages/Settings"));
+const ApiDocs = lazy(() => import("./pages/ApiDocs"));
+const WebhookEvents = lazy(() => import("./pages/WebhookEvents"));
+const Auth = lazy(() => import("./pages/Auth"));
+const OperatorScript = lazy(() => import("./pages/OperatorScript"));
+const CallPanel = lazy(() => import("./pages/CallPanel"));
+const NotFound = lazy(() => import("./pages/NotFound"));
 
 const App = () => {
   const [queryClient] = useState(() => new QueryClient());
@@ -48,6 +47,7 @@ const App = () => {
               <Toaster />
               <Sonner />
               <BrowserRouter>
+              <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>}>
                 <Routes>
                   {/* Public route */}
                   <Route path="/auth" element={<Auth />} />
@@ -198,6 +198,7 @@ const App = () => {
                   />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
+              </Suspense>
               </BrowserRouter>
               </TooltipProvider>
             </CompanyProvider>
