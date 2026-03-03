@@ -2,29 +2,24 @@
 
 ## Problema
 
-Existem **dois problemas** impedindo a discagem:
-
-### 1. `onStartQueue` no CallPanel não inicia a fila de verdade
-No `CallPanel.tsx` (linha 1573), o callback `onStartQueue` passado ao `CreateQueueDialog` **apenas mostra um toast** mas nunca chama `callQueue.startQueue(campaignId)`:
-```typescript
-onStartQueue={(cId) => {
-  toast({ title: "Fila iniciada", ... });
-  // FALTA: callQueue.startQueue(cId)
-}}
-```
-
-### 2. Banner de fila "Parada" não tem botão "Iniciar"
-O `QueueStatusBanner` mostra botões de Pausar (quando running) e Retomar (quando paused), mas **não mostra nenhum botão "Iniciar"** quando o status é `stopped`. O usuário fica sem forma de iniciar a fila pela aba Fila.
+O nome exibido na sidebar ("Estevão Dutra") vem da coluna `companies.name` no banco de dados, que foi preenchida com o nome do usuário ao invés do nome da empresa. A página de Configurações tem um campo "Nome da Empresa" mas o `handleSaveChanges` **não salva de verdade** — apenas simula com um `setTimeout`.
 
 ## Correção
 
-### `src/pages/CallPanel.tsx`
+### 1. Atualizar `companies.name` no banco de dados
+- Atualizar o registro da empresa do usuário para "D2X Negócios Digitais" diretamente no banco
 
-1. **Linha 1573**: Alterar o `onStartQueue` para chamar `callQueue.startQueue(cId)` de verdade, além do toast
-2. **QueueStatusBanner (linha 302-358)**: Adicionar um botão "Iniciar" quando `globalStatus === "stopped"` e `totalWaiting > 0`, chamando a mesma lógica de `startQueue`
+### 2. Corrigir `handleSaveChanges` em `src/pages/Settings.tsx`
+- Substituir o `setTimeout` fake por uma query real que atualiza `companies.name` usando o `activeCompanyId` do `CompanyContext`
+- Após salvar, chamar `refetch()` do `CompanyContext` para atualizar a sidebar
 
-### Detalhes:
-- Passar `startQueue` e `isStarting` como props do `QueueStatusBanner`
-- O botão "Iniciar" precisa de um `campaignId` — pode usar o filtro de campanha ativo ou, se "todas", usar o primeiro campaign ativo da fila
-- No `onStartQueue`, chamar `await callQueue.startQueue(cId)` e navegar para a aba queue
+### 3. Carregar o nome atual da empresa ao abrir Settings
+- Adicionar `useEffect` que inicializa `settings.companyName` com `activeCompany.name` do contexto
+
+### Detalhes técnicos
+
+**`src/pages/Settings.tsx`**:
+- Importar `useCompany` e usar `activeCompany`, `activeCompanyId`, `refetch`
+- No `useEffect` inicial: `setSettings(prev => ({ ...prev, companyName: activeCompany?.name || "" }))`
+- No `handleSaveChanges`: executar `supabase.from("companies").update({ name: settings.companyName }).eq("id", activeCompanyId)` e depois `refetch()`
 
