@@ -465,6 +465,7 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Não autenticado");
 
+      // Buscar leads com o status filtrado
       let leadsQuery = (supabase as any)
         .from("call_leads")
         .select("id, phone, name")
@@ -476,26 +477,41 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
       }
 
       const { data: matchingLeads, error: fetchErr } = await leadsQuery;
+
       if (fetchErr) throw fetchErr;
       if (!matchingLeads?.length) throw new Error("Nenhum lead encontrado com esse status");
 
-      // Insert directly into call_queue
-      let added = 0;
+      const now = new Date().toISOString();
+
+      // Criar call_logs com status 'ready' para cada lead
       for (const lead of matchingLeads) {
-        const { error } = await (supabase as any).from("call_queue").insert({
-          user_id: user.id,
-          company_id: activeCompanyId || null,
-          campaign_id: campaignId,
-          lead_id: lead.id,
-          phone: lead.phone,
-          lead_name: lead.name || null,
-          source: "bulk_enqueue",
-        });
-        if (!error) added++;
+        const { data: existing } = await (supabase as any)
+          .from("call_logs")
+          .select("id")
+          .eq("campaign_id", campaignId)
+          .eq("lead_id", lead.id)
+          .in("call_status", ["scheduled", "ready", "dialing", "ringing", "in_progress"])
+          .maybeSingle();
+
+        if (existing) {
+          await (supabase as any)
+            .from("call_logs")
+            .update({ call_status: "ready", scheduled_for: now, operator_id: null })
+            .eq("id", existing.id);
+        } else {
+          await (supabase as any)
+            .from("call_logs")
+            .insert({
+              user_id: user.id,
+              campaign_id: campaignId,
+              lead_id: lead.id,
+              call_status: "ready",
+              scheduled_for: now,
+            });
+        }
       }
 
-      // Ensure queue is running
-      const now = new Date().toISOString();
+      // Garantir fila ativa
       const { data: queueState } = await (supabase as any)
         .from("queue_execution_state")
         .select("id, status")
@@ -523,11 +539,11 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
 
       // Tick imediato
       await supabase.functions.invoke(
-        `queue-processor?campaign_id=${campaignId}&action=tick`,
+        `queue-executor?campaign_id=${campaignId}&action=tick`,
         { method: "POST" }
       );
 
-      return added;
+      return matchingLeads.length;
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });

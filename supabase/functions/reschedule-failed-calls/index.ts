@@ -148,7 +148,7 @@ Deno.serve(async (req) => {
           if (call.lead_id) {
             await supabase
               .from("call_leads")
-              .update({ status: "scheduled", assigned_operator_id: newOperatorId })
+              .update({ status: "pending", assigned_operator_id: newOperatorId })
               .eq("id", call.lead_id);
           }
 

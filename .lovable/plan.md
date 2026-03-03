@@ -1,38 +1,30 @@
 
 
-## Problema
+## Plano: Botão de Executar/Pausar para chamadas "AGORA!"
 
-A tela branca é causada pelo servidor Vite de desenvolvimento falhando ao servir os módulos JavaScript. Os logs mostram:
-- `ERR_HTTP2_PROTOCOL_ERROR` no chunk principal do React
-- Erros 503 em múltiplos arquivos (`Logs.tsx`, `BulkTagDialog.tsx`)
-- `[vite] server connection lost. Polling for restart...`
+### O que será feito
 
-A causa raiz: o `App.tsx` importa **todas as 15+ páginas de forma eager/síncrona**, incluindo o `CallPanel.tsx` com 2169 linhas. Isso faz o servidor tentar carregar centenas de módulos simultaneamente.
+Adicionar um botão de ação rápida acima da tabela de chamadas (ao lado dos filtros ou abaixo dos cards de métricas) que permite:
+- **Discar todas** as chamadas com status "AGORA!" (scheduled/ready com `scheduledFor <= now`) de uma vez, enviando-as para a fila de execução
+- **Pausar** a execução quando a fila estiver rodando
 
-## Correção
+O botão será contextual:
+- Quando há chamadas "AGORA!" e a fila está parada → mostra **"▶ Discar AGORA! (N)"** (verde)
+- Quando a fila está rodando → mostra **"⏸ Pausar"** (amarelo)
+- Quando a fila está pausada → mostra **"▶ Retomar"** (verde)
 
-Implementar **lazy loading** com `React.lazy()` em todas as páginas no `App.tsx`, de forma que cada página só seja carregada quando o usuário navega até ela.
+### Alterações
 
-### `src/App.tsx`
+**`src/pages/CallPanel.tsx`**:
+1. Calcular `agoraEntries` — filtrar entries com status `scheduled`/`ready` onde `getTimeRemaining().isUrgent === true`
+2. Adicionar um bloco de botão entre os filtros e a tabela (ao lado do banner de status ou como um novo mini-banner):
+   - Botão "Discar AGORA! (N)" que chama `bulkEnqueue({ callIds })` com os IDs das entradas "AGORA!"
+   - Botão "Pausar" que chama `queueSummary.pauseAll()`
+   - Botão "Retomar" que chama `queueSummary.resumeAll()`
+3. O botão só aparece quando existem chamadas "AGORA!" ou quando a fila está ativa
 
-1. Substituir todos os imports estáticos de páginas por `React.lazy()`:
-```typescript
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Leads = lazy(() => import("./pages/Leads"));
-const CallPanel = lazy(() => import("./pages/CallPanel"));
-// ... todas as outras páginas
-```
-
-2. Envolver o `<Routes>` com `<Suspense>` e um fallback de loading:
-```typescript
-<Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /></div>}>
-  <Routes>...</Routes>
-</Suspense>
-```
-
-### Impacto
-- Reduz drasticamente o número de módulos carregados na inicialização
-- Cada página só é carregada quando acessada
-- Resolve o problema de memória/rede do servidor Vite
-- Não muda nenhuma funcionalidade existente
+### Detalhes técnicos
+- Reutiliza `bulkEnqueue` do `useCallPanel` (já existente) para enviar chamadas para fila
+- Reutiliza `pauseAll`/`resumeAll` do `useQueueExecutionData` (já existente)
+- Contagem de "AGORA!" usa `getTimeRemaining(entry.scheduledFor).isUrgent && ["scheduled", "ready"].includes(entry.callStatus)`
 

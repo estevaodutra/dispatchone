@@ -30,7 +30,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "next-themes";
 import { useLanguage } from "@/i18n";
 import { supabase } from "@/integrations/supabase/client";
-import { useCompany } from "@/contexts/CompanyContext";
 
 interface ApiKey {
   id: string;
@@ -47,7 +46,6 @@ export default function Settings() {
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
   const { language, setLanguage, t } = useLanguage();
-  const { activeCompany, activeCompanyId, refetch } = useCompany();
   
   const [isSaving, setIsSaving] = useState(false);
   const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
@@ -104,12 +102,6 @@ export default function Settings() {
       fetchApiKeys();
     }
   }, [showApiKeyDialog]);
-
-  useEffect(() => {
-    if (activeCompany?.name) {
-      setSettings((prev) => ({ ...prev, companyName: activeCompany.name }));
-    }
-  }, [activeCompany?.name]);
 
   const handleGenerateKey = async () => {
     if (!newKeyName.trim()) {
@@ -192,29 +184,12 @@ export default function Settings() {
 
   const handleSaveChanges = async () => {
     setIsSaving(true);
-    try {
-      if (activeCompanyId) {
-        const { error } = await (supabase as any)
-          .from("companies")
-          .update({ name: settings.companyName })
-          .eq("id", activeCompanyId);
-        if (error) throw error;
-        await refetch();
-      }
-      toast({
-        title: t("settings.settingsSaved"),
-        description: t("settings.settingsSaved"),
-      });
-    } catch (err) {
-      console.error("Error saving settings:", err);
-      toast({
-        title: t("common.error"),
-        description: "Erro ao salvar configurações.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsSaving(false);
+    toast({
+      title: t("settings.settingsSaved"),
+      description: t("settings.settingsSaved"),
+    });
   };
 
   const handleEnable2FA = () => {

@@ -464,57 +464,45 @@ export type Database = {
       }
       call_queue: {
         Row: {
-          attempt_number: number | null
+          attempts: number | null
           campaign_id: string
           company_id: string | null
           created_at: string | null
           id: string
-          is_priority: boolean | null
-          lead_id: string | null
-          lead_name: string | null
-          max_attempts: number | null
-          observations: string | null
-          phone: string
+          last_attempt_at: string | null
+          last_result: string | null
+          lead_id: string
           position: number
-          scheduled_for: string | null
-          source: string | null
           status: string | null
+          updated_at: string | null
           user_id: string
         }
         Insert: {
-          attempt_number?: number | null
+          attempts?: number | null
           campaign_id: string
           company_id?: string | null
           created_at?: string | null
           id?: string
-          is_priority?: boolean | null
-          lead_id?: string | null
-          lead_name?: string | null
-          max_attempts?: number | null
-          observations?: string | null
-          phone: string
-          position?: number
-          scheduled_for?: string | null
-          source?: string | null
+          last_attempt_at?: string | null
+          last_result?: string | null
+          lead_id: string
+          position: number
           status?: string | null
+          updated_at?: string | null
           user_id: string
         }
         Update: {
-          attempt_number?: number | null
+          attempts?: number | null
           campaign_id?: string
           company_id?: string | null
           created_at?: string | null
           id?: string
-          is_priority?: boolean | null
-          lead_id?: string | null
-          lead_name?: string | null
-          max_attempts?: number | null
-          observations?: string | null
-          phone?: string
+          last_attempt_at?: string | null
+          last_result?: string | null
+          lead_id?: string
           position?: number
-          scheduled_for?: string | null
-          source?: string | null
           status?: string | null
+          updated_at?: string | null
           user_id?: string
         }
         Relationships: [
@@ -526,10 +514,17 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "call_queue_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "call_queue_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
-            referencedRelation: "call_leads"
+            referencedRelation: "leads"
             referencedColumns: ["id"]
           },
         ]

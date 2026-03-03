@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useCallQueue } from "@/hooks/useCallQueue";
+import { useQueueExecution } from "@/hooks/useQueueExecution";
+import { useCallLeads } from "@/hooks/useCallLeads";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -34,8 +35,9 @@ export function QueueControlPanel({ campaignId }: QueueControlPanelProps) {
     isStarting,
     isPausing,
     isStopping,
-    totalWaiting,
-  } = useCallQueue({ campaignId, campaignFilter: campaignId });
+  } = useQueueExecution(campaignId);
+
+  const { stats } = useCallLeads(campaignId);
 
   const currentStatus = state?.status || "stopped";
   const display = statusDisplay[currentStatus] || statusDisplay.stopped;
@@ -60,33 +62,33 @@ export function QueueControlPanel({ campaignId }: QueueControlPanelProps) {
             </Badge>
 
             {currentStatus === "stopped" && (
-              <Button size="sm" onClick={async () => { await startQueue(campaignId); navigate("/painel-ligacoes?tab=queue"); }} disabled={isStarting}>
+              <Button size="sm" onClick={async () => { await startQueue(); navigate("/painel-ligacoes?tab=queue"); }} disabled={isStarting}>
                 <Play className="h-3.5 w-3.5 mr-1" />
                 {isStarting ? "Iniciando..." : "Iniciar"}
               </Button>
             )}
             {currentStatus === "running" && (
               <>
-                <Button variant="outline" size="sm" onClick={() => pauseQueue(campaignId)} disabled={isPausing}>
+                <Button variant="outline" size="sm" onClick={() => pauseQueue()} disabled={isPausing}>
                   <Pause className="h-3.5 w-3.5 mr-1" /> Pausar
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => stopQueue(campaignId)} disabled={isStopping}>
+                <Button variant="outline" size="sm" onClick={() => stopQueue()} disabled={isStopping}>
                   <Square className="h-3.5 w-3.5 mr-1" /> Parar
                 </Button>
               </>
             )}
             {currentStatus === "paused" && (
               <>
-                <Button size="sm" onClick={() => resumeQueue(campaignId)}>
+                <Button size="sm" onClick={() => resumeQueue()}>
                   <Play className="h-3.5 w-3.5 mr-1" /> Retomar
                 </Button>
-                <Button variant="outline" size="sm" onClick={() => stopQueue(campaignId)} disabled={isStopping}>
+                <Button variant="outline" size="sm" onClick={() => stopQueue()} disabled={isStopping}>
                   <Square className="h-3.5 w-3.5 mr-1" /> Parar
                 </Button>
               </>
             )}
             {(currentStatus === "waiting_operator" || currentStatus === "waiting_cooldown") && (
-              <Button variant="outline" size="sm" onClick={() => stopQueue(campaignId)} disabled={isStopping}>
+              <Button variant="outline" size="sm" onClick={() => stopQueue()} disabled={isStopping}>
                 <Square className="h-3.5 w-3.5 mr-1" /> Parar
               </Button>
             )}
@@ -97,7 +99,7 @@ export function QueueControlPanel({ campaignId }: QueueControlPanelProps) {
           <MiniMetric
             icon={<ListOrdered className="h-4 w-4 text-muted-foreground" />}
             label="Na Fila"
-            value={totalWaiting}
+            value={stats.pending}
           />
           <MiniMetric
             icon={<Users className="h-4 w-4 text-muted-foreground" />}
