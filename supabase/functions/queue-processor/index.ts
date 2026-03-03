@@ -186,11 +186,97 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     .maybeSingle();
 
   if (!entry) {
-    // Queue empty — stop
-    await supabase.from('queue_execution_state')
-      .update({ status: 'stopped' })
-      .eq('campaign_id', campaignId);
-    return { success: true, action: 'completed', reason: 'Queue empty' };
+    // 4b. Fallback: check for ready/scheduled call_logs
+    const { data: readyLog } = await supabase
+      .from('call_logs')
+      .select('id, campaign_id, lead_id, user_id, attempt_number, max_attempts')
+      .eq('campaign_id', campaignId)
+      .in('call_status', ['ready', 'scheduled'])
+      .lte('scheduled_for', new Date().toISOString())
+      .order('scheduled_for', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (!readyLog) {
+      // Truly nothing to process → stop
+      await supabase.from('queue_execution_state')
+        .update({ status: 'stopped' })
+        .eq('campaign_id', campaignId);
+      return { success: true, action: 'completed', reason: 'Queue empty' };
+    }
+
+    // Fetch lead data for phone/name
+    let leadPhone = '';
+    let leadName = '';
+    if (readyLog.lead_id) {
+      const { data: leadData } = await supabase
+        .from('call_leads')
+        .select('phone, name')
+        .eq('id', readyLog.lead_id)
+        .maybeSingle();
+      if (leadData) {
+        leadPhone = leadData.phone;
+        leadName = leadData.name || '';
+      }
+    }
+
+    // Reserve operator using existing call_log id
+    const { data: reservation } = await supabase.rpc('reserve_operator_for_call', {
+      p_call_id: readyLog.id,
+      p_campaign_id: campaignId,
+    });
+
+    if (!reservation?.[0]?.success) {
+      const behavior = campaign.queue_unavailable_behavior || 'wait';
+      const newStatus = behavior === 'pause' ? 'paused' : 'waiting_operator';
+      if (state.status !== newStatus) {
+        await supabase.from('queue_execution_state').update({ status: newStatus }).eq('campaign_id', campaignId);
+      }
+      return { success: true, action: 'waiting', reason: reservation?.[0]?.error_code || 'no_operator_available' };
+    }
+
+    const operator = reservation[0];
+
+    // Update existing call_log to dialing
+    await supabase.from('call_logs').update({
+      operator_id: operator.operator_id,
+      call_status: 'dialing',
+      started_at: new Date().toISOString(),
+    }).eq('id', readyLog.id);
+
+    // Update lead status
+    if (readyLog.lead_id) {
+      await supabase.from('call_leads').update({
+        status: 'calling',
+        assigned_operator_id: operator.operator_id,
+        last_attempt_at: new Date().toISOString(),
+      }).eq('id', readyLog.lead_id);
+    }
+
+    // Fire webhook
+    const operatorObj = { id: operator.operator_id, operator_name: operator.operator_name, extension: operator.operator_extension };
+    const leadObj = { id: readyLog.lead_id, phone: leadPhone, name: leadName };
+    await fireDialWebhook(supabase, userId, readyLog.id, campaignId, campaign, leadObj, operatorObj);
+
+    // Update queue_execution_state
+    await supabase.from('queue_execution_state').update({
+      last_dial_at: new Date().toISOString(),
+      calls_made: (state.calls_made || 0) + 1,
+      current_position: (state.current_position || 0) + 1,
+      current_operator_index: nextIndex,
+      status: 'running',
+    }).eq('campaign_id', campaignId);
+
+    console.log(`[queue-processor] Fallback: Dialed ${leadPhone} via operator ${operator.operator_name} (call_log ${readyLog.id})`);
+
+    return {
+      success: true,
+      action: 'dialed',
+      call_id: readyLog.id,
+      operator: operator.operator_name,
+      lead: { name: leadName, phone: leadPhone },
+      source: 'fallback_call_logs',
+    };
   }
 
   // 5. Create call_log (history)
