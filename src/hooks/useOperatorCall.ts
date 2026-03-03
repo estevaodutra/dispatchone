@@ -352,9 +352,9 @@ export function useOperatorCall() {
       setCooldownRemaining(remaining);
 
       if (remaining <= 0) {
-        setCallStatus("idle");
-        setCurrentCall(null);
         setCooldownRemaining(0);
+        // State transitions (idle, clearing currentCall) are handled
+        // by the realtime handler when resolve_cooldowns runs
       }
     }, 1000);
 
