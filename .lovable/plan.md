@@ -2,29 +2,35 @@
 
 ## Problema
 
-Existem **dois problemas** impedindo a discagem:
+A tela está em branco porque o **build do servidor de desenvolvimento está falhando** devido a 9 erros de TypeScript nas edge functions. Esses erros bloqueiam o carregamento de toda a aplicação.
 
-### 1. `onStartQueue` no CallPanel não inicia a fila de verdade
-No `CallPanel.tsx` (linha 1573), o callback `onStartQueue` passado ao `CreateQueueDialog` **apenas mostra um toast** mas nunca chama `callQueue.startQueue(campaignId)`:
-```typescript
-onStartQueue={(cId) => {
-  toast({ title: "Fila iniciada", ... });
-  // FALTA: callQueue.startQueue(cId)
-}}
-```
-
-### 2. Banner de fila "Parada" não tem botão "Iniciar"
-O `QueueStatusBanner` mostra botões de Pausar (quando running) e Retomar (quando paused), mas **não mostra nenhum botão "Iniciar"** quando o status é `stopped`. O usuário fica sem forma de iniciar a fila pela aba Fila.
+Os erros são de dois tipos:
+1. **`err`/`error` tipado como `unknown`** — Deno strict mode exige casting antes de acessar `.message`
+2. **`supabaseAdmin.rpc ? undefined : undefined`** — condição sempre `true`, TS alerta como erro
 
 ## Correção
 
-### `src/pages/CallPanel.tsx`
+Corrigir os 6 arquivos de edge functions:
 
-1. **Linha 1573**: Alterar o `onStartQueue` para chamar `callQueue.startQueue(cId)` de verdade, além do toast
-2. **QueueStatusBanner (linha 302-358)**: Adicionar um botão "Iniciar" quando `globalStatus === "stopped"` e `totalWaiting > 0`, chamando a mesma lógica de `startQueue`
+### 1. `supabase/functions/call-queue-api/index.ts`
+- **Linha 121**: Remover a linha inútil `attempts: supabaseAdmin.rpc ? undefined : undefined`
+- **Linha 136-137**: Trocar `err.message` por `(err as Error).message`
 
-### Detalhes:
-- Passar `startQueue` e `isStarting` como props do `QueueStatusBanner`
-- O botão "Iniciar" precisa de um `campaignId` — pode usar o filtro de campanha ativo ou, se "todas", usar o primeiro campaign ativo da fila
-- No `onStartQueue`, chamar `await callQueue.startQueue(cId)` e navegar para a aba queue
+### 2. `supabase/functions/company-add-member/index.ts`
+- **Linha 143**: Trocar `err.message` por `(err as Error).message`
+
+### 3. `supabase/functions/leads-api/index.ts`
+- **Linha 163**: Trocar `err.message` por `(err as Error).message`
+
+### 4. `supabase/functions/queue-processor/index.ts`
+- **Linha 100**: Trocar `err.message` por `(err as Error).message`
+
+### 5. `supabase/functions/reschedule-failed-calls/index.ts`
+- **Linha 199**: Trocar `e.message` por `(e as Error).message`
+- **Linhas 217, 219**: Trocar `error.message` por `(error as Error).message`
+
+### 6. `supabase/functions/webhook-proxy/index.ts`
+- **Linha 93**: Trocar `error.message` por `(error as Error).message`
+
+Total: 9 correções simples de casting que desbloqueiam o build e restauram a aplicação.
 
