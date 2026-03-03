@@ -1,40 +1,45 @@
 
 
-## Problema
+## Diagnóstico
 
-O timer de cooldown no `useOperatorCall.ts` (linhas 354-357) causa uma race condition:
+**Causa raiz**: O operador Mauro (user_id `7848b4ff`) não consegue ver o card da ligação porque o `call_log` associado tem `company_id = NULL`. A política RLS de `call_logs` exige `is_company_member(company_id, auth.uid())` quando `company_id` é preenchido, mas quando é NULL, exige `user_id = auth.uid()`. Como o call_log foi criado com `user_id` do admin (`3b6be6fe`), Mauro não tem acesso de leitura.
 
-```typescript
-if (remaining <= 0) {
-  setCallStatus("idle");    // ← WIPES new call status
-  setCurrentCall(null);     // ← WIPES new call data
-  setCooldownRemaining(0);
-}
+O hook `useOperatorCall` chama `fetchCallData(current_call_id)` → a query retorna `null` por RLS → o card não aparece.
+
+**Escopo do problema**: 484 de 1126 call_logs têm `company_id = NULL`. Isso afeta todos os operadores que não sejam o admin criador da campanha.
+
+### Onde falta `company_id`
+
+| Arquivo | Linha | Status |
+|---------|-------|--------|
+| `queue-processor/index.ts` | 287 | ✅ Já tem `campaign.company_id` |
+| `call-dial/index.ts` | 464 | ✅ Já tem `campaign.company_id` |
+| `call-status/index.ts` | 423 | ✅ Já tem `campaign.company_id` |
+| **`call-status/index.ts`** | **651** | ❌ **Falta `company_id`** (retry) |
+| `reschedule-failed-calls/index.ts` | 134 | ✅ Já tem |
+
+A inserção de retry no `call-status` (linha 649-661) não inclui `company_id`. Mas o problema maior é que muitos logs antigos já estão sem `company_id`.
+
+## Correção (3 partes)
+
+### 1. Migration: Backfill company_id nos call_logs existentes
+
+```sql
+UPDATE call_logs cl
+SET company_id = cc.company_id
+FROM call_campaigns cc
+WHERE cl.campaign_id = cc.id
+  AND cl.company_id IS NULL
+  AND cc.company_id IS NOT NULL;
 ```
 
-**Sequência do bug:**
-1. Chamada anterior termina → operador entra em `cooldown` → timer inicia countdown
-2. `resolve_cooldowns` RPC transiciona operador para `available` → realtime event chega
-3. `reserve_operator_for_call` atribui nova chamada → realtime event atualiza `callStatus("dialing")` e carrega `currentCall`
-4. **Mas** o `setInterval` do cooldown (1s) ainda está rodando. Quando `remaining` chega a 0, ele executa `setCurrentCall(null)` e `setCallStatus("idle")`, apagando a nova chamada que acabou de ser carregada
+Isso corrige os 484 registros existentes de uma vez.
 
-O problema é que o timer do cooldown **assume controle do estado da chamada** quando deveria apenas gerenciar o `cooldownRemaining`.
+### 2. Edge function `call-status/index.ts` — adicionar company_id no retry
 
-## Correção
+Na inserção de retry (linha 649-661), adicionar `company_id: callLog.company_id || null` para que futuras retentativas herdem o company_id.
 
-**1 arquivo**: `src/hooks/useOperatorCall.ts`
+### 3. Edge function `call-status/index.ts` — garantir company_id vindo do campaign
 
-No callback do cooldown timer (linhas 354-357), remover `setCallStatus("idle")` e `setCurrentCall(null)`. Apenas setar `setCooldownRemaining(0)`. A transição real de estado é tratada pelo handler de realtime (linha 310-315), que já limpa tudo quando o operador vai para `available`.
-
-```typescript
-if (remaining <= 0) {
-  setCooldownRemaining(0);
-  // NÃO limpar callStatus/currentCall aqui
-  // O realtime handler cuida disso quando resolve_cooldowns roda
-}
-```
-
-Isso é seguro porque:
-- Quando `resolve_cooldowns` transiciona o operador para `available`, o realtime handler (linha 310) detecta `status === "available" && !newCallId` e limpa o estado
-- Se uma nova chamada já foi atribuída, o realtime handler (linha 277) já carregou os dados — o timer não vai sobrescrever
+Na mesma função, o `callLog` usado no retry pode já ter `company_id = null` se for antigo. Buscar `company_id` do campaign se necessário como fallback.
 
