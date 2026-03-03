@@ -3,16 +3,19 @@ import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCompany } from "@/contexts/CompanyContext";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useCallPanel, CallPanelEntry } from "@/hooks/useCallPanel";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useCallActions, CallAction } from "@/hooks/useCallActions";
-import { useCallQueuePanel, QueuePanelEntry } from "@/hooks/useCallQueuePanel";
-import { useQueueExecutionData } from "@/hooks/useQueueExecution";
+import { useCallQueue, QueueItem } from "@/hooks/useCallQueue";
 import { useCallOperators } from "@/hooks/useCallOperators";
 import { OperatorsPanel } from "@/components/call-panel/OperatorsPanel";
 import { CallPopup } from "@/components/operator/CallPopup";
-import { Users, Settings as SettingsIcon, Copy } from "lucide-react";
+import { Users, Settings as SettingsIcon, Copy, CalendarIcon, History } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,6 +70,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
+import { CreateQueueDialog } from "@/components/call-panel/CreateQueueDialog";
 import {
   Clock,
   Pause,
@@ -91,6 +95,8 @@ import {
   Pencil,
   ChevronLeft,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
   ListOrdered,
   Trash2,
   Eye,
@@ -171,6 +177,27 @@ function playAlertSound() {
   }
 }
 
+// ── History Status Badge ──
+
+function HistoryStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; className: string }> = {
+    completed: { label: "✅ Atendida", className: "text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800" },
+    no_answer: { label: "📵 N/Atendeu", className: "text-orange-600 bg-orange-50 border-orange-200 dark:bg-orange-950 dark:text-orange-300 dark:border-orange-800" },
+    busy: { label: "🔴 Ocupado", className: "text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800" },
+    voicemail: { label: "📬 Cx. Postal", className: "text-amber-600 bg-amber-50 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" },
+    failed: { label: "❌ Falhou", className: "text-red-600 bg-red-50 border-red-200 dark:bg-red-950 dark:text-red-300 dark:border-red-800" },
+    cancelled: { label: "⛔ Cancelada", className: "text-muted-foreground bg-muted border-border" },
+    timeout: { label: "⏱️ Timeout", className: "text-muted-foreground bg-muted border-border" },
+    max_attempts_exceeded: { label: "🚫 Esgotado", className: "text-red-800 bg-red-100 border-red-300 dark:bg-red-950 dark:text-red-400 dark:border-red-800" },
+  };
+  const cfg = map[status] || { label: status, className: "text-muted-foreground" };
+  return (
+    <Badge variant="outline" className={cn("gap-1 text-xs whitespace-nowrap", cfg.className)}>
+      {cfg.label}
+    </Badge>
+  );
+}
+
 // ── Status Badge Component ──
 
 function StatusBadgeCell({ entry }: { entry: CallPanelEntry }) {
@@ -245,8 +272,8 @@ function TimerCell({ entry }: { entry: CallPanelEntry }) {
 
 // ── Queue Status Banner ──
 
-function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting }: {
-  summary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
+function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting, onStartQueue, isStarting, queueItems }: {
+  summary: { globalStatus: string; summary: { running: number; paused: number; stopped: number; waiting_operator: number; waiting_cooldown: number }; isLoading: boolean };
   operators: import("@/hooks/useCallOperators").CallOperator[];
   onRefresh: () => void;
   isRefreshing: boolean;
@@ -257,6 +284,9 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
   onClearQueue: () => void;
   isClearingQueue: boolean;
   totalWaiting: number;
+  onStartQueue: (campaignId: string) => Promise<void>;
+  isStarting: boolean;
+  queueItems: QueueItem[];
 }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   if (summary.isLoading) return null;
@@ -329,6 +359,21 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
           {isResumingAll ? "Retomando..." : "Retomar"}
         </Button>
       )}
+      {globalStatus === "stopped" && totalWaiting > 0 && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            const firstItem = queueItems[0];
+            if (firstItem) onStartQueue(firstItem.campaignId);
+          }}
+          disabled={isStarting || queueItems.length === 0}
+          className="shrink-0 gap-1.5 text-xs h-7 px-2.5 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/10 dark:text-emerald-400"
+        >
+          <Play className="h-3.5 w-3.5" />
+          {isStarting ? "Iniciando..." : "Iniciar Fila"}
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="sm"
@@ -380,7 +425,7 @@ function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPaus
 
 function AgoraActionBar({ entries, queueSummary, bulkEnqueue, bulkDialing, setBulkDialing }: {
   entries: CallPanelEntry[];
-  queueSummary: import("@/hooks/useQueueExecution").QueueExecutionSummary;
+  queueSummary: { globalStatus: string; isPausingAll: boolean; isResumingAll: boolean; pauseAll: () => Promise<void>; resumeAll: () => Promise<void> };
   bulkEnqueue: (params: { callIds: string[]; operatorId?: string }) => Promise<any>;
   bulkDialing: boolean;
   setBulkDialing: (v: boolean) => void;
@@ -466,6 +511,9 @@ export default function CallPanel() {
     searchParams.get("tab") === "queue" ? "queue" : "all"
   );
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
+  const [statusDropdownFilter, setStatusDropdownFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -489,6 +537,7 @@ export default function CallPanel() {
   const [bulkOperatorOpen, setBulkOperatorOpen] = useState(false);
   const [bulkOperatorId, setBulkOperatorId] = useState("auto");
   const [bulkDialing, setBulkDialing] = useState(false);
+  const [showCreateQueue, setShowCreateQueue] = useState(false);
 
   const { campaigns } = useCallCampaigns();
   const { toast } = useToast();
@@ -501,11 +550,12 @@ export default function CallPanel() {
     search: searchQuery || undefined,
   });
 
-  const { entries: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue } = useCallQueuePanel(
-    campaignFilter !== "all" ? campaignFilter : undefined,
-    searchQuery || undefined
-  );
-  const queueSummary = useQueueExecutionData();
+  const callQueue = useCallQueue({
+    campaignFilter: campaignFilter !== "all" ? campaignFilter : undefined,
+    searchQuery: searchQuery || undefined,
+  });
+  const { items: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, moveToEnd: sendToEndOfQueue, moveToStart: sendToStartOfQueue } = callQueue;
+  const queueSummary = { globalStatus: callQueue.globalStatus, summary: callQueue.summary, isLoading: callQueue.isLoading, isPausingAll: callQueue.isPausingAll, isResumingAll: callQueue.isResumingAll, pauseAll: callQueue.pauseAll, resumeAll: callQueue.resumeAll };
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
 
@@ -567,11 +617,47 @@ export default function CallPanel() {
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds(new Set());
-  }, [statusFilter, campaignFilter, searchQuery, itemsPerPage]);
+  }, [statusFilter, campaignFilter, searchQuery, itemsPerPage, statusDropdownFilter, dateFrom, dateTo]);
 
-  // Sorted entries
+  // Sorted entries (with client-side status dropdown and date filters)
   const sortedEntries = useMemo(() => {
-    if (isQueueTab) return [];
+    if (isQueueTab || statusFilter === "history") return [];
+
+    let filtered = [...entries];
+
+    // Apply status dropdown filter
+    if (statusDropdownFilter !== "all") {
+      const statusMap: Record<string, string[]> = {
+        scheduled: ["scheduled", "ready"],
+        agora: [], // special: filter by time
+        in_progress: ["dialing", "ringing", "answered", "in_progress"],
+        completed: ["completed"],
+        no_answer: ["no_answer"],
+        rescheduled: ["scheduled"], // will further filter by rescheduled logic
+        waiting_operator: ["waiting_operator"],
+      };
+      if (statusDropdownFilter === "agora") {
+        filtered = filtered.filter(e =>
+          ["scheduled", "ready"].includes(e.callStatus) &&
+          getTimeRemaining(e.scheduledFor).isUrgent
+        );
+      } else {
+        const allowed = statusMap[statusDropdownFilter] || [statusDropdownFilter];
+        filtered = filtered.filter(e => allowed.includes(e.callStatus));
+      }
+    }
+
+    // Apply date range filter
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      from.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(e => new Date(e.createdAt) >= from);
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(e => new Date(e.createdAt) <= to);
+    }
 
     const getPriority = (s: string) => {
       if (['dialing', 'ringing', 'in_progress'].includes(s)) return 0;
@@ -579,13 +665,13 @@ export default function CallPanel() {
       return 2;
     };
 
-    return [...entries].sort((a, b) => {
+    return filtered.sort((a, b) => {
       const pa = getPriority(a.callStatus);
       const pb = getPriority(b.callStatus);
       if (pa !== pb) return pa - pb;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }, [entries, isQueueTab]);
+  }, [entries, isQueueTab, statusFilter, statusDropdownFilter, dateFrom, dateTo]);
 
   // Pagination
   const totalPages = Math.ceil(sortedEntries.length / itemsPerPage);
@@ -594,6 +680,75 @@ export default function CallPanel() {
   // Queue pagination
   const queueTotalPages = Math.ceil(queueEntries.length / itemsPerPage);
   const paginatedQueue = queueEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  // History query
+  const { user } = useAuth();
+  const { activeCompanyId } = useCompany();
+  const HISTORY_STATUSES = ["completed", "no_answer", "busy", "voicemail", "failed", "cancelled", "timeout", "max_attempts_exceeded"];
+  
+  const { data: historyEntries = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["call_panel_history", campaignFilter, searchQuery, dateFrom?.toISOString(), dateTo?.toISOString(), activeCompanyId],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("call_logs")
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority), call_operators(operator_name, extension)")
+        .in("call_status", HISTORY_STATUSES)
+        .order("ended_at", { ascending: false, nullsFirst: false })
+        .limit(500);
+
+      if (activeCompanyId) query = query.eq("company_id", activeCompanyId);
+      if (campaignFilter !== "all") query = query.eq("campaign_id", campaignFilter);
+      if (dateFrom) {
+        const from = new Date(dateFrom);
+        from.setHours(0, 0, 0, 0);
+        query = query.gte("created_at", from.toISOString());
+      }
+      if (dateTo) {
+        const to = new Date(dateTo);
+        to.setHours(23, 59, 59, 999);
+        query = query.lte("created_at", to.toISOString());
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let results = (data || []).map((db: any) => ({
+        id: db.id,
+        campaignId: db.campaign_id,
+        campaignName: db.call_campaigns?.name || null,
+        leadId: db.lead_id,
+        leadName: db.call_leads?.name || null,
+        leadPhone: db.call_leads?.phone || null,
+        operatorId: db.operator_id,
+        operatorName: db.call_operators?.operator_name || null,
+        callStatus: db.call_status || "unknown",
+        createdAt: db.created_at || new Date().toISOString(),
+        endedAt: db.ended_at,
+        startedAt: db.started_at,
+        durationSeconds: db.duration_seconds,
+        isPriority: db.call_campaigns?.is_priority ?? false,
+      }));
+
+      if (searchQuery) {
+        const s = searchQuery.toLowerCase();
+        const sDigits = s.replace(/\D/g, "");
+        results = results.filter((e: any) => {
+          const nameMatch = e.leadName?.toLowerCase().includes(s);
+          const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
+          const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+          return nameMatch || phoneMatch;
+        });
+      }
+
+      return results;
+    },
+    enabled: !!user && statusFilter === "history",
+    refetchInterval: 10000,
+  });
+
+  // History pagination
+  const historyTotalPages = Math.ceil(historyEntries.length / itemsPerPage);
+  const paginatedHistory = historyEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Status counts for tabs
   const statusCounts = {
@@ -724,8 +879,8 @@ export default function CallPanel() {
       </div>
 
       {/* Queue Status Banner (visible in Calls tab) */}
-      {queueSummary.globalStatus !== "stopped" && (
-        <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
+      {(queueSummary.globalStatus !== "stopped" || totalWaiting > 0) && (
+        <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} onStartQueue={(cId) => callQueue.startQueue(cId)} isStarting={callQueue.isStarting} queueItems={queueEntries} />
       )}
 
       {/* Discar AGORA! / Pausar / Retomar button */}
@@ -755,6 +910,62 @@ export default function CallPanel() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={statusDropdownFilter} onValueChange={setStatusDropdownFilter}>
+          <SelectTrigger className="w-[200px]"><SelectValue placeholder="Status" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos os status</SelectItem>
+            <SelectItem value="scheduled">🟢 Agendada</SelectItem>
+            <SelectItem value="agora">🔴 AGORA!</SelectItem>
+            <SelectItem value="in_progress">📞 Em Andamento</SelectItem>
+            <SelectItem value="completed">✅ Atendida</SelectItem>
+            <SelectItem value="no_answer">📵 Não Atendeu</SelectItem>
+            <SelectItem value="rescheduled">🔄 Reagendada</SelectItem>
+            <SelectItem value="waiting_operator">⏳ Aguardando Operador</SelectItem>
+          </SelectContent>
+        </Select>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className={cn("w-[260px] justify-start text-left font-normal", !dateFrom && !dateTo && "text-muted-foreground")}>
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {dateFrom && dateTo
+                ? `${format(dateFrom, "dd/MM/yyyy")} — ${format(dateTo, "dd/MM/yyyy")}`
+                : dateFrom
+                ? `${format(dateFrom, "dd/MM/yyyy")} — ...`
+                : "📅 Filtrar período"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <div className="p-3 space-y-3">
+              <div className="flex gap-2">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Início</Label>
+                  <Calendar
+                    mode="single"
+                    selected={dateFrom}
+                    onSelect={setDateFrom}
+                    className="p-2 pointer-events-auto"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Fim</Label>
+                  <Calendar
+                    mode="single"
+                    selected={dateTo}
+                    onSelect={setDateTo}
+                    className="p-2 pointer-events-auto"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setDateFrom(today); setDateTo(today); }}>Hoje</Button>
+                <Button variant="outline" size="sm" onClick={() => { const y = new Date(); y.setDate(y.getDate() - 1); setDateFrom(y); setDateTo(y); }}>Ontem</Button>
+                <Button variant="outline" size="sm" onClick={() => { const d = new Date(); const w = new Date(); w.setDate(w.getDate() - 7); setDateFrom(w); setDateTo(d); }}>7 dias</Button>
+                <Button variant="outline" size="sm" onClick={() => { const d = new Date(); setDateFrom(new Date(d.getFullYear(), d.getMonth(), 1)); setDateTo(d); }}>Este mês</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>Limpar</Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Status Tabs */}
@@ -764,8 +975,9 @@ export default function CallPanel() {
           <TabsTrigger value="scheduled" className="flex-1 min-w-[100px]">Agendadas ({statusCounts.scheduled})</TabsTrigger>
           <TabsTrigger value="in_progress" className="flex-1 min-w-[100px]">Em Andamento ({statusCounts.in_progress})</TabsTrigger>
           <TabsTrigger value="completed" className="flex-1 min-w-[100px]">Atendidas ({statusCounts.completed})</TabsTrigger>
-          <TabsTrigger value="failed" className="flex-1 min-w-[100px]">Falhas ({statusCounts.failed})</TabsTrigger>
-          <TabsTrigger value="cancelled" className="flex-1 min-w-[100px]">Canceladas ({statusCounts.cancelled})</TabsTrigger>
+          <TabsTrigger value="history" className="flex-1 min-w-[100px] gap-1">
+            <History className="h-3.5 w-3.5" /> Histórico
+          </TabsTrigger>
           <TabsTrigger value="queue" className="flex-1 min-w-[100px] gap-1">
             <ListOrdered className="h-3.5 w-3.5" /> Fila ({totalWaiting})
           </TabsTrigger>
@@ -773,19 +985,164 @@ export default function CallPanel() {
       </Tabs>
       </div>
 
-      {/* Queue List */}
-      {isQueueTab ? (
+      {/* History Tab */}
+      {statusFilter === "history" ? (
+        historyLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Carregando histórico...</div>
+        ) : paginatedHistory.length === 0 ? (
+          <div className="text-center py-12 text-muted-foreground">Nenhum registro no histórico.</div>
+        ) : (
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[160px]">Entrada</TableHead>
+                  <TableHead className="w-[110px]">Status</TableHead>
+                  <TableHead>Lead</TableHead>
+                  <TableHead className="hidden md:table-cell w-[140px]">Telefone</TableHead>
+                  <TableHead className="hidden lg:table-cell w-[180px]">Campanha</TableHead>
+                  <TableHead className="hidden md:table-cell w-[80px]">Duração</TableHead>
+                  <TableHead className="hidden md:table-cell w-[100px]">Operador</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedHistory.map((entry: any) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="text-xs text-muted-foreground font-mono py-2">
+                      {format(new Date(entry.createdAt), "dd/MM/yyyy HH:mm:ss")}
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <HistoryStatusBadge status={entry.callStatus} />
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <span className="text-sm font-medium truncate block max-w-[150px]">
+                        {entry.leadName || "Sem nome"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
+                      {formatPhone(entry.leadPhone)}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell py-2">
+                      <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
+                        {entry.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
+                        {entry.campaignName || "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell py-2">
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {entry.durationSeconds != null && entry.durationSeconds > 0
+                          ? `${Math.floor(entry.durationSeconds / 60).toString().padStart(2, "0")}:${(entry.durationSeconds % 60).toString().padStart(2, "0")}`
+                          : "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell py-2">
+                      <span className="text-xs truncate block max-w-[90px]">{entry.operatorName || "Auto"}</span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )
+      ) :
+      /* Queue List */
+      isQueueTab ? (
         queueLoading ? (
           <div className="text-center py-12 text-muted-foreground">Carregando fila...</div>
         ) : paginatedQueue.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">Nenhum lead na fila.</div>
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <ListOrdered className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold">Nenhum lead na fila</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Crie uma fila selecionando leads das suas campanhas com filtros.</p>
+            <Button className="mt-6" onClick={() => setShowCreateQueue(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Criar Fila de Ligações
+            </Button>
+          </div>
         ) : (
           <div className="space-y-3">
             {/* Queue Status Banner */}
-            <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} />
-            {paginatedQueue.map((qe) => (
-              <QueueCard key={qe.id} entry={qe} onRemove={removeFromQueue} />
-            ))}
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} onStartQueue={(cId) => callQueue.startQueue(cId)} isStarting={callQueue.isStarting} queueItems={queueEntries} />
+              </div>
+              <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => setShowCreateQueue(true)}>
+                <Plus className="h-3.5 w-3.5" /> Adicionar Leads
+              </Button>
+            </div>
+            <div className="rounded-lg border bg-card shadow-sm">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[60px]">#</TableHead>
+                    <TableHead>Lead</TableHead>
+                    <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                    <TableHead className="hidden lg:table-cell">Campanha</TableHead>
+                    <TableHead className="hidden md:table-cell w-[90px]">Tentativas</TableHead>
+                    <TableHead className="hidden lg:table-cell">Origem</TableHead>
+                    <TableHead className="w-[60px]">Ações</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {paginatedQueue.map((qe) => {
+                    const lastResultLabel: Record<string, string> = {
+                      no_answer: "Não atendeu",
+                      busy: "Ocupado",
+                      failed: "Falhou",
+                      voicemail: "Caixa postal",
+                    };
+                    return (
+                      <TableRow key={qe.id}>
+                        <TableCell className="font-mono text-xs text-muted-foreground py-2">
+                          {qe.position}
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
+                          {formatPhone(qe.phone)}
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell py-2">
+                          <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
+                            {qe.campaignName || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="hidden md:table-cell text-center py-2">
+                          <span className="text-xs font-mono">{qe.attemptNumber}</span>
+                        </TableCell>
+                        <TableCell className="hidden lg:table-cell py-2">
+                          <span className="text-xs text-muted-foreground">
+                            {qe.source || "—"}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-2">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
+                                <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
+                                <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
+                                <Trash2 className="h-4 w-4 mr-2" /> Remover
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         )
       ) : (
@@ -873,7 +1230,7 @@ export default function CallPanel() {
                         }}
                       />
                     </TableHead>
-                    <TableHead className="w-[70px]">Entrada</TableHead>
+                    <TableHead className="w-[160px]">Entrada</TableHead>
                     <TableHead className="w-[110px]">Status</TableHead>
                     <TableHead>Lead</TableHead>
                     <TableHead className="hidden md:table-cell w-[140px]">Telefone</TableHead>
@@ -905,7 +1262,7 @@ export default function CallPanel() {
                         </TableCell>
                         {/* Entrada */}
                         <TableCell className="text-xs text-muted-foreground font-mono py-2">
-                          {format(new Date(entry.createdAt), "HH:mm")}
+                          {format(new Date(entry.createdAt), "dd/MM/yyyy HH:mm:ss")}
                         </TableCell>
 
                         {/* Status */}
@@ -1082,8 +1439,9 @@ export default function CallPanel() {
 
       {/* Pagination */}
       {(() => {
-        const pages = isQueueTab ? queueTotalPages : totalPages;
-        const totalItems = isQueueTab ? queueEntries.length : sortedEntries.length;
+        const isHistoryTab = statusFilter === "history";
+        const pages = isHistoryTab ? historyTotalPages : isQueueTab ? queueTotalPages : totalPages;
+        const totalItems = isHistoryTab ? historyEntries.length : isQueueTab ? queueEntries.length : sortedEntries.length;
         const startItem = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
         const endItem = Math.min(currentPage * itemsPerPage, totalItems);
         if (pages <= 1 && totalItems <= 25) return null;
@@ -1227,6 +1585,14 @@ export default function CallPanel() {
           setSelectedIds(new Set());
         }}
       />
+      <CreateQueueDialog
+        open={showCreateQueue}
+        onOpenChange={setShowCreateQueue}
+      onStartQueue={async (cId) => {
+          await callQueue.startQueue(cId);
+          setPanelTab("queue");
+        }}
+      />
           </div>
         </TabsContent>
       </Tabs>
@@ -1268,9 +1634,13 @@ function ActionDialog({
   onRescheduleConfirm: (entry: CallPanelEntry, scheduledFor: string) => Promise<void>;
 }) {
   const { actions, isLoading } = useCallActions(entry.campaignId || "");
+  const { toast } = useToast();
   const [submitting, setSubmitting] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const hasScript = !!(entry.campaignId && entry.leadId);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState(entry.leadName || "");
+  const [localEntry, setLocalEntry] = useState(entry);
 
   // Inline reschedule state
   const [showReschedule, setShowReschedule] = useState(false);
@@ -1316,9 +1686,40 @@ function ActionDialog({
               {(entry.leadName || "L").charAt(0).toUpperCase()}
             </div>
           </div>
-          <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
-            {entry.leadName || "Lead"}
-          </h2>
+          {isEditingName ? (
+            <Input
+              autoFocus
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") { setEditName(localEntry.leadName || ""); setIsEditingName(false); }
+              }}
+              onBlur={async () => {
+                const trimmed = editName.trim();
+                if (trimmed && trimmed !== (localEntry.leadName || "")) {
+                  if (localEntry.leadId) {
+                    await (supabase as any).from("call_leads").update({ name: trimmed }).eq("id", localEntry.leadId);
+                  }
+                  setLocalEntry(prev => ({ ...prev, leadName: trimmed }));
+                  toast({ title: "Nome atualizado" });
+                } else {
+                  setEditName(localEntry.leadName || "");
+                }
+                setIsEditingName(false);
+              }}
+              className="text-center text-2xl font-bold uppercase max-w-[300px] mx-auto"
+            />
+          ) : (
+            <div className="flex items-center justify-center gap-2">
+              <h2 className="text-2xl font-bold tracking-wide uppercase text-foreground">
+                {localEntry.leadName || "Lead"}
+              </h2>
+              <button onClick={() => { setEditName(localEntry.leadName || ""); setIsEditingName(true); }} className="text-muted-foreground hover:text-foreground transition-colors">
+                <Pencil className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <p className="text-lg font-mono text-primary">
             📞 {formatPhone(entry.leadPhone)}
           </p>
@@ -1765,74 +2166,4 @@ function BulkOperatorDialog({
   );
 }
 
-// ── Queue Card ──
-
-function QueueCard({ entry, onRemove }: { entry: QueuePanelEntry; onRemove: (id: string) => Promise<void> }) {
-  const [removing, setRemoving] = useState(false);
-
-  const handleRemove = async () => {
-    setRemoving(true);
-    try {
-      await onRemove(entry.id);
-    } finally {
-      setRemoving(false);
-    }
-  };
-
-  const lastResultLabel: Record<string, string> = {
-    no_answer: "Não atendeu",
-    busy: "Ocupado",
-    failed: "Falhou",
-    voicemail: "Caixa postal",
-  };
-
-  return (
-    <Card className="border-l-4 border-l-blue-500">
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 space-y-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant="secondary" className="gap-1 bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
-                <ListOrdered className="h-3 w-3" /> #{entry.position}
-              </Badge>
-              {entry.attempts > 0 && (
-                <Badge variant="outline" className="text-xs">
-                  {entry.attempts} tentativa{entry.attempts > 1 ? "s" : ""}
-                </Badge>
-              )}
-              {entry.lastResult && (
-                <Badge variant="outline" className="text-xs text-muted-foreground">
-                  {lastResultLabel[entry.lastResult] || entry.lastResult}
-                </Badge>
-              )}
-            </div>
-            <div className="flex items-center gap-4 text-sm pt-1">
-              <span className="flex items-center gap-1 font-medium">
-                <User className="h-3.5 w-3.5 text-muted-foreground" /> {entry.leadName || "Sem nome"}
-              </span>
-              <span className="flex items-center gap-1 text-muted-foreground">
-                <Phone className="h-3.5 w-3.5" /> {formatPhone(entry.leadPhone)}
-              </span>
-            </div>
-            {entry.campaignName && (
-              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                <FolderOpen className="h-3 w-3" /> {entry.campaignName}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleRemove}
-              disabled={removing}
-              className="gap-1 text-destructive hover:text-destructive"
-            >
-              <Trash2 className="h-3.5 w-3.5" /> Remover
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+// QueueCard removed – queue now uses table layout

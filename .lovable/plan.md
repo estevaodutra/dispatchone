@@ -1,30 +1,30 @@
 
 
-## Plano: Botão de Executar/Pausar para chamadas "AGORA!"
+## Problema
 
-### O que será feito
+Existem **dois problemas** impedindo a discagem:
 
-Adicionar um botão de ação rápida acima da tabela de chamadas (ao lado dos filtros ou abaixo dos cards de métricas) que permite:
-- **Discar todas** as chamadas com status "AGORA!" (scheduled/ready com `scheduledFor <= now`) de uma vez, enviando-as para a fila de execução
-- **Pausar** a execução quando a fila estiver rodando
+### 1. `onStartQueue` no CallPanel não inicia a fila de verdade
+No `CallPanel.tsx` (linha 1573), o callback `onStartQueue` passado ao `CreateQueueDialog` **apenas mostra um toast** mas nunca chama `callQueue.startQueue(campaignId)`:
+```typescript
+onStartQueue={(cId) => {
+  toast({ title: "Fila iniciada", ... });
+  // FALTA: callQueue.startQueue(cId)
+}}
+```
 
-O botão será contextual:
-- Quando há chamadas "AGORA!" e a fila está parada → mostra **"▶ Discar AGORA! (N)"** (verde)
-- Quando a fila está rodando → mostra **"⏸ Pausar"** (amarelo)
-- Quando a fila está pausada → mostra **"▶ Retomar"** (verde)
+### 2. Banner de fila "Parada" não tem botão "Iniciar"
+O `QueueStatusBanner` mostra botões de Pausar (quando running) e Retomar (quando paused), mas **não mostra nenhum botão "Iniciar"** quando o status é `stopped`. O usuário fica sem forma de iniciar a fila pela aba Fila.
 
-### Alterações
+## Correção
 
-**`src/pages/CallPanel.tsx`**:
-1. Calcular `agoraEntries` — filtrar entries com status `scheduled`/`ready` onde `getTimeRemaining().isUrgent === true`
-2. Adicionar um bloco de botão entre os filtros e a tabela (ao lado do banner de status ou como um novo mini-banner):
-   - Botão "Discar AGORA! (N)" que chama `bulkEnqueue({ callIds })` com os IDs das entradas "AGORA!"
-   - Botão "Pausar" que chama `queueSummary.pauseAll()`
-   - Botão "Retomar" que chama `queueSummary.resumeAll()`
-3. O botão só aparece quando existem chamadas "AGORA!" ou quando a fila está ativa
+### `src/pages/CallPanel.tsx`
 
-### Detalhes técnicos
-- Reutiliza `bulkEnqueue` do `useCallPanel` (já existente) para enviar chamadas para fila
-- Reutiliza `pauseAll`/`resumeAll` do `useQueueExecutionData` (já existente)
-- Contagem de "AGORA!" usa `getTimeRemaining(entry.scheduledFor).isUrgent && ["scheduled", "ready"].includes(entry.callStatus)`
+1. **Linha 1573**: Alterar o `onStartQueue` para chamar `callQueue.startQueue(cId)` de verdade, além do toast
+2. **QueueStatusBanner (linha 302-358)**: Adicionar um botão "Iniciar" quando `globalStatus === "stopped"` e `totalWaiting > 0`, chamando a mesma lógica de `startQueue`
+
+### Detalhes:
+- Passar `startQueue` e `isStarting` como props do `QueueStatusBanner`
+- O botão "Iniciar" precisa de um `campaignId` — pode usar o filtro de campanha ativo ou, se "todas", usar o primeiro campaign ativo da fila
+- No `onStartQueue`, chamar `await callQueue.startQueue(cId)` e navegar para a aba queue
 

@@ -122,7 +122,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
             <span className={cn(config.color, config.pulse && "animate-pulse")}>{config.icon}</span>
             <span className={cn("font-semibold text-sm", config.color)}>{config.label}</span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             {callStatus === "on_call" && (
               <span className="text-xs font-mono bg-muted px-2 py-0.5 rounded">⏱️ {formatDuration(callDuration)}</span>
             )}
@@ -177,6 +177,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
               </div>
             </div>
           )}
+
 
           {/* Dialing state */}
           {callStatus === "dialing" && !dialingTooLong && (
@@ -298,8 +299,10 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
           isPriority={currentCall.isPriority}
           callStatus={currentCall.callStatus}
           externalCallId={currentCall.externalCallId}
+          operatorId={operator?.id}
         />
       )}
+
     </>
   );
 }

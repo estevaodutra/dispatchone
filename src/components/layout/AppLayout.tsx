@@ -1,7 +1,7 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
-import { useQueueExecutionSummary } from "@/hooks/useQueueExecution";
+import { useCallQueue } from "@/hooks/useCallQueue";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -9,7 +9,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   // Global queue tick loop — runs on all pages
-  useQueueExecutionSummary();
+  useCallQueue({ globalLoop: true });
 
   return (
     <SidebarProvider defaultOpen>

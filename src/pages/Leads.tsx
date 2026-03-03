@@ -29,6 +29,7 @@ import {
   LeadHistoryDialog,
   AddToCampaignDialog,
   BulkTagDialog,
+  ExtractLeadsDialog,
 } from "@/components/leads";
 import {
   Users,
@@ -78,6 +79,7 @@ export default function Leads() {
   const [createOpen, setCreateOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
   const [editLead, setEditLead] = useState<Lead | null>(null);
   const [historyLead, setHistoryLead] = useState<Lead | null>(null);
   const [campaignDialogOpen, setCampaignDialogOpen] = useState(false);
@@ -223,10 +225,29 @@ export default function Leads() {
         description="Consulte, crie, modifique ou remova seus leads"
         actions={
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleSync} disabled={isSyncing} className="gap-2">
+            <Button variant="outline" className="gap-2" onClick={handleSync} disabled={isSyncing}>
               <RefreshCw className={cn("h-4 w-4", isSyncing && "animate-spin")} />
-              Sincronizar
+              Sync
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="gap-2">
+                  <Download className="h-4 w-4" /> Extrair
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setExtractOpen(true)}>
+                  <Users className="h-4 w-4 mr-2" /> De Grupos do WhatsApp
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setImportOpen(true)}>
+                  <Upload className="h-4 w-4 mr-2" /> De Planilha (CSV/Excel)
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => toast.info("Em breve: importação via API externa")}>
+                  <RefreshCw className="h-4 w-4 mr-2" /> De API Externa
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <Button onClick={() => setCreateOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" /> Novo Lead
             </Button>
@@ -530,6 +551,11 @@ export default function Leads() {
           isLoading={bulkAddTags.isPending || bulkRemoveTags.isPending}
         />
       )}
+
+      <ExtractLeadsDialog
+        open={extractOpen}
+        onOpenChange={setExtractOpen}
+      />
     </div>
   );
 }
