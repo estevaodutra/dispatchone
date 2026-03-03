@@ -1,74 +1,38 @@
 
 
-## Problema
+## Diagnóstico
 
-O sistema tem uma **desconexão fundamental** entre dois fluxos de discagem:
+O operador **Mauro Dutra** aparece como "Disponível" na interface, mas **nunca recebe chamadas**. O banco mostra:
 
-1. **Fila (`call_queue`)** — usada pelo `queue-processor`. O `CreateQueueDialog` insere itens aqui, o processador consome e deleta após discar.
-2. **Reagendamento (`call_logs`)** — a edge function `reschedule-failed-calls` cria novos `call_logs` com status `scheduled`, mas **nunca os reinsere na `call_queue`**.
+- Mauro: `status = 'available'`, **mas** `current_call_id = f8e8be82` (uma chamada "dialing" de 1h atrás)
+- A RPC `reserve_operator_for_call` exige `current_call_id IS NULL` para selecionar o operador → Mauro é sempre ignorado
 
-Resultado: após a fila inicial ser consumida, as chamadas reagendadas (213 "ready" + 205 "scheduled" call_logs) ficam orphãs — nenhum mecanismo as coloca de volta na `call_queue` para o `queue-processor` discar.
+### Causa raiz
 
-O loop de polling do `bulkEnqueue` (useCallPanel linha 323) tenta forçar ticks para call_logs "ready", mas o queue-processor só lê da `call_queue` (que está vazia) e retorna "Queue empty".
+Existem **múltiplos caminhos** no código que alteram o status do operador para `'available'` sem limpar o `current_call_id`:
 
-## Correção
+1. **`resolve_cooldowns` (RPC)** — transiciona de cooldown → available, mas **não limpa** `current_call_id`
+2. **`CooldownOverlay.handleSkip`** — faz `.update({ status: 'available' })` sem `current_call_id: null`
+3. **`OperatorsPanel.handleToggle`** (linha 241-248) — quando toggle on durante cooldown, seta `status: 'available'` sem limpar `current_call_id`
 
-Modificar o `queue-processor` para, **quando a `call_queue` estiver vazia**, buscar call_logs elegíveis (status `ready` ou `scheduled` com `scheduled_for <= now`) e processá-los diretamente.
+Qualquer um desses caminhos deixa o operador num estado "fantasma": parece disponível mas está bloqueado.
 
-### `supabase/functions/queue-processor/index.ts` — função `processTick`
+## Correção (3 partes)
 
-Após o passo 4 ("Get next from call_queue"), quando `entry` é null (fila vazia), adicionar lógica de fallback:
+### 1. RPC `resolve_cooldowns` — limpar current_call_id
 
-```text
-// 4b. Fallback: check for ready/scheduled call_logs
-if (!entry) {
-  const { data: readyLog } = await supabase
-    .from('call_logs')
-    .select('id, campaign_id, lead_id, user_id, attempt_number, max_attempts')
-    .eq('campaign_id', campaignId)
-    .in('call_status', ['ready', 'scheduled'])
-    .lte('scheduled_for', new Date().toISOString())
-    .order('scheduled_for', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+Adicionar `current_call_id = NULL, current_campaign_id = NULL` no UPDATE, garantindo que a transição cooldown → available sempre limpe o estado da chamada.
 
-  if (!readyLog) {
-    // Truly nothing to process → stop
-    await supabase.from('queue_execution_state')
-      .update({ status: 'stopped' })
-      .eq('campaign_id', campaignId);
-    return { success: true, action: 'completed', reason: 'Queue empty' };
-  }
+### 2. RPC `heal_stuck_operators` — novo caso para status != on_call com current_call_id
 
-  // Process this existing call_log directly:
-  // - Reserve operator (RPC)
-  // - Update call_log to 'dialing'
-  // - Fire webhook
-  // - Update queue_execution_state
-}
-```
+Adicionar um segundo CTE que capture operadores onde `status != 'on_call' AND current_call_id IS NOT NULL` e limpe o current_call_id. Isso é a rede de segurança para qualquer path que esqueça de limpar.
 
-### Detalhes da lógica de fallback:
+### 3. Frontend — CooldownOverlay.handleSkip e OperatorsPanel.handleToggle
 
-1. **Buscar call_log elegível**: `call_status IN ('ready', 'scheduled')` AND `scheduled_for <= now()`, ordenado por `scheduled_for ASC`
-2. **Reservar operador**: usar a mesma RPC `reserve_operator_for_call` com o `call_log.id` existente
-3. **Atualizar call_log**: setar `operator_id`, `call_status = 'dialing'`, `started_at = now()`
-4. **Buscar dados do lead**: fazer join com `call_leads` para obter `phone` e `name`
-5. **Disparar webhook**: mesma lógica `fireDialWebhook` já existente
-6. **Atualizar queue_execution_state**: incrementar `calls_made`, atualizar `last_dial_at`
-7. **NÃO deletar da call_queue** (pois não veio de lá)
-8. **NÃO criar novo call_log** (pois já existe)
+- **`CooldownOverlay.handleSkip`**: Adicionar `current_call_id: null, current_campaign_id: null` ao update
+- **`OperatorsPanel.handleToggle`** (linha 242-246): Adicionar `current_call_id: null, current_campaign_id: null` ao update de cooldown → available
 
-### Busca do lead phone/name
+### Dados atuais (fix imediato)
 
-O call_log tem `lead_id` mas não tem `phone` diretamente. O fallback precisa buscar:
-```sql
-SELECT phone, name FROM call_leads WHERE id = readyLog.lead_id
-```
-
-### Resumo das mudanças:
-
-- **1 arquivo**: `supabase/functions/queue-processor/index.ts`
-- Adicionar ~40 linhas de fallback na função `processTick`, após a verificação de `call_queue` vazia
-- Reutilizar `fireDialWebhook` e `reserve_operator_for_call` existentes
+O `heal_stuck_operators` corrigido vai automaticamente limpar o Mauro na próxima execução do tick (que roda a cada 10s).
 
