@@ -28,7 +28,7 @@ export function CooldownOverlay({ remaining, total, operatorId }: CooldownOverla
   const handleSkip = async () => {
     await (supabase as any)
       .from("call_operators")
-      .update({ status: "available", updated_at: new Date().toISOString() })
+      .update({ status: "available", current_call_id: null, current_campaign_id: null, updated_at: new Date().toISOString() })
       .eq("id", operatorId);
   };
 

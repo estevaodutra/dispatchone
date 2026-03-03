@@ -241,7 +241,7 @@ function OperatorCard({ operator, onConfigure, onRemove }: { operator: CallOpera
       if (checked && operator.status === "cooldown") {
         await (supabase as any)
           .from("call_operators")
-          .update({ status: "available" })
+          .update({ status: "available", current_call_id: null, current_campaign_id: null })
           .eq("id", operator.id);
         queryClient.invalidateQueries({ queryKey: ["call_operators"] });
         return;
