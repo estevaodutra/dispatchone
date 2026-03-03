@@ -216,6 +216,32 @@ export function useOperatorCall() {
         }
       } else if (opData.status === "cooldown") {
         setCallStatus("ended");
+      } else if (!opData.current_call_id && opData.status !== "offline") {
+        // Fallback: check for active call_logs by operator_id when link is broken
+        const { data: activeLog } = await (supabase as any)
+          .from("call_logs")
+          .select("id")
+          .eq("operator_id", opData.id)
+          .in("call_status", ["dialing", "ringing", "answered", "in_progress"])
+          .order("started_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (activeLog) {
+          // Restore the link
+          await (supabase as any)
+            .from("call_operators")
+            .update({ current_call_id: activeLog.id, status: "on_call" })
+            .eq("id", opData.id);
+          // Load the call
+          currentCallIdRef.current = activeLog.id;
+          const callData = await fetchCallData(activeLog.id);
+          if (callData) {
+            setCurrentCall(callData);
+            setCallStatus(mapDbStatus(callData.callStatus));
+            subscribeToCallLog(activeLog.id);
+          }
+        }
       }
 
       setIsLoading(false);
