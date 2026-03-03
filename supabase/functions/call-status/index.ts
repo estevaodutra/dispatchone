@@ -646,6 +646,8 @@ Deno.serve(async (req) => {
           ? activeOperators[Math.floor(Math.random() * activeOperators.length)].id
           : callLog.operator_id;
 
+        const retryCompanyId = callLog.company_id || campaignData?.company_id || null;
+
         const { error: scheduleError } = await supabase
           .from('call_logs')
           .insert({
@@ -658,6 +660,7 @@ Deno.serve(async (req) => {
             attempt_number: currentAttempt + 1,
             max_attempts: retryCount,
             next_retry_at: nextRetryAt.toISOString(),
+            company_id: retryCompanyId,
           });
 
         if (!scheduleError) {
