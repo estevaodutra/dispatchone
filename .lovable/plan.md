@@ -1,58 +1,80 @@
 
 
-## Adicionar/Remover Leads em Massa da Fila
+## Limpeza Automática da Fila às 23:59
 
-### Escopo
+### Abordagem
 
-Três novas funcionalidades na aba Fila do Painel de Ligações:
+Usar **pg_cron + função SQL direta** (sem Edge Function) — mais simples, confiável e não depende de autenticação HTTP.
 
-1. **Botão "Remover da Fila"** — modal com filtros (campanha, tentativas, tags) + prévia + confirmação especial para prioritários
-2. **Botão "Limpar Tudo"** — modal com detalhamento por campanha + confirmação digitando "LIMPAR TUDO"
-3. **Melhorar o "Adicionar à Fila" existente** — o `CreateQueueDialog` já existe e já faz a maior parte do que o spec pede; manter como está
+### 1. Migração SQL
 
-### Plano de Implementação
+Criar a função `clear_daily_queue()` e agendar via `pg_cron`:
 
-#### 1. Migração SQL — 3 funções
+```sql
+-- Habilitar extensões necessárias
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
 
-- `queue_remove_preview(p_company_id, p_campaign_ids[], p_attempt_filter)` — retorna contagens e breakdown por campanha (prioritárias vs normais)
-- `queue_remove_bulk(p_company_id, p_campaign_ids[], p_attempt_filter)` — deleta itens filtrados da `call_queue`, retorna contagens
-- `queue_clear_all_preview(p_company_id)` — retorna breakdown total para o modal "Limpar Tudo"
+-- Função de limpeza
+CREATE OR REPLACE FUNCTION public.clear_daily_queue()
+RETURNS TABLE(companies_processed int, total_expired int)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
+AS $$
+DECLARE
+  v_companies int := 0;
+  v_total int := 0;
+  v_company_id uuid;
+  v_count int;
+BEGIN
+  FOR v_company_id IN
+    SELECT DISTINCT company_id FROM call_queue WHERE status = 'waiting'
+  LOOP
+    WITH expired AS (
+      UPDATE call_queue SET status = 'expired'
+      WHERE company_id = v_company_id AND status = 'waiting'
+      RETURNING id
+    )
+    SELECT COUNT(*) INTO v_count FROM expired;
 
-As funções serão `SECURITY DEFINER` com `search_path = public`.
+    v_total := v_total + v_count;
 
-Filtros simplificados vs spec: tags e last_statuses são complexos de implementar na `call_queue` pois ela não guarda tags diretamente. Os filtros práticos serão: **campanha** e **tentativas** (1ª, retry, última).
+    -- Stop all queues and reset priority counters
+    UPDATE queue_execution_state
+    SET status = 'stopped', priority_counter = 0, updated_at = NOW()
+    WHERE company_id = v_company_id;
 
-#### 2. Novo componente: `RemoveFromQueueDialog`
+    v_companies := v_companies + 1;
+  END LOOP;
 
-Arquivo: `src/components/call-panel/RemoveFromQueueDialog.tsx`
+  RETURN QUERY SELECT v_companies, v_total;
+END;
+$$;
+```
 
-- Seleção de campanhas (checkbox list com ⚡ para prioritárias, contagem "na fila")
-- Filtro por tentativas (qualquer / 1ª / retry / última)
-- Prévia em tempo real chamando `queue_remove_preview` via RPC
-- Botão "Remover X Leads"
-- Se houver prioritários na seleção → abre sub-dialog pedindo digitar "REMOVER"
-- Executa `queue_remove_bulk` via RPC + invalida queries
+O agendamento cron será criado via insert tool (não migração) pois contém dados específicos do projeto:
+```sql
+SELECT cron.schedule('clear-daily-queue', '59 23 * * *', 'SELECT * FROM clear_daily_queue();');
+```
 
-#### 3. Novo componente: `ClearAllQueueDialog`
+### 2. Nenhuma alteração de constraint
 
-Arquivo: `src/components/call-panel/ClearAllQueueDialog.tsx`
+A coluna `status` em `call_queue` é `varchar` sem CHECK constraint — o valor `expired` funciona diretamente.
 
-- Mostra breakdown por campanha (prioritárias, normais, agendados)
-- Exige digitar "LIMPAR TUDO" para confirmar
-- Executa delete em `call_queue` + cancela `call_logs` scheduled/ready (lógica existente)
+### 3. UI — Badge "Expirada" no StatusBadge
 
-#### 4. Atualizar `CallPanel.tsx`
+Arquivo: `src/components/dispatch/StatusBadge.tsx`
 
-- Substituir o `AlertDialog` simples do "Limpar Fila" pelo novo `ClearAllQueueDialog`
-- Adicionar botão "Remover da Fila" ao lado do "Adicionar à Fila"
-- Importar os dois novos componentes
+Adicionar `expired` como variante no `statusBadgeVariants`, com cor amarela/cinza, dot `bg-amber-400`, e label `Expirada`.
+
+### 4. HistoryTab — Sem alteração necessária agora
+
+A HistoryTab atual mostra dados da `call_logs`, não da `call_queue`. Itens expirados ficam na `call_queue` com status `expired`. Para visualizá-los seria necessário uma consulta separada à `call_queue` — isso pode ser implementado como melhoria futura (re-adicionar expirados, relatório de expirados).
 
 ### Resumo de Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| Migração SQL | `queue_remove_preview` + `queue_remove_bulk` + `queue_clear_all_preview` |
-| `src/components/call-panel/RemoveFromQueueDialog.tsx` | Novo |
-| `src/components/call-panel/ClearAllQueueDialog.tsx` | Novo |
-| `src/pages/CallPanel.tsx` | Adicionar botão + importar novos dialogs + remover AlertDialog antigo |
+| Migração SQL | Criar `clear_daily_queue()` |
+| Insert SQL | `cron.schedule(...)` |
+| `src/components/dispatch/StatusBadge.tsx` | Adicionar variante `expired` |
 
