@@ -1,19 +1,39 @@
 
 
-## Melhorar sidebar no modo collapsed (icon-only)
+## Manter lead na fila com status "Em Ligação" durante a chamada
 
-### Problema
-No modo collapsed, os ícones ficam apertados e sem espaçamento adequado. O header mantém padding excessivo, os itens de menu têm `gap-3` e `px-3` que não se ajustam ao modo icon, e os dois grupos de navegação (principal + sistema) têm um `mt-6` que cria espaço demais entre seções. O separador visual entre os grupos fica ausente.
+### Problema atual
+Quando o `queue-processor` disca um lead, ele **deleta** o item da `call_queue` imediatamente (linhas 287 e 573). O lead some da aba "Fila" e aparece apenas em "Em Andamento". O callback (`call-status`) não tem noção da `call_queue`.
 
-### Alterações em `src/components/layout/AppSidebar.tsx`
+### Solução
 
-1. **Header** (linha 101): Ajustar padding condicional — `px-2 py-3` quando collapsed, `px-4 py-3` quando expandido. Centralizar o ícone Zap no modo collapsed.
+**1. Backend: `queue-processor/index.ts`** — Em vez de deletar o item, atualizar o status para `'in_call'` e salvar o `call_log_id` associado:
+- Linha 287: trocar `delete` por `update({ status: 'in_call', call_log_id: callLog.id })`
+- Linha 573: mesma alteração no fluxo legacy per-campaign
 
-2. **SidebarContent** (linha 144): Reduzir padding lateral quando collapsed — `px-1` ao invés de `px-2`.
+**2. Migração SQL** — Adicionar coluna `call_log_id UUID` na tabela `call_queue` para vincular o item ao call_log ativo. Atualizar o `queue_get_next_v2` para continuar ignorando itens `in_call` (já filtra por `status = 'waiting'`, OK).
 
-3. **Items de menu** (linhas 154-156, 274-276): Os NavLinks já usam `px-3 py-2 gap-3`. Quando collapsed, ajustar para `justify-center px-0` para centralizar o ícone.
+**3. Backend: `call-status/index.ts`** — Após processar um status terminal (completed, no_answer, failed, busy, etc.), deletar o item correspondente da `call_queue` usando o `call_log_id`:
+```sql
+DELETE FROM call_queue WHERE call_log_id = callLog.id
+```
 
-4. **Separador entre grupos** (linha 266): Trocar `mt-6` por um `Separator` visual + espaçamento menor (`mt-2 pt-2`) com uma linha sutil entre os dois grupos para organizar melhor.
+**4. Frontend: `CallPanel.tsx`** — Na aba "Fila":
+- Buscar items com status `'waiting'` E `'in_call'`
+- Itens com `status = 'in_call'` exibem badge "🔄 Em Ligação" na linha, com estilo visual diferenciado (ex: fundo azul sutil)
+- A contagem da fila inclui ambos os status
 
-5. **Campanhas no collapsed** (linhas 174-195): Quando collapsed, o botão de campanhas deve funcionar como os outros (só ícone centralizado), e ao clicar mostrar um dropdown/popover com os subitens ao invés do collapsible inline.
+**5. Frontend: `useCallQueue.ts`** — Ajustar a query de items para incluir `status IN ('waiting', 'in_call')` em vez de apenas `'waiting'`.
+
+### Resumo do fluxo novo
+
+```text
+call_queue (waiting) 
+  → queue-processor disca 
+  → call_queue (in_call) + call_log_id 
+  → callback retorna status terminal 
+  → call-status deleta de call_queue
+```
+
+O lead permanece visível na fila com indicação visual de que está em ligação, e só sai quando o resultado chega pelo callback.
 
