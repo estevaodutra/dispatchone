@@ -2422,6 +2422,13 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      clear_daily_queue: {
+        Args: never
+        Returns: {
+          companies_processed: number
+          total_expired: number
+        }[]
+      }
       get_call_leads_counts: {
         Args: { p_campaign_ids: string[] }
         Returns: {
