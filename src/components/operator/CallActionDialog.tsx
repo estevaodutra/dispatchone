@@ -310,8 +310,6 @@ export function CallActionDialog({
     try {
       const updates: Record<string, unknown> = {
         notes: notes || null,
-        call_status: selectedActionId === "__failure" ? "no_answer" : "completed",
-        ended_at: new Date().toISOString(),
       };
 
       if (selectedActionId && !selectedActionId.startsWith("__")) {
@@ -327,11 +325,9 @@ export function CallActionDialog({
         .update(updates)
         .eq("id", currentData.callId);
 
-      await (supabase as any).rpc("release_operator", { p_call_id: currentData.callId });
-
       await executeAutomation(selectedActionId);
 
-      toast({ title: "Ação registrada", description: "Ligação finalizada com sucesso." });
+      toast({ title: "Ação registrada", description: "Resultado salvo. A ligação será encerrada pelo callback." });
       onOpenChange(false);
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });

@@ -625,41 +625,15 @@ export function useCallPanel(filters?: {
 
   const registerActionMutation = useMutation({
     mutationFn: async ({ callId, actionId, notes }: { callId: string; actionId: string; notes?: string }): Promise<{ automationSuccess: boolean; automationError?: string; skipped?: boolean }> => {
-      // Check fresh state to prevent duplicate updates
-      const { data: freshLog } = await (supabase as any)
-        .from("call_logs")
-        .select("call_status")
-        .eq("id", callId)
-        .maybeSingle();
-
-      const alreadyCompleted = freshLog?.call_status === "completed";
       const entry = entries.find((e) => e.id === callId);
 
-      if (!alreadyCompleted) {
-        const { error } = await (supabase as any)
-          .from("call_logs")
-          .update({ action_id: actionId, notes: notes || null, call_status: "completed", ended_at: new Date().toISOString() })
-          .eq("id", callId);
-        if (error) throw error;
-
-        // Release operator atomically via RPC
-        await (supabase as any).rpc('release_operator', { p_call_id: callId, p_force: true });
-
-        if (entry?.leadId) {
-          const { data: freshLead } = await (supabase as any)
-            .from("call_leads")
-            .select("status")
-            .eq("id", entry.leadId)
-            .maybeSingle();
-
-          if (freshLead && freshLead.status !== "completed") {
-            await (supabase as any)
-              .from("call_leads")
-              .update({ status: "completed", result_action_id: actionId, result_notes: notes || null })
-              .eq("id", entry.leadId);
-          }
-        }
-      }
+      // Only save action_id + notes, do NOT mark as completed or release operator
+      // The callback (call-status) is the single authority for ending calls
+      const { error } = await (supabase as any)
+        .from("call_logs")
+        .update({ action_id: actionId, notes: notes || null })
+        .eq("id", callId);
+      if (error) throw error;
 
       // Check if the action triggers a sequence automation (wrapped in try/catch to avoid crashing)
       let automationResult: { automationSuccess: boolean; automationError?: string } = { automationSuccess: true };
@@ -777,7 +751,7 @@ export function useCallPanel(filters?: {
         automationResult = { automationSuccess: false, automationError: automationError?.message || "Erro inesperado" };
       }
 
-      return { ...automationResult, skipped: alreadyCompleted };
+      return { ...automationResult, skipped: false };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["call_panel"] });
