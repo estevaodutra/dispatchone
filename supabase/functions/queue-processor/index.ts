@@ -195,7 +195,13 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
     return { success: true, action: 'waiting', reason: 'No operator available' };
   }
 
-  // 4. Call queue_get_next_v2 — the SQL function decides which campaign/item
+  // 4. PRIORITY: Check for scheduled/ready call_logs FIRST (operator appointments)
+  const scheduledResult = await processScheduledCallLogs(supabase, companyId, userId);
+  if (scheduledResult) {
+    return scheduledResult;
+  }
+
+  // 5. Call queue_get_next_v2 — the SQL function decides which campaign/item
   const { data: nextItems, error: rpcError } = await supabase.rpc('queue_get_next_v2', {
     p_company_id: companyId,
   });
@@ -206,8 +212,7 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
   }
 
   if (!nextItems || nextItems.length === 0) {
-    // Check for fallback call_logs (scheduled/ready)
-    return await processGlobalFallback(supabase, companyId, userId);
+    return { success: true, action: 'none', reason: 'Queue empty, no scheduled logs' };
   }
 
   const entry = nextItems[0];
@@ -315,41 +320,51 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
   };
 }
 
-// Fallback: check for ready/scheduled call_logs when call_queue is empty
-async function processGlobalFallback(supabase: any, companyId: string, userId: string) {
+// Check for scheduled/ready call_logs that should be processed BEFORE the regular queue
+async function processScheduledCallLogs(supabase: any, companyId: string, userId: string): Promise<any | null> {
+  // Find call_logs with scheduled_for <= NOW() and status scheduled/ready
+  // Prioritize by campaign priority, then by scheduled_for ascending
   const { data: readyLog } = await supabase
     .from('call_logs')
-    .select('id, campaign_id, lead_id, user_id, attempt_number, max_attempts')
+    .select('id, campaign_id, lead_id, user_id, attempt_number, max_attempts, call_campaigns!inner(is_priority)')
     .eq('company_id', companyId)
     .in('call_status', ['ready', 'scheduled'])
     .lte('scheduled_for', new Date().toISOString())
     .order('scheduled_for', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
 
-  if (!readyLog) {
-    return { success: true, action: 'none', reason: 'Queue empty, no fallback logs' };
+  if (!readyLog || readyLog.length === 0) {
+    return null; // No scheduled logs, proceed to regular queue
   }
+
+  // Sort: priority campaigns first, then by scheduled_for
+  const sorted = readyLog.sort((a: any, b: any) => {
+    const aPriority = a.call_campaigns?.is_priority ? 1 : 0;
+    const bPriority = b.call_campaigns?.is_priority ? 1 : 0;
+    return bPriority - aPriority; // Priority first
+  });
+
+  const log = sorted[0];
 
   // Get campaign
   const { data: campaign } = await supabase
     .from('call_campaigns')
     .select('id, name, user_id, queue_interval_seconds, queue_unavailable_behavior, company_id, retry_count, retry_interval_minutes')
-    .eq('id', readyLog.campaign_id)
+    .eq('id', log.campaign_id)
     .single();
 
   if (!campaign) {
-    return { success: true, action: 'none', reason: 'Fallback campaign not found' };
+    return null; // Skip, let regular queue handle
   }
 
   // Fetch lead data
   let leadPhone = '';
   let leadName = '';
-  if (readyLog.lead_id) {
+  if (log.lead_id) {
     const { data: leadData } = await supabase
       .from('call_leads')
       .select('phone, name')
-      .eq('id', readyLog.lead_id)
+      .eq('id', log.lead_id)
       .maybeSingle();
     if (leadData) {
       leadPhone = leadData.phone;
@@ -359,8 +374,8 @@ async function processGlobalFallback(supabase: any, companyId: string, userId: s
 
   // Reserve operator
   const { data: reservation } = await supabase.rpc('reserve_operator_for_call', {
-    p_call_id: readyLog.id,
-    p_campaign_id: readyLog.campaign_id,
+    p_call_id: log.id,
+    p_campaign_id: log.campaign_id,
   });
 
   if (!reservation?.[0]?.success) {
@@ -373,29 +388,29 @@ async function processGlobalFallback(supabase: any, companyId: string, userId: s
     operator_id: operator.operator_id,
     call_status: 'dialing',
     started_at: new Date().toISOString(),
-  }).eq('id', readyLog.id);
+  }).eq('id', log.id);
 
-  if (readyLog.lead_id) {
+  if (log.lead_id) {
     await supabase.from('call_leads').update({
       status: 'calling',
       assigned_operator_id: operator.operator_id,
       last_attempt_at: new Date().toISOString(),
-    }).eq('id', readyLog.lead_id);
+    }).eq('id', log.lead_id);
   }
 
   const operatorObj = { id: operator.operator_id, operator_name: operator.operator_name, extension: operator.operator_extension };
-  const leadObj = { id: readyLog.lead_id, phone: leadPhone, name: leadName };
-  await fireDialWebhook(supabase, userId, readyLog.id, readyLog.campaign_id, campaign, leadObj, operatorObj);
+  const leadObj = { id: log.lead_id, phone: leadPhone, name: leadName };
+  await fireDialWebhook(supabase, userId, log.id, log.campaign_id, campaign, leadObj, operatorObj);
 
-  console.log(`[queue-processor/global] Fallback: Dialed ${leadPhone} via ${operator.operator_name}`);
+  console.log(`[queue-processor/global] Scheduled call: Dialed ${leadPhone} via ${operator.operator_name} (campaign: ${campaign.name})`);
 
   return {
     success: true,
     action: 'dialed',
-    call_id: readyLog.id,
+    call_id: log.id,
     operator: operator.operator_name,
     lead: { name: leadName, phone: leadPhone },
-    source: 'fallback_call_logs',
+    source: 'scheduled_call_logs',
   };
 }
 
