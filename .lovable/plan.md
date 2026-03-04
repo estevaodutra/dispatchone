@@ -1,39 +1,24 @@
 
 
-## Problema
-
-A fila combina itens de duas fontes (`call_queue` + `call_logs` com status scheduled/ready), mas as ações de exclusão só funcionam para a tabela `call_queue`. Os 283 itens mostrados são todos de `call_logs` (badge "Agendada"), então:
-
-- O botão "Remover" não aparece para eles (só mostra badge)
-- O "Limpar Fila" só limpa `call_queue` (que já está vazia)
-
-## Correção
+## Alterações na Aba Fila
 
 **Arquivo: `src/pages/CallPanel.tsx`**
 
-### 1. Adicionar botão "Remover" nos itens de `call_logs`
-
-Na linha ~1078, onde hoje só mostra badge "Agendada"/"Pronta", adicionar um DropdownMenu igual ao dos itens de `call_queue`, mas com ação de exclusão que cancela o `call_log` (update status → `cancelled`) em vez de deletar.
-
-### 2. Handler para remover item de `call_logs`
-
-Nova função `removeScheduledLog(logId: string)`:
-- Remove o prefixo `cl_` do ID
-- Faz `supabase.from('call_logs').update({ call_status: 'cancelled' }).eq('id', realId)`
-- Invalida queries de queue
-
-### 3. Atualizar "Limpar Fila" para incluir `call_logs`
-
-Na ação de "Limpar Fila" (linha ~864), além de chamar `clearQueue(campaignFilter)`, também executar:
-```typescript
-supabase.from('call_logs')
-  .update({ call_status: 'cancelled' })
-  .in('call_status', ['scheduled', 'ready'])
-  .eq('company_id', activeCompanyId)
+### 1. Remover ícone 📅
+Na linha 1068, alterar a lógica do ícone para não incluir "📅" — manter apenas "⚡" para prioritárias:
 ```
-Com filtro de campanha se aplicável.
+// De: const icon = hasSchedule ? "📅" : qe.isPriority ? "⚡" : "";
+// Para: const icon = qe.isPriority ? "⚡" : "";
+```
 
-### 4. Mover para início/final nos itens de `call_logs`
+### 2. Tornar coluna "Campanha" sempre visível
+Linha 1059: remover `hidden lg:table-cell` → deixar sempre visível.
+Linha 1082: mesma mudança na célula de dados.
 
-Adicionar as mesmas opções "Para o início" e "Para o final" ajustando o `scheduled_for` (como já descrito na memória `logica-reordenacao-fila`).
+### 3. Adicionar botão Eye para ver detalhes do lead
+- Adicionar estado `viewingQueueLead` para controlar qual lead está sendo exibido.
+- Adicionar um botão `Eye` antes do botão Phone em cada linha (tanto para itens de `call_queue` quanto `call_logs`).
+- Adicionar um `Dialog` simples mostrando as informações do lead selecionado: nome, telefone, campanha, tentativa, status, agendamento, e observações (se existirem).
+
+O dialog será leve — um card com os dados básicos do lead na fila, sem precisar navegar para outra página.
 
