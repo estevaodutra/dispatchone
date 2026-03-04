@@ -1,30 +1,38 @@
 
 
-## Corrigir: Item "Em Ligação" na fila não corresponde ao lead sendo discado
+## Diagnóstico: "O reprodutor da ligação desapareceu"
 
-### Diagnóstico
+O componente `CallPopup embedded` (o card de status do operador no topo do Painel) usa o hook `useOperatorCall`, que **não foi alterado**. Porém, o filtro que adicionamos em `inProgressEntries` pode estar causando o desaparecimento do **card de ligação na aba "Em Andamento"**.
 
-O popup mostra "André" (call_log agendado de "FN | Abandono de Funil"), mas na fila o item #4 "Sem nome" (de outra campanha) aparece com badge "Em Ligação". São leads diferentes.
+### Causa provável
 
-O que acontece:
-1. O `processScheduledCallLogs` processa "André" diretamente da `call_logs` — **sem tocar na `call_queue`**
-2. O item #4 na `call_queue` ficou com `status: 'in_call'` de uma execução anterior, cujo callback de status (`call-status`) não removeu corretamente o item (possivelmente falha no webhook de callback, ou o `call_log_id` não bateu)
-3. Como há apenas 1 operador, não é possível haver duas ligações simultâneas — o item #4 é **stale**
+No filtro que adicionamos (linha 394-400 de `CallPanel.tsx`):
+
+```ts
+if (myOperator) {
+  return all.filter(e => e.operatorId === myOperator.id);
+}
+```
+
+Quando o `queue-processor` inicia uma ligação, pode haver um breve intervalo onde o `call_log` já existe com status `dialing` mas o `operator_id` ainda não foi populado (ou o polling do `useCallPanel` busca o registro antes do update). Nesse caso, `entry.operatorId` é `null`, e o filtro exclui o card.
+
+Além disso, chamadas originadas de `processScheduledCallLogs` podem ter o `operator_id` setado de forma assíncrona, gerando uma janela de tempo onde o card some.
 
 ### Solução
 
-**Arquivo: `supabase/functions/queue-processor/index.ts` (dentro de `processGlobalTick`, após heal_stuck_operators)**
+**Arquivo: `src/pages/CallPanel.tsx` (linhas 394-400)**
 
-Adicionar um passo de limpeza de itens `in_call` stale na `call_queue`. Antes de processar a fila:
+Ajustar o filtro para incluir também entradas sem `operatorId` definido (ainda não foram atribuídas a nenhum operador):
 
-1. Buscar todos os itens da `call_queue` com `status = 'in_call'` para a empresa
-2. Para cada um que tem `call_log_id`, verificar se o `call_log` associado já tem status terminal (`completed`, `no_answer`, `failed`, `cancelled`, `busy`, `voicemail`, `timeout`)
-3. Se sim → deletar o item da fila (limpeza de stale)
-4. Se o item `in_call` não tem `call_log_id` e foi criado há mais de 10 minutos → deletar também (safety net)
+```ts
+const inProgressEntries = useMemo(() => {
+  const all = entries.filter(e => ["dialing", "ringing", "answered", "in_progress"].includes(e.callStatus));
+  if (myOperator) {
+    return all.filter(e => !e.operatorId || e.operatorId === myOperator.id);
+  }
+  return all;
+}, [entries, myOperator]);
+```
 
-Isso garante que itens "fantasma" não fiquem na fila confundindo o operador.
-
-### Arquivos alterados
-
-- **`supabase/functions/queue-processor/index.ts`**: Adicionar função `healStaleInCallItems(supabase, companyId)` e chamá-la em `processGlobalTick` logo após `heal_stuck_operators`
+A adição de `!e.operatorId ||` garante que ligações recém-criadas (sem operador atribuído ainda) permaneçam visíveis para todos os operadores, evitando o "desaparecimento" do card durante a fase de atribuição.
 
