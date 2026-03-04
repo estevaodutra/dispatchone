@@ -2,42 +2,38 @@
 
 ## Problema
 
-A aba "Fila" mostra apenas itens da tabela `call_queue` (que está vazia). Porém, existem **283 call_logs** com status `ready` (176) e `scheduled` (107) que deveriam aparecer na fila também.
+A fila combina itens de duas fontes (`call_queue` + `call_logs` com status scheduled/ready), mas as ações de exclusão só funcionam para a tabela `call_queue`. Os 283 itens mostrados são todos de `call_logs` (badge "Agendada"), então:
 
-O plano original dizia "Combinar dados de `call_queue` (waiting) + `call_logs` (scheduled/ready)", mas a implementação atual só consulta `call_queue`.
+- O botão "Remover" não aparece para eles (só mostra badge)
+- O "Limpar Fila" só limpa `call_queue` (que já está vazia)
 
 ## Correção
 
 **Arquivo: `src/pages/CallPanel.tsx`**
 
-Adicionar uma query secundária para buscar `call_logs` com status `scheduled` ou `ready`, mapeá-los para o mesmo formato `QueueItem`, e combinar com os itens de `call_queue` no `queueEntries`.
+### 1. Adicionar botão "Remover" nos itens de `call_logs`
 
-### Detalhes
+Na linha ~1078, onde hoje só mostra badge "Agendada"/"Pronta", adicionar um DropdownMenu igual ao dos itens de `call_queue`, mas com ação de exclusão que cancela o `call_log` (update status → `cancelled`) em vez de deletar.
 
-1. **Nova query inline** no `CallPanel.tsx` (ao lado da query de `answeredEntries`):
-   - Busca `call_logs` com `call_status IN ('scheduled', 'ready')` e `company_id = activeCompanyId`
-   - Filtra por campanha e busca se aplicável
-   - Mapeia para formato compatível com `QueueItem` (com prefixo `cl_` no ID para evitar colisões)
+### 2. Handler para remover item de `call_logs`
 
-2. **Combinar listas**: Criar um `combinedQueue` que concatena `queueEntries` (da `call_queue`) + `scheduledEntries` (dos `call_logs`), ordenando por: agendadas primeiro (por `scheduled_for`), depois prioridade, depois posição.
+Nova função `removeScheduledLog(logId: string)`:
+- Remove o prefixo `cl_` do ID
+- Faz `supabase.from('call_logs').update({ call_status: 'cancelled' }).eq('id', realId)`
+- Invalida queries de queue
 
-3. **Atualizar o contador** no MetricCard "Na Fila" para incluir ambas as fontes.
+### 3. Atualizar "Limpar Fila" para incluir `call_logs`
 
-4. **Atualizar a paginação** para usar `combinedQueue` em vez de apenas `queueEntries`.
+Na ação de "Limpar Fila" (linha ~864), além de chamar `clearQueue(campaignFilter)`, também executar:
+```typescript
+supabase.from('call_logs')
+  .update({ call_status: 'cancelled' })
+  .in('call_status', ['scheduled', 'ready'])
+  .eq('company_id', activeCompanyId)
+```
+Com filtro de campanha se aplicável.
 
-### Campos mapeados de call_logs → QueueItem
+### 4. Mover para início/final nos itens de `call_logs`
 
-| call_logs | QueueItem |
-|-----------|-----------|
-| `id` | `id` (prefixo `cl_`) |
-| `campaign_id` | `campaignId` |
-| `call_campaigns.name` | `campaignName` |
-| `lead_id` | `leadId` |
-| `call_leads.phone` ou `leads.phone` | `phone` |
-| `call_leads.name` ou `leads.name` | `leadName` |
-| `scheduled_for` | Preservado como campo extra |
-| `call_status` | `status` |
-| `is_priority` (do campaign) | `isPriority` |
-
-A aba continuará usando a tabela existente, apenas com dados combinados.
+Adicionar as mesmas opções "Para o início" e "Para o final" ajustando o `scheduled_for` (como já descrito na memória `logica-reordenacao-fila`).
 
