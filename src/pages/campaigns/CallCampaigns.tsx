@@ -7,7 +7,7 @@ import { CallCampaignList, CallCampaignDetails, CreateCampaignDialog } from "@/c
 export default function CallCampaigns() {
   const [selectedCampaign, setSelectedCampaign] = useState<CallCampaign | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const { campaigns, isLoading, createCampaign, updateCampaign, deleteCampaign, isCreating } = useCallCampaigns();
+  const { campaigns, isLoading, createCampaign, updateCampaign, deleteCampaign, duplicateCampaign, isCreating, isDuplicating } = useCallCampaigns();
 
   const handleSelectCampaign = (campaign: CallCampaign) => {
     setSelectedCampaign(campaign);
@@ -63,6 +63,8 @@ export default function CallCampaigns() {
         onDelete={deleteCampaign}
         onStatusChange={handleStatusChange}
         onCreateNew={() => setShowCreateDialog(true)}
+        onDuplicate={duplicateCampaign}
+        isDuplicating={isDuplicating}
       />
 
       <CreateCampaignDialog

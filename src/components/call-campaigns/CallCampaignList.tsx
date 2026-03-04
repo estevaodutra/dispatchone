@@ -32,6 +32,7 @@ import {
   FileEdit,
   Users,
   Star,
+  Copy,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -45,6 +46,8 @@ interface CallCampaignListProps {
   onDelete: (id: string) => Promise<void>;
   onStatusChange: (id: string, status: string) => Promise<void>;
   onCreateNew: () => void;
+  onDuplicate: (id: string) => Promise<unknown>;
+  isDuplicating?: boolean;
 }
 
 const statusColors: Record<string, string> = {
@@ -68,6 +71,8 @@ export function CallCampaignList({
   onDelete,
   onStatusChange,
   onCreateNew,
+  onDuplicate,
+  isDuplicating,
 }: CallCampaignListProps) {
   const { data: counts } = useCallCampaignCounts(campaigns.map(c => c.id));
   const [searchTerm, setSearchTerm] = useState("");
@@ -198,6 +203,16 @@ export function CallCampaignList({
                           Voltar para Rascunho
                         </DropdownMenuItem>
                       )}
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDuplicate(campaign.id);
+                        }}
+                        disabled={isDuplicating}
+                      >
+                        <Copy className="mr-2 h-4 w-4" />
+                        {isDuplicating ? "Duplicando..." : "Duplicar"}
+                      </DropdownMenuItem>
                       <DropdownMenuItem
                         className="text-destructive"
                         onClick={(e) => {

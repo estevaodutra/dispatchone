@@ -192,6 +192,107 @@ export function useCallCampaigns() {
     },
   });
 
+  const duplicateCampaignMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // 1. Fetch original campaign
+      const { data: original, error: fetchErr } = await (supabase as any)
+        .from("call_campaigns").select("*").eq("id", id).single();
+      if (fetchErr) throw fetchErr;
+
+      // 2. Insert cloned campaign
+      const { data: newCampaign, error: insertErr } = await (supabase as any)
+        .from("call_campaigns")
+        .insert({
+          user_id: user.id,
+          company_id: original.company_id || null,
+          name: `Cópia de ${original.name}`,
+          description: original.description,
+          status: "draft",
+          api4com_config: original.api4com_config,
+          dial_delay_minutes: original.dial_delay_minutes,
+          queue_execution_enabled: original.queue_execution_enabled,
+          queue_interval_seconds: original.queue_interval_seconds,
+          queue_unavailable_behavior: original.queue_unavailable_behavior,
+          retry_count: original.retry_count,
+          retry_interval_minutes: original.retry_interval_minutes,
+          retry_exceeded_behavior: original.retry_exceeded_behavior,
+          is_priority: original.is_priority,
+          priority_position: original.priority_position,
+        })
+        .select()
+        .single();
+      if (insertErr) throw insertErr;
+
+      // 3. Clone call_script_actions
+      const { data: actions } = await (supabase as any)
+        .from("call_script_actions").select("*").eq("campaign_id", id).order("sort_order");
+
+      const actionIdMap: Record<string, string> = {};
+      if (actions && actions.length > 0) {
+        const newActions = actions.map((a: any) => ({
+          user_id: user.id,
+          campaign_id: newCampaign.id,
+          name: a.name,
+          color: a.color,
+          icon: a.icon,
+          action_type: a.action_type,
+          action_config: a.action_config,
+          sort_order: a.sort_order,
+        }));
+        const { data: inserted } = await (supabase as any)
+          .from("call_script_actions").insert(newActions).select();
+        if (inserted) {
+          actions.forEach((old: any, i: number) => {
+            actionIdMap[old.id] = inserted[i].id;
+          });
+        }
+      }
+
+      // Update retry_exceeded_action_id if mapped
+      if (original.retry_exceeded_action_id && actionIdMap[original.retry_exceeded_action_id]) {
+        await (supabase as any).from("call_campaigns")
+          .update({ retry_exceeded_action_id: actionIdMap[original.retry_exceeded_action_id] })
+          .eq("id", newCampaign.id);
+      }
+
+      // 4. Clone call_scripts (with actionId remapping in nodes)
+      const { data: scripts } = await (supabase as any)
+        .from("call_scripts").select("*").eq("campaign_id", id);
+
+      if (scripts && scripts.length > 0) {
+        const script = scripts[0];
+        let nodes = script.nodes || [];
+        if (Array.isArray(nodes)) {
+          nodes = nodes.map((node: any) => {
+            if (node?.data?.actionId && actionIdMap[node.data.actionId]) {
+              return { ...node, data: { ...node.data, actionId: actionIdMap[node.data.actionId] } };
+            }
+            return node;
+          });
+        }
+        await (supabase as any).from("call_scripts").insert({
+          user_id: user.id,
+          campaign_id: newCampaign.id,
+          name: script.name,
+          nodes,
+          edges: script.edges || [],
+        });
+      }
+
+      return transformDbToFrontend(newCampaign as DbCallCampaign);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_campaigns"] });
+      toast({ title: "Duplicado", description: "Campanha duplicada com sucesso." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro ao duplicar", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     campaigns,
     isLoading,
@@ -200,8 +301,10 @@ export function useCallCampaigns() {
     createCampaign: createCampaignMutation.mutateAsync,
     updateCampaign: updateCampaignMutation.mutateAsync,
     deleteCampaign: deleteCampaignMutation.mutateAsync,
+    duplicateCampaign: duplicateCampaignMutation.mutateAsync,
     isCreating: createCampaignMutation.isPending,
     isUpdating: updateCampaignMutation.isPending,
     isDeleting: deleteCampaignMutation.isPending,
+    isDuplicating: duplicateCampaignMutation.isPending,
   };
 }
