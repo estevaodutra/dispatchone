@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
@@ -261,6 +261,52 @@ export default function CallPanel() {
   const { items: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, moveToEnd: sendToEndOfQueue, moveToStart: sendToStartOfQueue } = callQueue;
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
+  const queryClient = useQueryClient();
+
+  // ── Remove scheduled call_log (cancel it) ──
+  const removeScheduledLog = useCallback(async (compositeId: string) => {
+    const realId = compositeId.startsWith("cl_") ? compositeId.slice(3) : compositeId;
+    const { error } = await (supabase as any)
+      .from("call_logs")
+      .update({ call_status: "cancelled", ended_at: new Date().toISOString() })
+      .eq("id", realId);
+    if (error) {
+      toast({ title: "Erro ao remover", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "Removido da fila" });
+      queryClient.invalidateQueries({ queryKey: ["call_logs_queue"] });
+      queryClient.invalidateQueries({ queryKey: ["call_queue"] });
+    }
+  }, [toast, queryClient]);
+
+  // ── Move call_log to start/end by adjusting scheduled_for ──
+  const moveScheduledLogToStart = useCallback(async (compositeId: string) => {
+    const realId = compositeId.startsWith("cl_") ? compositeId.slice(3) : compositeId;
+    const earliest = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await (supabase as any)
+      .from("call_logs")
+      .update({ scheduled_for: earliest })
+      .eq("id", realId);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ["call_logs_queue"] });
+    }
+  }, [toast, queryClient]);
+
+  const moveScheduledLogToEnd = useCallback(async (compositeId: string) => {
+    const realId = compositeId.startsWith("cl_") ? compositeId.slice(3) : compositeId;
+    const latest = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await (supabase as any)
+      .from("call_logs")
+      .update({ scheduled_for: latest })
+      .eq("id", realId);
+    if (error) {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ["call_logs_queue"] });
+    }
+  }, [toast, queryClient]);
 
   const handleRefreshQueue = useCallback(async () => {
     setIsRefreshingQueue(true);
@@ -861,7 +907,21 @@ export default function CallPanel() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => { clearQueue(campaignFilter); setClearConfirmOpen(false); }}
+              onClick={async () => {
+                clearQueue(campaignFilter);
+                // Also cancel all scheduled/ready call_logs
+                if (activeCompanyId) {
+                  let q = (supabase as any)
+                    .from("call_logs")
+                    .update({ call_status: "cancelled", ended_at: new Date().toISOString() })
+                    .in("call_status", ["scheduled", "ready"]);
+                  q = q.eq("company_id", activeCompanyId);
+                  if (campaignFilter !== "all") q = q.eq("campaign_id", campaignFilter);
+                  await q;
+                  queryClient.invalidateQueries({ queryKey: ["call_logs_queue"] });
+                }
+                setClearConfirmOpen(false);
+              }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Esvaziar Fila
@@ -1076,9 +1136,40 @@ export default function CallPanel() {
                             </>
                           )}
                           {isFromCallLog && (
-                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                              {qe.status === "scheduled" ? "Agendada" : "Pronta"}
-                            </Badge>
+                            <>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-primary"
+                                    onClick={() => moveScheduledLogToStart(qe.id)}
+                                  >
+                                    <Phone className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Mover para o início</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => moveScheduledLogToStart(qe.id)}>
+                                    <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => moveScheduledLogToEnd(qe.id)}>
+                                    <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeScheduledLog(qe.id)}>
+                                    <Trash2 className="h-4 w-4 mr-2" /> Remover
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </>
                           )}
                         </div>
                       </TableCell>
