@@ -104,12 +104,12 @@ import {
   MoreHorizontal,
   Bot,
   Star,
+  Zap,
 } from "lucide-react";
 import { cn, formatPhone } from "@/lib/utils";
 import { format } from "date-fns";
 
 // ── Helpers ──
-
 
 function getTimeRemaining(scheduledFor: string | null): { text: string; seconds: number; isUrgent: boolean } {
   if (!scheduledFor) return { text: "", seconds: Infinity, isUrgent: false };
@@ -144,8 +144,6 @@ function getStatusCategory(status: string): "scheduled" | "in_progress" | "compl
   if (status === "cancelled") return "cancelled";
   return "failed";
 }
-
-// (sortByPriority removed — chronological sort applied inline)
 
 // ── Sound ──
 
@@ -198,308 +196,20 @@ function HistoryStatusBadge({ status }: { status: string }) {
   );
 }
 
-// ── Status Badge Component ──
+// ── In-Progress Status Badge ──
 
-function StatusBadgeCell({ entry }: { entry: CallPanelEntry }) {
-  const category = getStatusCategory(entry.callStatus);
-  const timeInfo = getTimeRemaining(entry.scheduledFor);
-
-  if (category === "scheduled" && timeInfo.isUrgent) {
-    return (
-      <Badge variant="destructive" className="gap-1 text-xs whitespace-nowrap">
-        AGORA!
-      </Badge>
-    );
-  }
-  if (category === "scheduled") {
-    return (
-      <Badge variant="secondary" className="gap-1 text-xs whitespace-nowrap bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800">
-        Agendada
-      </Badge>
-    );
-  }
-  if (category === "in_progress") {
-    return (
-      <Badge className="gap-1 text-xs whitespace-nowrap bg-emerald-500 text-white border-emerald-600">
-        {entry.callStatus === "dialing" || entry.callStatus === "ringing" ? "Discando" : "Em ligação"}
-      </Badge>
-    );
-  }
-  if (category === "completed") {
-    return (
-      <Badge variant="secondary" className="gap-1 text-xs whitespace-nowrap text-emerald-600 bg-emerald-50 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800">
-        Atendida
-      </Badge>
-    );
-  }
-  if (category === "cancelled") {
-    return (
-      <Badge variant="outline" className="gap-1 text-xs whitespace-nowrap text-muted-foreground">
-        Cancelada
-      </Badge>
-    );
-  }
-  // failed
-  const label = entry.callStatus === "no_answer" ? "N/Atendeu"
-    : entry.callStatus === "busy" ? "Ocupado"
-    : entry.callStatus === "not_found" ? "Não Encontrada"
-    : entry.callStatus === "voicemail" ? "Caixa Postal"
-    : entry.callStatus === "timeout" ? "Tempo Esgotado"
-    : "Falha";
-  const isOrange = ["busy", "failed", "not_found", "voicemail", "timeout"].includes(entry.callStatus);
+function InProgressStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; className: string }> = {
+    dialing: { label: "🔵 Discando", className: "bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800" },
+    ringing: { label: "🟡 Chamando", className: "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800" },
+    answered: { label: "🟢 Em Linha", className: "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800" },
+    in_progress: { label: "🟢 Em Linha", className: "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800" },
+  };
+  const cfg = map[status] || { label: status, className: "text-muted-foreground" };
   return (
-    <Badge variant="outline" className={cn(
-      "gap-1 text-xs whitespace-nowrap",
-      isOrange ? "text-orange-600 border-orange-300 dark:text-orange-400 dark:border-orange-700" : "text-muted-foreground"
-    )}>
-      {label}
+    <Badge variant="outline" className={cn("gap-1 text-xs whitespace-nowrap", cfg.className)}>
+      {cfg.label}
     </Badge>
-  );
-}
-
-// ── Timer Cell ──
-
-function TimerCell({ entry }: { entry: CallPanelEntry }) {
-  const category = getStatusCategory(entry.callStatus);
-  
-  if (category === "scheduled") {
-    const timeInfo = getTimeRemaining(entry.scheduledFor);
-    if (timeInfo.isUrgent) return <span className="text-xs text-muted-foreground">—</span>;
-    return <span className="font-mono text-xs">{timeInfo.text}</span>;
-  }
-  return <span className="text-xs text-muted-foreground">—</span>;
-}
-
-// ── Queue Status Banner ──
-
-function QueueStatusBanner({ summary, operators, onRefresh, isRefreshing, onPauseAll, onResumeAll, isPausingAll, isResumingAll, onClearQueue, isClearingQueue, totalWaiting, onStartQueue, isStarting, queueItems }: {
-  summary: { globalStatus: string; summary: { running: number; paused: number; stopped: number; waiting_operator: number; waiting_cooldown: number }; isLoading: boolean };
-  operators: import("@/hooks/useCallOperators").CallOperator[];
-  onRefresh: () => void;
-  isRefreshing: boolean;
-  onPauseAll: () => void;
-  onResumeAll: () => void;
-  isPausingAll: boolean;
-  isResumingAll: boolean;
-  onClearQueue: () => void;
-  isClearingQueue: boolean;
-  totalWaiting: number;
-  onStartQueue: (campaignId: string) => Promise<void>;
-  isStarting: boolean;
-  queueItems: QueueItem[];
-}) {
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  if (summary.isLoading) return null;
-
-  const { globalStatus, summary: counts } = summary;
-  const totalActive = counts.running + counts.paused + counts.waiting_operator + counts.waiting_cooldown;
-
-  if (totalActive === 0 && counts.stopped === 0) return null;
-
-  const availableOps = operators.filter(op => op.status === "available").length;
-  const totalActiveOps = operators.filter(op => ["available", "on_call", "cooldown"].includes(op.status)).length;
-
-  const config: Record<string, { label: string; icon: typeof Play; className: string; dotClass: string }> = {
-    running: { label: "Em execução", icon: Play, className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400", dotClass: "bg-emerald-500 animate-pulse" },
-    paused: { label: "Pausada", icon: Pause, className: "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400", dotClass: "bg-amber-500" },
-    stopped: { label: "Parada", icon: Square, className: "bg-muted border-border text-muted-foreground", dotClass: "bg-muted-foreground" },
-    mixed: { label: "Mista", icon: AlertTriangle, className: "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400", dotClass: "bg-blue-500 animate-pulse" },
-  };
-
-  const c = config[globalStatus] || config.stopped;
-  const Icon = c.icon;
-
-  const parts: string[] = [];
-  if (counts.running > 0) parts.push(`${counts.running} executando`);
-  if (counts.paused > 0) parts.push(`${counts.paused} pausada${counts.paused > 1 ? "s" : ""}`);
-  if (counts.waiting_operator > 0) parts.push(`${counts.waiting_operator} aguardando operador`);
-  if (counts.waiting_cooldown > 0) parts.push(`${counts.waiting_cooldown} em intervalo`);
-  if (parts.length === 0) parts.push("Nenhuma fila ativa");
-
-  return (
-    <div className={cn("flex items-center gap-3 rounded-lg border px-4 py-2.5", c.className)}>
-      <span className={cn("h-2 w-2 rounded-full shrink-0", c.dotClass)} />
-      <Icon className="h-4 w-4 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium">{c.label}</span>
-        <span className="text-xs opacity-75 ml-2">{parts.join(" · ")}</span>
-      </div>
-      <Badge
-        variant={availableOps > 0 ? "default" : "destructive"}
-        className={cn("shrink-0 gap-1 text-xs", availableOps > 0
-          ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-400"
-          : ""
-        )}
-      >
-        <Headset className="h-3 w-3" />
-        {availableOps} disponíve{availableOps === 1 ? "l" : "is"}
-        {totalActiveOps > availableOps && ` / ${totalActiveOps} online`}
-      </Badge>
-      {(globalStatus === "running" || globalStatus === "mixed") && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onPauseAll}
-          disabled={isPausingAll}
-          className="shrink-0 gap-1.5 text-xs h-7 px-2.5"
-        >
-          <Pause className="h-3.5 w-3.5" />
-          {isPausingAll ? "Pausando..." : "Pausar"}
-        </Button>
-      )}
-      {globalStatus === "paused" && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onResumeAll}
-          disabled={isResumingAll}
-          className="shrink-0 gap-1.5 text-xs h-7 px-2.5"
-        >
-          <Play className="h-3.5 w-3.5" />
-          {isResumingAll ? "Retomando..." : "Retomar"}
-        </Button>
-      )}
-      {globalStatus === "stopped" && totalWaiting > 0 && (
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            const firstItem = queueItems[0];
-            if (firstItem) onStartQueue(firstItem.campaignId);
-          }}
-          disabled={isStarting || queueItems.length === 0}
-          className="shrink-0 gap-1.5 text-xs h-7 px-2.5 text-emerald-700 border-emerald-500/30 hover:bg-emerald-500/10 dark:text-emerald-400"
-        >
-          <Play className="h-3.5 w-3.5" />
-          {isStarting ? "Iniciando..." : "Iniciar Fila"}
-        </Button>
-      )}
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onRefresh}
-        disabled={isRefreshing}
-        className="shrink-0 gap-1.5 text-xs h-7 px-2.5"
-      >
-        <RefreshCw className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")} />
-        Buscar operadores
-      </Button>
-      {totalWaiting > 0 && (
-        <>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setConfirmOpen(true)}
-            disabled={isClearingQueue}
-            className="shrink-0 gap-1.5 text-xs h-7 px-2.5 text-destructive border-destructive/30 hover:bg-destructive/10"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            {isClearingQueue ? "Esvaziando..." : "Esvaziar Fila"}
-          </Button>
-          <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Esvaziar fila de ligações</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Tem certeza que deseja esvaziar toda a fila? Todos os {totalWaiting} itens pendentes serão removidos. Essa ação não pode ser desfeita.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => { onClearQueue(); setConfirmOpen(false); }}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  Esvaziar Fila
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Agora Action Bar ──
-
-function AgoraActionBar({ entries, queueSummary, bulkEnqueue, bulkDialing, setBulkDialing }: {
-  entries: CallPanelEntry[];
-  queueSummary: { globalStatus: string; isPausingAll: boolean; isResumingAll: boolean; pauseAll: () => Promise<void>; resumeAll: () => Promise<void> };
-  bulkEnqueue: (params: { callIds: string[]; operatorId?: string }) => Promise<any>;
-  bulkDialing: boolean;
-  setBulkDialing: (v: boolean) => void;
-}) {
-  const { toast } = useToast();
-
-  const agoraEntries = useMemo(() =>
-    entries.filter(e =>
-      ["scheduled", "ready"].includes(e.callStatus) &&
-      getTimeRemaining(e.scheduledFor).isUrgent
-    ),
-    [entries]
-  );
-
-  const { globalStatus, isPausingAll, isResumingAll, pauseAll, resumeAll } = queueSummary;
-  const isQueueActive = globalStatus === "running" || globalStatus === "mixed";
-  const isQueuePaused = globalStatus === "paused";
-  const hasAgora = agoraEntries.length > 0;
-
-  if (!hasAgora && !isQueueActive && !isQueuePaused) return null;
-
-  const handleDiscarAgora = async () => {
-    if (agoraEntries.length === 0) return;
-    setBulkDialing(true);
-    try {
-      await bulkEnqueue({ callIds: agoraEntries.map(e => e.id) });
-      toast({ title: "Chamadas enfileiradas", description: `${agoraEntries.length} chamada(s) enviada(s) para a fila.` });
-    } catch (err: any) {
-      toast({ title: "Erro", description: err.message, variant: "destructive" });
-    } finally {
-      setBulkDialing(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2">
-      {isQueueActive ? (
-        <Button
-          onClick={() => pauseAll()}
-          disabled={isPausingAll}
-          className="gap-2 bg-amber-500 hover:bg-amber-600 text-white"
-        >
-          <Pause className="h-4 w-4" />
-          {isPausingAll ? "Pausando..." : "Pausar Fila"}
-        </Button>
-      ) : isQueuePaused ? (
-        <Button
-          onClick={() => resumeAll()}
-          disabled={isResumingAll}
-          className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          <Play className="h-4 w-4" />
-          {isResumingAll ? "Retomando..." : "Retomar Fila"}
-        </Button>
-      ) : null}
-
-      {hasAgora && !isQueueActive && (
-        <Button
-          onClick={handleDiscarAgora}
-          disabled={bulkDialing}
-          className="gap-2 bg-emerald-600 hover:bg-emerald-700 text-white"
-        >
-          <Play className="h-4 w-4" />
-          {bulkDialing ? "Enfileirando..." : `Discar AGORA! (${agoraEntries.length})`}
-        </Button>
-      )}
-
-      {hasAgora && isQueueActive && (
-        <Badge variant="secondary" className="gap-1 text-xs">
-          <Target className="h-3 w-3" />
-          {agoraEntries.length} AGORA! na fila
-        </Badge>
-      )}
-    </div>
   );
 }
 
@@ -507,16 +217,16 @@ function AgoraActionBar({ entries, queueSummary, bulkEnqueue, bulkDialing, setBu
 
 export default function CallPanel() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [statusFilter, setStatusFilter] = useState<string>(() =>
-    searchParams.get("tab") === "queue" ? "queue" : "all"
+  const [activeTab, setActiveTab] = useState<string>(() =>
+    searchParams.get("tab") || "queue"
   );
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
-  const [statusDropdownFilter, setStatusDropdownFilter] = useState<string>("all");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>("all");
+  const [historyOperatorFilter, setHistoryOperatorFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [, setTick] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -533,19 +243,13 @@ export default function CallPanel() {
   const [actionNotes, setActionNotes] = useState("");
   const [editOperatorEntry, setEditOperatorEntry] = useState<CallPanelEntry | null>(null);
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
-  const [detailEntry, setDetailEntry] = useState<CallPanelEntry | null>(null);
-  const [bulkOperatorOpen, setBulkOperatorOpen] = useState(false);
-  const [bulkOperatorId, setBulkOperatorId] = useState("auto");
-  const [bulkDialing, setBulkDialing] = useState(false);
   const [showCreateQueue, setShowCreateQueue] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
   const { campaigns } = useCallCampaigns();
   const { toast } = useToast();
 
-  const isQueueTab = statusFilter === "queue";
-
   const { entries, stats, isLoading, delayCall, rescheduleCall, cancelCall, dialNow, registerAction, updateOperator, bulkUpdateOperator, bulkEnqueue } = useCallPanel({
-    status: !isQueueTab && statusFilter !== "all" ? statusFilter : undefined,
     campaignId: campaignFilter !== "all" ? campaignFilter : undefined,
     search: searchQuery || undefined,
   });
@@ -555,7 +259,6 @@ export default function CallPanel() {
     searchQuery: searchQuery || undefined,
   });
   const { items: queueEntries, isLoading: queueLoading, totalWaiting, removeFromQueue, clearQueue, isClearingQueue, moveToEnd: sendToEndOfQueue, moveToStart: sendToStartOfQueue } = callQueue;
-  const queueSummary = { globalStatus: callQueue.globalStatus, summary: callQueue.summary, isLoading: callQueue.isLoading, isPausingAll: callQueue.isPausingAll, isResumingAll: callQueue.isResumingAll, pauseAll: callQueue.pauseAll, resumeAll: callQueue.resumeAll };
   const { operators, isLoading: operatorsLoading, refetch: refetchOperators } = useCallOperators();
   const [isRefreshingQueue, setIsRefreshingQueue] = useState(false);
 
@@ -613,91 +316,111 @@ export default function CallPanel() {
     });
   }, [entries, soundEnabled, notificationsEnabled]);
 
-  // Reset page and selection on filter change
+  // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-    setSelectedIds(new Set());
-  }, [statusFilter, campaignFilter, searchQuery, itemsPerPage, statusDropdownFilter, dateFrom, dateTo]);
+  }, [activeTab, campaignFilter, searchQuery, itemsPerPage, historyStatusFilter, historyOperatorFilter, dateFrom, dateTo]);
 
-  // Sorted entries (with client-side status dropdown and date filters)
-  const sortedEntries = useMemo(() => {
-    if (isQueueTab || statusFilter === "history") return [];
-
-    let filtered = [...entries];
-
-    // Apply status dropdown filter
-    if (statusDropdownFilter !== "all") {
-      const statusMap: Record<string, string[]> = {
-        scheduled: ["scheduled", "ready"],
-        agora: [], // special: filter by time
-        in_progress: ["dialing", "ringing", "answered", "in_progress"],
-        completed: ["completed"],
-        no_answer: ["no_answer"],
-        rescheduled: ["scheduled"], // will further filter by rescheduled logic
-        waiting_operator: ["waiting_operator"],
-      };
-      if (statusDropdownFilter === "agora") {
-        filtered = filtered.filter(e =>
-          ["scheduled", "ready"].includes(e.callStatus) &&
-          getTimeRemaining(e.scheduledFor).isUrgent
-        );
-      } else {
-        const allowed = statusMap[statusDropdownFilter] || [statusDropdownFilter];
-        filtered = filtered.filter(e => allowed.includes(e.callStatus));
-      }
+  // Remove tab param from URL on mount
+  useEffect(() => {
+    if (searchParams.get("tab")) {
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete("tab");
+      setSearchParams(newParams, { replace: true });
     }
+  }, []);
 
-    // Apply date range filter
-    if (dateFrom) {
-      const from = new Date(dateFrom);
-      from.setHours(0, 0, 0, 0);
-      filtered = filtered.filter(e => new Date(e.createdAt) >= from);
-    }
-    if (dateTo) {
-      const to = new Date(dateTo);
-      to.setHours(23, 59, 59, 999);
-      filtered = filtered.filter(e => new Date(e.createdAt) <= to);
-    }
+  // ── In-progress entries ──
+  const inProgressEntries = useMemo(
+    () =>
+      entries.filter(e => ["dialing", "ringing", "answered", "in_progress"].includes(e.callStatus)),
+    [entries]
+  );
 
-    const getPriority = (s: string) => {
-      if (['dialing', 'ringing', 'in_progress'].includes(s)) return 0;
-      if (['ready', 'scheduled', 'waiting_operator'].includes(s)) return 1;
-      return 2;
-    };
-
-    return filtered.sort((a, b) => {
-      const pa = getPriority(a.callStatus);
-      const pb = getPriority(b.callStatus);
-      if (pa !== pb) return pa - pb;
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    });
-  }, [entries, isQueueTab, statusFilter, statusDropdownFilter, dateFrom, dateTo]);
-
-  // Pagination
-  const totalPages = Math.ceil(sortedEntries.length / itemsPerPage);
-  const paginatedEntries = sortedEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  // Queue pagination
-  const queueTotalPages = Math.ceil(queueEntries.length / itemsPerPage);
-  const paginatedQueue = queueEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  // History query
+  // ── Answered today query ──
   const { user } = useAuth();
   const { activeCompanyId } = useCompany();
-  const HISTORY_STATUSES = ["completed", "no_answer", "busy", "voicemail", "failed", "cancelled", "timeout", "max_attempts_exceeded"];
-  
-  const { data: historyEntries = [], isLoading: historyLoading } = useQuery({
-    queryKey: ["call_panel_history", campaignFilter, searchQuery, dateFrom?.toISOString(), dateTo?.toISOString(), activeCompanyId],
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d.toISOString();
+  }, []);
+
+  const { data: answeredEntries = [], isLoading: answeredLoading } = useQuery({
+    queryKey: ["call_panel_answered_today", campaignFilter, searchQuery, activeCompanyId, todayStr],
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
-        .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority), call_operators(operator_name, extension)")
-        .in("call_status", HISTORY_STATUSES)
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority), call_operators(operator_name, extension), call_script_actions(name, color)")
+        .eq("call_status", "completed")
+        .not("started_at", "is", null)
+        .gte("created_at", todayStr)
         .order("ended_at", { ascending: false, nullsFirst: false })
         .limit(500);
 
       if (activeCompanyId) query = query.eq("company_id", activeCompanyId);
       if (campaignFilter !== "all") query = query.eq("campaign_id", campaignFilter);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let results = (data || []).map((db: any) => ({
+        id: db.id,
+        campaignId: db.campaign_id,
+        campaignName: db.call_campaigns?.name || null,
+        leadId: db.lead_id,
+        leadName: db.call_leads?.name || null,
+        leadPhone: db.call_leads?.phone || null,
+        operatorId: db.operator_id,
+        operatorName: db.call_operators?.operator_name || null,
+        callStatus: db.call_status || "unknown",
+        createdAt: db.created_at || new Date().toISOString(),
+        endedAt: db.ended_at,
+        startedAt: db.started_at,
+        durationSeconds: db.duration_seconds,
+        isPriority: db.call_campaigns?.is_priority ?? false,
+        actionName: db.call_script_actions?.name || null,
+        actionColor: db.call_script_actions?.color || null,
+      }));
+
+      if (searchQuery) {
+        const s = searchQuery.toLowerCase();
+        const sDigits = s.replace(/\D/g, "");
+        results = results.filter((e: any) => {
+          const nameMatch = e.leadName?.toLowerCase().includes(s);
+          const phoneDigits = (e.leadPhone || "").replace(/\D/g, "");
+          const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+          return nameMatch || phoneMatch;
+        });
+      }
+
+      return results;
+    },
+    enabled: !!user,
+    refetchInterval: 10000,
+  });
+
+  // ── History query ──
+  const HISTORY_STATUSES = ["completed", "no_answer", "busy", "voicemail", "failed", "cancelled", "timeout", "max_attempts_exceeded"];
+
+  const { data: historyEntries = [], isLoading: historyLoading } = useQuery({
+    queryKey: ["call_panel_history", campaignFilter, searchQuery, dateFrom?.toISOString(), dateTo?.toISOString(), activeCompanyId, historyStatusFilter, historyOperatorFilter],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("call_logs")
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority), call_operators(operator_name, extension)")
+        .order("ended_at", { ascending: false, nullsFirst: false })
+        .limit(500);
+
+      if (historyStatusFilter !== "all") {
+        query = query.eq("call_status", historyStatusFilter);
+      } else {
+        query = query.in("call_status", HISTORY_STATUSES);
+      }
+
+      if (activeCompanyId) query = query.eq("company_id", activeCompanyId);
+      if (campaignFilter !== "all") query = query.eq("campaign_id", campaignFilter);
+      if (historyOperatorFilter !== "all") query = query.eq("operator_id", historyOperatorFilter);
       if (dateFrom) {
         const from = new Date(dateFrom);
         from.setHours(0, 0, 0, 0);
@@ -742,23 +465,25 @@ export default function CallPanel() {
 
       return results;
     },
-    enabled: !!user && statusFilter === "history",
+    enabled: !!user && activeTab === "history",
     refetchInterval: 10000,
   });
+
+  // ── Counts for tabs ──
+  const availableOps = operators.filter(op => op.status === "available").length;
+  const totalActiveOps = operators.filter(op => ["available", "on_call", "cooldown"].includes(op.status)).length;
+
+  // Queue pagination
+  const queueTotalPages = Math.ceil(queueEntries.length / itemsPerPage);
+  const paginatedQueue = queueEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // History pagination
   const historyTotalPages = Math.ceil(historyEntries.length / itemsPerPage);
   const paginatedHistory = historyEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // Status counts for tabs
-  const statusCounts = {
-    all: entries.length,
-    scheduled: entries.filter(e => getStatusCategory(e.callStatus) === "scheduled").length,
-    in_progress: entries.filter(e => getStatusCategory(e.callStatus) === "in_progress").length,
-    completed: entries.filter(e => getStatusCategory(e.callStatus) === "completed").length,
-    failed: entries.filter(e => getStatusCategory(e.callStatus) === "failed").length,
-    cancelled: entries.filter(e => getStatusCategory(e.callStatus) === "cancelled").length,
-  };
+  // Answered pagination
+  const answeredTotalPages = Math.ceil(answeredEntries.length / itemsPerPage);
+  const paginatedAnswered = answeredEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // Handlers
   const handleReschedule = async () => {
@@ -797,24 +522,21 @@ export default function CallPanel() {
     setSelectedOperatorId(entry.operatorId || "");
   };
 
-  // Row highlight
-  const getRowClass = (entry: CallPanelEntry) => {
-    const cat = getStatusCategory(entry.callStatus);
-    const timeInfo = getTimeRemaining(entry.scheduledFor);
-    if (cat === "in_progress") return "bg-emerald-500/5 border-l-[3px] border-l-emerald-500";
-    if (cat === "scheduled" && timeInfo.isUrgent) return "bg-red-500/5 border-l-[3px] border-l-red-500";
-    return "border-l-[3px] border-l-transparent";
-  };
-
   const [panelTab, setPanelTab] = useState("calls");
 
-  useEffect(() => {
-    if (searchParams.get("tab")) {
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete("tab");
-      setSearchParams(newParams, { replace: true });
-    }
-  }, []);
+  // Queue status helpers
+  const queueGlobalStatus = callQueue.globalStatus;
+  const queueSummary = callQueue.summary;
+
+  const statusConfig: Record<string, { label: string; dotClass: string; className: string }> = {
+    running: { label: "🟢 Fila Ativa", dotClass: "bg-emerald-500 animate-pulse", className: "bg-emerald-500/10 border-emerald-500/30 text-emerald-700 dark:text-emerald-400" },
+    paused: { label: "⏸️ Fila Pausada", dotClass: "bg-amber-500", className: "bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400" },
+    stopped: { label: "⏹️ Fila Parada", dotClass: "bg-muted-foreground", className: "bg-muted border-border text-muted-foreground" },
+    mixed: { label: "🔀 Fila Mista", dotClass: "bg-blue-500 animate-pulse", className: "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400" },
+  };
+
+  // Next in queue info
+  const nextInQueue = queueEntries[0];
 
   return (
     <div className="space-y-6">
@@ -870,132 +592,540 @@ export default function CallPanel() {
         <TabsContent value="calls" className="mt-6">
           <div className="space-y-6">
 
-      {/* Metrics */}
+      {/* ═══════ STATUS METRICS ═══════ */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <MetricCard icon={<Clock className="h-5 w-5 text-amber-500" />} label="Agendadas" value={stats.scheduled} />
-        <MetricCard icon={<Phone className="h-5 w-5 text-blue-500" />} label="Em Andamento" value={stats.inProgress} />
-        <MetricCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />} label="Atendidas" value={stats.completed} />
-        <MetricCard icon={<XCircle className="h-5 w-5 text-destructive" />} label="Canceladas / Falhas" value={stats.cancelled + stats.failed} />
+        <Card className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => setActiveTab("queue")}>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="rounded-md bg-amber-500/10 p-2">
+              <ListOrdered className="h-5 w-5 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{totalWaiting}</p>
+              <p className="text-xs text-muted-foreground">Na Fila</p>
+              {totalWaiting > 0 && (
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  ⚡{queueEntries.filter(q => q.isPriority).length} prioritárias · 📋{queueEntries.filter(q => !q.isPriority).length} normais
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => setActiveTab("in_progress")}>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="rounded-md bg-blue-500/10 p-2">
+              <Phone className="h-5 w-5 text-blue-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{inProgressEntries.length}</p>
+              <p className="text-xs text-muted-foreground">Em Andamento</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="cursor-pointer transition-shadow hover:shadow-md" onClick={() => setActiveTab("answered")}>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="rounded-md bg-emerald-500/10 p-2">
+              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{answeredEntries.length}</p>
+              <p className="text-xs text-muted-foreground">Atendidas (hoje)</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="flex items-center gap-3 p-4">
+            <div className="rounded-md bg-primary/10 p-2">
+              <Headset className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <p className="text-2xl font-bold">{availableOps}</p>
+              <p className="text-xs text-muted-foreground">
+                Operadores disponíveis
+                {totalActiveOps > availableOps && ` / ${totalActiveOps} online`}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Queue Status Banner (visible in Calls tab) */}
-      {(queueSummary.globalStatus !== "stopped" || totalWaiting > 0) && (
-        <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} onStartQueue={(cId) => callQueue.startQueue(cId)} isStarting={callQueue.isStarting} queueItems={queueEntries} />
+      {/* ═══════ CONTROLS ═══════ */}
+      <Card className="border-primary/20">
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3">
+              <Zap className="h-5 w-5 text-primary" />
+              <h3 className="font-semibold text-sm">CONTROLES DA FILA</h3>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Start / Pause / Resume / Stop */}
+              {queueGlobalStatus === "stopped" && totalWaiting > 0 && (
+                <Button size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.startQueue(first.campaignId); }} disabled={callQueue.isStarting} className="gap-1.5">
+                  <Play className="h-3.5 w-3.5" />
+                  {callQueue.isStarting ? "Iniciando..." : "Iniciar Fila"}
+                </Button>
+              )}
+              {(queueGlobalStatus === "running" || queueGlobalStatus === "mixed") && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => callQueue.pauseAll()} disabled={callQueue.isPausingAll} className="gap-1.5">
+                    <Pause className="h-3.5 w-3.5" />
+                    {callQueue.isPausingAll ? "Pausando..." : "Pausar"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
+                    <Square className="h-3.5 w-3.5" />
+                    Parar
+                  </Button>
+                </>
+              )}
+              {queueGlobalStatus === "paused" && (
+                <>
+                  <Button size="sm" onClick={() => callQueue.resumeAll()} disabled={callQueue.isResumingAll} className="gap-1.5">
+                    <Play className="h-3.5 w-3.5" />
+                    {callQueue.isResumingAll ? "Retomando..." : "Retomar"}
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
+                    <Square className="h-3.5 w-3.5" />
+                    Parar
+                  </Button>
+                </>
+              )}
+              {(queueGlobalStatus === "mixed") && (
+                <Button variant="outline" size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
+                  <Square className="h-3.5 w-3.5" />
+                  Parar
+                </Button>
+              )}
+
+              <Button variant="outline" size="sm" className="gap-1.5" onClick={() => setShowCreateQueue(true)}>
+                <Plus className="h-3.5 w-3.5" /> Adicionar à Fila
+              </Button>
+
+              <Button variant="ghost" size="sm" onClick={handleRefreshQueue} disabled={isRefreshingQueue} className="gap-1.5">
+                <RefreshCw className={cn("h-3.5 w-3.5", isRefreshingQueue && "animate-spin")} />
+                Atualizar
+              </Button>
+
+              {totalWaiting > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setClearConfirmOpen(true)}
+                  disabled={isClearingQueue}
+                  className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {isClearingQueue ? "Esvaziando..." : "Limpar Fila"}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Queue Status Banner */}
+          {(queueGlobalStatus !== "stopped" || totalWaiting > 0) && (
+            <div className={cn("flex items-center gap-3 rounded-lg border px-4 py-2", statusConfig[queueGlobalStatus]?.className || statusConfig.stopped.className)}>
+              <span className={cn("h-2 w-2 rounded-full shrink-0", statusConfig[queueGlobalStatus]?.dotClass || statusConfig.stopped.dotClass)} />
+              <span className="text-sm font-medium">{statusConfig[queueGlobalStatus]?.label || "Parada"}</span>
+              {nextInQueue && (
+                <span className="text-xs opacity-75 ml-2">
+                  Próximo: {nextInQueue.leadName || "Sem nome"} {nextInQueue.isPriority ? "⚡" : ""} ({nextInQueue.campaignName || "—"})
+                </span>
+              )}
+              <div className="flex-1" />
+              <Badge
+                variant={availableOps > 0 ? "default" : "destructive"}
+                className={cn("shrink-0 gap-1 text-xs", availableOps > 0
+                  ? "bg-emerald-500/15 text-emerald-700 border-emerald-500/30 dark:text-emerald-400"
+                  : ""
+                )}
+              >
+                <Headset className="h-3 w-3" />
+                {availableOps} disponíve{availableOps === 1 ? "l" : "is"}
+              </Badge>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Clear queue confirm */}
+      <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esvaziar fila de ligações</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja esvaziar toda a fila? Todos os {totalWaiting} itens pendentes serão removidos. Essa ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { clearQueue(campaignFilter); setClearConfirmOpen(false); }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Esvaziar Fila
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ═══════ 4 TABS ═══════ */}
+      <div className="space-y-3">
+        {/* Filters */}
+        <div className="flex flex-wrap gap-3">
+          <Input
+            placeholder="🔍 Buscar por nome ou telefone..."
+            className="max-w-xs"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+            <SelectTrigger className="w-[200px]"><SelectValue placeholder="Campanha" /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as campanhas</SelectItem>
+              {campaigns.map((c) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {/* History-specific filters */}
+          {activeTab === "history" && (
+            <>
+              <Select value={historyStatusFilter} onValueChange={setHistoryStatusFilter}>
+                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os status</SelectItem>
+                  <SelectItem value="completed">✅ Atendida</SelectItem>
+                  <SelectItem value="no_answer">📵 Não Atendeu</SelectItem>
+                  <SelectItem value="busy">🔴 Ocupado</SelectItem>
+                  <SelectItem value="failed">❌ Falhou</SelectItem>
+                  <SelectItem value="cancelled">⛔ Cancelada</SelectItem>
+                  <SelectItem value="voicemail">📬 Caixa Postal</SelectItem>
+                  <SelectItem value="timeout">⏱️ Timeout</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={historyOperatorFilter} onValueChange={setHistoryOperatorFilter}>
+                <SelectTrigger className="w-[180px]"><SelectValue placeholder="Operador" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os operadores</SelectItem>
+                  {operators.map((op) => (
+                    <SelectItem key={op.id} value={op.id}>{op.operatorName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className={cn("w-[260px] justify-start text-left font-normal", !dateFrom && !dateTo && "text-muted-foreground")}>
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dateFrom && dateTo
+                      ? `${format(dateFrom, "dd/MM/yyyy")} — ${format(dateTo, "dd/MM/yyyy")}`
+                      : dateFrom
+                      ? `${format(dateFrom, "dd/MM/yyyy")} — ...`
+                      : "📅 Filtrar período"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <div className="p-3 space-y-3">
+                    <div className="flex gap-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Início</Label>
+                        <Calendar mode="single" selected={dateFrom} onSelect={setDateFrom} className="p-2 pointer-events-auto" />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Fim</Label>
+                        <Calendar mode="single" selected={dateTo} onSelect={setDateTo} className="p-2 pointer-events-auto" />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setDateFrom(today); setDateTo(today); }}>Hoje</Button>
+                      <Button variant="outline" size="sm" onClick={() => { const y = new Date(); y.setDate(y.getDate() - 1); setDateFrom(y); setDateTo(y); }}>Ontem</Button>
+                      <Button variant="outline" size="sm" onClick={() => { const d = new Date(); const w = new Date(); w.setDate(w.getDate() - 7); setDateFrom(w); setDateTo(d); }}>7 dias</Button>
+                      <Button variant="outline" size="sm" onClick={() => { const d = new Date(); setDateFrom(new Date(d.getFullYear(), d.getMonth(), 1)); setDateTo(d); }}>Este mês</Button>
+                      <Button variant="ghost" size="sm" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>Limpar</Button>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </>
+          )}
+        </div>
+
+        {/* Tab Triggers */}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
+            <TabsTrigger value="queue" className="flex-1 min-w-[100px] gap-1">
+              📋 Fila ({totalWaiting})
+            </TabsTrigger>
+            <TabsTrigger value="in_progress" className="flex-1 min-w-[100px] gap-1">
+              📞 Em Andamento ({inProgressEntries.length})
+            </TabsTrigger>
+            <TabsTrigger value="answered" className="flex-1 min-w-[100px] gap-1">
+              ✅ Atendidas ({answeredEntries.length})
+            </TabsTrigger>
+            <TabsTrigger value="history" className="flex-1 min-w-[100px] gap-1">
+              📊 Histórico
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* ═══════ TAB CONTENT ═══════ */}
+
+      {/* ── Aba Fila ── */}
+      {activeTab === "queue" && (
+        queueLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Carregando fila...</div>
+        ) : paginatedQueue.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <ListOrdered className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold">Nenhum lead na fila</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Crie uma fila selecionando leads das suas campanhas com filtros.</p>
+            <Button className="mt-6" onClick={() => setShowCreateQueue(true)}>
+              <Plus className="h-4 w-4 mr-1" /> Criar Fila de Ligações
+            </Button>
+          </div>
+        ) : (
+          <div className="rounded-lg border bg-card shadow-sm">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="w-[60px]">#</TableHead>
+                  <TableHead>Lead</TableHead>
+                  <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                  <TableHead className="hidden lg:table-cell">Campanha</TableHead>
+                  <TableHead className="hidden md:table-cell w-[90px]">Tentativa</TableHead>
+                  <TableHead className="hidden lg:table-cell w-[100px]">Agendado</TableHead>
+                  <TableHead className="w-[80px]">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedQueue.map((qe) => {
+                  const hasSchedule = !!(qe as any).scheduled_for;
+                  const icon = hasSchedule ? "📅" : qe.isPriority ? "⚡" : "";
+                  return (
+                    <TableRow key={qe.id} className={cn(qe.isPriority && "bg-amber-500/5")}>
+                      <TableCell className="font-mono text-xs text-muted-foreground py-2">
+                        {icon && <span className="mr-1">{icon}</span>}
+                        {qe.position}
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
+                        {formatPhone(qe.phone)}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell py-2">
+                        <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
+                          {qe.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
+                          {qe.campaignName || "—"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="hidden md:table-cell text-center py-2">
+                        <span className="text-xs font-mono">{qe.attemptNumber}/{qe.maxAttempts || 3}</span>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell py-2">
+                        {(qe as any).scheduled_for ? (
+                          <span className="text-xs text-muted-foreground">
+                            {format(new Date((qe as any).scheduled_for), "HH:mm")}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                onClick={() => {
+                                  // Manual dial - add to front of queue
+                                  sendToStartOfQueue(qe.id);
+                                }}
+                              >
+                                <Phone className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Mover para o início</TooltipContent>
+                          </Tooltip>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-7 w-7">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
+                                <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
+                                <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
+                                <Trash2 className="h-4 w-4 mr-2" /> Remover
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )
       )}
 
-      {/* Discar AGORA! / Pausar / Retomar button */}
-      <AgoraActionBar
-        entries={entries}
-        queueSummary={queueSummary}
-        bulkEnqueue={bulkEnqueue}
-        bulkDialing={bulkDialing}
-        setBulkDialing={setBulkDialing}
-      />
-
-      {/* Filters & Status */}
-      <div className="space-y-3">
-      <div className="flex flex-wrap gap-3">
-        <Input
-          placeholder="🔍 Buscar por nome ou telefone..."
-          className="max-w-xs"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        <Select value={campaignFilter} onValueChange={setCampaignFilter}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="Campanha" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas as campanhas</SelectItem>
-            {campaigns.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={statusDropdownFilter} onValueChange={setStatusDropdownFilter}>
-          <SelectTrigger className="w-[200px]"><SelectValue placeholder="Status" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos os status</SelectItem>
-            <SelectItem value="scheduled">🟢 Agendada</SelectItem>
-            <SelectItem value="agora">🔴 AGORA!</SelectItem>
-            <SelectItem value="in_progress">📞 Em Andamento</SelectItem>
-            <SelectItem value="completed">✅ Atendida</SelectItem>
-            <SelectItem value="no_answer">📵 Não Atendeu</SelectItem>
-            <SelectItem value="rescheduled">🔄 Reagendada</SelectItem>
-            <SelectItem value="waiting_operator">⏳ Aguardando Operador</SelectItem>
-          </SelectContent>
-        </Select>
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" className={cn("w-[260px] justify-start text-left font-normal", !dateFrom && !dateTo && "text-muted-foreground")}>
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {dateFrom && dateTo
-                ? `${format(dateFrom, "dd/MM/yyyy")} — ${format(dateTo, "dd/MM/yyyy")}`
-                : dateFrom
-                ? `${format(dateFrom, "dd/MM/yyyy")} — ...`
-                : "📅 Filtrar período"}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <div className="p-3 space-y-3">
-              <div className="flex gap-2">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Início</Label>
-                  <Calendar
-                    mode="single"
-                    selected={dateFrom}
-                    onSelect={setDateFrom}
-                    className="p-2 pointer-events-auto"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Fim</Label>
-                  <Calendar
-                    mode="single"
-                    selected={dateTo}
-                    onSelect={setDateTo}
-                    className="p-2 pointer-events-auto"
-                  />
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                <Button variant="outline" size="sm" onClick={() => { const today = new Date(); setDateFrom(today); setDateTo(today); }}>Hoje</Button>
-                <Button variant="outline" size="sm" onClick={() => { const y = new Date(); y.setDate(y.getDate() - 1); setDateFrom(y); setDateTo(y); }}>Ontem</Button>
-                <Button variant="outline" size="sm" onClick={() => { const d = new Date(); const w = new Date(); w.setDate(w.getDate() - 7); setDateFrom(w); setDateTo(d); }}>7 dias</Button>
-                <Button variant="outline" size="sm" onClick={() => { const d = new Date(); setDateFrom(new Date(d.getFullYear(), d.getMonth(), 1)); setDateTo(d); }}>Este mês</Button>
-                <Button variant="ghost" size="sm" onClick={() => { setDateFrom(undefined); setDateTo(undefined); }}>Limpar</Button>
-              </div>
+      {/* ── Aba Em Andamento (Cards) ── */}
+      {activeTab === "in_progress" && (
+        isLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Carregando...</div>
+        ) : inProgressEntries.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <Phone className="h-8 w-8 text-muted-foreground" />
             </div>
-          </PopoverContent>
-        </Popover>
-      </div>
+            <h3 className="text-lg font-semibold">Nenhuma ligação em andamento</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">As ligações ativas aparecerão aqui em tempo real.</p>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {inProgressEntries.map((entry) => (
+              <Card key={entry.id} className={cn(
+                "transition-shadow hover:shadow-md",
+                entry.callStatus === "answered" || entry.callStatus === "in_progress"
+                  ? "border-emerald-500/30 bg-emerald-500/5"
+                  : entry.callStatus === "ringing"
+                  ? "border-amber-500/30 bg-amber-500/5"
+                  : "border-blue-500/30 bg-blue-500/5"
+              )}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h4 className="font-bold text-base uppercase">{entry.leadName || "Sem nome"}</h4>
+                      <p className="text-sm font-mono text-muted-foreground">{formatPhone(entry.leadPhone)}</p>
+                    </div>
+                    <InProgressStatusBadge status={entry.callStatus} />
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                    {entry.campaignName && (
+                      <span className="flex items-center gap-1">
+                        <FolderOpen className="h-3 w-3" />
+                        {entry.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500" />}
+                        {entry.campaignName}
+                      </span>
+                    )}
+                    {entry.operatorName && (
+                      <span className="flex items-center gap-1">
+                        <Headset className="h-3 w-3" /> {entry.operatorName}
+                      </span>
+                    )}
+                    <span className="flex items-center gap-1 font-mono font-semibold text-sm text-foreground">
+                      <Timer className="h-3.5 w-3.5" /> {getElapsedTime(entry.startedAt)}
+                    </span>
+                  </div>
+                  {entry.attemptNumber > 0 && (
+                    <p className="text-xs text-muted-foreground">Tentativa {entry.attemptNumber}/{entry.maxAttempts || "∞"}</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )
+      )}
 
-      {/* Status Tabs */}
-      <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-        <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="all" className="flex-1 min-w-[100px]">Todas ({statusCounts.all})</TabsTrigger>
-          <TabsTrigger value="scheduled" className="flex-1 min-w-[100px]">Agendadas ({statusCounts.scheduled})</TabsTrigger>
-          <TabsTrigger value="in_progress" className="flex-1 min-w-[100px]">Em Andamento ({statusCounts.in_progress})</TabsTrigger>
-          <TabsTrigger value="completed" className="flex-1 min-w-[100px]">Atendidas ({statusCounts.completed})</TabsTrigger>
-          <TabsTrigger value="history" className="flex-1 min-w-[100px] gap-1">
-            <History className="h-3.5 w-3.5" /> Histórico
-          </TabsTrigger>
-          <TabsTrigger value="queue" className="flex-1 min-w-[100px] gap-1">
-            <ListOrdered className="h-3.5 w-3.5" /> Fila ({totalWaiting})
-          </TabsTrigger>
-        </TabsList>
-      </Tabs>
-      </div>
+      {/* ── Aba Atendidas (hoje) ── */}
+      {activeTab === "answered" && (
+        answeredLoading ? (
+          <div className="text-center py-12 text-muted-foreground">Carregando atendidas...</div>
+        ) : paginatedAnswered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 rounded-full bg-muted p-4">
+              <CheckCircle2 className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold">Nenhuma ligação atendida hoje</h3>
+            <p className="mt-1 max-w-sm text-sm text-muted-foreground">As ligações atendidas de hoje aparecerão aqui.</p>
+          </div>
+        ) : (
+          <div className="rounded-lg border bg-card shadow-sm">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead>Lead</TableHead>
+                  <TableHead className="hidden md:table-cell">Telefone</TableHead>
+                  <TableHead className="hidden lg:table-cell">Campanha</TableHead>
+                  <TableHead className="hidden md:table-cell">Operador</TableHead>
+                  <TableHead className="w-[80px]">Duração</TableHead>
+                  <TableHead className="hidden lg:table-cell">Ação</TableHead>
+                  <TableHead className="w-[90px]">Horário</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paginatedAnswered.map((entry: any) => (
+                  <TableRow key={entry.id}>
+                    <TableCell className="py-2">
+                      <span className="text-sm font-medium truncate block max-w-[150px]">
+                        {entry.leadName || "Sem nome"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
+                      {formatPhone(entry.leadPhone)}
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell py-2">
+                      <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
+                        {entry.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
+                        {entry.campaignName || "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell py-2">
+                      <span className="text-xs truncate block max-w-[90px]">{entry.operatorName || "Auto"}</span>
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <span className="text-xs font-mono text-muted-foreground">
+                        {entry.durationSeconds != null && entry.durationSeconds > 0
+                          ? `${Math.floor(entry.durationSeconds / 60).toString().padStart(2, "0")}:${(entry.durationSeconds % 60).toString().padStart(2, "0")}`
+                          : "—"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell py-2">
+                      {entry.actionName ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: entry.actionColor || "#10b981" }} />
+                          <span className="text-xs truncate block max-w-[100px]">{entry.actionName}</span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {entry.endedAt ? format(new Date(entry.endedAt), "HH:mm") : "—"}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )
+      )}
 
-      {/* History Tab */}
-      {statusFilter === "history" ? (
+      {/* ── Aba Histórico ── */}
+      {activeTab === "history" && (
         historyLoading ? (
           <div className="text-center py-12 text-muted-foreground">Carregando histórico...</div>
         ) : paginatedHistory.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">Nenhum registro no histórico.</div>
         ) : (
-          <div className="rounded-md border">
+          <div className="rounded-lg border bg-card shadow-sm">
             <Table>
               <TableHeader>
-                <TableRow>
+                <TableRow className="hover:bg-transparent">
                   <TableHead className="w-[160px]">Entrada</TableHead>
                   <TableHead className="w-[110px]">Status</TableHead>
                   <TableHead>Lead</TableHead>
@@ -1044,407 +1174,20 @@ export default function CallPanel() {
             </Table>
           </div>
         )
-      ) :
-      /* Queue List */
-      isQueueTab ? (
-        queueLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Carregando fila...</div>
-        ) : paginatedQueue.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-center">
-            <div className="mb-4 rounded-full bg-muted p-4">
-              <ListOrdered className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <h3 className="text-lg font-semibold">Nenhum lead na fila</h3>
-            <p className="mt-1 max-w-sm text-sm text-muted-foreground">Crie uma fila selecionando leads das suas campanhas com filtros.</p>
-            <Button className="mt-6" onClick={() => setShowCreateQueue(true)}>
-              <Plus className="h-4 w-4 mr-1" /> Criar Fila de Ligações
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Queue Status Banner */}
-            <div className="flex items-center gap-2">
-              <div className="flex-1">
-                <QueueStatusBanner summary={queueSummary} operators={operators} onRefresh={handleRefreshQueue} isRefreshing={isRefreshingQueue} onPauseAll={() => queueSummary.pauseAll()} onResumeAll={() => queueSummary.resumeAll()} isPausingAll={queueSummary.isPausingAll} isResumingAll={queueSummary.isResumingAll} onClearQueue={() => clearQueue(campaignFilter)} isClearingQueue={isClearingQueue} totalWaiting={totalWaiting} onStartQueue={(cId) => callQueue.startQueue(cId)} isStarting={callQueue.isStarting} queueItems={queueEntries} />
-              </div>
-              <Button variant="outline" size="sm" className="shrink-0 gap-1.5" onClick={() => setShowCreateQueue(true)}>
-                <Plus className="h-3.5 w-3.5" /> Adicionar Leads
-              </Button>
-            </div>
-            <div className="rounded-lg border bg-card shadow-sm">
-              <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="w-[60px]">#</TableHead>
-                    <TableHead>Lead</TableHead>
-                    <TableHead className="hidden md:table-cell">Telefone</TableHead>
-                    <TableHead className="hidden lg:table-cell">Campanha</TableHead>
-                    <TableHead className="hidden md:table-cell w-[90px]">Tentativas</TableHead>
-                    <TableHead className="hidden lg:table-cell">Origem</TableHead>
-                    <TableHead className="w-[60px]">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedQueue.map((qe) => {
-                    const lastResultLabel: Record<string, string> = {
-                      no_answer: "Não atendeu",
-                      busy: "Ocupado",
-                      failed: "Falhou",
-                      voicemail: "Caixa postal",
-                    };
-                    return (
-                      <TableRow key={qe.id}>
-                        <TableCell className="font-mono text-xs text-muted-foreground py-2">
-                          {qe.position}
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
-                          {formatPhone(qe.phone)}
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell py-2">
-                          <span className="text-xs text-muted-foreground truncate block max-w-[160px]">
-                            {qe.campaignName || "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="hidden md:table-cell text-center py-2">
-                          <span className="text-xs font-mono">{qe.attemptNumber}</span>
-                        </TableCell>
-                        <TableCell className="hidden lg:table-cell py-2">
-                          <span className="text-xs text-muted-foreground">
-                            {qe.source || "—"}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-2">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
-                                <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
-                                <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
-                                <Trash2 className="h-4 w-4 mr-2" /> Remover
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </div>
-        )
-      ) : (
-        /* Call Table */
-        isLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Carregando ligações...</div>
-        ) : paginatedEntries.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground">Nenhuma ligação encontrada.</div>
-        ) : (
-          <TooltipProvider>
-            {/* Bulk Actions Bar */}
-            {selectedIds.size > 0 && (
-              <div className="sticky top-0 z-10 bg-primary text-primary-foreground rounded-lg px-4 py-3 flex items-center justify-between gap-4 mb-3">
-                <span className="text-sm font-medium">☑️ {selectedIds.size} selecionadas</span>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => {
-                    const firstSelected = paginatedEntries.find(e => selectedIds.has(e.id));
-                    if (firstSelected) openRescheduleDialog(firstSelected);
-                  }} className="gap-1">
-                    <CalendarClock className="h-3.5 w-3.5" /> Reagendar
-                  </Button>
-                  <Button size="sm" variant="destructive" onClick={async () => {
-                    const toCancel = paginatedEntries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
-                    for (const e of toCancel) {
-                      await cancelCall({ callId: e.id, reason: "Cancelamento em massa" });
-                    }
-                    setSelectedIds(new Set());
-                  }} className="gap-1">
-                    <XCircle className="h-3.5 w-3.5" /> Cancelar
-                  </Button>
-                  <Button size="sm" className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white" disabled={bulkDialing} onClick={async () => {
-                    const toEnqueue = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "cancelled", "failed"].includes(e.callStatus));
-                    if (toEnqueue.length === 0) {
-                      toast({ title: "Nenhuma ligação elegível", description: "Selecione ligações com status agendada, pronta, cancelada ou falha." });
-                      return;
-                    }
-                    setBulkDialing(true);
-                    try {
-                      await bulkEnqueue({ callIds: toEnqueue.map(e => e.id) });
-                    } catch { /* handled by mutation */ }
-                    setBulkDialing(false);
-                    setSelectedIds(new Set());
-                  }}>
-                    <Phone className="h-3.5 w-3.5" /> {bulkDialing ? "Enfileirando..." : "Discar"}
-                  </Button>
-                  <Button size="sm" variant="outline" onClick={() => {
-                    setBulkOperatorId("auto");
-                    setBulkOperatorOpen(true);
-                  }} className="gap-1 bg-white/10 text-primary-foreground border-primary-foreground/30 hover:bg-white/20">
-                    <Headset className="h-3.5 w-3.5" /> Operador
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={async () => {
-                    const toRevert = paginatedEntries.filter(e => selectedIds.has(e.id) && ["dialing", "ringing"].includes(e.callStatus));
-                    if (toRevert.length === 0) {
-                      toast({ title: "Nenhuma chamada elegível", description: "Selecione chamadas com status 'Discando'." });
-                      return;
-                    }
-                    await bulkUpdateOperator({ callIds: toRevert.map(e => e.id), operatorId: null });
-                    setSelectedIds(new Set());
-                    toast({ title: "Revertidas", description: `${toRevert.length} chamadas revertidas para "Agora!".` });
-                  }} className="gap-1">
-                    <RefreshCw className="h-3.5 w-3.5" /> Reverter para Agora!
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())} className="text-primary-foreground hover:text-primary-foreground/80">
-                    Limpar
-                  </Button>
-                </div>
-              </div>
-            )}
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[40px]">
-                      <Checkbox
-                        checked={paginatedEntries.length > 0 && paginatedEntries.every(e => selectedIds.has(e.id))}
-                        onCheckedChange={(checked) => {
-                          const next = new Set(selectedIds);
-                          if (checked) {
-                            paginatedEntries.forEach(e => next.add(e.id));
-                          } else {
-                            paginatedEntries.forEach(e => next.delete(e.id));
-                          }
-                          setSelectedIds(next);
-                        }}
-                      />
-                    </TableHead>
-                    <TableHead className="w-[160px]">Entrada</TableHead>
-                    <TableHead className="w-[110px]">Status</TableHead>
-                    <TableHead>Lead</TableHead>
-                    <TableHead className="hidden md:table-cell w-[140px]">Telefone</TableHead>
-                    <TableHead className="hidden lg:table-cell w-[180px]">Campanha</TableHead>
-                    <TableHead className="hidden md:table-cell w-[80px]">Tentativa</TableHead>
-                    <TableHead className="hidden md:table-cell w-[100px]">Operador</TableHead>
-                    <TableHead className="hidden md:table-cell w-[80px]">Timer</TableHead>
-                    <TableHead className="w-[90px] text-right">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedEntries.map((entry) => {
-                    const category = getStatusCategory(entry.callStatus);
-                    const timeInfo = getTimeRemaining(entry.scheduledFor);
-                    const isScheduledOrReady = ["scheduled", "ready"].includes(entry.callStatus);
-
-                    return (
-                      <TableRow key={entry.id} className={cn(getRowClass(entry), "transition-colors")}>
-                        {/* Checkbox */}
-                        <TableCell className="py-2">
-                          <Checkbox
-                            checked={selectedIds.has(entry.id)}
-                            onCheckedChange={(checked) => {
-                              const next = new Set(selectedIds);
-                              if (checked) next.add(entry.id); else next.delete(entry.id);
-                              setSelectedIds(next);
-                            }}
-                          />
-                        </TableCell>
-                        {/* Entrada */}
-                        <TableCell className="text-xs text-muted-foreground font-mono py-2">
-                          {format(new Date(entry.createdAt), "dd/MM/yyyy HH:mm:ss")}
-                        </TableCell>
-
-                        {/* Status */}
-                        <TableCell className="py-2">
-                          <StatusBadgeCell entry={entry} />
-                        </TableCell>
-
-                        {/* Lead */}
-                        <TableCell className="py-2">
-                          <span className="text-sm font-medium truncate block max-w-[150px]">
-                            {entry.leadName || "Sem nome"}
-                          </span>
-                        </TableCell>
-
-                        {/* Telefone */}
-                        <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
-                          {formatPhone(entry.leadPhone)}
-                        </TableCell>
-
-                        {/* Campanha */}
-                        <TableCell className="hidden lg:table-cell py-2">
-                          <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
-                            {entry.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
-                            {entry.campaignName || "—"}
-                          </span>
-                        </TableCell>
-
-                        {/* Tentativa */}
-                        <TableCell className="hidden md:table-cell py-2">
-                          {entry.maxAttempts > 1 ? (
-                            <span className={cn(
-                              "text-xs font-mono font-medium",
-                              entry.attemptNumber >= entry.maxAttempts
-                                ? "text-destructive"
-                                : "text-muted-foreground"
-                            )}>
-                              {entry.attemptNumber}/{entry.maxAttempts}
-                              {entry.attemptNumber >= entry.maxAttempts && " ❌"}
-                            </span>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">—</span>
-                          )}
-                        </TableCell>
-
-                        {/* Operador */}
-                        <TableCell className="hidden md:table-cell py-2">
-                          {entry.operatorName && !["scheduled", "ready", "waiting_operator"].includes(entry.callStatus) ? (
-                            <span className="text-xs truncate block max-w-[90px]">{entry.operatorName}</span>
-                          ) : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                  <Bot className="h-3 w-3" /> Auto
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent>Operador será atribuído automaticamente</TooltipContent>
-                            </Tooltip>
-                          )}
-                        </TableCell>
-
-                        {/* Timer */}
-                        <TableCell className="hidden md:table-cell py-2">
-                          <TimerCell entry={entry} />
-                        </TableCell>
-
-                        {/* Ações */}
-                        <TableCell className="text-right py-2">
-                          <div className="flex items-center justify-end gap-1">
-                            {/* Primary action button */}
-                            {(category === "scheduled") && (
-                              <Button
-                                size="icon"
-                                className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                onClick={() => dialNow(entry.id)}
-                                title="Ligar agora"
-                                disabled={entry.maxAttempts > 1 && entry.attemptNumber >= entry.maxAttempts}
-                              >
-                                <Phone className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {category === "in_progress" && (
-                              <Button
-                                size="icon"
-                                className="h-7 w-7 bg-blue-600 hover:bg-blue-700 text-white"
-                                onClick={() => openActionDialog(entry)}
-                                title="Registrar ação"
-                              >
-                                <Target className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {category === "completed" && (
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => openActionDialog(entry)}
-                                title="Ver detalhes"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-{category === "failed" && (
-                              <Button
-                                size="icon"
-                                className="h-7 w-7 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                onClick={() => dialNow(entry.id)}
-                                title="Ligar novamente"
-                                disabled={entry.maxAttempts > 1 && entry.attemptNumber >= entry.maxAttempts}
-                              >
-                                <Phone className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-                            {(category === "cancelled" || category === "failed") && (
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-7 w-7"
-                                onClick={() => openActionDialog(entry)}
-                                title="Ver detalhes"
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                            )}
-
-                            {/* Dropdown menu */}
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-7 w-7">
-                                  <MoreHorizontal className="h-3.5 w-3.5" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => openActionDialog(entry)}>
-                                  <Eye className="h-4 w-4 mr-2" /> Ver detalhes
-                                </DropdownMenuItem>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem onClick={() => openRescheduleDialog(entry)}>
-                                  <CalendarClock className="h-4 w-4 mr-2" /> Reagendar
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => delayCall({ callId: entry.id, minutes: 10 })}>
-                                  <Plus className="h-4 w-4 mr-2" /> +10 min
-                                </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => delayCall({ callId: entry.id, minutes: 30 })}>
-                                  <Plus className="h-4 w-4 mr-2" /> +30 min
-                                </DropdownMenuItem>
-                                {isScheduledOrReady && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem onClick={() => openEditOperator(entry)}>
-                                      <Headset className="h-4 w-4 mr-2" /> Trocar operador
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                  onClick={() => setCancelEntry(entry)}
-                                  className="text-destructive focus:text-destructive"
-                                >
-                                  <XCircle className="h-4 w-4 mr-2" /> Cancelar ligação
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          </TooltipProvider>
-        )
       )}
 
       {/* Pagination */}
       {(() => {
-        const isHistoryTab = statusFilter === "history";
-        const pages = isHistoryTab ? historyTotalPages : isQueueTab ? queueTotalPages : totalPages;
-        const totalItems = isHistoryTab ? historyEntries.length : isQueueTab ? queueEntries.length : sortedEntries.length;
+        const totalItems = activeTab === "history" ? historyEntries.length
+          : activeTab === "queue" ? queueEntries.length
+          : activeTab === "answered" ? answeredEntries.length
+          : 0;
+        const pages = Math.ceil(totalItems / itemsPerPage);
         const startItem = totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
         const endItem = Math.min(currentPage * itemsPerPage, totalItems);
         if (pages <= 1 && totalItems <= 25) return null;
+        // In-progress tab doesn't paginate (usually few items)
+        if (activeTab === "in_progress") return null;
         return (
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
             <div className="flex items-center gap-2 text-sm">
@@ -1570,27 +1313,12 @@ export default function CallPanel() {
         }}
       />
 
-      {/* Bulk Operator Dialog */}
-      <BulkOperatorDialog
-        open={bulkOperatorOpen}
-        selectedOperatorId={bulkOperatorId}
-        onSelectedChange={setBulkOperatorId}
-        onClose={() => setBulkOperatorOpen(false)}
-        onConfirm={async () => {
-          const toUpdate = entries.filter(e => selectedIds.has(e.id) && ["scheduled", "ready", "dialing", "ringing"].includes(e.callStatus));
-          if (toUpdate.length === 0) return;
-          const opId = bulkOperatorId === "auto" ? null : bulkOperatorId;
-          await bulkUpdateOperator({ callIds: toUpdate.map(e => e.id), operatorId: opId });
-          setBulkOperatorOpen(false);
-          setSelectedIds(new Set());
-        }}
-      />
       <CreateQueueDialog
         open={showCreateQueue}
         onOpenChange={setShowCreateQueue}
-      onStartQueue={async (cId) => {
+        onStartQueue={async (cId) => {
           await callQueue.startQueue(cId);
-          setPanelTab("queue");
+          setActiveTab("queue");
         }}
       />
           </div>
@@ -1642,7 +1370,6 @@ function ActionDialog({
   const [editName, setEditName] = useState(entry.leadName || "");
   const [localEntry, setLocalEntry] = useState(entry);
 
-  // Inline reschedule state
   const [showReschedule, setShowReschedule] = useState(false);
   const [localDate, setLocalDate] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [localTime, setLocalTime] = useState(() => format(new Date(Date.now() + 30 * 60000), "HH:mm"));
@@ -1679,11 +1406,10 @@ function ActionDialog({
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-2xl max-h-[90vh] p-0 gap-0 overflow-hidden">
-        {/* Header destacado */}
         <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 text-center space-y-2">
           <div className="flex items-center justify-center gap-2">
             <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
-              {(entry.leadName || "L").charAt(0).toUpperCase()}
+              {(localEntry.leadName || "L")[0].toUpperCase()}
             </div>
           </div>
           {isEditingName ? (
@@ -1691,10 +1417,7 @@ function ActionDialog({
               autoFocus
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") e.currentTarget.blur();
-                if (e.key === "Escape") { setEditName(localEntry.leadName || ""); setIsEditingName(false); }
-              }}
+              onKeyDown={(e) => { if (e.key === "Escape") { setEditName(localEntry.leadName || ""); setIsEditingName(false); } }}
               onBlur={async () => {
                 const trimmed = editName.trim();
                 if (trimmed && trimmed !== (localEntry.leadName || "")) {
@@ -1760,7 +1483,6 @@ function ActionDialog({
           )}
         </div>
 
-        {/* Tabs */}
         <Tabs defaultValue="call" className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-6 mt-3 w-auto self-start">
             <TabsTrigger value="call" className="gap-1.5">
@@ -1771,11 +1493,9 @@ function ActionDialog({
             </TabsTrigger>
           </TabsList>
 
-          {/* Call Tab */}
           <TabsContent value="call" className="flex-1 min-h-0 mt-0">
             <div className="h-[calc(90vh-380px)] overflow-y-auto px-6 py-4">
               <div className="space-y-6">
-                {/* Script Section */}
                 {hasScript && (
                   <>
                     <div className="space-y-2">
@@ -1788,11 +1508,9 @@ function ActionDialog({
                   </>
                 )}
 
-                {/* Result Section */}
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Resultado da Ligação</h3>
 
-                  {/* Inline Reschedule */}
                   <div className={cn(
                     "rounded-lg border transition-all",
                     showReschedule
@@ -1844,7 +1562,6 @@ function ActionDialog({
                     )}
                   </div>
 
-                  {/* Campaign Actions */}
                   <div className="space-y-2">
                     <p className="text-sm text-muted-foreground">Qual foi o resultado?</p>
                     {isLoading ? (
@@ -1881,7 +1598,6 @@ function ActionDialog({
                     )}
                   </div>
 
-                  {/* Notes */}
                   <div>
                     <Label className="text-sm font-medium">📝 Observações (opcional)</Label>
                     <Textarea
@@ -1894,7 +1610,6 @@ function ActionDialog({
                   </div>
                 </div>
 
-                {/* Footer Buttons */}
                 <div className="flex justify-end gap-2 pt-2 pb-2">
                   <Button variant="outline" onClick={onClose}>
                     Cancelar
@@ -1910,7 +1625,6 @@ function ActionDialog({
             </div>
           </TabsContent>
 
-          {/* History Tab */}
           <TabsContent value="history" className="flex-1 min-h-0 mt-0">
             <div className="h-[calc(90vh-380px)] overflow-y-auto px-6 py-4">
               <LeadCallHistory leadId={entry.leadId} campaignId={entry.campaignId} currentLogId={entry.id} />
@@ -2165,5 +1879,3 @@ function BulkOperatorDialog({
     </Dialog>
   );
 }
-
-// QueueCard removed – queue now uses table layout
