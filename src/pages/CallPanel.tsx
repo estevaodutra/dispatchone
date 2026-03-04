@@ -245,6 +245,7 @@ export default function CallPanel() {
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
   const [showCreateQueue, setShowCreateQueue] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [viewingQueueLead, setViewingQueueLead] = useState<any | null>(null);
 
   const { campaigns } = useCallCampaigns();
   const { toast } = useToast();
@@ -1056,7 +1057,7 @@ export default function CallPanel() {
                   <TableHead className="w-[60px]">#</TableHead>
                   <TableHead>Lead</TableHead>
                   <TableHead className="hidden md:table-cell">Telefone</TableHead>
-                  <TableHead className="hidden lg:table-cell">Campanha</TableHead>
+                  <TableHead>Campanha</TableHead>
                   <TableHead className="hidden md:table-cell w-[90px]">Tentativa</TableHead>
                   <TableHead className="hidden lg:table-cell w-[100px]">Agendado</TableHead>
                   <TableHead className="w-[80px]">Ações</TableHead>
@@ -1065,7 +1066,7 @@ export default function CallPanel() {
               <TableBody>
                 {paginatedQueue.map((qe, idx) => {
                   const hasSchedule = !!qe.scheduledFor;
-                  const icon = hasSchedule ? "📅" : qe.isPriority ? "⚡" : "";
+                  const icon = qe.isPriority ? "⚡" : "";
                   const isFromCallLog = qe.source === "call_log";
                   return (
                     <TableRow key={qe.id} className={cn(qe.isPriority && "bg-amber-500/5")}>
@@ -1079,7 +1080,7 @@ export default function CallPanel() {
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
                         {formatPhone(qe.phone || "")}
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell py-2">
+                      <TableCell className="py-2">
                         <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
                           {qe.isPriority && <Star className="h-3 w-3 text-amber-500 fill-amber-500 shrink-0" />}
                           {qe.campaignName || "—"}
@@ -1099,6 +1100,19 @@ export default function CallPanel() {
                       </TableCell>
                       <TableCell className="py-2">
                         <div className="flex items-center gap-1">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                                onClick={() => setViewingQueueLead(qe)}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Ver detalhes</TooltipContent>
+                          </Tooltip>
                           {!isFromCallLog && (
                             <>
                               <Tooltip>
@@ -1522,6 +1536,56 @@ export default function CallPanel() {
           setActiveTab("queue");
         }}
       />
+
+      {/* Lead Details Dialog */}
+      <Dialog open={!!viewingQueueLead} onOpenChange={(open) => !open && setViewingQueueLead(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Detalhes do Lead</DialogTitle>
+            <DialogDescription>Informações do lead na fila</DialogDescription>
+          </DialogHeader>
+          {viewingQueueLead && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground text-xs">Nome</p>
+                  <p className="font-medium">{viewingQueueLead.leadName || "Sem nome"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Telefone</p>
+                  <p className="font-medium">{formatPhone(viewingQueueLead.phone || "")}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Campanha</p>
+                  <p className="font-medium">{viewingQueueLead.campaignName || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Tentativa</p>
+                  <p className="font-medium">{viewingQueueLead.attemptNumber}/{viewingQueueLead.maxAttempts || 3}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Status</p>
+                  <p className="font-medium capitalize">{viewingQueueLead.status}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground text-xs">Agendado</p>
+                  <p className="font-medium">
+                    {viewingQueueLead.scheduledFor
+                      ? format(new Date(viewingQueueLead.scheduledFor), "dd/MM HH:mm")
+                      : "—"}
+                  </p>
+                </div>
+              </div>
+              {viewingQueueLead.observations && (
+                <div>
+                  <p className="text-muted-foreground text-xs mb-1">Observações</p>
+                  <p className="text-sm bg-muted rounded-md p-2">{viewingQueueLead.observations}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
           </div>
         </TabsContent>
       </Tabs>
