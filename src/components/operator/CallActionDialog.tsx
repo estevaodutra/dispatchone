@@ -77,6 +77,8 @@ export function CallActionDialog({
   initialObservations, attemptNumber, maxAttempts, isPriority,
   callStatus, externalCallId, operatorId,
 }: CallActionDialogProps) {
+  const isQueuePreview = callStatus === "queued" || !callId;
+
   // --- Navigation state ---
   const initialData: CallDialogData = {
     callId, campaignId, leadId, leadName, leadPhone, campaignName,
@@ -354,7 +356,7 @@ export function CallActionDialog({
         {/* Lead Header */}
         <div className="bg-gradient-to-b from-primary/10 to-transparent border-b px-6 py-5 space-y-2">
           <div className="flex items-center justify-between">
-            {operatorId ? (
+            {!isQueuePreview && operatorId ? (
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={handleGoBack} disabled={loadingPrevious}>
                 {loadingPrevious ? <Loader2 className="h-3 w-3 animate-spin" /> : <ChevronLeft className="h-3 w-3" />}
                 Anterior
@@ -363,7 +365,7 @@ export function CallActionDialog({
             <div className="h-10 w-10 rounded-full bg-primary/20 flex items-center justify-center text-lg font-bold text-primary">
               {currentData.leadName.charAt(0).toUpperCase()}
             </div>
-            {forwardStack.length > 0 ? (
+            {!isQueuePreview && forwardStack.length > 0 ? (
               <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 px-2" onClick={handleGoForward}>
                 Avançar
                 <ChevronRight className="h-3 w-3" />
@@ -411,7 +413,7 @@ export function CallActionDialog({
             <Badge variant="outline" className="text-xs">📁 {currentData.campaignName}</Badge>
             <Badge variant="outline" className="text-xs">🔄 x{currentData.attemptNumber}/{currentData.maxAttempts}</Badge>
             {currentData.isPriority && <Badge variant="secondary" className="text-xs">⭐ Prioridade</Badge>}
-            {currentData.callStatus && <Badge variant="outline" className="text-xs">📡 {currentData.callStatus}</Badge>}
+            {currentData.callStatus && <Badge variant="outline" className={cn("text-xs", isQueuePreview && "bg-amber-500/15 text-amber-700 dark:text-amber-400")}>{isQueuePreview ? "📋 Na Fila" : `📡 ${currentData.callStatus}`}</Badge>}
           </div>
           {currentData.externalCallId && (
             <div className="flex items-center justify-center gap-1.5">
@@ -426,9 +428,11 @@ export function CallActionDialog({
               </button>
             </div>
           )}
-          <p className="text-2xl font-semibold font-mono text-emerald-500">
-            ⏱️ {formatDuration(currentData.duration)}
-          </p>
+          {!isQueuePreview && (
+            <p className="text-2xl font-semibold font-mono text-emerald-500">
+              ⏱️ {formatDuration(currentData.duration)}
+            </p>
+          )}
         </div>
 
         {/* Tabs */}
@@ -459,124 +463,137 @@ export function CallActionDialog({
                   </CollapsibleContent>
                 </Collapsible>
 
-                <div className="border-t" />
+                {!isQueuePreview && (
+                  <>
+                    <div className="border-t" />
+                    <InlineReschedule callId={currentData.callId} />
+                    <div className="border-t" />
+                  </>
+                )}
 
-                {/* Inline Reschedule */}
-                <InlineReschedule callId={currentData.callId} />
+                {!isQueuePreview && (
+                  <>
+                    {/* Result Section */}
+                    <div className="space-y-4">
+                      <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Ações</h3>
 
-                <div className="border-t" />
-
-                {/* Result Section */}
-                <div className="space-y-4">
-                  <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">🎯 Ações</h3>
-
-                  <div className="space-y-2">
-                    {actionsLoading ? (
-                      <div className="flex justify-center py-4">
-                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                      </div>
-                    ) : (
-                      <>
-                        {actions.length === 0 && (
-                          <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
-                            <p className="text-xs text-muted-foreground">
-                              ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
-                            </p>
+                      <div className="space-y-2">
+                        {actionsLoading ? (
+                          <div className="flex justify-center py-4">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                           </div>
-                        )}
-                        <div className="grid grid-cols-2 gap-2">
-                          {displayActions.map((action) => (
-                            <button
-                              key={action.id}
-                              onClick={() => setSelectedActionId(action.id)}
-                              className={cn(
-                                "rounded-lg border p-3 text-left transition-all",
-                                selectedActionId === action.id
-                                  ? "border-primary bg-primary/5 ring-2 ring-primary"
-                                  : "border-border hover:border-primary/50"
-                              )}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="h-3 w-3 rounded-full shrink-0"
-                                  style={{ backgroundColor: action.color }}
-                                />
-                                <span className="font-medium text-sm">{action.name}</span>
+                        ) : (
+                          <>
+                            {actions.length === 0 && (
+                              <div className="rounded-lg border border-dashed p-3 bg-muted/20 mb-2">
+                                <p className="text-xs text-muted-foreground">
+                                  ⚠️ Nenhuma ação configurada para esta campanha. Usando ações padrão:
+                                </p>
                               </div>
-                            </button>
-                          ))}
-                        </div>
-                        {actions.length > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            ℹ️ Ações carregadas da campanha "{currentData.campaignName}"
-                          </p>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                              {displayActions.map((action) => (
+                                <button
+                                  key={action.id}
+                                  onClick={() => setSelectedActionId(action.id)}
+                                  className={cn(
+                                    "rounded-lg border p-3 text-left transition-all",
+                                    selectedActionId === action.id
+                                      ? "border-primary bg-primary/5 ring-2 ring-primary"
+                                      : "border-border hover:border-primary/50"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="h-3 w-3 rounded-full shrink-0"
+                                      style={{ backgroundColor: action.color }}
+                                    />
+                                    <span className="font-medium text-sm">{action.name}</span>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                            {actions.length > 0 && (
+                              <p className="text-xs text-muted-foreground mt-1">
+                                ℹ️ Ações carregadas da campanha "{currentData.campaignName}"
+                              </p>
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
-                  </div>
-
-                  {/* Schedule fields */}
-                  {isScheduleType && selectedActionId && (
-                    <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
-                      <Label className="text-sm font-medium flex items-center gap-1">
-                        <Calendar className="h-3 w-3" /> Quando ligar novamente?
-                      </Label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          type="date"
-                          value={scheduledDate}
-                          onChange={(e) => setScheduledDate(e.target.value)}
-                        />
-                        <Input
-                          type="time"
-                          value={scheduledTime}
-                          onChange={(e) => setScheduledTime(e.target.value)}
-                        />
                       </div>
-                      <div className="flex flex-wrap gap-1">
-                        {[
-                          { label: "+1h", date: addHours(new Date(), 1) },
-                          { label: "+3h", date: addHours(new Date(), 3) },
-                          { label: "Amanhã 9h", date: setMinutes(setHours(addDays(new Date(), 1), 9), 0) },
-                          { label: "Amanhã 14h", date: setMinutes(setHours(addDays(new Date(), 1), 14), 0) },
-                        ].map(({ label, date }) => (
-                          <Button
-                            key={label}
-                            variant="outline"
-                            size="sm"
-                            className="text-xs h-7"
-                            onClick={() => setScheduleShortcut(date)}
-                          >
-                            {label}
-                          </Button>
-                        ))}
+
+                      {/* Schedule fields */}
+                      {isScheduleType && selectedActionId && (
+                        <div className="space-y-3 rounded-lg border p-3 bg-muted/20">
+                          <Label className="text-sm font-medium flex items-center gap-1">
+                            <Calendar className="h-3 w-3" /> Quando ligar novamente?
+                          </Label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input
+                              type="date"
+                              value={scheduledDate}
+                              onChange={(e) => setScheduledDate(e.target.value)}
+                            />
+                            <Input
+                              type="time"
+                              value={scheduledTime}
+                              onChange={(e) => setScheduledTime(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {[
+                              { label: "+1h", date: addHours(new Date(), 1) },
+                              { label: "+3h", date: addHours(new Date(), 3) },
+                              { label: "Amanhã 9h", date: setMinutes(setHours(addDays(new Date(), 1), 9), 0) },
+                              { label: "Amanhã 14h", date: setMinutes(setHours(addDays(new Date(), 1), 14), 0) },
+                            ].map(({ label, date }) => (
+                              <Button
+                                key={label}
+                                variant="outline"
+                                size="sm"
+                                className="text-xs h-7"
+                                onClick={() => setScheduleShortcut(date)}
+                              >
+                                {label}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      <div>
+                        <Label className="text-sm font-medium">📝 Observações (opcional)</Label>
+                        <Textarea
+                          value={notes}
+                          onChange={(e) => setNotes(e.target.value)}
+                          placeholder="Anotações sobre a ligação..."
+                          className="mt-1"
+                          rows={3}
+                        />
                       </div>
                     </div>
-                  )}
 
-                  {/* Notes */}
-                  <div>
-                    <Label className="text-sm font-medium">📝 Observações (opcional)</Label>
-                    <Textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Anotações sobre a ligação..."
-                      className="mt-1"
-                      rows={3}
-                    />
+                    {/* Footer Buttons */}
+                    <div className="flex justify-end gap-2 pt-2 pb-2">
+                      <Button variant="outline" onClick={() => onOpenChange(false)}>
+                        Cancelar
+                      </Button>
+                      <Button onClick={handleSave} disabled={!selectedActionId || isSaving}>
+                        {isSaving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
+                        ✅ Salvar e Encerrar
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {isQueuePreview && (
+                  <div className="flex justify-end pt-2 pb-2">
+                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                      Fechar
+                    </Button>
                   </div>
-                </div>
-
-                {/* Footer Buttons */}
-                <div className="flex justify-end gap-2 pt-2 pb-2">
-                  <Button variant="outline" onClick={() => onOpenChange(false)}>
-                    Cancelar
-                  </Button>
-                  <Button onClick={handleSave} disabled={!selectedActionId || isSaving}>
-                    {isSaving && <Loader2 className="mr-1 h-4 w-4 animate-spin" />}
-                    ✅ Salvar e Encerrar
-                  </Button>
-                </div>
+                )}
               </div>
             </ScrollArea>
           </TabsContent>
