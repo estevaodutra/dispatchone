@@ -1,31 +1,45 @@
 
 
-## Duplicar Campanha de Ligação (com ações e roteiro)
+## Adicionar "Ver Detalhes" e "Ligar a Seguir" em todas as abas
 
-### O que será feito
-Adicionar um botão "Duplicar" no dropdown de cada campanha na lista. Ao clicar, a campanha será clonada junto com todos os dados relacionados: configurações, ações (call_script_actions) e roteiro (call_scripts). A nova campanha terá o nome "Cópia de [nome original]" e status "draft".
+### Problema
+Atualmente, apenas a aba **Fila** tem o botão de olho (Eye) para ver detalhes via `CallActionDialog`. As abas **Em Andamento**, **Atendidas** e **Histórico** não possuem essas opções. O usuário quer que todas as abas tenham:
+1. Botão para ver detalhes (abre `CallActionDialog`)
+2. Opção "Ligar a Seguir" que enfileira o lead para ser discado em seguida
 
 ### Implementação
 
-**1. `src/hooks/useCallCampaigns.ts` -- Adicionar mutation `duplicateCampaign`**
-- Recebe o `id` da campanha original
-- Busca a campanha original, suas `call_script_actions` e `call_scripts`
-- Insere nova campanha com os mesmos campos (exceto id, status=draft, nome com prefixo "Cópia de")
-- Insere cópia das `call_script_actions` vinculadas à nova campanha (com novos IDs, mapeando `retry_exceeded_action_id` se necessário)
-- Insere cópia do `call_scripts` com nodes/edges vinculados à nova campanha (atualizando `actionId` nos nodes de pergunta para os novos IDs de ações)
-- Invalida query e mostra toast de sucesso
+**Arquivo: `src/pages/CallPanel.tsx`**
 
-**2. `src/components/call-campaigns/CallCampaignList.tsx` -- Adicionar item "Duplicar" no dropdown**
-- Adicionar ícone `Copy` do lucide-react
-- Novo `DropdownMenuItem` "Duplicar" que chama `onDuplicate(campaign.id)`
-- Adicionar estado de loading para feedback visual
+**1. Estado para controlar o lead selecionado para detalhes (já existe `viewingQueueLead`)**
+- Reaproveitar o estado `viewingQueueLead` para todas as abas, passando os dados do entry com a estrutura esperada pelo `CallActionDialog`
 
-**3. `src/pages/campaigns/CallCampaigns.tsx` -- Passar `onDuplicate` para o componente**
-- Conectar o novo `duplicateCampaign` do hook ao componente de lista
+**2. Função "Ligar a Seguir"**
+- Criar uma função `handleCallNext(entry)` que:
+  - Insere o lead no topo da `call_queue` (position 0) usando `callQueue.addToQueue` ou diretamente via Supabase insert com position = 0
+  - Mostra toast "Lead adicionado ao topo da fila"
+  - O queue-processor cuida de discar quando houver operador disponível
 
-### Dados duplicados
-- `call_campaigns`: todas as configurações (delay, retry, priority, api4com_config, etc.)
-- `call_script_actions`: todas as ações com cores, tipos e configurações
-- `call_scripts`: roteiro completo com nodes e edges (atualizando referências de actionId)
-- **Não duplica**: leads, histórico de ligações, fila
+**3. Aba Em Andamento (cards, linhas ~1216-1256)**
+- Adicionar botão Eye no card para abrir `CallActionDialog` com dados do `CallPanelEntry`
+- Adicionar botão "Ligar a Seguir" (ícone Phone + texto) no card
+
+**4. Aba Atendidas (tabela, linhas ~1274-1333)**
+- Adicionar coluna "Ações" na tabela com:
+  - Botão Eye → abre `CallActionDialog`
+  - Botão "Ligar a Seguir" (ícone Phone)
+
+**5. Aba Histórico (tabela, linhas ~1344-1395)**
+- Adicionar coluna "Ações" na tabela com:
+  - Botão Eye → abre `CallActionDialog`  
+  - Botão "Ligar a Seguir" (ícone Phone)
+
+**6. Função `handleDialNext`**
+- Busca o `call_lead` pelo `leadId` + `campaignId`
+- Insere na `call_queue` com `position: 0` (topo), `status: 'waiting'`, dados do lead
+- Toast de confirmação
+- Invalida queries da fila
+
+### Resumo visual
+Todas as 4 abas terão consistentemente: botão 👁️ (detalhes) e botão 📞 (ligar a seguir) por linha/card.
 
