@@ -1,22 +1,21 @@
 
 
-## Corrigir: 2 botões "Parar" e sem "Retomar" no status "mixed"
+## Corrigir: Campanhas não-prioritárias exibidas como prioritárias no painel
 
-### Problema
-Quando `queueGlobalStatus === "mixed"` (algumas campanhas rodando, outras pausadas), o código renderiza:
-- Bloco `running || mixed` (linha 860): **Pausar** + **Parar**
-- Bloco `mixed` (linha 884): **outro Parar** duplicado
+### Diagnóstico
+Consultei o banco de dados e confirmei que **todos** os itens na `call_queue` têm `is_priority = true`, mesmo que a campanha associada tenha `is_priority = false`. O campo `call_queue.is_priority` foi preenchido incorretamente (possivelmente por uma inserção ou migração anterior). O painel lê esse campo diretamente, exibindo erroneamente o ícone ⚡ e ⭐.
 
-Resultado: 2 botões "Parar" e nenhum "Retomar".
+### Solução (2 partes)
 
-### Solução
+**1. Migração SQL: corrigir dados existentes**
+- `UPDATE call_queue SET is_priority = cc.is_priority FROM call_campaigns cc WHERE call_queue.campaign_id = cc.id AND call_queue.is_priority != COALESCE(cc.is_priority, false);`
+- Isso corrige todos os itens na fila para refletir a prioridade real da campanha.
 
-**Arquivo: `src/pages/CallPanel.tsx` (linhas 884-889)**
+**2. Código: ler prioridade da campanha, não do item da fila**
 
-Substituir o bloco duplicado de "Parar" para `mixed` por um botão **"Retomar"** que chama `callQueue.resumeAll()`. Isso faz sentido porque "mixed" indica que existem campanhas pausadas que podem ser retomadas.
+**`src/hooks/useCallQueue.ts`** (linha ~117)
+- Alterar a query para incluir `call_campaigns(name, is_priority)` (já busca `call_campaigns(name)`)
+- Usar `item.call_campaigns?.is_priority` ao invés de `item.is_priority` para determinar `isPriority`
 
-O bloco final ficará:
-- `running || mixed`: Pausar + Parar
-- `paused`: Retomar + Parar  
-- `mixed` (adicional): Retomar (para retomar as pausadas)
+Isso garante que mesmo se o campo `call_queue.is_priority` estiver incorreto, o painel sempre mostrará a prioridade correta baseada na campanha.
 
