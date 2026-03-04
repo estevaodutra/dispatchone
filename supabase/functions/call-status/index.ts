@@ -546,6 +546,13 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ==================== REMOVE FROM CALL QUEUE ON TERMINAL STATUS ====================
+    const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+    if (ALL_TERMINAL.includes(mappedStatus)) {
+      console.log('[call-status] Removing from call_queue for call_log_id:', callLog.id);
+      await supabase.from('call_queue').delete().eq('call_log_id', callLog.id);
+    }
+
     // ==================== RELEASE OPERATOR ON TERMINAL STATUS ====================
     const TERMINAL_WITH_COOLDOWN = ['completed', 'no_answer', 'voicemail'];
     const TERMINAL_NO_COOLDOWN = ['failed', 'busy', 'not_found', 'cancelled', 'timeout'];

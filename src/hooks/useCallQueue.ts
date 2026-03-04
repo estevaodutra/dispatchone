@@ -91,7 +91,7 @@ export function useCallQueue(options: UseCallQueueOptions = {}) {
       let query = (supabase as any)
         .from("call_queue")
         .select("*, call_campaigns(name)")
-        .eq("status", "waiting")
+        .in("status", ["waiting", "in_call"])
         .order("is_priority", { ascending: false })
         .order("position", { ascending: true });
 

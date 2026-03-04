@@ -283,8 +283,8 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
   const leadObj = { id: entry.out_lead_id, phone: entry.out_phone, name: entry.out_lead_name };
   await fireDialWebhook(supabase, userId, callLog.id, selectedCampaignId, campaign, leadObj, operatorObj);
 
-  // 9. Remove from call_queue
-  await supabase.from('call_queue').delete().eq('id', entry.queue_id);
+  // 9. Mark call_queue item as in_call (stays visible in queue)
+  await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.queue_id);
 
   // 10. Update per-campaign execution state
   const { data: campState } = await supabase
@@ -570,7 +570,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
   const leadObj = { id: entry.lead_id, phone: entry.phone, name: entry.lead_name };
   await fireDialWebhook(supabase, userId, callLog.id, campaignId, campaign, leadObj, operatorObj);
 
-  await supabase.from('call_queue').delete().eq('id', entry.id);
+  await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.id);
 
   await supabase.from('queue_execution_state').update({
     last_dial_at: new Date().toISOString(),
