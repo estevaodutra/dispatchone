@@ -278,13 +278,13 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
     }).eq('id', entry.out_lead_id);
   }
 
-  // 8. Fire webhook
+  // 8. Mark call_queue item as in_call BEFORE firing webhook (stays visible in queue)
+  await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.queue_id);
+
+  // 9. Fire webhook (will rollback call_queue on failure)
   const operatorObj = { id: operator.operator_id, operator_name: operator.operator_name, extension: operator.operator_extension };
   const leadObj = { id: entry.out_lead_id, phone: entry.out_phone, name: entry.out_lead_name };
-  await fireDialWebhook(supabase, userId, callLog.id, selectedCampaignId, campaign, leadObj, operatorObj);
-
-  // 9. Mark call_queue item as in_call (stays visible in queue)
-  await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.queue_id);
+  await fireDialWebhook(supabase, userId, callLog.id, selectedCampaignId, campaign, leadObj, operatorObj, entry.queue_id);
 
   // 10. Update per-campaign execution state
   const { data: campState } = await supabase
@@ -566,11 +566,12 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
     await supabase.from('call_leads').update({ status: 'calling', assigned_operator_id: operator.operator_id, last_attempt_at: new Date().toISOString() }).eq('id', entry.lead_id);
   }
 
+  // Mark call_queue as in_call BEFORE firing webhook
+  await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.id);
+
   const operatorObj = { id: operator.operator_id, operator_name: operator.operator_name, extension: operator.operator_extension };
   const leadObj = { id: entry.lead_id, phone: entry.phone, name: entry.lead_name };
-  await fireDialWebhook(supabase, userId, callLog.id, campaignId, campaign, leadObj, operatorObj);
-
-  await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.id);
+  await fireDialWebhook(supabase, userId, callLog.id, campaignId, campaign, leadObj, operatorObj, entry.id);
 
   await supabase.from('queue_execution_state').update({
     last_dial_at: new Date().toISOString(),
@@ -589,7 +590,7 @@ async function processTick(supabase: any, campaignId: string, userId: string, ca
 // Helper: fire webhook for call.dial
 // ═══════════════════════════════════════════════════════════════
 
-async function fireDialWebhook(supabase: any, userId: string, callLogId: string, campaignId: string, campaign: any, lead: any, operator: any) {
+async function fireDialWebhook(supabase: any, userId: string, callLogId: string, campaignId: string, campaign: any, lead: any, operator: any, queueItemId?: string) {
   try {
     const { data: webhookConfig } = await supabase
       .from('webhook_configs')
@@ -630,6 +631,8 @@ async function fireDialWebhook(supabase: any, userId: string, callLogId: string,
           await supabase.from('call_logs').update({ call_status: 'ready', started_at: null, operator_id: null }).eq('id', callLogId);
           await supabase.rpc('release_operator', { p_call_id: callLogId, p_force: true });
           if (lead?.id) await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+          // Rollback call_queue to waiting
+          if (queueItemId) await supabase.from('call_queue').update({ status: 'waiting', call_log_id: null }).eq('id', queueItemId);
           return;
         }
         await supabase.from('call_logs').update({ external_call_id: parsed[0].id }).eq('id', callLogId);
@@ -645,5 +648,7 @@ async function fireDialWebhook(supabase: any, userId: string, callLogId: string,
     await supabase.from('call_logs').update({ call_status: 'failed', notes: failReason, ended_at: new Date().toISOString(), operator_id: null }).eq('id', callLogId);
     await supabase.rpc('release_operator', { p_call_id: callLogId, p_force: true });
     if (lead?.id) await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+    // Rollback call_queue to waiting
+    if (queueItemId) await supabase.from('call_queue').update({ status: 'waiting', call_log_id: null }).eq('id', queueItemId);
   }
 }
