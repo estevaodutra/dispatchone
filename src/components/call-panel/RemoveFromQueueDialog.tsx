@@ -67,22 +67,37 @@ export function RemoveFromQueueDialog({ open, onOpenChange }: RemoveFromQueueDia
   // Queue counts per campaign
   const [queueCounts, setQueueCounts] = useState<Record<string, number>>({});
 
-  // Fetch queue counts on open
+  // Fetch queue counts on open (from both call_queue and call_logs)
   useEffect(() => {
     if (!open || !activeCompanyId) return;
     (async () => {
-      const { data } = await (supabase as any)
+      const counts: Record<string, number> = {};
+
+      // Count from call_queue (waiting)
+      const { data: queueData } = await (supabase as any)
         .from("call_queue")
         .select("campaign_id")
         .eq("company_id", activeCompanyId)
         .eq("status", "waiting");
-      if (data) {
-        const counts: Record<string, number> = {};
-        data.forEach((r: any) => {
+      if (queueData) {
+        queueData.forEach((r: any) => {
           counts[r.campaign_id] = (counts[r.campaign_id] || 0) + 1;
         });
-        setQueueCounts(counts);
       }
+
+      // Count from call_logs (scheduled/ready - fallback queue)
+      const { data: logData } = await (supabase as any)
+        .from("call_logs")
+        .select("campaign_id")
+        .eq("company_id", activeCompanyId)
+        .in("call_status", ["scheduled", "ready"]);
+      if (logData) {
+        logData.forEach((r: any) => {
+          counts[r.campaign_id] = (counts[r.campaign_id] || 0) + 1;
+        });
+      }
+
+      setQueueCounts(counts);
     })();
   }, [open, activeCompanyId]);
 
