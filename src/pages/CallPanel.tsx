@@ -391,6 +391,44 @@ export default function CallPanel() {
   // ── Answered today query ──
   const { user } = useAuth();
   const { activeCompanyId } = useCompany();
+
+  // ── "Ligar a Seguir" — inserts lead at top of queue ──
+  const handleDialNext = useCallback(async (entry: { leadId?: string | null; leadName?: string | null; leadPhone?: string | null; campaignId?: string | null; phone?: string | null }) => {
+    const phone = entry.leadPhone || entry.phone;
+    const campaignId = entry.campaignId;
+    if (!phone || !campaignId || !user) {
+      toast({ title: "Dados insuficientes", description: "Telefone ou campanha ausente.", variant: "destructive" });
+      return;
+    }
+    const { data: existing } = await supabase
+      .from("call_queue")
+      .select("id, position")
+      .eq("campaign_id", campaignId)
+      .eq("status", "waiting")
+      .order("position", { ascending: true });
+    if (existing?.length) {
+      for (const item of existing) {
+        await supabase.from("call_queue").update({ position: item.position + 1 }).eq("id", item.id);
+      }
+    }
+    const { error } = await supabase.from("call_queue").insert({
+      user_id: user.id,
+      company_id: activeCompanyId || undefined,
+      campaign_id: campaignId,
+      lead_id: entry.leadId || undefined,
+      lead_name: entry.leadName || undefined,
+      phone,
+      position: 0,
+      status: "waiting",
+      source: "manual",
+    } as any);
+    if (error) {
+      toast({ title: "Erro ao enfileirar", description: error.message, variant: "destructive" });
+    } else {
+      toast({ title: "✅ Lead adicionado ao topo da fila", description: `${entry.leadName || phone} será discado em seguida.` });
+      queryClient.invalidateQueries({ queryKey: ["call_queue"] });
+    }
+  }, [user, activeCompanyId, toast, queryClient]);
   const todayStr = useMemo(() => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
@@ -1251,6 +1289,44 @@ export default function CallPanel() {
                   {entry.attemptNumber > 0 && (
                     <p className="text-xs text-muted-foreground">Tentativa {entry.attemptNumber}/{entry.maxAttempts || "∞"}</p>
                   )}
+                  <div className="flex items-center gap-1 pt-1 border-t border-border/50">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 text-muted-foreground hover:text-foreground"
+                          onClick={() => setViewingQueueLead({
+                            campaignId: entry.campaignId,
+                            leadId: entry.leadId,
+                            leadName: entry.leadName,
+                            phone: entry.leadPhone,
+                            campaignName: entry.campaignName,
+                            attemptNumber: entry.attemptNumber,
+                            maxAttempts: entry.maxAttempts,
+                            isPriority: entry.isPriority,
+                            observations: entry.observations,
+                          })}
+                        >
+                          <Eye className="h-3.5 w-3.5" /> Detalhes
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Ver detalhes</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                          onClick={() => handleDialNext(entry)}
+                        >
+                          <Phone className="h-3.5 w-3.5" /> Ligar a Seguir
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Adicionar ao topo da fila</TooltipContent>
+                    </Tooltip>
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -1282,6 +1358,7 @@ export default function CallPanel() {
                   <TableHead className="w-[80px]">Duração</TableHead>
                   <TableHead className="hidden lg:table-cell">Ação</TableHead>
                   <TableHead className="w-[90px]">Horário</TableHead>
+                  <TableHead className="w-[90px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1326,6 +1403,35 @@ export default function CallPanel() {
                         {entry.endedAt ? format(new Date(entry.endedAt), "HH:mm") : "—"}
                       </span>
                     </TableCell>
+                    <TableCell className="py-2">
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setViewingQueueLead({
+                              campaignId: entry.campaignId,
+                              leadId: entry.leadId,
+                              leadName: entry.leadName,
+                              phone: entry.leadPhone,
+                              campaignName: entry.campaignName,
+                              attemptNumber: 0,
+                              maxAttempts: 3,
+                              isPriority: entry.isPriority,
+                            })}>
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Ver detalhes</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => handleDialNext(entry)}>
+                              <Phone className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Ligar a Seguir</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1352,6 +1458,7 @@ export default function CallPanel() {
                   <TableHead className="hidden lg:table-cell w-[180px]">Campanha</TableHead>
                   <TableHead className="hidden md:table-cell w-[80px]">Duração</TableHead>
                   <TableHead className="hidden md:table-cell w-[100px]">Operador</TableHead>
+                  <TableHead className="w-[90px]">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1386,6 +1493,35 @@ export default function CallPanel() {
                     </TableCell>
                     <TableCell className="hidden md:table-cell py-2">
                       <span className="text-xs truncate block max-w-[90px]">{entry.operatorName || "Auto"}</span>
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <div className="flex items-center gap-1">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setViewingQueueLead({
+                              campaignId: entry.campaignId,
+                              leadId: entry.leadId,
+                              leadName: entry.leadName,
+                              phone: entry.leadPhone,
+                              campaignName: entry.campaignName,
+                              attemptNumber: 0,
+                              maxAttempts: 3,
+                              isPriority: entry.isPriority,
+                            })}>
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Ver detalhes</TooltipContent>
+                        </Tooltip>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" onClick={() => handleDialNext(entry)}>
+                              <Phone className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Ligar a Seguir</TooltipContent>
+                        </Tooltip>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
