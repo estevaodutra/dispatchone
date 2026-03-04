@@ -8,6 +8,7 @@ export type OperatorStatus = "offline" | "available" | "on_call" | "cooldown" | 
 
 export interface CallOperator {
   id: string;
+  userId: string;
   operatorName: string;
   extension: string | null;
   isActive: boolean;
@@ -39,6 +40,7 @@ interface DbCallOperator {
 
 const transformDbToFrontend = (db: DbCallOperator): CallOperator => ({
   id: db.id,
+  userId: db.user_id,
   operatorName: db.operator_name,
   extension: db.extension,
   isActive: db.is_active ?? true,

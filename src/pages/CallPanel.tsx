@@ -381,16 +381,23 @@ export default function CallPanel() {
     }
   }, []);
 
-  // ── In-progress entries ──
-  const inProgressEntries = useMemo(
-    () =>
-      entries.filter(e => ["dialing", "ringing", "answered", "in_progress"].includes(e.callStatus)),
-    [entries]
-  );
-
   // ── Answered today query ──
   const { user } = useAuth();
-  const { activeCompanyId } = useCompany();
+  const { activeCompanyId, isAdmin } = useCompany();
+
+  // ── In-progress entries (filtered by operator for non-admins) ──
+  const myOperator = useMemo(() => {
+    if (!user || isAdmin) return null;
+    return operators.find(op => op.userId === user.id) || null;
+  }, [operators, user, isAdmin]);
+
+  const inProgressEntries = useMemo(() => {
+    const all = entries.filter(e => ["dialing", "ringing", "answered", "in_progress"].includes(e.callStatus));
+    if (myOperator) {
+      return all.filter(e => e.operatorId === myOperator.id);
+    }
+    return all;
+  }, [entries, myOperator]);
 
   // ── "Ligar a Seguir" — inserts lead at top of queue ──
   const handleDialNext = useCallback(async (entry: { leadId?: string | null; leadName?: string | null; leadPhone?: string | null; campaignId?: string | null; phone?: string | null }) => {
