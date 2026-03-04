@@ -394,7 +394,7 @@ export default function CallPanel() {
   const inProgressEntries = useMemo(() => {
     const all = entries.filter(e => ["dialing", "ringing", "answered", "in_progress"].includes(e.callStatus));
     if (myOperator) {
-      return all.filter(e => e.operatorId === myOperator.id);
+      return all.filter(e => !e.operatorId || e.operatorId === myOperator.id);
     }
     return all;
   }, [entries, myOperator]);
