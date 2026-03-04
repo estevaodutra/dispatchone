@@ -455,9 +455,13 @@ export function CallActionDialog({
                   </CollapsibleContent>
                 </Collapsible>
 
-                <div className="border-t" />
-                <InlineReschedule callId={currentData.callId} />
-                <div className="border-t" />
+                {currentData.callId && (
+                  <>
+                    <div className="border-t" />
+                    <InlineReschedule callId={currentData.callId} />
+                    <div className="border-t" />
+                  </>
+                )}
 
                 {/* Result Section */}
                 <div className="space-y-4">
