@@ -882,9 +882,9 @@ export default function CallPanel() {
                 </>
               )}
               {(queueGlobalStatus === "mixed") && (
-                <Button variant="outline" size="sm" onClick={() => { const first = combinedQueue[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
-                  <Square className="h-3.5 w-3.5" />
-                  Parar
+                <Button variant="outline" size="sm" onClick={() => callQueue.resumeAll()} disabled={callQueue.isResumingAll} className="gap-1.5">
+                  <Play className="h-3.5 w-3.5" />
+                  Retomar
                 </Button>
               )}
 
