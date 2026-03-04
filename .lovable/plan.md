@@ -1,29 +1,23 @@
 
 
-## Mostrar card completo no modo "Na Fila"
+## Mostrar todas as campanhas no dialog de remoção
 
 ### Problema
-Atualmente, quando `isQueuePreview = true` (lead da fila), o `CallActionDialog` esconde:
-- Timer de duração (linha 431-435)
-- Botões Anterior/Avançar (linhas 359-375)
-- InlineReschedule (linhas 466-472)
-- Seção de Ações + Observações + botão Salvar (linhas 474-588)
-
-O usuário quer ver **todos** os componentes, mesmo para itens da fila.
+Linha 182: `campaignsWithQueue = campaigns.filter((c) => (queueCounts[c.id] || 0) > 0)` — só mostra campanhas que já têm itens na fila. Se a fila estiver vazia ou a query falhar, nenhuma campanha aparece para seleção.
 
 ### Solução
-Remover todas as condições `!isQueuePreview` e `isQueuePreview` do `CallActionDialog.tsx`. O card será renderizado igual independente do status. A única diferença será o badge "📋 Na Fila" que já mostra o status corretamente.
+Mostrar **todas** as campanhas na lista, independente de terem itens na fila. Campanhas com 0 itens mostram "0 na fila" no badge. Isso permite ao usuário sempre ver e selecionar qualquer campanha.
 
-### Alterações em `CallActionDialog.tsx`
+### Alteração em `src/components/call-panel/RemoveFromQueueDialog.tsx`
 
-1. **Linha 80**: Remover `const isQueuePreview = ...` (variável não será mais usada)
-2. **Linhas 359-364**: Mostrar botão "Anterior" sempre (remover condição `!isQueuePreview`)
-3. **Linhas 368-375**: Mostrar botão "Avançar" sempre
-4. **Linhas 416**: Manter badge "Na Fila" quando `callStatus === "queued"` (lógica inline simples)
-5. **Linhas 431-435**: Mostrar timer sempre (remover `!isQueuePreview`)
-6. **Linhas 466-472**: Mostrar InlineReschedule sempre
-7. **Linhas 474-588**: Mostrar seção Ações/Observações/Salvar sempre
-8. **Linhas 590-596**: Remover botão "Fechar" alternativo (o Salvar/Cancelar já serve)
+**Linha 182**: Mudar de:
+```typescript
+const campaignsWithQueue = campaigns.filter((c) => (queueCounts[c.id] || 0) > 0);
+```
+Para:
+```typescript
+const campaignsWithQueue = campaigns;
+```
 
-**Nota**: O `handleSave` tentará atualizar `call_logs` com `callId` vazio quando for item da fila — ele falhará silenciosamente ou não encontrará registro. Isso é aceitável pois o usuário terá a opção de fechar com "Cancelar".
+**Linha 215**: Remover a condição `campaignsWithQueue.length > 0` — sempre mostrar a lista de campanhas (desde que `campaigns` tenha dados).
 
