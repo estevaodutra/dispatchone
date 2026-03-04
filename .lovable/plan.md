@@ -1,21 +1,38 @@
 
 
-## Corrigir: Campanhas não-prioritárias exibidas como prioritárias no painel
+## Corrigir: Ligações agendadas não são processadas quando a fila tem itens
 
 ### Diagnóstico
-Consultei o banco de dados e confirmei que **todos** os itens na `call_queue` têm `is_priority = true`, mesmo que a campanha associada tenha `is_priority = false`. O campo `call_queue.is_priority` foi preenchido incorretamente (possivelmente por uma inserção ou migração anterior). O painel lê esse campo diretamente, exibindo erroneamente o ícone ⚡ e ⭐.
 
-### Solução (2 partes)
+O fluxo atual do `processGlobalTick` é:
+1. Chama `queue_get_next_v2` (busca na `call_queue`)
+2. Se encontrou item → disca e retorna
+3. **Somente se a fila estiver vazia** → fallback para `call_logs` (scheduled/ready)
 
-**1. Migração SQL: corrigir dados existentes**
-- `UPDATE call_queue SET is_priority = cc.is_priority FROM call_campaigns cc WHERE call_queue.campaign_id = cc.id AND call_queue.is_priority != COALESCE(cc.is_priority, false);`
-- Isso corrige todos os itens na fila para refletir a prioridade real da campanha.
+O problema: existem ligações agendadas na `call_logs` (campanha prioritária "FN | Abandono de Funil") com `scheduled_for` já vencido, mas como a `call_queue` tem 28 itens de outra campanha, o fallback nunca é atingido. Os agendamentos ficam "presos" indefinidamente.
 
-**2. Código: ler prioridade da campanha, não do item da fila**
+### Solução
 
-**`src/hooks/useCallQueue.ts`** (linha ~117)
-- Alterar a query para incluir `call_campaigns(name, is_priority)` (já busca `call_campaigns(name)`)
-- Usar `item.call_campaigns?.is_priority` ao invés de `item.is_priority` para determinar `isPriority`
+**Arquivo: `supabase/functions/queue-processor/index.ts` (função `processGlobalTick`, linhas ~198-211)**
 
-Isso garante que mesmo se o campo `call_queue.is_priority` estiver incorreto, o painel sempre mostrará a prioridade correta baseada na campanha.
+Inverter a prioridade: **antes** de chamar `queue_get_next_v2`, verificar se existem `call_logs` com `scheduled_for <= NOW()` e `call_status IN ('scheduled', 'ready')`. Se houver, processá-los primeiro (são reagendamentos que o operador marcou para um horário específico).
+
+A lógica alterada ficará:
+
+```
+1. Heal operators + resolve cooldowns (igual)
+2. Check available operator (igual)
+3. **NOVO**: Buscar call_logs com scheduled_for <= NOW() e status scheduled/ready
+   → Se encontrou → reservar operador, discar, retornar
+4. Chamar queue_get_next_v2 (fila regular)
+   → Se encontrou → discar, retornar
+5. Fallback removido (já coberto pelo passo 3)
+```
+
+Isso garante que reagendamentos sempre têm prioridade sobre a fila regular, pois representam compromissos específicos marcados pelo operador. Entre múltiplos agendamentos, os de campanhas prioritárias vêm primeiro (`cc.is_priority DESC, cl.scheduled_for ASC`).
+
+### Impacto
+- Agendamentos serão respeitados mesmo com fila cheia
+- A fila regular continua funcionando normalmente quando não há agendamentos pendentes
+- Nenhuma mudança no frontend necessária
 
