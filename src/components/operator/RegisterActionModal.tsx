@@ -64,8 +64,6 @@ export function RegisterActionModal({
       const updates: Record<string, unknown> = {
         action_id: selectedActionId,
         notes: notes || null,
-        call_status: "completed",
-        ended_at: new Date().toISOString(),
       };
 
       if (isScheduleType && scheduledDate && scheduledTime) {
@@ -77,10 +75,7 @@ export function RegisterActionModal({
         .update(updates)
         .eq("id", callId);
 
-      // Release operator via RPC
-      await (supabase as any).rpc("release_operator", { p_call_id: callId });
-
-      toast({ title: "Ação registrada", description: "Ligação finalizada com sucesso." });
+      toast({ title: "Ação registrada", description: "Resultado salvo. A ligação será encerrada pelo callback." });
       onOpenChange(false);
       resetState();
     } catch (err: any) {
