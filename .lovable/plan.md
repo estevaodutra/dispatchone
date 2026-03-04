@@ -1,73 +1,43 @@
 
 
-## Reestruturação do Painel de Ligações: 6 abas para 4 abas
+## Problema
 
-### Resumo
+A aba "Fila" mostra apenas itens da tabela `call_queue` (que está vazia). Porém, existem **283 call_logs** com status `ready` (176) e `scheduled` (107) que deveriam aparecer na fila também.
 
-Reescrever o componente `CallPanel.tsx` (~2170 linhas) para substituir as 6 abas confusas (Todas, Agendadas, Em Andamento, Atendidas, Histórico, Fila) por 4 abas claras e objetivas, com controles unificados no topo.
+O plano original dizia "Combinar dados de `call_queue` (waiting) + `call_logs` (scheduled/ready)", mas a implementação atual só consulta `call_queue`.
 
-### Estrutura das Novas Abas
+## Correção
 
-| Aba | Fonte de Dados | Status |
-|-----|---------------|--------|
-| **Fila** (padrão) | `call_queue` + `call_logs` scheduled/ready | waiting, scheduled, ready |
-| **Em Andamento** | `call_logs` | dialing, ringing, answered, in_progress |
-| **Atendidas** | `call_logs` (hoje) | completed com answered_at |
-| **Histórico** | `call_logs` (todos finais) | completed, no_answer, busy, failed, cancelled, etc. |
+**Arquivo: `src/pages/CallPanel.tsx`**
 
-### Mudanças Técnicas
+Adicionar uma query secundária para buscar `call_logs` com status `scheduled` ou `ready`, mapeá-los para o mesmo formato `QueueItem`, e combinar com os itens de `call_queue` no `queueEntries`.
 
-**Arquivo: `src/pages/CallPanel.tsx`** (reescrita significativa)
+### Detalhes
 
-1. **Remover as 6 abas internas** (linhas 972-984: TabsList com "Todas", "Agendadas", "Em Andamento", "Atendidas", "Histórico", "Fila")
+1. **Nova query inline** no `CallPanel.tsx` (ao lado da query de `answeredEntries`):
+   - Busca `call_logs` com `call_status IN ('scheduled', 'ready')` e `company_id = activeCompanyId`
+   - Filtra por campanha e busca se aplicável
+   - Mapeia para formato compatível com `QueueItem` (com prefixo `cl_` no ID para evitar colisões)
 
-2. **Substituir por 4 abas novas** com contadores:
-   - `queue` — Fila (contagem do `totalWaiting` + scheduled)
-   - `in_progress` — Em Andamento (contagem de dialing/ringing/on_call)
-   - `answered` — Atendidas (nova query: completed hoje)
-   - `history` — Histórico (query existente já funciona)
+2. **Combinar listas**: Criar um `combinedQueue` que concatena `queueEntries` (da `call_queue`) + `scheduledEntries` (dos `call_logs`), ordenando por: agendadas primeiro (por `scheduled_for`), depois prioridade, depois posição.
 
-3. **Bloco de Status + Controles no topo** (acima das abas):
-   - 4 MetricCards: Na Fila, Em Andamento, Atendidas (hoje), Operadores disponíveis
-   - Bloco de controles unificado: Iniciar/Pausar/Parar fila, Adicionar à fila, Limpar fila
-   - Banner de status da fila (reutilizar QueueStatusBanner simplificado)
+3. **Atualizar o contador** no MetricCard "Na Fila" para incluir ambas as fontes.
 
-4. **Aba Fila** (nova aba padrão):
-   - Combinar dados de `call_queue` (waiting) + `call_logs` (scheduled/ready)
-   - Tabela com colunas: #, Lead, Telefone, Campanha, Tentativa, Agendado, Ações
-   - Ícones: calendario para agendadas, raio para prioritárias
-   - Ações por item: Discar manual, Remover da fila
+4. **Atualizar a paginação** para usar `combinedQueue` em vez de apenas `queueEntries`.
 
-5. **Aba Em Andamento**:
-   - Formato de cards (não tabela) para chamadas ativas
-   - Cada card: nome, telefone, campanha, operador, timer ao vivo, status badge
-   - Status badges: Discando (azul), Chamando (amarelo), Em Linha (verde)
+### Campos mapeados de call_logs → QueueItem
 
-6. **Aba Atendidas**:
-   - Nova query dedicada: `call_logs` WHERE `call_status = 'completed'` AND `answered_at IS NOT NULL` AND `created_at >= hoje`
-   - Tabela: Lead, Telefone, Campanha, Operador, Duração, Ação, Horário
+| call_logs | QueueItem |
+|-----------|-----------|
+| `id` | `id` (prefixo `cl_`) |
+| `campaign_id` | `campaignId` |
+| `call_campaigns.name` | `campaignName` |
+| `lead_id` | `leadId` |
+| `call_leads.phone` ou `leads.phone` | `phone` |
+| `call_leads.name` ou `leads.name` | `leadName` |
+| `scheduled_for` | Preservado como campo extra |
+| `call_status` | `status` |
+| `is_priority` (do campaign) | `isPriority` |
 
-7. **Aba Histórico** (manter query existente):
-   - Adicionar filtro de status final (atendida, não atendeu, ocupado, falhou)
-   - Adicionar filtro de operador
-   - Manter filtros de período e campanha existentes
-
-**Estado removido:**
-- `statusFilter` (antes: "all"/"scheduled"/"in_progress"/"completed"/"history"/"queue") → substituído por `activeTab` ("queue"/"in_progress"/"answered"/"history")
-- `statusDropdownFilter` — removido (cada aba já filtra por status)
-- O `panelTab` superior (Ligações/Operadores/Configurações) permanece
-
-**Componentes reutilizados:**
-- `QueueStatusBanner` — simplificado e movido para o bloco de controles
-- `HistoryStatusBadge` — reutilizado na aba Histórico
-- `ActionDialog` — sem mudanças
-- `MetricCard` — sem mudanças
-- Todos os dialogs (Reschedule, Cancel, EditOperator, BulkOperator, CreateQueue) — sem mudanças
-
-### Estimativa de Impacto
-
-- **1 arquivo principal**: `src/pages/CallPanel.tsx` — reescrita parcial (~40% do arquivo muda)
-- **Nenhuma mudança de banco** — todas as queries usam tabelas existentes
-- **Nenhum hook novo** — reutiliza `useCallPanel`, `useCallQueue`, `useCallOperators`
-- **Nova query inline** para "Atendidas hoje" (similar à existente de history)
+A aba continuará usando a tabela existente, apenas com dados combinados.
 
