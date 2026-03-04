@@ -2460,6 +2460,16 @@ export type Database = {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean
       }
+      queue_clear_all_preview: {
+        Args: { p_company_id: string }
+        Returns: {
+          by_campaign: Json
+          normal_count: number
+          priority_count: number
+          scheduled_count: number
+          total_count: number
+        }[]
+      }
       queue_get_next_v2: {
         Args: { p_company_id: string }
         Returns: {
@@ -2474,6 +2484,32 @@ export type Database = {
           out_phone: string
           out_source_type: string
           queue_id: string
+        }[]
+      }
+      queue_remove_bulk: {
+        Args: {
+          p_attempt_filter?: string
+          p_campaign_ids?: string[]
+          p_company_id: string
+        }
+        Returns: {
+          removed_count: number
+          removed_normal: number
+          removed_priority: number
+        }[]
+      }
+      queue_remove_preview: {
+        Args: {
+          p_attempt_filter?: string
+          p_campaign_ids?: string[]
+          p_company_id: string
+        }
+        Returns: {
+          by_campaign: Json
+          normal_count: number
+          priority_count: number
+          scheduled_count: number
+          total_count: number
         }[]
       }
       release_operator: {

@@ -71,6 +71,8 @@ import {
 } from "@/components/ui/table";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
 import { CreateQueueDialog } from "@/components/call-panel/CreateQueueDialog";
+import { RemoveFromQueueDialog } from "@/components/call-panel/RemoveFromQueueDialog";
+import { ClearAllQueueDialog } from "@/components/call-panel/ClearAllQueueDialog";
 import {
   Clock,
   Pause,
@@ -245,6 +247,7 @@ export default function CallPanel() {
   const [selectedOperatorId, setSelectedOperatorId] = useState("");
   const [showCreateQueue, setShowCreateQueue] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [showRemoveFromQueue, setShowRemoveFromQueue] = useState(false);
   const [viewingQueueLead, setViewingQueueLead] = useState<any | null>(null);
 
   const { campaigns } = useCallCampaigns();
@@ -850,6 +853,18 @@ export default function CallPanel() {
                 <Plus className="h-3.5 w-3.5" /> Adicionar à Fila
               </Button>
 
+              {combinedQueueCount > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowRemoveFromQueue(true)}
+                  className="gap-1.5"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remover da Fila
+                </Button>
+              )}
+
               <Button variant="ghost" size="sm" onClick={handleRefreshQueue} disabled={isRefreshingQueue} className="gap-1.5">
                 <RefreshCw className={cn("h-3.5 w-3.5", isRefreshingQueue && "animate-spin")} />
                 Atualizar
@@ -864,7 +879,7 @@ export default function CallPanel() {
                   className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  {isClearingQueue ? "Esvaziando..." : "Limpar Fila"}
+                  {isClearingQueue ? "Esvaziando..." : "Limpar Tudo"}
                 </Button>
               )}
             </div>
@@ -897,39 +912,17 @@ export default function CallPanel() {
       </Card>
 
       {/* Clear queue confirm */}
-      <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Esvaziar fila de ligações</AlertDialogTitle>
-            <AlertDialogDescription>
-              Tem certeza que deseja esvaziar toda a fila? Todos os {combinedQueueCount} itens pendentes serão removidos. Essa ação não pode ser desfeita.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async () => {
-                clearQueue(campaignFilter);
-                // Also cancel all scheduled/ready call_logs
-                if (activeCompanyId) {
-                  let q = (supabase as any)
-                    .from("call_logs")
-                    .update({ call_status: "cancelled", ended_at: new Date().toISOString() })
-                    .in("call_status", ["scheduled", "ready"]);
-                  q = q.eq("company_id", activeCompanyId);
-                  if (campaignFilter !== "all") q = q.eq("campaign_id", campaignFilter);
-                  await q;
-                  queryClient.invalidateQueries({ queryKey: ["call_logs_queue"] });
-                }
-                setClearConfirmOpen(false);
-              }}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Esvaziar Fila
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ClearAllQueueDialog
+        open={clearConfirmOpen}
+        onOpenChange={setClearConfirmOpen}
+        campaignFilter={campaignFilter}
+      />
+
+      {/* Remove from queue dialog */}
+      <RemoveFromQueueDialog
+        open={showRemoveFromQueue}
+        onOpenChange={setShowRemoveFromQueue}
+      />
 
       {/* ═══════ 4 TABS ═══════ */}
       <div className="space-y-3">
