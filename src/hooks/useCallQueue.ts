@@ -90,7 +90,7 @@ export function useCallQueue(options: UseCallQueueOptions = {}) {
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_queue")
-        .select("*, call_campaigns(name)")
+        .select("*, call_campaigns(name, is_priority)")
         .in("status", ["waiting", "in_call"])
         .order("is_priority", { ascending: false })
         .order("position", { ascending: true });
@@ -114,7 +114,7 @@ export function useCallQueue(options: UseCallQueueOptions = {}) {
         phone: item.phone,
         leadName: item.lead_name,
         position: item.position,
-        isPriority: item.is_priority || false,
+        isPriority: item.call_campaigns?.is_priority || false,
         attemptNumber: item.attempt_number || 1,
         maxAttempts: item.max_attempts || 3,
         observations: item.observations,
