@@ -179,7 +179,7 @@ export function RemoveFromQueueDialog({ open, onOpenChange }: RemoveFromQueueDia
     }
   };
 
-  const campaignsWithQueue = campaigns.filter((c) => (queueCounts[c.id] || 0) > 0);
+  const campaignsWithQueue = campaigns;
   const remaining = (preview?.total_count || 0);
 
   return (
@@ -214,7 +214,7 @@ export function RemoveFromQueueDialog({ open, onOpenChange }: RemoveFromQueueDia
 
                 {campaignsWithQueue.length > 0 && (
                   <div className="border-t pt-2 mt-2 space-y-1.5">
-                    {campaignsWithQueue.map((c) => (
+                    {campaignsWithQueue.map((c: any) => (
                       <label key={c.id} className="flex items-center justify-between gap-2 cursor-pointer">
                         <div className="flex items-center gap-2">
                           <Checkbox
