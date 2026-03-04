@@ -70,6 +70,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { InlineScriptRunner } from "@/components/call-campaigns/operator/InlineScriptRunner";
+import { CallActionDialog } from "@/components/operator/CallActionDialog";
 import { CreateQueueDialog } from "@/components/call-panel/CreateQueueDialog";
 import { RemoveFromQueueDialog } from "@/components/call-panel/RemoveFromQueueDialog";
 import { ClearAllQueueDialog } from "@/components/call-panel/ClearAllQueueDialog";
@@ -1530,55 +1531,25 @@ export default function CallPanel() {
         }}
       />
 
-      {/* Lead Details Dialog */}
-      <Dialog open={!!viewingQueueLead} onOpenChange={(open) => !open && setViewingQueueLead(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Detalhes do Lead</DialogTitle>
-            <DialogDescription>Informações do lead na fila</DialogDescription>
-          </DialogHeader>
-          {viewingQueueLead && (
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-muted-foreground text-xs">Nome</p>
-                  <p className="font-medium">{viewingQueueLead.leadName || "Sem nome"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Telefone</p>
-                  <p className="font-medium">{formatPhone(viewingQueueLead.phone || "")}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Campanha</p>
-                  <p className="font-medium">{viewingQueueLead.campaignName || "—"}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Tentativa</p>
-                  <p className="font-medium">{viewingQueueLead.attemptNumber}/{viewingQueueLead.maxAttempts || 3}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Status</p>
-                  <p className="font-medium capitalize">{viewingQueueLead.status}</p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground text-xs">Agendado</p>
-                  <p className="font-medium">
-                    {viewingQueueLead.scheduledFor
-                      ? format(new Date(viewingQueueLead.scheduledFor), "dd/MM HH:mm")
-                      : "—"}
-                  </p>
-                </div>
-              </div>
-              {viewingQueueLead.observations && (
-                <div>
-                  <p className="text-muted-foreground text-xs mb-1">Observações</p>
-                  <p className="text-sm bg-muted rounded-md p-2">{viewingQueueLead.observations}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {/* Lead Details Dialog - Full CallActionDialog */}
+      {viewingQueueLead && (
+        <CallActionDialog
+          open={!!viewingQueueLead}
+          onOpenChange={(open) => !open && setViewingQueueLead(null)}
+          callId=""
+          campaignId={viewingQueueLead.campaignId || ""}
+          leadId={viewingQueueLead.leadId || ""}
+          leadName={viewingQueueLead.leadName || "Sem nome"}
+          leadPhone={viewingQueueLead.phone || ""}
+          campaignName={viewingQueueLead.campaignName || "—"}
+          duration={0}
+          attemptNumber={viewingQueueLead.attemptNumber || 0}
+          maxAttempts={viewingQueueLead.maxAttempts || 3}
+          isPriority={viewingQueueLead.isPriority || false}
+          callStatus="queued"
+          initialObservations={viewingQueueLead.observations || ""}
+        />
+      )}
           </div>
         </TabsContent>
       </Tabs>
