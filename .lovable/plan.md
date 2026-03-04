@@ -1,24 +1,41 @@
 
 
-## Corrigir: Erro ao reagendar a partir do diálogo de lead na fila
+## Corrigir: Cards de ligação de outro operador aparecendo na aba "Em Andamento"
 
 ### Diagnóstico
-O console mostra: `invalid input syntax for type uuid: ""`. O `CallActionDialog` é aberto com `callId=""` quando o lead vem da fila (linha 1685 de `CallPanel.tsx`). O `InlineReschedule` tenta fazer `UPDATE call_logs WHERE id = ""`, que falha.
+
+O Painel de Ligações (`CallPanel.tsx`) mostra **todas** as ligações em andamento da empresa, sem filtrar por operador. Quando Mauro abre a aba "Em Andamento", ele vê os cards das ligações do Estevão (e vice-versa). O `CallPopup` (card flutuante) filtra corretamente por `user_id`, mas a aba do painel não aplica esse filtro.
 
 ### Solução
 
-**Arquivo: `src/components/operator/CallActionDialog.tsx` (linha ~459)**
+**Arquivo: `src/pages/CallPanel.tsx`**
 
-Condicionar a renderização do `InlineReschedule` para só aparecer quando `currentData.callId` é um UUID válido (não vazio). Quando o callId está vazio (lead na fila, sem call_log), não faz sentido reagendar — não existe registro de ligação para atualizar.
+1. Detectar o operador do usuário atual usando os `operators` já carregados pelo `useCallOperators` + `user.id`:
+   ```ts
+   const myOperator = useMemo(() => {
+     if (!user) return null;
+     const mine = operators.filter(op => op.id && /* match user */);
+     // Use isAdmin from CompanyContext
+     return isAdmin ? null : operators.find(op => /* belongs to current user */);
+   }, [operators, user, isAdmin]);
+   ```
 
-Alterar de:
-```tsx
-<InlineReschedule callId={currentData.callId} />
-```
-Para:
-```tsx
-{currentData.callId && <InlineReschedule callId={currentData.callId} />}
-```
+2. Problema: `useCallOperators` não expõe o `userId` de cada operador (o hook transforma os dados e omite `user_id`). Preciso verificar se o `user_id` está disponível.
 
-Isso oculta a seção de reagendamento quando não há ligação ativa, evitando o erro.
+Vou verificar a transformação no hook para confirmar.
+
+**Abordagem ajustada:**
+
+Como o `useCallOperators` não retorna `user_id`, e o `useOperatorCall` já identifica o operador do usuário (por `user_id`), a solução mais simples é:
+
+1. Adicionar `userId` à interface `CallOperator` e ao `transformDbToFrontend` em `useCallOperators.ts`
+2. No `CallPanel.tsx`, filtrar `inProgressEntries` quando o usuário é operador (não admin):
+   - Encontrar o operador do user atual: `operators.find(op => op.userId === user.id)`
+   - Se encontrou exatamente 1: filtrar `inProgressEntries` por `entry.operatorId === myOperator.id`
+   - Se admin: mostrar todos (comportamento atual)
+
+### Arquivos alterados
+
+- **`src/hooks/useCallOperators.ts`**: Adicionar `userId` à interface `CallOperator` e ao mapeamento
+- **`src/pages/CallPanel.tsx`**: Filtrar `inProgressEntries` pelo operador do usuário quando não é admin
 
