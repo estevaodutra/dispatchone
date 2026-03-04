@@ -1,42 +1,29 @@
 
 
-## Botão "Ver Detalhes" abre o CallActionDialog
-
-### Situação Atual
-O botão Eye na fila abre um `Dialog` simples com grid de dados (nome, telefone, campanha, tentativa, status, observações). O usuário quer que abra o `CallActionDialog` completo — o mesmo card usado pelos operadores durante ligações.
+## Mostrar card completo no modo "Na Fila"
 
 ### Problema
-O `CallActionDialog` requer um `callId` (registro em `call_logs`) para funcionar — usa para salvar ações, liberar operador, navegar histórico. Itens na fila (`call_queue`) **não têm `call_log` ainda**.
+Atualmente, quando `isQueuePreview = true` (lead da fila), o `CallActionDialog` esconde:
+- Timer de duração (linha 431-435)
+- Botões Anterior/Avançar (linhas 359-375)
+- InlineReschedule (linhas 466-472)
+- Seção de Ações + Observações + botão Salvar (linhas 474-588)
+
+O usuário quer ver **todos** os componentes, mesmo para itens da fila.
 
 ### Solução
-Abrir o `CallActionDialog` passando `callId` vazio/placeholder e `callStatus` como `"queued"`. No `CallActionDialog`, quando `callStatus === "queued"`:
-- Mostrar o card completo (header com lead info, roteiro, ações da campanha, histórico)
-- **Esconder** o botão "Salvar" e a seção de reagendamento (não há call_log para atualizar)
-- **Esconder** navegação anterior/avançar (não é contexto de operador)
-- Manter script runner e histórico de ligações anteriores funcionais
+Remover todas as condições `!isQueuePreview` e `isQueuePreview` do `CallActionDialog.tsx`. O card será renderizado igual independente do status. A única diferença será o badge "📋 Na Fila" que já mostra o status corretamente.
 
-### Arquivos a alterar
+### Alterações em `CallActionDialog.tsx`
 
-| Arquivo | Alteração |
-|---------|-----------|
-| `src/components/operator/CallActionDialog.tsx` | Detectar `callStatus === "queued"` para esconder save/reschedule/navigation |
-| `src/pages/CallPanel.tsx` | Substituir o `Dialog` simples pelo `CallActionDialog` quando clicar no Eye |
+1. **Linha 80**: Remover `const isQueuePreview = ...` (variável não será mais usada)
+2. **Linhas 359-364**: Mostrar botão "Anterior" sempre (remover condição `!isQueuePreview`)
+3. **Linhas 368-375**: Mostrar botão "Avançar" sempre
+4. **Linhas 416**: Manter badge "Na Fila" quando `callStatus === "queued"` (lógica inline simples)
+5. **Linhas 431-435**: Mostrar timer sempre (remover `!isQueuePreview`)
+6. **Linhas 466-472**: Mostrar InlineReschedule sempre
+7. **Linhas 474-588**: Mostrar seção Ações/Observações/Salvar sempre
+8. **Linhas 590-596**: Remover botão "Fechar" alternativo (o Salvar/Cancelar já serve)
 
-### Detalhes
-
-**CallPanel.tsx:**
-- Remover o `Dialog` simples de `viewingQueueLead` (linhas ~1533-1581)
-- No click do Eye, abrir `CallActionDialog` com os dados do queue item:
-  - `callId = ""` (sem call_log)
-  - `campaignId`, `leadId`, `leadName`, `leadPhone`, `campaignName`, `attemptNumber`, `maxAttempts`, `isPriority` do queue item
-  - `duration = 0`, `callStatus = "queued"`
-
-**CallActionDialog.tsx:**
-- Adicionar `const isQueuePreview = callStatus === "queued" || !currentData.callId;`
-- Quando `isQueuePreview`:
-  - Não renderizar botão "Salvar" / footer de ações rápidas
-  - Não renderizar `InlineReschedule`
-  - Não renderizar botões Anterior/Avançar
-  - Mostrar status badge como "Na Fila" em vez de "dialing"
-  - Script runner e histórico continuam funcionando (usam `campaignId`/`leadId`)
+**Nota**: O `handleSave` tentará atualizar `call_logs` com `callId` vazio quando for item da fila — ele falhará silenciosamente ou não encontrará registro. Isso é aceitável pois o usuário terá a opção de fechar com "Cancelar".
 
