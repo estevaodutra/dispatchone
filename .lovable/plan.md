@@ -1,80 +1,42 @@
 
 
-## Limpeza Automática da Fila às 23:59
+## Botão "Ver Detalhes" abre o CallActionDialog
 
-### Abordagem
+### Situação Atual
+O botão Eye na fila abre um `Dialog` simples com grid de dados (nome, telefone, campanha, tentativa, status, observações). O usuário quer que abra o `CallActionDialog` completo — o mesmo card usado pelos operadores durante ligações.
 
-Usar **pg_cron + função SQL direta** (sem Edge Function) — mais simples, confiável e não depende de autenticação HTTP.
+### Problema
+O `CallActionDialog` requer um `callId` (registro em `call_logs`) para funcionar — usa para salvar ações, liberar operador, navegar histórico. Itens na fila (`call_queue`) **não têm `call_log` ainda**.
 
-### 1. Migração SQL
+### Solução
+Abrir o `CallActionDialog` passando `callId` vazio/placeholder e `callStatus` como `"queued"`. No `CallActionDialog`, quando `callStatus === "queued"`:
+- Mostrar o card completo (header com lead info, roteiro, ações da campanha, histórico)
+- **Esconder** o botão "Salvar" e a seção de reagendamento (não há call_log para atualizar)
+- **Esconder** navegação anterior/avançar (não é contexto de operador)
+- Manter script runner e histórico de ligações anteriores funcionais
 
-Criar a função `clear_daily_queue()` e agendar via `pg_cron`:
+### Arquivos a alterar
 
-```sql
--- Habilitar extensões necessárias
-CREATE EXTENSION IF NOT EXISTS pg_cron;
-CREATE EXTENSION IF NOT EXISTS pg_net;
+| Arquivo | Alteração |
+|---------|-----------|
+| `src/components/operator/CallActionDialog.tsx` | Detectar `callStatus === "queued"` para esconder save/reschedule/navigation |
+| `src/pages/CallPanel.tsx` | Substituir o `Dialog` simples pelo `CallActionDialog` quando clicar no Eye |
 
--- Função de limpeza
-CREATE OR REPLACE FUNCTION public.clear_daily_queue()
-RETURNS TABLE(companies_processed int, total_expired int)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
-AS $$
-DECLARE
-  v_companies int := 0;
-  v_total int := 0;
-  v_company_id uuid;
-  v_count int;
-BEGIN
-  FOR v_company_id IN
-    SELECT DISTINCT company_id FROM call_queue WHERE status = 'waiting'
-  LOOP
-    WITH expired AS (
-      UPDATE call_queue SET status = 'expired'
-      WHERE company_id = v_company_id AND status = 'waiting'
-      RETURNING id
-    )
-    SELECT COUNT(*) INTO v_count FROM expired;
+### Detalhes
 
-    v_total := v_total + v_count;
+**CallPanel.tsx:**
+- Remover o `Dialog` simples de `viewingQueueLead` (linhas ~1533-1581)
+- No click do Eye, abrir `CallActionDialog` com os dados do queue item:
+  - `callId = ""` (sem call_log)
+  - `campaignId`, `leadId`, `leadName`, `leadPhone`, `campaignName`, `attemptNumber`, `maxAttempts`, `isPriority` do queue item
+  - `duration = 0`, `callStatus = "queued"`
 
-    -- Stop all queues and reset priority counters
-    UPDATE queue_execution_state
-    SET status = 'stopped', priority_counter = 0, updated_at = NOW()
-    WHERE company_id = v_company_id;
-
-    v_companies := v_companies + 1;
-  END LOOP;
-
-  RETURN QUERY SELECT v_companies, v_total;
-END;
-$$;
-```
-
-O agendamento cron será criado via insert tool (não migração) pois contém dados específicos do projeto:
-```sql
-SELECT cron.schedule('clear-daily-queue', '59 23 * * *', 'SELECT * FROM clear_daily_queue();');
-```
-
-### 2. Nenhuma alteração de constraint
-
-A coluna `status` em `call_queue` é `varchar` sem CHECK constraint — o valor `expired` funciona diretamente.
-
-### 3. UI — Badge "Expirada" no StatusBadge
-
-Arquivo: `src/components/dispatch/StatusBadge.tsx`
-
-Adicionar `expired` como variante no `statusBadgeVariants`, com cor amarela/cinza, dot `bg-amber-400`, e label `Expirada`.
-
-### 4. HistoryTab — Sem alteração necessária agora
-
-A HistoryTab atual mostra dados da `call_logs`, não da `call_queue`. Itens expirados ficam na `call_queue` com status `expired`. Para visualizá-los seria necessário uma consulta separada à `call_queue` — isso pode ser implementado como melhoria futura (re-adicionar expirados, relatório de expirados).
-
-### Resumo de Arquivos
-
-| Arquivo | Ação |
-|---------|------|
-| Migração SQL | Criar `clear_daily_queue()` |
-| Insert SQL | `cron.schedule(...)` |
-| `src/components/dispatch/StatusBadge.tsx` | Adicionar variante `expired` |
+**CallActionDialog.tsx:**
+- Adicionar `const isQueuePreview = callStatus === "queued" || !currentData.callId;`
+- Quando `isQueuePreview`:
+  - Não renderizar botão "Salvar" / footer de ações rápidas
+  - Não renderizar `InlineReschedule`
+  - Não renderizar botões Anterior/Avançar
+  - Mostrar status badge como "Na Fila" em vez de "dialing"
+  - Script runner e histórico continuam funcionando (usam `campaignId`/`leadId`)
 
