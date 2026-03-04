@@ -1,30 +1,37 @@
 
 
-## Separar registro de ação do encerramento da ligação
+## Corrigir: lead não fica com status "Em Ligação" na fila
 
 ### Problema
-Tanto o `CallActionDialog.handleSave()` quanto o `useCallPanel.registerAction` estão marcando `call_status: "completed"` e `ended_at` imediatamente ao registrar uma ação. Isso contradiz o princípio de que o encerramento da ligação deve vir exclusivamente do callback externo (`call-status`).
+No `queue-processor`, o update de `call_queue` para `status: 'in_call'` acontece **depois** do `fireDialWebhook` (linhas 284→287 e 571→573). Isso causa dois problemas:
+
+1. Se o webhook demora, o callback `call-status` pode chegar e deletar o item da `call_queue` **antes** do update para `in_call` ser executado.
+2. Se o webhook falha ou retorna `operator_unavailable`, a função retorna cedo e o update nunca acontece.
+3. O frontend faz refetch a cada 10s, e nesse intervalo o item ainda está com `status: 'waiting'` -- ou já foi deletado pelo callback.
 
 ### Solução
 
-**1. `src/components/operator/CallActionDialog.tsx` (linhas 311-315)**
-- Remover `call_status: "completed"` e `ended_at` do update no `handleSave`
-- Manter apenas: `notes`, `action_id`, e `scheduled_for` (se reagendamento)
-- Remover a chamada `release_operator` (quem libera é o callback)
-- Ajustar toast para "Ação registrada" sem dizer "ligação finalizada"
+Mover o update de `call_queue` para `in_call` para **antes** do `fireDialWebhook`, em ambos os fluxos:
 
-**2. `src/hooks/useCallPanel.ts` (linhas 638-661)**
-- No `registerActionMutation`, remover `call_status: "completed"` e `ended_at` do update
-- Manter apenas `action_id` e `notes`
-- Remover `release_operator` (callback cuida disso)
-- Remover a atualização de `call_leads.status = "completed"` (também deve vir do callback)
+**1. `supabase/functions/queue-processor/index.ts` - fluxo global (linha ~284-287)**
+- Mover `await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.queue_id)` para **antes** de `fireDialWebhook`
+- No `fireDialWebhook`, quando há falha ou `operator_unavailable`, reverter o status da `call_queue` para `waiting` (ou deletar)
 
-**3. `supabase/functions/call-status/index.ts`**
-- Garantir que ao receber status terminal, além de deletar da `call_queue`, ele também aplique o `action_id` que já foi registrado previamente no `call_logs` para executar automações pendentes, se houver
+**2. `supabase/functions/queue-processor/index.ts` - fluxo legacy (linha ~571-573)**
+- Mesma alteração: mover update de `in_call` para antes do webhook
+- Adicionar rollback no caso de falha
+
+**3. `fireDialWebhook` - adicionar rollback do `call_queue`**
+- Receber o `queueItemId` como parâmetro
+- Nos blocos de erro (timeout, `operator_unavailable`), reverter `call_queue` para `waiting` ou deletar
 
 ### Fluxo corrigido
 ```text
-Operador registra ação → salva action_id + notes no call_logs (status NÃO muda)
-Callback chega com status terminal → call-status marca completed/failed + ended_at + release_operator + remove da call_queue
+queue item (waiting)
+  → update call_queue → in_call + call_log_id  ← ANTES do webhook
+  → fire webhook
+    → sucesso: item permanece in_call
+    → falha: rollback call_queue para waiting
+  → callback chega → deleta call_queue
 ```
 
