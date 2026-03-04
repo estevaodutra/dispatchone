@@ -138,6 +138,52 @@ Deno.serve(async (req) => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// healStaleInCallItems: Clean up ghost "in_call" items in call_queue
+// ═══════════════════════════════════════════════════════════════
+
+async function healStaleInCallItems(supabase: any, companyId: string) {
+  const terminalStatuses = ['completed', 'no_answer', 'failed', 'cancelled', 'busy', 'voicemail', 'timeout'];
+
+  // Fetch all in_call items for this company
+  const { data: inCallItems } = await supabase
+    .from('call_queue')
+    .select('id, call_log_id, created_at')
+    .eq('company_id', companyId)
+    .eq('status', 'in_call');
+
+  if (!inCallItems || inCallItems.length === 0) return;
+
+  const idsToDelete: string[] = [];
+
+  for (const item of inCallItems) {
+    if (item.call_log_id) {
+      // Check if associated call_log has terminal status
+      const { data: log } = await supabase
+        .from('call_logs')
+        .select('call_status')
+        .eq('id', item.call_log_id)
+        .maybeSingle();
+
+      if (!log || terminalStatuses.includes(log.call_status)) {
+        idsToDelete.push(item.id);
+      }
+    } else {
+      // No call_log_id — delete if older than 10 minutes
+      const createdAt = new Date(item.created_at).getTime();
+      const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
+      if (createdAt < tenMinutesAgo) {
+        idsToDelete.push(item.id);
+      }
+    }
+  }
+
+  if (idsToDelete.length > 0) {
+    await supabase.from('call_queue').delete().in('id', idsToDelete);
+    console.log(`[queue-processor/global] Healed ${idsToDelete.length} stale in_call queue items`);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // global_tick: Company-level processing with 3:1 priority ratio
 // ═══════════════════════════════════════════════════════════════
 
@@ -177,6 +223,9 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
   if (resolvedOps?.length) {
     console.log(`[queue-processor/global] Resolved ${resolvedOps.length} cooldowns`);
   }
+
+  // 2b. Heal stale in_call items in call_queue
+  await healStaleInCallItems(supabase, companyId);
 
   // 3. Find available operator
   const { data: allOps } = await supabase
