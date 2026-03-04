@@ -1063,13 +1063,23 @@ export default function CallPanel() {
                   const icon = qe.isPriority ? "⚡" : "";
                   const isFromCallLog = qe.source === "call_log";
                   return (
-                    <TableRow key={qe.id} className={cn(qe.isPriority && "bg-amber-500/5")}>
+                    <TableRow key={qe.id} className={cn(
+                      qe.isPriority && "bg-amber-500/5",
+                      qe.status === "in_call" && "bg-blue-500/5"
+                    )}>
                       <TableCell className="font-mono text-xs text-muted-foreground py-2">
                         {icon && <span className="mr-1">{icon}</span>}
                         {(currentPage - 1) * itemsPerPage + idx + 1}
                       </TableCell>
                       <TableCell className="py-2">
-                        <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
+                          {qe.status === "in_call" && (
+                            <Badge variant="outline" className="gap-1 text-xs bg-blue-100 text-blue-700 border-blue-300 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800">
+                              🔄 Em Ligação
+                            </Badge>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
                         {formatPhone(qe.phone || "")}
@@ -1107,7 +1117,7 @@ export default function CallPanel() {
                             </TooltipTrigger>
                             <TooltipContent>Ver detalhes</TooltipContent>
                           </Tooltip>
-                          {!isFromCallLog && (
+                          {!isFromCallLog && qe.status !== "in_call" && (
                             <>
                               <Tooltip>
                                 <TooltipTrigger asChild>

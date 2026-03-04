@@ -465,6 +465,7 @@ export type Database = {
       call_queue: {
         Row: {
           attempt_number: number | null
+          call_log_id: string | null
           campaign_id: string
           company_id: string | null
           created_at: string | null
@@ -483,6 +484,7 @@ export type Database = {
         }
         Insert: {
           attempt_number?: number | null
+          call_log_id?: string | null
           campaign_id: string
           company_id?: string | null
           created_at?: string | null
@@ -501,6 +503,7 @@ export type Database = {
         }
         Update: {
           attempt_number?: number | null
+          call_log_id?: string | null
           campaign_id?: string
           company_id?: string | null
           created_at?: string | null
@@ -518,6 +521,13 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "call_queue_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "call_queue_campaign_id_fkey"
             columns: ["campaign_id"]
