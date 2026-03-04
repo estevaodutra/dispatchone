@@ -1,41 +1,30 @@
 
 
-## Corrigir: Cards de ligação de outro operador aparecendo na aba "Em Andamento"
+## Corrigir: Item "Em Ligação" na fila não corresponde ao lead sendo discado
 
 ### Diagnóstico
 
-O Painel de Ligações (`CallPanel.tsx`) mostra **todas** as ligações em andamento da empresa, sem filtrar por operador. Quando Mauro abre a aba "Em Andamento", ele vê os cards das ligações do Estevão (e vice-versa). O `CallPopup` (card flutuante) filtra corretamente por `user_id`, mas a aba do painel não aplica esse filtro.
+O popup mostra "André" (call_log agendado de "FN | Abandono de Funil"), mas na fila o item #4 "Sem nome" (de outra campanha) aparece com badge "Em Ligação". São leads diferentes.
+
+O que acontece:
+1. O `processScheduledCallLogs` processa "André" diretamente da `call_logs` — **sem tocar na `call_queue`**
+2. O item #4 na `call_queue` ficou com `status: 'in_call'` de uma execução anterior, cujo callback de status (`call-status`) não removeu corretamente o item (possivelmente falha no webhook de callback, ou o `call_log_id` não bateu)
+3. Como há apenas 1 operador, não é possível haver duas ligações simultâneas — o item #4 é **stale**
 
 ### Solução
 
-**Arquivo: `src/pages/CallPanel.tsx`**
+**Arquivo: `supabase/functions/queue-processor/index.ts` (dentro de `processGlobalTick`, após heal_stuck_operators)**
 
-1. Detectar o operador do usuário atual usando os `operators` já carregados pelo `useCallOperators` + `user.id`:
-   ```ts
-   const myOperator = useMemo(() => {
-     if (!user) return null;
-     const mine = operators.filter(op => op.id && /* match user */);
-     // Use isAdmin from CompanyContext
-     return isAdmin ? null : operators.find(op => /* belongs to current user */);
-   }, [operators, user, isAdmin]);
-   ```
+Adicionar um passo de limpeza de itens `in_call` stale na `call_queue`. Antes de processar a fila:
 
-2. Problema: `useCallOperators` não expõe o `userId` de cada operador (o hook transforma os dados e omite `user_id`). Preciso verificar se o `user_id` está disponível.
+1. Buscar todos os itens da `call_queue` com `status = 'in_call'` para a empresa
+2. Para cada um que tem `call_log_id`, verificar se o `call_log` associado já tem status terminal (`completed`, `no_answer`, `failed`, `cancelled`, `busy`, `voicemail`, `timeout`)
+3. Se sim → deletar o item da fila (limpeza de stale)
+4. Se o item `in_call` não tem `call_log_id` e foi criado há mais de 10 minutos → deletar também (safety net)
 
-Vou verificar a transformação no hook para confirmar.
-
-**Abordagem ajustada:**
-
-Como o `useCallOperators` não retorna `user_id`, e o `useOperatorCall` já identifica o operador do usuário (por `user_id`), a solução mais simples é:
-
-1. Adicionar `userId` à interface `CallOperator` e ao `transformDbToFrontend` em `useCallOperators.ts`
-2. No `CallPanel.tsx`, filtrar `inProgressEntries` quando o usuário é operador (não admin):
-   - Encontrar o operador do user atual: `operators.find(op => op.userId === user.id)`
-   - Se encontrou exatamente 1: filtrar `inProgressEntries` por `entry.operatorId === myOperator.id`
-   - Se admin: mostrar todos (comportamento atual)
+Isso garante que itens "fantasma" não fiquem na fila confundindo o operador.
 
 ### Arquivos alterados
 
-- **`src/hooks/useCallOperators.ts`**: Adicionar `userId` à interface `CallOperator` e ao mapeamento
-- **`src/pages/CallPanel.tsx`**: Filtrar `inProgressEntries` pelo operador do usuário quando não é admin
+- **`supabase/functions/queue-processor/index.ts`**: Adicionar função `healStaleInCallItems(supabase, companyId)` e chamá-la em `processGlobalTick` logo após `heal_stuck_operators`
 
