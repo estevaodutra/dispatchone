@@ -219,7 +219,7 @@ export function RemoveFromQueueDialog({ open, onOpenChange }: RemoveFromQueueDia
                         <div className="flex items-center gap-2">
                           <Checkbox
                             checked={selectedCampaigns.includes(c.id)}
-                            disabled={allCampaigns}
+                            
                             onCheckedChange={() => toggleCampaign(c.id)}
                           />
                           <span className="text-sm flex items-center gap-1">
