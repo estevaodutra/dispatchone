@@ -194,17 +194,30 @@ export function useCallQueue(options: UseCallQueueOptions = {}) {
 
     tickInFlightRef.current = true;
     try {
-      for (const id of ids) {
+      if (activeCompanyId) {
+        // Global tick: single call, SQL decides which campaign/item
         try {
           await Promise.race([
-            supabase.functions.invoke(`queue-processor?campaign_id=${id}&action=tick`, { method: "POST" }),
+            supabase.functions.invoke(`queue-processor?company_id=${activeCompanyId}&action=global_tick`, { method: "POST" }),
             new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
           ]);
         } catch (e) {
-          console.error(`[queue-tick] error for ${id}:`, e);
+          console.error(`[queue-tick/global] error:`, e);
         }
-        if (id !== ids[ids.length - 1]) {
-          await new Promise(resolve => setTimeout(resolve, 3000));
+      } else {
+        // Fallback: per-campaign tick (no company context)
+        for (const id of ids) {
+          try {
+            await Promise.race([
+              supabase.functions.invoke(`queue-processor?campaign_id=${id}&action=tick`, { method: "POST" }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 30000)),
+            ]);
+          } catch (e) {
+            console.error(`[queue-tick] error for ${id}:`, e);
+          }
+          if (id !== ids[ids.length - 1]) {
+            await new Promise(resolve => setTimeout(resolve, 3000));
+          }
         }
       }
       queryClient.invalidateQueries({ queryKey: ["queue_execution_state_all"] });
@@ -213,7 +226,7 @@ export function useCallQueue(options: UseCallQueueOptions = {}) {
     } finally {
       tickInFlightRef.current = false;
     }
-  }, [queryClient]);
+  }, [queryClient, activeCompanyId]);
 
   const tickAllRef = useRef(tickAll);
   tickAllRef.current = tickAll;

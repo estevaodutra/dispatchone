@@ -1923,11 +1923,15 @@ export type Database = {
           calls_made: number | null
           calls_no_answer: number | null
           campaign_id: string | null
+          company_id: string | null
           created_at: string | null
           current_operator_index: number
           current_position: number | null
           id: string
           last_dial_at: string | null
+          last_normal_campaign_id: string | null
+          last_priority_campaign_id: string | null
+          priority_counter: number | null
           session_started_at: string | null
           status: string | null
           updated_at: string | null
@@ -1938,11 +1942,15 @@ export type Database = {
           calls_made?: number | null
           calls_no_answer?: number | null
           campaign_id?: string | null
+          company_id?: string | null
           created_at?: string | null
           current_operator_index?: number
           current_position?: number | null
           id?: string
           last_dial_at?: string | null
+          last_normal_campaign_id?: string | null
+          last_priority_campaign_id?: string | null
+          priority_counter?: number | null
           session_started_at?: string | null
           status?: string | null
           updated_at?: string | null
@@ -1953,11 +1961,15 @@ export type Database = {
           calls_made?: number | null
           calls_no_answer?: number | null
           campaign_id?: string | null
+          company_id?: string | null
           created_at?: string | null
           current_operator_index?: number
           current_position?: number | null
           id?: string
           last_dial_at?: string | null
+          last_normal_campaign_id?: string | null
+          last_priority_campaign_id?: string | null
+          priority_counter?: number | null
           session_started_at?: string | null
           status?: string | null
           updated_at?: string | null
@@ -2447,6 +2459,22 @@ export type Database = {
       is_company_member: {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean
+      }
+      queue_get_next_v2: {
+        Args: { p_company_id: string }
+        Returns: {
+          out_attempt_number: number
+          out_campaign_id: string
+          out_campaign_name: string
+          out_is_priority: boolean
+          out_lead_id: string
+          out_lead_name: string
+          out_max_attempts: number
+          out_observations: string
+          out_phone: string
+          out_source_type: string
+          queue_id: string
+        }[]
       }
       release_operator: {
         Args: { p_call_id: string; p_force?: boolean }
