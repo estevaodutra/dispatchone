@@ -50,8 +50,16 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { Building2, Check } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 export function AppSidebar() {
   const { state } = useSidebar();
@@ -60,7 +68,6 @@ export function AppSidebar() {
   const isCollapsed = state === "collapsed";
   const { companies, activeCompany, setActiveCompany } = useCompany();
 
-  // Check if we're in any campaigns route
   const isCampaignsRoute = location.pathname.startsWith("/campaigns");
   const [campaignsOpen, setCampaignsOpen] = useState(isCampaignsRoute);
 
@@ -93,13 +100,22 @@ export function AppSidebar() {
     { title: t("nav.apiDocs"), url: "/api-docs", icon: Code2 },
   ];
 
+  const navLinkClasses = cn(
+    "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors",
+    "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+    isCollapsed && "justify-center px-0"
+  );
+
   return (
     <Sidebar
       collapsible="icon"
       className="border-r border-sidebar-border bg-sidebar"
     >
-      <SidebarHeader className="border-b border-sidebar-border px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2">
+      <SidebarHeader className={cn(
+        "border-b border-sidebar-border py-3 space-y-2",
+        isCollapsed ? "px-2" : "px-4"
+      )}>
+        <div className={cn("flex items-center gap-2", isCollapsed && "justify-center")}>
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Zap className="h-4 w-4 text-primary-foreground" />
           </div>
@@ -141,7 +157,7 @@ export function AppSidebar() {
         )}
       </SidebarHeader>
 
-      <SidebarContent className="px-2 py-4">
+      <SidebarContent className={cn("py-4", isCollapsed ? "px-1" : "px-2")}>
         <SidebarGroup>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -151,10 +167,7 @@ export function AppSidebar() {
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors",
-                        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      )}
+                      className={navLinkClasses}
                       activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                     >
                       <item.icon className="h-4 w-4 flex-shrink-0" />
@@ -164,40 +177,99 @@ export function AppSidebar() {
                 </SidebarMenuItem>
               ))}
 
-              {/* Campaigns with submenu */}
-              <Collapsible
-                open={campaignsOpen}
-                onOpenChange={setCampaignsOpen}
-                className="group/collapsible"
-              >
+              {/* Campaigns - collapsed: popover, expanded: collapsible */}
+              {isCollapsed ? (
                 <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      tooltip={t("nav.campaigns")}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors w-full",
-                        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                        isCampaignsRoute && "bg-sidebar-accent text-sidebar-primary font-medium"
-                      )}
-                    >
-                      <Megaphone className="h-4 w-4 flex-shrink-0" />
-                      {!isCollapsed && (
-                        <>
-                          <span className="flex-1">{t("nav.campaigns")}</span>
-                          <ChevronRight
-                            className={cn(
-                              "h-4 w-4 transition-transform duration-200",
-                              campaignsOpen && "rotate-90"
-                            )}
-                          />
-                        </>
-                      )}
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    {!isCollapsed && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip={t("nav.campaigns")}
+                        className={cn(
+                          "flex items-center rounded-lg py-2 text-sidebar-foreground transition-colors w-full justify-center px-0",
+                          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          isCampaignsRoute && "bg-sidebar-accent text-sidebar-primary font-medium"
+                        )}
+                      >
+                        <Megaphone className="h-4 w-4 flex-shrink-0" />
+                      </SidebarMenuButton>
+                    </PopoverTrigger>
+                    <PopoverContent side="right" align="start" className="w-48 p-1">
+                      <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                        <MessageSquare className="h-3 w-3" />
+                        WhatsApp
+                      </div>
+                      {campaignSubItems.whatsapp.map((item) => (
+                        <NavLink
+                          key={item.url}
+                          to={item.url}
+                          className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors",
+                            "hover:bg-accent hover:text-accent-foreground",
+                            item.comingSoon && "opacity-50"
+                          )}
+                          activeClassName="bg-accent text-accent-foreground font-medium"
+                        >
+                          <item.icon className="h-3.5 w-3.5" />
+                          <span>{item.title}</span>
+                          {item.comingSoon && (
+                            <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
+                          )}
+                        </NavLink>
+                      ))}
+                      <Separator className="my-1" />
+                      <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground">
+                        <Phone className="h-3 w-3" />
+                        Telefonia
+                      </div>
+                      {campaignSubItems.telefonia.map((item) => (
+                        <NavLink
+                          key={item.url}
+                          to={item.url}
+                          className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors",
+                            "hover:bg-accent hover:text-accent-foreground",
+                            item.comingSoon && "opacity-50"
+                          )}
+                          activeClassName="bg-accent text-accent-foreground font-medium"
+                        >
+                          <item.icon className="h-3.5 w-3.5" />
+                          <span>{item.title}</span>
+                          {item.comingSoon && (
+                            <span className="ml-auto text-[10px] text-muted-foreground">Em breve</span>
+                          )}
+                        </NavLink>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                </SidebarMenuItem>
+              ) : (
+                <Collapsible
+                  open={campaignsOpen}
+                  onOpenChange={setCampaignsOpen}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip={t("nav.campaigns")}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors w-full",
+                          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          isCampaignsRoute && "bg-sidebar-accent text-sidebar-primary font-medium"
+                        )}
+                      >
+                        <Megaphone className="h-4 w-4 flex-shrink-0" />
+                        <span className="flex-1">{t("nav.campaigns")}</span>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 transition-transform duration-200",
+                            campaignsOpen && "rotate-90"
+                          )}
+                        />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
                       <SidebarMenuSub>
-                        {/* WhatsApp section */}
                         <SidebarMenuSubItem>
                           <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground">
                             <MessageSquare className="h-3 w-3" />
@@ -225,8 +297,6 @@ export function AppSidebar() {
                             </SidebarMenuSubButton>
                           </SidebarMenuSubItem>
                         ))}
-
-                        {/* Telefonia section */}
                         <SidebarMenuSubItem>
                           <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-medium text-muted-foreground mt-2">
                             <Phone className="h-3 w-3" />
@@ -255,15 +325,17 @@ export function AppSidebar() {
                           </SidebarMenuSubItem>
                         ))}
                       </SidebarMenuSub>
-                    )}
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup className="mt-6">
+        <Separator className="mx-auto w-4/5 my-2" />
+
+        <SidebarGroup className="pt-2">
           <SidebarGroupContent>
             <SidebarMenu>
               {systemNavItems.map((item) => (
@@ -271,10 +343,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild tooltip={item.title}>
                     <NavLink
                       to={item.url}
-                      className={cn(
-                        "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors",
-                        "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                      )}
+                      className={navLinkClasses}
                       activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
                     >
                       <item.icon className="h-4 w-4 flex-shrink-0" />
