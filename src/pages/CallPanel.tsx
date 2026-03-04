@@ -400,6 +400,109 @@ export default function CallPanel() {
     refetchInterval: 10000,
   });
 
+  // ── Scheduled/Ready call_logs for Queue tab ──
+  const { data: scheduledCallLogs = [], isLoading: scheduledLogsLoading } = useQuery({
+    queryKey: ["call_logs_queue", campaignFilter, searchQuery, activeCompanyId],
+    queryFn: async () => {
+      let query = (supabase as any)
+        .from("call_logs")
+        .select("*, call_leads(name, phone, attempts), call_campaigns(name, is_priority)")
+        .in("call_status", ["scheduled", "ready"])
+        .order("scheduled_for", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: true })
+        .limit(1000);
+
+      if (activeCompanyId) query = query.eq("company_id", activeCompanyId);
+      if (campaignFilter !== "all") query = query.eq("campaign_id", campaignFilter);
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      let results = (data || []).map((db: any, idx: number) => ({
+        id: `cl_${db.id}`,
+        realId: db.id,
+        campaignId: db.campaign_id,
+        campaignName: db.call_campaigns?.name || null,
+        leadId: db.lead_id,
+        leadName: db.call_leads?.name || null,
+        phone: db.call_leads?.phone || null,
+        isPriority: db.call_campaigns?.is_priority ?? false,
+        status: db.call_status as string,
+        scheduledFor: db.scheduled_for,
+        attemptNumber: db.attempt_number || 1,
+        maxAttempts: db.max_attempts || 3,
+        position: 90000 + idx,
+        observations: db.observations || null,
+        source: "call_log" as const,
+      }));
+
+      if (searchQuery) {
+        const s = searchQuery.toLowerCase();
+        const sDigits = s.replace(/\D/g, "");
+        results = results.filter((e: any) => {
+          const nameMatch = e.leadName?.toLowerCase().includes(s);
+          const phoneDigits = (e.phone || "").replace(/\D/g, "");
+          const phoneMatch = sDigits ? phoneDigits.includes(sDigits) : false;
+          return nameMatch || phoneMatch;
+        });
+      }
+
+      return results;
+    },
+    enabled: !!user,
+    refetchInterval: 10000,
+  });
+
+  // ── Combined queue: call_queue + call_logs (scheduled/ready) ──
+  const combinedQueue = useMemo(() => {
+    // Map queueEntries to a uniform shape
+    const fromQueue = queueEntries.map((q) => ({
+      id: q.id,
+      realId: q.id,
+      campaignId: q.campaignId,
+      campaignName: q.campaignName || null,
+      leadId: q.leadId || null,
+      leadName: q.leadName || null,
+      phone: q.phone,
+      isPriority: q.isPriority ?? false,
+      status: q.status || "waiting",
+      scheduledFor: null,
+      attemptNumber: q.attemptNumber ?? 1,
+      maxAttempts: q.maxAttempts ?? 3,
+      position: q.position ?? 99999,
+      observations: q.observations || null,
+      source: "call_queue" as const,
+    }));
+
+    // Deduplicate: remove call_logs entries whose lead_id already exists in call_queue
+    const queueLeadIds = new Set(fromQueue.filter(q => q.leadId).map(q => q.leadId));
+    const fromLogs = scheduledCallLogs.filter((cl: any) => !cl.leadId || !queueLeadIds.has(cl.leadId));
+
+    const combined = [...fromQueue, ...fromLogs];
+
+    // Sort: scheduled first (by scheduled_for), then priority, then position
+    combined.sort((a, b) => {
+      // Scheduled items first
+      const aScheduled = !!a.scheduledFor;
+      const bScheduled = !!b.scheduledFor;
+      if (aScheduled && !bScheduled) return -1;
+      if (!aScheduled && bScheduled) return 1;
+      if (aScheduled && bScheduled) {
+        const diff = new Date(a.scheduledFor!).getTime() - new Date(b.scheduledFor!).getTime();
+        if (diff !== 0) return diff;
+      }
+      // Priority next
+      if (a.isPriority && !b.isPriority) return -1;
+      if (!a.isPriority && b.isPriority) return 1;
+      // Then by position
+      return (a.position ?? 99999) - (b.position ?? 99999);
+    });
+
+    return combined;
+  }, [queueEntries, scheduledCallLogs]);
+
+  const combinedQueueCount = combinedQueue.length;
+
   // ── History query ──
   const HISTORY_STATUSES = ["completed", "no_answer", "busy", "voicemail", "failed", "cancelled", "timeout", "max_attempts_exceeded"];
 
@@ -473,9 +576,9 @@ export default function CallPanel() {
   const availableOps = operators.filter(op => op.status === "available").length;
   const totalActiveOps = operators.filter(op => ["available", "on_call", "cooldown"].includes(op.status)).length;
 
-  // Queue pagination
-  const queueTotalPages = Math.ceil(queueEntries.length / itemsPerPage);
-  const paginatedQueue = queueEntries.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Queue pagination (using combinedQueue)
+  const queueTotalPages = Math.ceil(combinedQueue.length / itemsPerPage);
+  const paginatedQueue = combinedQueue.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   // History pagination
   const historyTotalPages = Math.ceil(historyEntries.length / itemsPerPage);
@@ -536,7 +639,7 @@ export default function CallPanel() {
   };
 
   // Next in queue info
-  const nextInQueue = queueEntries[0];
+  const nextInQueue = combinedQueue[0];
 
   return (
     <div className="space-y-6">
@@ -600,11 +703,11 @@ export default function CallPanel() {
               <ListOrdered className="h-5 w-5 text-amber-500" />
             </div>
             <div>
-              <p className="text-2xl font-bold">{totalWaiting}</p>
+              <p className="text-2xl font-bold">{combinedQueueCount}</p>
               <p className="text-xs text-muted-foreground">Na Fila</p>
-              {totalWaiting > 0 && (
+              {combinedQueueCount > 0 && (
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  ⚡{queueEntries.filter(q => q.isPriority).length} prioritárias · 📋{queueEntries.filter(q => !q.isPriority).length} normais
+                  ⚡{combinedQueue.filter(q => q.isPriority).length} prioritárias · 📋{combinedQueue.filter(q => !q.isPriority).length} normais
                 </p>
               )}
             </div>
@@ -659,8 +762,8 @@ export default function CallPanel() {
 
             <div className="flex items-center gap-2 flex-wrap">
               {/* Start / Pause / Resume / Stop */}
-              {queueGlobalStatus === "stopped" && totalWaiting > 0 && (
-                <Button size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.startQueue(first.campaignId); }} disabled={callQueue.isStarting} className="gap-1.5">
+              {queueGlobalStatus === "stopped" && combinedQueueCount > 0 && (
+                <Button size="sm" onClick={() => { const first = combinedQueue[0]; if (first) callQueue.startQueue(first.campaignId); }} disabled={callQueue.isStarting} className="gap-1.5">
                   <Play className="h-3.5 w-3.5" />
                   {callQueue.isStarting ? "Iniciando..." : "Iniciar Fila"}
                 </Button>
@@ -671,7 +774,7 @@ export default function CallPanel() {
                     <Pause className="h-3.5 w-3.5" />
                     {callQueue.isPausingAll ? "Pausando..." : "Pausar"}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => { const first = combinedQueue[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
                     <Square className="h-3.5 w-3.5" />
                     Parar
                   </Button>
@@ -683,14 +786,14 @@ export default function CallPanel() {
                     <Play className="h-3.5 w-3.5" />
                     {callQueue.isResumingAll ? "Retomando..." : "Retomar"}
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
+                  <Button variant="outline" size="sm" onClick={() => { const first = combinedQueue[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
                     <Square className="h-3.5 w-3.5" />
                     Parar
                   </Button>
                 </>
               )}
               {(queueGlobalStatus === "mixed") && (
-                <Button variant="outline" size="sm" onClick={() => { const first = queueEntries[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
+                <Button variant="outline" size="sm" onClick={() => { const first = combinedQueue[0]; if (first) callQueue.stopQueue(first.campaignId); }} disabled={callQueue.isStopping} className="gap-1.5">
                   <Square className="h-3.5 w-3.5" />
                   Parar
                 </Button>
@@ -705,7 +808,7 @@ export default function CallPanel() {
                 Atualizar
               </Button>
 
-              {totalWaiting > 0 && (
+              {combinedQueueCount > 0 && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -721,7 +824,7 @@ export default function CallPanel() {
           </div>
 
           {/* Queue Status Banner */}
-          {(queueGlobalStatus !== "stopped" || totalWaiting > 0) && (
+          {(queueGlobalStatus !== "stopped" || combinedQueueCount > 0) && (
             <div className={cn("flex items-center gap-3 rounded-lg border px-4 py-2", statusConfig[queueGlobalStatus]?.className || statusConfig.stopped.className)}>
               <span className={cn("h-2 w-2 rounded-full shrink-0", statusConfig[queueGlobalStatus]?.dotClass || statusConfig.stopped.dotClass)} />
               <span className="text-sm font-medium">{statusConfig[queueGlobalStatus]?.label || "Parada"}</span>
@@ -752,7 +855,7 @@ export default function CallPanel() {
           <AlertDialogHeader>
             <AlertDialogTitle>Esvaziar fila de ligações</AlertDialogTitle>
             <AlertDialogDescription>
-              Tem certeza que deseja esvaziar toda a fila? Todos os {totalWaiting} itens pendentes serão removidos. Essa ação não pode ser desfeita.
+              Tem certeza que deseja esvaziar toda a fila? Todos os {combinedQueueCount} itens pendentes serão removidos. Essa ação não pode ser desfeita.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -853,7 +956,7 @@ export default function CallPanel() {
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="w-full flex flex-wrap h-auto gap-1 p-1">
             <TabsTrigger value="queue" className="flex-1 min-w-[100px] gap-1">
-              📋 Fila ({totalWaiting})
+              📋 Fila ({combinedQueueCount})
             </TabsTrigger>
             <TabsTrigger value="in_progress" className="flex-1 min-w-[100px] gap-1">
               📞 Em Andamento ({inProgressEntries.length})
@@ -872,7 +975,7 @@ export default function CallPanel() {
 
       {/* ── Aba Fila ── */}
       {activeTab === "queue" && (
-        queueLoading ? (
+        (queueLoading || scheduledLogsLoading) ? (
           <div className="text-center py-12 text-muted-foreground">Carregando fila...</div>
         ) : paginatedQueue.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-center">
@@ -900,20 +1003,21 @@ export default function CallPanel() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedQueue.map((qe) => {
-                  const hasSchedule = !!(qe as any).scheduled_for;
+                {paginatedQueue.map((qe, idx) => {
+                  const hasSchedule = !!qe.scheduledFor;
                   const icon = hasSchedule ? "📅" : qe.isPriority ? "⚡" : "";
+                  const isFromCallLog = qe.source === "call_log";
                   return (
                     <TableRow key={qe.id} className={cn(qe.isPriority && "bg-amber-500/5")}>
                       <TableCell className="font-mono text-xs text-muted-foreground py-2">
                         {icon && <span className="mr-1">{icon}</span>}
-                        {qe.position}
+                        {(currentPage - 1) * itemsPerPage + idx + 1}
                       </TableCell>
                       <TableCell className="py-2">
                         <span className="font-medium text-sm">{qe.leadName || "Sem nome"}</span>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-sm text-muted-foreground py-2">
-                        {formatPhone(qe.phone)}
+                        {formatPhone(qe.phone || "")}
                       </TableCell>
                       <TableCell className="hidden lg:table-cell py-2">
                         <span className="text-xs text-muted-foreground truncate block max-w-[160px] flex items-center gap-1">
@@ -925,9 +1029,9 @@ export default function CallPanel() {
                         <span className="text-xs font-mono">{qe.attemptNumber}/{qe.maxAttempts || 3}</span>
                       </TableCell>
                       <TableCell className="hidden lg:table-cell py-2">
-                        {(qe as any).scheduled_for ? (
+                        {hasSchedule ? (
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date((qe as any).scheduled_for), "HH:mm")}
+                            {format(new Date(qe.scheduledFor!), "HH:mm")}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">—</span>
@@ -935,41 +1039,47 @@ export default function CallPanel() {
                       </TableCell>
                       <TableCell className="py-2">
                         <div className="flex items-center gap-1">
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                onClick={() => {
-                                  // Manual dial - add to front of queue
-                                  sendToStartOfQueue(qe.id);
-                                }}
-                              >
-                                <Phone className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Mover para o início</TooltipContent>
-                          </Tooltip>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-7 w-7">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
-                                <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
-                                <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
-                                <Trash2 className="h-4 w-4 mr-2" /> Remover
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          {!isFromCallLog && (
+                            <>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                    onClick={() => sendToStartOfQueue(qe.id)}
+                                  >
+                                    <Phone className="h-3.5 w-3.5" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>Mover para o início</TooltipContent>
+                              </Tooltip>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7">
+                                    <MoreHorizontal className="h-4 w-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
+                                    <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
+                                    <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
+                                  </DropdownMenuItem>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
+                                    <Trash2 className="h-4 w-4 mr-2" /> Remover
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </>
+                          )}
+                          {isFromCallLog && (
+                            <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                              {qe.status === "scheduled" ? "Agendada" : "Pronta"}
+                            </Badge>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1179,7 +1289,7 @@ export default function CallPanel() {
       {/* Pagination */}
       {(() => {
         const totalItems = activeTab === "history" ? historyEntries.length
-          : activeTab === "queue" ? queueEntries.length
+          : activeTab === "queue" ? combinedQueue.length
           : activeTab === "answered" ? answeredEntries.length
           : 0;
         const pages = Math.ceil(totalItems / itemsPerPage);
