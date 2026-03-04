@@ -1,37 +1,31 @@
 
 
-## Corrigir: lead não fica com status "Em Ligação" na fila
+## Duplicar Campanha de Ligação (com ações e roteiro)
 
-### Problema
-No `queue-processor`, o update de `call_queue` para `status: 'in_call'` acontece **depois** do `fireDialWebhook` (linhas 284→287 e 571→573). Isso causa dois problemas:
+### O que será feito
+Adicionar um botão "Duplicar" no dropdown de cada campanha na lista. Ao clicar, a campanha será clonada junto com todos os dados relacionados: configurações, ações (call_script_actions) e roteiro (call_scripts). A nova campanha terá o nome "Cópia de [nome original]" e status "draft".
 
-1. Se o webhook demora, o callback `call-status` pode chegar e deletar o item da `call_queue` **antes** do update para `in_call` ser executado.
-2. Se o webhook falha ou retorna `operator_unavailable`, a função retorna cedo e o update nunca acontece.
-3. O frontend faz refetch a cada 10s, e nesse intervalo o item ainda está com `status: 'waiting'` -- ou já foi deletado pelo callback.
+### Implementação
 
-### Solução
+**1. `src/hooks/useCallCampaigns.ts` -- Adicionar mutation `duplicateCampaign`**
+- Recebe o `id` da campanha original
+- Busca a campanha original, suas `call_script_actions` e `call_scripts`
+- Insere nova campanha com os mesmos campos (exceto id, status=draft, nome com prefixo "Cópia de")
+- Insere cópia das `call_script_actions` vinculadas à nova campanha (com novos IDs, mapeando `retry_exceeded_action_id` se necessário)
+- Insere cópia do `call_scripts` com nodes/edges vinculados à nova campanha (atualizando `actionId` nos nodes de pergunta para os novos IDs de ações)
+- Invalida query e mostra toast de sucesso
 
-Mover o update de `call_queue` para `in_call` para **antes** do `fireDialWebhook`, em ambos os fluxos:
+**2. `src/components/call-campaigns/CallCampaignList.tsx` -- Adicionar item "Duplicar" no dropdown**
+- Adicionar ícone `Copy` do lucide-react
+- Novo `DropdownMenuItem` "Duplicar" que chama `onDuplicate(campaign.id)`
+- Adicionar estado de loading para feedback visual
 
-**1. `supabase/functions/queue-processor/index.ts` - fluxo global (linha ~284-287)**
-- Mover `await supabase.from('call_queue').update({ status: 'in_call', call_log_id: callLog.id }).eq('id', entry.queue_id)` para **antes** de `fireDialWebhook`
-- No `fireDialWebhook`, quando há falha ou `operator_unavailable`, reverter o status da `call_queue` para `waiting` (ou deletar)
+**3. `src/pages/campaigns/CallCampaigns.tsx` -- Passar `onDuplicate` para o componente**
+- Conectar o novo `duplicateCampaign` do hook ao componente de lista
 
-**2. `supabase/functions/queue-processor/index.ts` - fluxo legacy (linha ~571-573)**
-- Mesma alteração: mover update de `in_call` para antes do webhook
-- Adicionar rollback no caso de falha
-
-**3. `fireDialWebhook` - adicionar rollback do `call_queue`**
-- Receber o `queueItemId` como parâmetro
-- Nos blocos de erro (timeout, `operator_unavailable`), reverter `call_queue` para `waiting` ou deletar
-
-### Fluxo corrigido
-```text
-queue item (waiting)
-  → update call_queue → in_call + call_log_id  ← ANTES do webhook
-  → fire webhook
-    → sucesso: item permanece in_call
-    → falha: rollback call_queue para waiting
-  → callback chega → deleta call_queue
-```
+### Dados duplicados
+- `call_campaigns`: todas as configurações (delay, retry, priority, api4com_config, etc.)
+- `call_script_actions`: todas as ações com cores, tipos e configurações
+- `call_scripts`: roteiro completo com nodes e edges (atualizando referências de actionId)
+- **Não duplica**: leads, histórico de ligações, fila
 
