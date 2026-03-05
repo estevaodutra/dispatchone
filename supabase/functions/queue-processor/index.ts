@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
 // ═══════════════════════════════════════════════════════════════
 
 async function healStaleInCallItems(supabase: any, companyId: string) {
-  const terminalStatuses = ['completed', 'no_answer', 'failed', 'cancelled', 'busy', 'voicemail', 'timeout'];
+  const terminalStatuses = ['completed', 'no_answer', 'failed', 'cancelled', 'busy', 'voicemail', 'timeout', 'voicemail_rescheduled', 'cancelled_rescheduled', 'no_answer_rescheduled', 'answered', 'completed_rescheduled'];
 
   // Fetch all in_call items for this company
   const { data: inCallItems } = await supabase
@@ -200,6 +200,9 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
     .map((s: any) => s.campaign_id)
     .filter(Boolean);
 
+  // Always heal stale in_call items, even if no campaigns are running
+  await healStaleInCallItems(supabase, companyId);
+
   if (activeCampaignIds.length === 0) {
     // Also check waiting states
     const { data: waitingStates } = await supabase
@@ -223,9 +226,6 @@ async function processGlobalTick(supabase: any, companyId: string, userId: strin
   if (resolvedOps?.length) {
     console.log(`[queue-processor/global] Resolved ${resolvedOps.length} cooldowns`);
   }
-
-  // 2b. Heal stale in_call items in call_queue
-  await healStaleInCallItems(supabase, companyId);
 
   // 3. Find available operator
   const { data: allOps } = await supabase
