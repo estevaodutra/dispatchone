@@ -157,21 +157,21 @@ async function healStaleInCallItems(supabase: any, companyId: string) {
 
   for (const item of inCallItems) {
     if (item.call_log_id) {
-      // Check if associated call_log has terminal status
+      // Check if associated call_log has terminal status or ended_at is set
       const { data: log } = await supabase
         .from('call_logs')
-        .select('call_status')
+        .select('call_status, ended_at')
         .eq('id', item.call_log_id)
         .maybeSingle();
 
-      if (!log || terminalStatuses.includes(log.call_status)) {
+      if (!log || terminalStatuses.includes(log.call_status) || log.ended_at) {
         idsToDelete.push(item.id);
       }
     } else {
-      // No call_log_id — delete if older than 10 minutes
+      // No call_log_id — delete if older than 5 minutes
       const createdAt = new Date(item.created_at).getTime();
-      const tenMinutesAgo = Date.now() - 10 * 60 * 1000;
-      if (createdAt < tenMinutesAgo) {
+      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+      if (createdAt < fiveMinutesAgo) {
         idsToDelete.push(item.id);
       }
     }
