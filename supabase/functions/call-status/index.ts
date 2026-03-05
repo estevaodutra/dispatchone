@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
     
     const { data: existingLog, error: searchError } = await supabase
       .from('call_logs')
-      .select('id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status')
+      .select('id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id')
       .eq('external_call_id', external_call_id)
       .eq('user_id', userId)
       .single();
@@ -550,7 +550,22 @@ Deno.serve(async (req) => {
     const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
     if (ALL_TERMINAL.includes(mappedStatus)) {
       console.log('[call-status] Removing from call_queue for call_log_id:', callLog.id);
-      await supabase.from('call_queue').delete().eq('call_log_id', callLog.id);
+      const { data: deleted } = await supabase
+        .from('call_queue')
+        .delete()
+        .eq('call_log_id', callLog.id)
+        .select('id');
+
+      // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+      if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+        console.log('[call-status] Fallback: removing by lead_id + campaign_id + status in_call');
+        await supabase
+          .from('call_queue')
+          .delete()
+          .eq('lead_id', callLog.lead_id)
+          .eq('campaign_id', callLog.campaign_id)
+          .eq('status', 'in_call');
+      }
     }
 
     // ==================== RELEASE OPERATOR ON TERMINAL STATUS ====================
@@ -623,7 +638,7 @@ Deno.serve(async (req) => {
       // Fetch campaign retry config + current call attempt info
       const { data: campaignData } = await supabase
         .from('call_campaigns')
-        .select('retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id')
+        .select('retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id')
         .eq('id', callLog.campaign_id)
         .single();
 
