@@ -54,6 +54,7 @@ const actionTypeLabels: Record<CallActionType, string> = {
   update_status: "Atualizar Status",
   webhook: "Webhook",
   none: "Apenas Registrar",
+  custom_message: "Mensagem Personalizada",
 };
 
 const colorOptions = [
