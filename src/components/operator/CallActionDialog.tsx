@@ -119,6 +119,7 @@ export function CallActionDialog({
   useEffect(() => {
     setSelectedActionId(null);
     setNotes(currentData.notes);
+    setCustomMessage("");
     setEditName(currentData.leadName);
     setIsEditingName(false);
     setScheduledDate("");
