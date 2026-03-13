@@ -1,53 +1,74 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Implementar ação `custom_message` para operadores
 
-### Problema 1: Build error em `call-status/index.ts`
+### Resumo
+Adicionar o tipo `custom_message` ao sistema de ações de ligação. Quando a campanha tem pelo menos uma ação deste tipo, um campo de texto aparece no pop-up do operador. Ao clicar na ação, a mensagem digitada é salva no `call_logs` e enviada no webhook.
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+### 1. Migration: adicionar coluna `custom_message` em `call_logs`
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
-
-### Problema 2: Item "Em Ligação" fantasma persiste
-
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
-
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
-
-**Correção em `call-status/index.ts` (linha 550-554):**
-
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
-
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
-
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
+```sql
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS custom_message TEXT;
 ```
 
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+A coluna `action_type` na tabela `call_script_actions` já existe e aceita qualquer texto, então `custom_message` já pode ser usado como valor sem alteração de schema.
 
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+### 2. Hook: `useCallActions.ts`
+
+- Adicionar `"custom_message"` ao tipo `CallActionType`:
+  ```ts
+  export type CallActionType = "start_sequence" | "add_tag" | "update_status" | "webhook" | "none" | "custom_message";
+  ```
+
+### 3. Tab de Ações: `ActionsTab.tsx`
+
+- Adicionar label no `actionTypeLabels`:
+  ```ts
+  custom_message: "Mensagem Personalizada",
+  ```
+- Adicionar campo de config condicional para `custom_message` (config com `webhook_url` para onde enviar):
+  ```tsx
+  {formData.actionType === "custom_message" && (
+    <div className="grid gap-2">
+      <Label>URL do Webhook</Label>
+      <Input type="url" ... />
+      <p className="text-xs text-muted-foreground">
+        A mensagem digitada pelo operador será enviada neste webhook.
+      </p>
+    </div>
+  )}
+  ```
+
+### 4. Pop-up do operador: `CallActionDialog.tsx`
+
+- Adicionar estado `customMessage` e computar `hasCustomMessageAction`:
+  ```ts
+  const [customMessage, setCustomMessage] = useState("");
+  const hasCustomMessageAction = actions.some(a => a.actionType === "custom_message");
+  ```
+- Renderizar campo de texto condicional entre as ações e as observações
+- No `handleSave`: se a ação selecionada for `custom_message`, incluir `custom_message` no update do `call_logs`
+- No `executeAutomation`: tratar tipo `custom_message` enviando webhook com payload incluindo lead, campaign, operator e `custom_message`
+
+### 5. Pop-up alternativo: `RegisterActionModal.tsx`
+
+- Mesma lógica: estado `customMessage`, campo condicional, salvar `custom_message` no `call_logs`
+
+### 6. Edge Function: `execute-call-action/index.ts`
+
+- Adicionar case `"custom_message"` que envia webhook com a mensagem (lê `custom_message` do `call_logs`)
+
+### 7. Histórico: `CallActionDialog.tsx` (aba Histórico)
+
+- Na query de histórico, incluir `custom_message`
+- Exibir mensagem enviada quando presente
 
 ### Arquivos alterados
 
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+1. **Migration SQL** — adicionar `custom_message` em `call_logs`
+2. **`src/hooks/useCallActions.ts`** — tipo `custom_message`
+3. **`src/components/call-campaigns/tabs/ActionsTab.tsx`** — label + config UI
+4. **`src/components/operator/CallActionDialog.tsx`** — campo + save + automation + histórico
+5. **`src/components/operator/RegisterActionModal.tsx`** — campo + save
+6. **`supabase/functions/execute-call-action/index.ts`** — case `custom_message`
 
