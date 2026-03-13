@@ -86,6 +86,8 @@ function getConfigSummary(actionType: CallActionType, config: Record<string, unk
     }
     case "webhook":
       return config.url ? `URL: ${String(config.url).slice(0, 30)}${String(config.url).length > 30 ? "..." : ""}` : null;
+    case "custom_message":
+      return config.webhook_url ? `Webhook: ${String(config.webhook_url).slice(0, 30)}...` : null;
     default:
       return null;
   }
