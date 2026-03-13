@@ -238,47 +238,18 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
             <CardTitle>Ações de Resultado ({actions.length})</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
-            {actions.map((action) => {
-              const configSummary = getConfigSummary(action.actionType, action.actionConfig);
-              return (
-                <div
-                  key={action.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border"
-                >
-                  <GripVertical className="h-4 w-4 text-muted-foreground" />
-                  <div
-                    className="w-4 h-4 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: action.color }}
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+              <SortableContext items={actions.map((a) => a.id)} strategy={verticalListSortingStrategy}>
+                {actions.map((action) => (
+                  <SortableActionItem
+                    key={action.id}
+                    action={action}
+                    onEdit={handleOpenEdit}
+                    onDelete={deleteAction}
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium">{action.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {actionTypeLabels[action.actionType]}
-                    </p>
-                    {configSummary && (
-                      <p className="text-xs text-muted-foreground truncate">
-                        {configSummary}
-                      </p>
-                    )}
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleOpenEdit(action)}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-destructive hover:text-destructive"
-                    onClick={() => deleteAction(action.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              );
-            })}
+                ))}
+              </SortableContext>
+            </DndContext>
           </CardContent>
         </Card>
       )}
