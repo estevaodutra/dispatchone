@@ -1,40 +1,53 @@
 
 
-## Problema: Ações pós-retentativa nunca são executadas
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Diagnóstico
+### Problema 1: Build error em `call-status/index.ts`
 
-Quando o limite de retentativas é atingido, tanto `call-status/index.ts` quanto `reschedule-failed-calls/index.ts` tentam invocar a Edge Function `execute-message` com este payload:
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-```json
-{
-  "action_id": "uuid-da-ação",
-  "lead_id": "uuid-do-lead",
-  "campaign_id": "uuid-da-campanha",
-  "trigger": "retry_exceeded"
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+
+### Problema 2: Item "Em Ligação" fantasma persiste
+
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
 }
 ```
 
-Porém, `execute-message` é o motor de **campanhas de grupo WhatsApp** — ele espera `{ campaignId, groupIds, sequenceId }`. O payload com `action_id` é completamente ignorado, e a ação nunca é executada.
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-A lógica correta de execução de ações (`start_sequence`, `add_tag`, `webhook`, `update_status`) existe apenas no **frontend** (`useCallLeads.ts → executeActionAutomation`), que não é acessível pelo servidor.
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
-### Solução
+### Arquivos alterados
 
-Criar uma nova Edge Function **`execute-call-action`** que replica a lógica de `executeActionAutomation` no servidor:
-
-1. Recebe `{ action_id, lead_id, campaign_id }`
-2. Busca a ação em `call_script_actions` para obter `action_type` e `action_config`
-3. Executa conforme o tipo:
-   - **`start_sequence`**: invoca `execute-dispatch-sequence` ou `trigger-sequence`
-   - **`add_tag`**: atualiza `call_leads.custom_fields.tags`
-   - **`webhook`**: invoca `webhook-proxy`
-   - **`update_status`**: atualiza `call_leads.status`
-4. Atualizar `call-status/index.ts` e `reschedule-failed-calls/index.ts` para invocar `execute-call-action` em vez de `execute-message`
-
-### Arquivos
-
-1. **`supabase/functions/execute-call-action/index.ts`** (novo) — lógica server-side de execução de ações
-2. **`supabase/functions/call-status/index.ts`** — trocar `execute-message` → `execute-call-action`
-3. **`supabase/functions/reschedule-failed-calls/index.ts`** — trocar `execute-message` → `execute-call-action`
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 

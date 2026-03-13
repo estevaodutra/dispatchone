@@ -713,12 +713,11 @@ Deno.serve(async (req) => {
         if (retryExceededBehavior === 'execute_action' && retryExceededActionId) {
           console.log(`[call-status] Executing exceeded action: ${retryExceededActionId}`);
           try {
-            await supabase.functions.invoke('execute-message', {
+            await supabase.functions.invoke('execute-call-action', {
               body: {
                 action_id: retryExceededActionId,
                 lead_id: callLog.lead_id,
                 campaign_id: callLog.campaign_id,
-                trigger: 'retry_exceeded',
               },
             });
           } catch (e) {

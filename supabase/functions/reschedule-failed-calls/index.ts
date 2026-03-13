@@ -180,12 +180,11 @@ Deno.serve(async (req) => {
             console.log(`Lead ${call.lead_id}: executing exceeded action ${retryExceededActionId}`);
             // Invoke execute-action edge function (fire and forget)
             try {
-              await supabase.functions.invoke("execute-message", {
+              await supabase.functions.invoke("execute-call-action", {
                 body: {
                   action_id: retryExceededActionId,
                   lead_id: call.lead_id,
                   campaign_id: call.campaign_id,
-                  trigger: "retry_exceeded",
                 },
               });
             } catch (e) {

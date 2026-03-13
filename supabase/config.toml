@@ -71,3 +71,6 @@ verify_jwt = false
 
 [functions.call-status]
 verify_jwt = false
+
+[functions.execute-call-action]
+verify_jwt = false
