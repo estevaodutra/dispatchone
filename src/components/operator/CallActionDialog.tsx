@@ -108,6 +108,7 @@ export function CallActionDialog({
   const [editName, setEditName] = useState(currentData.leadName);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(currentData.notes);
+  const [customMessage, setCustomMessage] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [isSaving, setIsSaving] = useState(false);
