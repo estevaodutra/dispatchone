@@ -61,6 +61,7 @@ interface CallLogEntry {
   started_at: string | null;
   ended_at: string | null;
   notes: string | null;
+  custom_message: string | null;
   created_at: string | null;
   operator_name?: string;
 }
