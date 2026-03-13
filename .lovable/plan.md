@@ -1,53 +1,30 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Corrigir ligações presas em "Em Ligação" infinitamente
 
-### Problema 1: Build error em `call-status/index.ts`
+### Diagnóstico
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+A função `healStaleInCallItems` no `queue-processor` limpa itens da `call_queue` com status `in_call` **apenas** quando o `call_log` associado tem status terminal ou `ended_at` preenchido. Porém, se o provedor nunca envia o callback (call-status), o `call_log` permanece em `dialing`/`ringing`/`in_progress` para sempre, e consequentemente o item na fila fica como "Em Ligação" infinitamente.
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+A RPC `heal_stuck_operators` libera o operador após 10 min, mas **não** marca o `call_log` como `failed` nem remove o item da fila.
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+### Solução
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+Adicionar lógica de timeout na `healStaleInCallItems` para tratar `call_logs` ativos por tempo excessivo:
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+**Arquivo: `supabase/functions/queue-processor/index.ts`**
 
-**Correção em `call-status/index.ts` (linha 550-554):**
+Na função `healStaleInCallItems`, após o loop existente, adicionar uma segunda verificação:
+- Buscar itens `in_call` cujo `call_log` está em status ativo (`dialing`, `ringing`, `answered`, `in_progress`) com `started_at` há mais de 10 minutos
+- Para esses call_logs: marcar como `failed` com nota "Timeout: provedor não respondeu", preencher `ended_at`
+- Liberar o operador via RPC `release_operator`
+- Reverter o lead para `waiting`
+- Deletar o item da fila
+- Invocar `reschedule-failed-calls` para que a retentativa funcione
 
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+Também adicionar limpeza direta de `call_logs` órfãos (sem item na fila) que estão em status ativo por mais de 10 minutos, para cobrir o caso onde o item da fila já foi removido mas o log permanece ativo.
 
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
+### Alterações
 
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
-```
-
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
-
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
-
-### Arquivos alterados
-
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+1. **`supabase/functions/queue-processor/index.ts`** — expandir `healStaleInCallItems` com timeout de 10 min para call_logs ativos sem callback
 
