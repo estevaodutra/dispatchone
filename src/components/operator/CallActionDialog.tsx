@@ -688,6 +688,12 @@ export function CallActionDialog({
                                entry.call_status || "—"}
                             </Badge>
                           </div>
+                          {entry.custom_message && (
+                            <div className="text-xs">
+                              <span className="text-muted-foreground">💬 Mensagem: </span>
+                              <span className="italic">&quot;{entry.custom_message}&quot;</span>
+                            </div>
+                          )}
                           {entry.notes && (
                             <p className="text-xs text-muted-foreground">Obs: {entry.notes}</p>
                           )}
