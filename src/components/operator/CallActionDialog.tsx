@@ -375,6 +375,7 @@ export function CallActionDialog({
   const resetState = () => {
     setSelectedActionId(null);
     setNotes("");
+    setCustomMessage("");
     setScheduledDate("");
     setScheduledTime("");
     setForwardStack([]);
