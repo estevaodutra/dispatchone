@@ -1162,21 +1162,23 @@ export default function CallPanel() {
                             </TooltipTrigger>
                             <TooltipContent>Ver detalhes</TooltipContent>
                           </Tooltip>
-                          {!isFromCallLog && qe.status !== "in_call" && (
+                          {!isFromCallLog && (
                             <>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
-                                    onClick={() => sendToStartOfQueue(qe.id)}
-                                  >
-                                    <Phone className="h-3.5 w-3.5" />
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>Mover para o início</TooltipContent>
-                              </Tooltip>
+                              {qe.status !== "in_call" && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-7 w-7 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                      onClick={() => sendToStartOfQueue(qe.id)}
+                                    >
+                                      <Phone className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Mover para o início</TooltipContent>
+                                </Tooltip>
+                              )}
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                   <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -1184,15 +1186,53 @@ export default function CallPanel() {
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                  <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
-                                    <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
-                                    <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
-                                  </DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={() => removeFromQueue(qe.id)}>
-                                    <Trash2 className="h-4 w-4 mr-2" /> Remover
+                                  {qe.status !== "in_call" && (
+                                    <>
+                                      <DropdownMenuItem onClick={() => sendToStartOfQueue(qe.id)}>
+                                        <ChevronsUp className="h-4 w-4 mr-2" /> Para o início
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => sendToEndOfQueue(qe.id)}>
+                                        <ChevronsDown className="h-4 w-4 mr-2" /> Para o final
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                    </>
+                                  )}
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => {
+                                      if (qe.status === "in_call" && qe.callLogId) {
+                                        setCancelEntry({
+                                          id: qe.callLogId,
+                                          leadName: qe.leadName || null,
+                                          leadPhone: qe.phone || null,
+                                          callStatus: "in_progress",
+                                          operatorId: qe.operatorId || null,
+                                          operatorName: qe.operatorName || null,
+                                          operatorExtension: null,
+                                          campaignId: qe.campaignId,
+                                          campaignName: qe.campaignName || null,
+                                          leadId: qe.leadId || null,
+                                          scheduledFor: null,
+                                          startedAt: null,
+                                          endedAt: null,
+                                          durationSeconds: null,
+                                          notes: null,
+                                          actionId: null,
+                                          externalCallId: null,
+                                          createdAt: new Date().toISOString(),
+                                          leadAttempts: 0,
+                                          audioUrl: null,
+                                          attemptNumber: qe.attemptNumber || 1,
+                                          maxAttempts: qe.maxAttempts || 1,
+                                          isPriority: qe.isPriority || false,
+                                          observations: qe.observations || null,
+                                        });
+                                      } else {
+                                        removeFromQueue(qe.id);
+                                      }
+                                    }}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" /> Remover da fila
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

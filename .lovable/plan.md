@@ -1,30 +1,53 @@
 
 
-## Adicionar menu "..." para remover leads da fila — incluindo os em ligação
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Problema
-Na aba Fila, itens com status `in_call` não mostram o botão "..." porque a condição na linha 1165 exclui explicitamente `qe.status !== "in_call"`. Isso impede que o operador/admin remova um lead que está em ligação diretamente da fila.
+### Problema 1: Build error em `call-status/index.ts`
 
-### Solução
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-**Arquivo: `src/pages/CallPanel.tsx`**
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-Alterar a condição na linha 1165 para sempre mostrar o menu "..." para itens da `call_queue` (não call_log), removendo a condição `qe.status !== "in_call"`:
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-```tsx
-// ANTES:
-{!isFromCallLog && qe.status !== "in_call" && (
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-// DEPOIS:
-{!isFromCallLog && (
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
+}
 ```
 
-Para itens `in_call`, o menu "..." mostrará apenas a opção "Remover" (sem "Para o início" / "Para o final", que não fazem sentido para chamadas ativas). A ação de remover para itens `in_call` usará `cancelCall` (que já lida com `answered`/`in_progress`) em vez de `removeFromQueue`, garantindo que o `call_log` seja marcado como cancelado e o operador liberado.
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-Lógica no menu:
-- Se `qe.status !== "in_call"`: mostra as 3 opções (início, final, remover via `removeFromQueue`)
-- Se `qe.status === "in_call"`: mostra apenas "Remover da fila" que abre o dialog de cancelamento (`setCancelEntry`) mapeando o queue item para um `CallPanelEntry` compatível usando o `call_log_id`
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
-### Arquivo alterado
-1. **`src/pages/CallPanel.tsx`** — remover condição `in_call`, adicionar lógica condicional no menu dropdown
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 
