@@ -94,6 +94,7 @@ export function RegisterActionModal({
   const resetState = () => {
     setSelectedActionId(null);
     setNotes("");
+    setCustomMessage("");
     setScheduledDate("");
     setScheduledTime("");
   };

@@ -588,6 +588,25 @@ export function CallActionDialog({
                     </div>
                   )}
 
+                  {/* Custom Message Field */}
+                  {hasCustomMessageAction && (
+                    <div className="space-y-2 rounded-lg border p-3 bg-muted/20">
+                      <Label className="text-sm font-medium">💬 Mensagem Personalizada (opcional)</Label>
+                      <Textarea
+                        value={customMessage}
+                        onChange={(e) => setCustomMessage(e.target.value)}
+                        placeholder="Digite uma mensagem personalizada..."
+                        className="mt-1"
+                        rows={3}
+                      />
+                      {actions.filter(a => a.actionType === "custom_message").map(a => (
+                        <p key={a.id} className="text-xs text-muted-foreground">
+                          Essa mensagem será enviada quando você clicar em "{a.name}".
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Notes */}
                   <div>
                     <Label className="text-sm font-medium">📝 Observações (opcional)</Label>
