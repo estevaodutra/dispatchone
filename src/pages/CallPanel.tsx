@@ -1203,14 +1203,30 @@ export default function CallPanel() {
                                       if (qe.status === "in_call" && qe.callLogId) {
                                         setCancelEntry({
                                           id: qe.callLogId,
-                                          phone: qe.phone,
                                           leadName: qe.leadName || null,
+                                          leadPhone: qe.phone || null,
                                           callStatus: "in_progress",
                                           operatorId: qe.operatorId || null,
                                           operatorName: qe.operatorName || null,
+                                          operatorExtension: null,
                                           campaignId: qe.campaignId,
                                           campaignName: qe.campaignName || null,
-                                        } as CallPanelEntry);
+                                          leadId: qe.leadId || null,
+                                          scheduledFor: null,
+                                          startedAt: null,
+                                          endedAt: null,
+                                          durationSeconds: null,
+                                          notes: null,
+                                          actionId: null,
+                                          externalCallId: null,
+                                          createdAt: new Date().toISOString(),
+                                          leadAttempts: 0,
+                                          audioUrl: null,
+                                          attemptNumber: qe.attemptNumber || 1,
+                                          maxAttempts: qe.maxAttempts || 1,
+                                          isPriority: qe.isPriority || false,
+                                          observations: qe.observations || null,
+                                        });
                                       } else {
                                         removeFromQueue(qe.id);
                                       }
