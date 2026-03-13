@@ -141,6 +141,20 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
   const { sequences: dispatchSequences } = useDispatchSequences(selectedCampaignType === "dispatch" ? selectedCampaignId : undefined);
   const campaignSequences = selectedCampaignType === "dispatch" ? dispatchSequences : groupSequences;
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = actions.findIndex((a) => a.id === active.id);
+    const newIndex = actions.findIndex((a) => a.id === over.id);
+    const newOrder = arrayMove(actions, oldIndex, newIndex);
+    reorderActions(newOrder.map((a) => a.id));
+  };
+
   const handleOpenCreate = () => {
     setEditingAction(null);
     setFormData({ name: "", color: "#10b981", actionType: "none", actionConfig: {} });
