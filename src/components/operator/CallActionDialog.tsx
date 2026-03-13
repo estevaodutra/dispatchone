@@ -238,7 +238,32 @@ export function CallActionDialog({
 
       if (!actionData) return;
 
-      if (actionData.action_type === "webhook" && actionData.action_config?.url) {
+      if (actionData.action_type === "custom_message" && actionData.action_config?.webhook_url) {
+        const { data: leadData } = await (supabase as any)
+          .from("call_leads")
+          .select("*")
+          .eq("id", currentData.leadId)
+          .single();
+
+        const payload = {
+          event: "call.action",
+          timestamp: new Date().toISOString(),
+          call_id: currentData.callId,
+          action: { id: actionId, name: selectedAction?.name, type: "custom_message" },
+          custom_message: customMessage,
+          lead: leadData,
+          campaign: { id: currentData.campaignId, name: currentData.campaignName },
+          observations: notes,
+        };
+
+        const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: { url: actionData.action_config.webhook_url, payload },
+        });
+
+        if (proxyError) {
+          toast({ title: "Webhook falhou", description: proxyError.message, variant: "destructive" });
+        }
+      } else if (actionData.action_type === "webhook" && actionData.action_config?.url) {
         const { data: leadData } = await (supabase as any)
           .from("call_leads")
           .select("*")
