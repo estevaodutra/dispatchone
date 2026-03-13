@@ -1333,6 +1333,19 @@ export default function CallPanel() {
                       </TooltipTrigger>
                       <TooltipContent>Adicionar ao topo da fila</TooltipContent>
                     </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => setCancelEntry(entry)}
+                        >
+                          <XCircle className="h-3.5 w-3.5" /> Cancelar
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Cancelar ligação</TooltipContent>
+                    </Tooltip>
                   </div>
                 </CardContent>
               </Card>

@@ -234,14 +234,20 @@ export function useCallPanel(filters?: {
 
       const { error } = await (supabase as any)
         .from("call_logs")
-        .update({ call_status: "cancelled", notes: reason || null })
+        .update({ call_status: "cancelled", notes: reason || null, ended_at: new Date().toISOString() })
         .eq("id", callId);
       if (error) throw error;
 
       // Release operator atomically via RPC
-      if (entry?.operatorId && ["dialing", "ringing"].includes(entry.callStatus)) {
+      if (entry?.operatorId && ["dialing", "ringing", "answered", "in_progress"].includes(entry.callStatus)) {
         await (supabase as any).rpc('release_operator', { p_call_id: callId, p_force: true });
       }
+
+      // Remove corresponding call_queue item
+      await (supabase as any)
+        .from("call_queue")
+        .delete()
+        .eq("call_log_id", callId);
 
       if (entry?.leadId) {
         await (supabase as any)
