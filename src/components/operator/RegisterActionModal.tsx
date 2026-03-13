@@ -68,6 +68,10 @@ export function RegisterActionModal({
         notes: notes || null,
       };
 
+      if (selectedAction?.actionType === "custom_message") {
+        updates.custom_message = customMessage || null;
+      }
+
       if (isScheduleType && scheduledDate && scheduledTime) {
         updates.scheduled_for = `${scheduledDate}T${scheduledTime}:00`;
       }
