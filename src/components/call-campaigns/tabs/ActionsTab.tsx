@@ -437,6 +437,27 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
                 />
               </div>
             )}
+
+            {formData.actionType === "custom_message" && (
+              <div className="grid gap-2">
+                <Label htmlFor="customMsgWebhookUrl">URL do Webhook</Label>
+                <Input
+                  id="customMsgWebhookUrl"
+                  type="url"
+                  value={(formData.actionConfig.webhook_url as string) || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      actionConfig: { ...formData.actionConfig, webhook_url: e.target.value },
+                    })
+                  }
+                  placeholder="https://example.com/webhook"
+                />
+                <p className="text-xs text-muted-foreground">
+                  A mensagem digitada pelo operador será enviada neste webhook.
+                </p>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>

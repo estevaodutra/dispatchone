@@ -301,6 +301,7 @@ export type Database = {
           campaign_id: string | null
           company_id: string | null
           created_at: string | null
+          custom_message: string | null
           duration_seconds: number | null
           ended_at: string | null
           external_call_id: string | null
@@ -324,6 +325,7 @@ export type Database = {
           campaign_id?: string | null
           company_id?: string | null
           created_at?: string | null
+          custom_message?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
           external_call_id?: string | null
@@ -347,6 +349,7 @@ export type Database = {
           campaign_id?: string | null
           company_id?: string | null
           created_at?: string | null
+          custom_message?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
           external_call_id?: string | null
