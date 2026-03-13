@@ -90,8 +90,40 @@ function getConfigSummary(actionType: CallActionType, config: Record<string, unk
   }
 }
 
+interface SortableActionItemProps {
+  action: CallAction;
+  onEdit: (action: CallAction) => void;
+  onDelete: (id: string) => void;
+}
+
+function SortableActionItem({ action, onEdit, onDelete }: SortableActionItemProps) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: action.id });
+  const style = { transform: CSS.Transform.toString(transform), transition };
+  const configSummary = getConfigSummary(action.actionType, action.actionConfig);
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex items-center gap-3 p-3 rounded-lg border">
+      <button type="button" className="cursor-grab active:cursor-grabbing touch-none" {...attributes} {...listeners}>
+        <GripVertical className="h-4 w-4 text-muted-foreground" />
+      </button>
+      <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: action.color }} />
+      <div className="flex-1 min-w-0">
+        <p className="font-medium">{action.name}</p>
+        <p className="text-sm text-muted-foreground">{actionTypeLabels[action.actionType]}</p>
+        {configSummary && <p className="text-xs text-muted-foreground truncate">{configSummary}</p>}
+      </div>
+      <Button variant="ghost" size="icon" onClick={() => onEdit(action)}>
+        <Edit2 className="h-4 w-4" />
+      </Button>
+      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => onDelete(action.id)}>
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
 export function ActionsTab({ campaignId }: ActionsTabProps) {
-  const { actions, isLoading, createAction, updateAction, deleteAction, isCreating } =
+  const { actions, isLoading, createAction, updateAction, deleteAction, reorderActions, isCreating } =
     useCallActions(campaignId);
   const { campaigns: groupCampaigns } = useGroupCampaigns();
   const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
