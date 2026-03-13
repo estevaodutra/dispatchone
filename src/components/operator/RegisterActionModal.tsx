@@ -39,6 +39,7 @@ export function RegisterActionModal({
   const [isSaving, setIsSaving] = useState(false);
 
   const selectedAction = actions.find(a => a.id === selectedActionId);
+  const hasCustomMessageAction = actions.some(a => a.actionType === "custom_message");
   const isScheduleType = selectedAction?.actionType === "none" &&
     selectedAction?.name?.toLowerCase().includes("agend");
 
