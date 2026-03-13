@@ -61,6 +61,7 @@ interface CallLogEntry {
   started_at: string | null;
   ended_at: string | null;
   notes: string | null;
+  custom_message: string | null;
   created_at: string | null;
   operator_name?: string;
 }
@@ -108,6 +109,7 @@ export function CallActionDialog({
   const [editName, setEditName] = useState(currentData.leadName);
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(currentData.notes);
+  const [customMessage, setCustomMessage] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -118,6 +120,7 @@ export function CallActionDialog({
   useEffect(() => {
     setSelectedActionId(null);
     setNotes(currentData.notes);
+    setCustomMessage("");
     setEditName(currentData.leadName);
     setIsEditingName(false);
     setScheduledDate("");
@@ -126,6 +129,7 @@ export function CallActionDialog({
   }, [currentData.callId]);
 
   const selectedAction = actions.find(a => a.id === selectedActionId);
+  const hasCustomMessageAction = actions.some(a => a.actionType === "custom_message");
   const isScheduleType = selectedAction?.actionType === "none" &&
     selectedAction?.name?.toLowerCase().includes("agend");
 
@@ -207,7 +211,7 @@ export function CallActionDialog({
       setHistoryLoading(true);
       const { data } = await (supabase as any)
         .from("call_logs")
-        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, created_at, call_operators!call_logs_operator_id_fkey(operator_name)")
+        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, call_operators!call_logs_operator_id_fkey(operator_name)")
         .eq("lead_id", currentData.leadId)
         .eq("campaign_id", currentData.campaignId)
         .order("created_at", { ascending: false });
@@ -235,7 +239,32 @@ export function CallActionDialog({
 
       if (!actionData) return;
 
-      if (actionData.action_type === "webhook" && actionData.action_config?.url) {
+      if (actionData.action_type === "custom_message" && actionData.action_config?.webhook_url) {
+        const { data: leadData } = await (supabase as any)
+          .from("call_leads")
+          .select("*")
+          .eq("id", currentData.leadId)
+          .single();
+
+        const payload = {
+          event: "call.action",
+          timestamp: new Date().toISOString(),
+          call_id: currentData.callId,
+          action: { id: actionId, name: selectedAction?.name, type: "custom_message" },
+          custom_message: customMessage,
+          lead: leadData,
+          campaign: { id: currentData.campaignId, name: currentData.campaignName },
+          observations: notes,
+        };
+
+        const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: { url: actionData.action_config.webhook_url, payload },
+        });
+
+        if (proxyError) {
+          toast({ title: "Webhook falhou", description: proxyError.message, variant: "destructive" });
+        }
+      } else if (actionData.action_type === "webhook" && actionData.action_config?.url) {
         const { data: leadData } = await (supabase as any)
           .from("call_leads")
           .select("*")
@@ -316,6 +345,14 @@ export function CallActionDialog({
         updates.action_id = selectedActionId;
       }
 
+      // Save custom_message if the selected action is custom_message type
+      if (selectedAction?.actionType === "custom_message") {
+        updates.custom_message = customMessage || null;
+        if (!customMessage.trim()) {
+          toast({ title: "⚠️ Mensagem personalizada vazia", description: "A mensagem será enviada em branco." });
+        }
+      }
+
       if (isScheduleType && scheduledDate && scheduledTime) {
         updates.scheduled_for = `${scheduledDate}T${scheduledTime}:00`;
       }
@@ -339,6 +376,7 @@ export function CallActionDialog({
   const resetState = () => {
     setSelectedActionId(null);
     setNotes("");
+    setCustomMessage("");
     setScheduledDate("");
     setScheduledTime("");
     setForwardStack([]);
@@ -551,6 +589,25 @@ export function CallActionDialog({
                     </div>
                   )}
 
+                  {/* Custom Message Field */}
+                  {hasCustomMessageAction && (
+                    <div className="space-y-2 rounded-lg border p-3 bg-muted/20">
+                      <Label className="text-sm font-medium">💬 Mensagem Personalizada (opcional)</Label>
+                      <Textarea
+                        value={customMessage}
+                        onChange={(e) => setCustomMessage(e.target.value)}
+                        placeholder="Digite uma mensagem personalizada..."
+                        className="mt-1"
+                        rows={3}
+                      />
+                      {actions.filter(a => a.actionType === "custom_message").map(a => (
+                        <p key={a.id} className="text-xs text-muted-foreground">
+                          Essa mensagem será enviada quando você clicar em "{a.name}".
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Notes */}
                   <div>
                     <Label className="text-sm font-medium">📝 Observações (opcional)</Label>
@@ -631,6 +688,12 @@ export function CallActionDialog({
                                entry.call_status || "—"}
                             </Badge>
                           </div>
+                          {entry.custom_message && (
+                            <div className="text-xs">
+                              <span className="text-muted-foreground">💬 Mensagem: </span>
+                              <span className="italic">&quot;{entry.custom_message}&quot;</span>
+                            </div>
+                          )}
                           {entry.notes && (
                             <p className="text-xs text-muted-foreground">Obs: {entry.notes}</p>
                           )}

@@ -33,11 +33,13 @@ export function RegisterActionModal({
   const { toast } = useToast();
   const [selectedActionId, setSelectedActionId] = useState<string | null>(null);
   const [notes, setNotes] = useState(initialObservations || "");
+  const [customMessage, setCustomMessage] = useState("");
   const [scheduledDate, setScheduledDate] = useState("");
   const [scheduledTime, setScheduledTime] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const selectedAction = actions.find(a => a.id === selectedActionId);
+  const hasCustomMessageAction = actions.some(a => a.actionType === "custom_message");
   const isScheduleType = selectedAction?.actionType === "none" &&
     selectedAction?.name?.toLowerCase().includes("agend");
 
@@ -66,6 +68,10 @@ export function RegisterActionModal({
         notes: notes || null,
       };
 
+      if (selectedAction?.actionType === "custom_message") {
+        updates.custom_message = customMessage || null;
+      }
+
       if (isScheduleType && scheduledDate && scheduledTime) {
         updates.scheduled_for = `${scheduledDate}T${scheduledTime}:00`;
       }
@@ -88,6 +94,7 @@ export function RegisterActionModal({
   const resetState = () => {
     setSelectedActionId(null);
     setNotes("");
+    setCustomMessage("");
     setScheduledDate("");
     setScheduledTime("");
   };
@@ -188,6 +195,25 @@ export function RegisterActionModal({
                     </Button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Custom Message Field */}
+            {hasCustomMessageAction && (
+              <div className="space-y-2 rounded-lg border p-3 bg-muted/20">
+                <Label className="text-sm font-medium">💬 Mensagem Personalizada (opcional)</Label>
+                <Textarea
+                  value={customMessage}
+                  onChange={(e) => setCustomMessage(e.target.value)}
+                  placeholder="Digite uma mensagem personalizada..."
+                  className="mt-1"
+                  rows={3}
+                />
+                {actions.filter(a => a.actionType === "custom_message").map(a => (
+                  <p key={a.id} className="text-xs text-muted-foreground">
+                    Essa mensagem será enviada quando você clicar em "{a.name}".
+                  </p>
+                ))}
               </div>
             )}
 

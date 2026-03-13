@@ -54,6 +54,7 @@ const actionTypeLabels: Record<CallActionType, string> = {
   update_status: "Atualizar Status",
   webhook: "Webhook",
   none: "Apenas Registrar",
+  custom_message: "Mensagem Personalizada",
 };
 
 const colorOptions = [
@@ -85,6 +86,8 @@ function getConfigSummary(actionType: CallActionType, config: Record<string, unk
     }
     case "webhook":
       return config.url ? `URL: ${String(config.url).slice(0, 30)}${String(config.url).length > 30 ? "..." : ""}` : null;
+    case "custom_message":
+      return config.webhook_url ? `Webhook: ${String(config.webhook_url).slice(0, 30)}...` : null;
     default:
       return null;
   }
@@ -432,6 +435,27 @@ export function ActionsTab({ campaignId }: ActionsTabProps) {
                   }
                   placeholder="https://example.com/webhook"
                 />
+              </div>
+            )}
+
+            {formData.actionType === "custom_message" && (
+              <div className="grid gap-2">
+                <Label htmlFor="customMsgWebhookUrl">URL do Webhook</Label>
+                <Input
+                  id="customMsgWebhookUrl"
+                  type="url"
+                  value={(formData.actionConfig.webhook_url as string) || ""}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      actionConfig: { ...formData.actionConfig, webhook_url: e.target.value },
+                    })
+                  }
+                  placeholder="https://example.com/webhook"
+                />
+                <p className="text-xs text-muted-foreground">
+                  A mensagem digitada pelo operador será enviada neste webhook.
+                </p>
               </div>
             )}
           </div>

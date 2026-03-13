@@ -80,6 +80,7 @@ const actionTypeLabels: Record<CallActionType, string> = {
   update_status: "Atualizar Status",
   webhook: "Webhook",
   none: "Nenhuma Ação",
+  custom_message: "Mensagem Personalizada",
 };
 
 export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTabProps) {
