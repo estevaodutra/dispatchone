@@ -143,35 +143,61 @@ Deno.serve(async (req) => {
 
 async function healStaleInCallItems(supabase: any, companyId: string) {
   const terminalStatuses = ['completed', 'no_answer', 'failed', 'cancelled', 'busy', 'voicemail', 'timeout', 'voicemail_rescheduled', 'cancelled_rescheduled', 'no_answer_rescheduled', 'answered', 'completed_rescheduled'];
+  const activeStatuses = ['dialing', 'ringing', 'answered', 'in_progress'];
+  const TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
   // Fetch all in_call items for this company
   const { data: inCallItems } = await supabase
     .from('call_queue')
-    .select('id, call_log_id, created_at')
+    .select('id, call_log_id, lead_id, campaign_id, created_at')
     .eq('company_id', companyId)
     .eq('status', 'in_call');
 
   if (!inCallItems || inCallItems.length === 0) return;
 
   const idsToDelete: string[] = [];
+  let needsReschedule = false;
 
   for (const item of inCallItems) {
     if (item.call_log_id) {
-      // Check if associated call_log has terminal status or ended_at is set
       const { data: log } = await supabase
         .from('call_logs')
-        .select('call_status, ended_at')
+        .select('id, call_status, ended_at, started_at, lead_id, campaign_id')
         .eq('id', item.call_log_id)
         .maybeSingle();
 
       if (!log || terminalStatuses.includes(log.call_status) || log.ended_at) {
+        // Case 1: call_log already terminal or ended — just clean up queue item
         idsToDelete.push(item.id);
+      } else if (activeStatuses.includes(log.call_status)) {
+        // Case 2: call_log still active — check if timed out (>10 min)
+        const startedAt = log.started_at ? new Date(log.started_at).getTime() : new Date(item.created_at).getTime();
+        if (Date.now() - startedAt > TIMEOUT_MS) {
+          console.log(`[healStale] Timeout: call_log ${log.id} stuck in "${log.call_status}" for >10min. Forcing failed.`);
+
+          // Force call_log to failed
+          await supabase.from('call_logs').update({
+            call_status: 'failed',
+            ended_at: new Date().toISOString(),
+            notes: 'Timeout: provedor não respondeu em 10 minutos',
+          }).eq('id', log.id);
+
+          // Release operator
+          await supabase.rpc('release_operator', { p_call_id: log.id, p_force: true });
+
+          // Revert lead to waiting
+          if (log.lead_id) {
+            await supabase.from('call_leads').update({ status: 'waiting' }).eq('id', log.lead_id);
+          }
+
+          idsToDelete.push(item.id);
+          needsReschedule = true;
+        }
       }
     } else {
       // No call_log_id — delete if older than 5 minutes
       const createdAt = new Date(item.created_at).getTime();
-      const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-      if (createdAt < fiveMinutesAgo) {
+      if (Date.now() - createdAt > 5 * 60 * 1000) {
         idsToDelete.push(item.id);
       }
     }
@@ -180,6 +206,16 @@ async function healStaleInCallItems(supabase: any, companyId: string) {
   if (idsToDelete.length > 0) {
     await supabase.from('call_queue').delete().in('id', idsToDelete);
     console.log(`[queue-processor/global] Healed ${idsToDelete.length} stale in_call queue items`);
+  }
+
+  // Trigger reschedule if any calls were force-failed
+  if (needsReschedule) {
+    try {
+      await supabase.functions.invoke('reschedule-failed-calls', { body: {} });
+      console.log('[healStale] Triggered reschedule-failed-calls after timeout cleanup');
+    } catch (e) {
+      console.error('[healStale] Failed to invoke reschedule-failed-calls:', e);
+    }
   }
 }
 
