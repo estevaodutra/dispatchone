@@ -344,6 +344,14 @@ export function CallActionDialog({
         updates.action_id = selectedActionId;
       }
 
+      // Save custom_message if the selected action is custom_message type
+      if (selectedAction?.actionType === "custom_message") {
+        updates.custom_message = customMessage || null;
+        if (!customMessage.trim()) {
+          toast({ title: "⚠️ Mensagem personalizada vazia", description: "A mensagem será enviada em branco." });
+        }
+      }
+
       if (isScheduleType && scheduledDate && scheduledTime) {
         updates.scheduled_for = `${scheduledDate}T${scheduledTime}:00`;
       }
