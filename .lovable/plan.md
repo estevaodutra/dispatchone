@@ -1,71 +1,53 @@
 
 
-## Corrigir registro de ações no histórico
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Diagnóstico
+### Problema 1: Build error em `call-status/index.ts`
 
-Confirmei no banco de dados que **todos os `action_id` estão NULL** para o lead ESTEVÃO. Há dois problemas distintos:
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-**Problema 1 — Ação manual não salva (principal)**
-Quando o CallActionDialog é aberto a partir de um lead na fila, o `callId` passado é `""` (string vazia, linha 1745 do CallPanel.tsx). O `handleSave` faz `.update(updates).eq("id", "")` — que não encontra nenhum registro e falha silenciosamente. A ação nunca é persistida.
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-**Problema 2 — Histórico não atualiza após salvar**
-O histórico no CallActionDialog é carregado via `useEffect` cujas dependências (`open`, `leadId`, `campaignId`, `callId`) não mudam após salvar. Se o usuário salva e olha o histórico sem fechar/reabrir, vê dados antigos.
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-### Solução
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-**1. `src/components/operator/CallActionDialog.tsx` — corrigir save com callId vazio**
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
 
-No `handleSave`, quando `currentData.callId` estiver vazio, buscar o call_log mais recente do lead+campaign e usá-lo como alvo do update:
+**Correção em `call-status/index.ts` (linha 550-554):**
 
-```typescript
-// Em handleSave, antes do update:
-let targetCallId = currentData.callId;
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
 
-if (!targetCallId && currentData.leadId && currentData.campaignId) {
-  const { data: latestLog } = await (supabase as any)
-    .from("call_logs")
-    .select("id")
-    .eq("lead_id", currentData.leadId)
-    .eq("campaign_id", currentData.campaignId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-  
-  if (latestLog) targetCallId = latestLog.id;
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
 }
-
-if (!targetCallId) {
-  toast({ title: "Erro", description: "Nenhum registro de ligação encontrado para este lead", variant: "destructive" });
-  return;
-}
-
-// Usar targetCallId no .eq("id", targetCallId)
 ```
 
-**2. `src/components/operator/CallActionDialog.tsx` — refresh do histórico após salvar**
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-Adicionar um estado `historyVersion` que é incrementado após o save, e incluí-lo nas dependências do `useEffect` de fetch do histórico:
-
-```typescript
-const [historyVersion, setHistoryVersion] = useState(0);
-
-// No handleSave, após o update:
-setHistoryVersion(v => v + 1);
-
-// No useEffect de fetch (adicionar historyVersion nas deps):
-useEffect(() => { ... }, [open, currentData.leadId, currentData.campaignId, currentData.callId, historyVersion]);
-```
-
-**3. `src/pages/CallPanel.tsx` — passar callLogId quando disponível para queue leads**
-
-No componente que abre o CallActionDialog para queue leads (linha 1741-1757), se o queue item tiver um `callLogId`, passar como `callId`:
-
-```typescript
-callId={viewingQueueLead.callLogId || ""}
-```
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
 ### Arquivos alterados
-1. `src/components/operator/CallActionDialog.tsx` — resolver callId vazio + refresh histórico
-2. `src/pages/CallPanel.tsx` — passar callLogId do queue item
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 

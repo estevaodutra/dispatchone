@@ -118,6 +118,7 @@ export function CallActionDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [history, setHistory] = useState<CallLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   // Reset per-view state when currentData changes
   useEffect(() => {
@@ -230,7 +231,7 @@ export function CallActionDialog({
       setHistoryLoading(false);
     };
     fetchHistory();
-  }, [open, currentData.leadId, currentData.campaignId, currentData.callId]);
+  }, [open, currentData.leadId, currentData.campaignId, currentData.callId, historyVersion]);
 
   const executeAutomation = async (actionId: string) => {
     if (actionId.startsWith("__")) return;
@@ -342,6 +343,28 @@ export function CallActionDialog({
 
     setIsSaving(true);
     try {
+      // Resolve targetCallId — fallback to latest log if callId is empty
+      let targetCallId = currentData.callId;
+
+      if (!targetCallId && currentData.leadId && currentData.campaignId) {
+        const { data: latestLog } = await (supabase as any)
+          .from("call_logs")
+          .select("id")
+          .eq("lead_id", currentData.leadId)
+          .eq("campaign_id", currentData.campaignId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (latestLog) targetCallId = latestLog.id;
+      }
+
+      if (!targetCallId) {
+        toast({ title: "Erro", description: "Nenhum registro de ligação encontrado para este lead", variant: "destructive" });
+        setIsSaving(false);
+        return;
+      }
+
       const updates: Record<string, unknown> = {
         notes: notes || null,
       };
@@ -365,9 +388,12 @@ export function CallActionDialog({
       await (supabase as any)
         .from("call_logs")
         .update(updates)
-        .eq("id", currentData.callId);
+        .eq("id", targetCallId);
 
       await executeAutomation(selectedActionId);
+
+      // Refresh history after save
+      setHistoryVersion(v => v + 1);
 
       toast({ title: "Ação registrada", description: "Resultado salvo. A ligação será encerrada pelo callback." });
       onOpenChange(false);
