@@ -32,6 +32,7 @@ interface DbCallLog {
   created_at: string | null;
   external_call_id: string | null;
   call_status: string | null;
+  call_script_actions?: { name: string; color: string } | null;
 }
 
 const transformDbToFrontend = (db: DbCallLog): CallLog => ({
