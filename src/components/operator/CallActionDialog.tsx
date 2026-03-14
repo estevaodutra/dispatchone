@@ -118,6 +118,7 @@ export function CallActionDialog({
   const [isSaving, setIsSaving] = useState(false);
   const [history, setHistory] = useState<CallLogEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyVersion, setHistoryVersion] = useState(0);
 
   // Reset per-view state when currentData changes
   useEffect(() => {
