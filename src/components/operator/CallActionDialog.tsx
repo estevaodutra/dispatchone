@@ -231,7 +231,7 @@ export function CallActionDialog({
       setHistoryLoading(false);
     };
     fetchHistory();
-  }, [open, currentData.leadId, currentData.campaignId, currentData.callId]);
+  }, [open, currentData.leadId, currentData.campaignId, currentData.callId, historyVersion]);
 
   const executeAutomation = async (actionId: string) => {
     if (actionId.startsWith("__")) return;

@@ -1742,7 +1742,7 @@ export default function CallPanel() {
         <CallActionDialog
           open={!!viewingQueueLead}
           onOpenChange={(open) => !open && setViewingQueueLead(null)}
-          callId=""
+          callId={viewingQueueLead.callLogId || ""}
           campaignId={viewingQueueLead.campaignId || ""}
           leadId={viewingQueueLead.leadId || ""}
           leadName={viewingQueueLead.leadName || "Sem nome"}
