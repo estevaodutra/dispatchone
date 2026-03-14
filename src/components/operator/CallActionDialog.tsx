@@ -63,7 +63,10 @@ interface CallLogEntry {
   notes: string | null;
   custom_message: string | null;
   created_at: string | null;
+  action_id: string | null;
   operator_name?: string;
+  action_name?: string;
+  action_color?: string;
 }
 
 const formatDuration = (s: number) => {
