@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
       }
 
       case "webhook": {
-        const webhookUrl = actionConfig.webhook_url as string;
+        const webhookUrl = (actionConfig.webhook_url || actionConfig.url) as string;
         if (!webhookUrl) {
           results.skipped = true;
           results.reason = "Missing webhook_url";
