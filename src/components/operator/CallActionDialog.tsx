@@ -693,6 +693,22 @@ export function CallActionDialog({
                                entry.call_status || "—"}
                             </Badge>
                           </div>
+                          {entry.action_name && (
+                            <div className="text-xs">
+                              <span className="text-muted-foreground">⚡ Ação: </span>
+                              <Badge
+                                variant="secondary"
+                                className="text-xs"
+                                style={{ borderColor: entry.action_color || undefined }}
+                              >
+                                <span
+                                  className="h-2 w-2 rounded-full inline-block mr-1"
+                                  style={{ backgroundColor: entry.action_color || "hsl(var(--muted-foreground))" }}
+                                />
+                                {entry.action_name}
+                              </Badge>
+                            </div>
+                          )}
                           {entry.custom_message && (
                             <div className="text-xs">
                               <span className="text-muted-foreground">💬 Mensagem: </span>
