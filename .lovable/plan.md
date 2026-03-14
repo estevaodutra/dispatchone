@@ -1,53 +1,85 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Registrar execução de ações no histórico de ligações
 
-### Problema 1: Build error em `call-status/index.ts`
+### Problema
+Quando uma ação é executada automaticamente (ex: webhook após retentativas excedidas), o resultado não é registrado em nenhum lugar visível. O `execute-call-action` roda a ação mas não persiste o resultado.
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+### Solução
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+Registrar o resultado da execução da ação diretamente no `call_logs` correspondente, usando os campos existentes `action_id` e `notes`, e exibir essa informação no histórico.
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+**1. `supabase/functions/execute-call-action/index.ts` — persistir resultado no call_log**
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+Após executar a ação e gerar o `results`, buscar o `call_log` mais recente do lead+campaign e atualizar:
+- `action_id` com o ID da ação executada
+- Concatenar no `notes` uma linha descrevendo o resultado da automação (ex: `[Automação] Webhook executado com sucesso` ou `[Automação] Webhook falhou: timeout`)
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+O request body já recebe `lead_id` e `campaign_id`, então basta fazer um update no call_log mais recente:
 
-**Correção em `call-status/index.ts` (linha 550-554):**
+```typescript
+// After results are computed, persist to call_log
+if (lead_id && campaign_id) {
+  const { data: latestLog } = await supabase
+    .from("call_logs")
+    .select("id, notes")
+    .eq("lead_id", lead_id)
+    .eq("campaign_id", campaign_id)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
 
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+  if (latestLog) {
+    const automationNote = results.success 
+      ? `[Automação] ${actionType} executado com sucesso`
+      : `[Automação] ${actionType} falhou: ${results.error || results.reason || 'erro desconhecido'}`;
+    
+    const updatedNotes = latestLog.notes 
+      ? `${latestLog.notes}\n${automationNote}` 
+      : automationNote;
 
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
-
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
     await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
+      .from("call_logs")
+      .update({ action_id: action_id, notes: updatedNotes })
+      .eq("id", latestLog.id);
   }
 }
 ```
 
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+**2. `src/components/operator/CallActionDialog.tsx` — exibir ação no histórico**
 
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+No histórico de contatos dentro do dialog, mostrar quando uma ação foi registrada:
+- Se `entry.action_id` existir, fazer join com `call_script_actions` para mostrar o nome da ação
+- Ou, mais simples: detectar `[Automação]` no `notes` e renderizar com um badge visual diferenciado
+
+Abordagem escolhida: join com `call_script_actions` via nome da ação.
+
+Alterar a query de histórico (linha 214) para incluir o join com actions:
+```typescript
+.select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, action_id, call_operators!call_logs_operator_id_fkey(operator_name), call_script_actions!call_logs_action_id_fkey(name, color)")
+```
+
+No render do histórico, adicionar um badge com o nome da ação quando existir:
+```tsx
+{entry.action_name && (
+  <div className="text-xs">
+    <span className="text-muted-foreground">⚡ Ação: </span>
+    <Badge variant="secondary" className="text-xs">{entry.action_name}</Badge>
+  </div>
+)}
+```
+
+E detectar notas de automação (`[Automação]`) para renderizar com estilo diferenciado (ícone de engrenagem, cor amarela/info).
+
+**3. `src/components/call-campaigns/tabs/HistoryTab.tsx` — mostrar ação na tabela**
+
+Adicionar coluna "Ação" na tabela de histórico da campanha:
+- Incluir join com `call_script_actions` no hook `useCallLogs`
+- Mostrar nome da ação e status (sucesso/falha baseado no `notes`)
 
 ### Arquivos alterados
-
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+1. `supabase/functions/execute-call-action/index.ts` — persistir resultado no call_log
+2. `src/components/operator/CallActionDialog.tsx` — exibir ação no histórico do dialog
+3. `src/hooks/useCallLogs.ts` — incluir join com actions na query
+4. `src/components/call-campaigns/tabs/HistoryTab.tsx` — coluna de ação na tabela
 
