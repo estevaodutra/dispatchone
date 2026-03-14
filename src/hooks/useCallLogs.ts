@@ -46,6 +46,8 @@ const transformDbToFrontend = (db: DbCallLog): CallLog => ({
   endedAt: db.ended_at,
   durationSeconds: db.duration_seconds,
   actionId: db.action_id,
+  actionName: db.call_script_actions?.name || null,
+  actionColor: db.call_script_actions?.color || null,
   notes: db.notes,
   scriptPath: db.script_path || [],
   createdAt: db.created_at || new Date().toISOString(),
