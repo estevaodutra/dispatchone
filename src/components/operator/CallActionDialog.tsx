@@ -214,7 +214,7 @@ export function CallActionDialog({
       setHistoryLoading(true);
       const { data } = await (supabase as any)
         .from("call_logs")
-        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, call_operators!call_logs_operator_id_fkey(operator_name)")
+        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, action_id, call_operators!call_logs_operator_id_fkey(operator_name), call_script_actions!call_logs_action_id_fkey(name, color)")
         .eq("lead_id", currentData.leadId)
         .eq("campaign_id", currentData.campaignId)
         .order("created_at", { ascending: false });
@@ -223,6 +223,8 @@ export function CallActionDialog({
         setHistory(data.map((d: any) => ({
           ...d,
           operator_name: d.call_operators?.operator_name || "—",
+          action_name: d.call_script_actions?.name || null,
+          action_color: d.call_script_actions?.color || null,
         })));
       }
       setHistoryLoading(false);
