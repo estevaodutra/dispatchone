@@ -311,6 +311,39 @@ Deno.serve(async (req) => {
 
     console.log(`[execute-call-action] Result:`, JSON.stringify(results));
 
+    // Persist action result to the most recent call_log
+    if (lead_id && campaign_id) {
+      try {
+        const { data: latestLog } = await supabase
+          .from("call_logs")
+          .select("id, notes")
+          .eq("lead_id", lead_id)
+          .eq("campaign_id", campaign_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+
+        if (latestLog) {
+          const automationNote = results.success
+            ? `[Automação] ${actionType} executado com sucesso`
+            : `[Automação] ${actionType} falhou: ${results.error || results.reason || "erro desconhecido"}`;
+
+          const updatedNotes = latestLog.notes
+            ? `${latestLog.notes}\n${automationNote}`
+            : automationNote;
+
+          await supabase
+            .from("call_logs")
+            .update({ action_id: action_id, notes: updatedNotes })
+            .eq("id", latestLog.id);
+
+          console.log(`[execute-call-action] Persisted to call_log ${latestLog.id}`);
+        }
+      } catch (persistErr) {
+        console.error("[execute-call-action] Failed to persist to call_log:", (persistErr as Error).message);
+      }
+    }
+
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

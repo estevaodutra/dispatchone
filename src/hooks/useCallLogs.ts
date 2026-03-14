@@ -71,7 +71,7 @@ export function useCallLogs(campaignId: string, filters?: {
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
-        .select("*")
+        .select("*, call_script_actions!call_logs_action_id_fkey(name, color)")
         .eq("campaign_id", campaignId)
         .order("created_at", { ascending: false });
 
