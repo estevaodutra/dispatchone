@@ -10,6 +10,8 @@ export interface CallLog {
   endedAt: string | null;
   durationSeconds: number | null;
   actionId: string | null;
+  actionName: string | null;
+  actionColor: string | null;
   notes: string | null;
   scriptPath: unknown[];
   createdAt: string;
@@ -32,6 +34,7 @@ interface DbCallLog {
   created_at: string | null;
   external_call_id: string | null;
   call_status: string | null;
+  call_script_actions?: { name: string; color: string } | null;
 }
 
 const transformDbToFrontend = (db: DbCallLog): CallLog => ({
@@ -43,6 +46,8 @@ const transformDbToFrontend = (db: DbCallLog): CallLog => ({
   endedAt: db.ended_at,
   durationSeconds: db.duration_seconds,
   actionId: db.action_id,
+  actionName: db.call_script_actions?.name || null,
+  actionColor: db.call_script_actions?.color || null,
   notes: db.notes,
   scriptPath: db.script_path || [],
   createdAt: db.created_at || new Date().toISOString(),
@@ -66,7 +71,7 @@ export function useCallLogs(campaignId: string, filters?: {
     queryFn: async () => {
       let query = (supabase as any)
         .from("call_logs")
-        .select("*")
+        .select("*, call_script_actions!call_logs_action_id_fkey(name, color)")
         .eq("campaign_id", campaignId)
         .order("created_at", { ascending: false });
 

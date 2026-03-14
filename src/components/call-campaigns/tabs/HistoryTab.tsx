@@ -8,7 +8,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Phone, Clock, Calendar } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Phone, Clock, Calendar, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -84,21 +85,43 @@ export function HistoryTab({ campaignId }: HistoryTabProps) {
                 <TableRow>
                   <TableHead>Data</TableHead>
                   <TableHead>Duração</TableHead>
+                  <TableHead>Ação</TableHead>
                   <TableHead>Notas</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {logs.map((log) => (
-                  <TableRow key={log.id}>
-                    <TableCell>
-                      {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
-                    </TableCell>
-                    <TableCell>{formatDuration(log.durationSeconds)}</TableCell>
-                    <TableCell className="max-w-xs truncate">
-                      {log.notes || "-"}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {logs.map((log) => {
+                  const hasAutomation = log.notes?.includes("[Automação]");
+                  return (
+                    <TableRow key={log.id}>
+                      <TableCell>
+                        {format(new Date(log.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}
+                      </TableCell>
+                      <TableCell>{formatDuration(log.durationSeconds)}</TableCell>
+                      <TableCell>
+                        {log.actionName ? (
+                          <Badge
+                            variant="secondary"
+                            className="text-xs gap-1"
+                            style={{ borderColor: log.actionColor || undefined }}
+                          >
+                            {hasAutomation && <Zap className="h-3 w-3" />}
+                            <span
+                              className="h-2 w-2 rounded-full inline-block"
+                              style={{ backgroundColor: log.actionColor || "hsl(var(--muted-foreground))" }}
+                            />
+                            {log.actionName}
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate">
+                        {log.notes || "-"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>

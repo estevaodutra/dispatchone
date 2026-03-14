@@ -63,7 +63,10 @@ interface CallLogEntry {
   notes: string | null;
   custom_message: string | null;
   created_at: string | null;
+  action_id: string | null;
   operator_name?: string;
+  action_name?: string;
+  action_color?: string;
 }
 
 const formatDuration = (s: number) => {
@@ -211,7 +214,7 @@ export function CallActionDialog({
       setHistoryLoading(true);
       const { data } = await (supabase as any)
         .from("call_logs")
-        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, call_operators!call_logs_operator_id_fkey(operator_name)")
+        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, action_id, call_operators!call_logs_operator_id_fkey(operator_name), call_script_actions!call_logs_action_id_fkey(name, color)")
         .eq("lead_id", currentData.leadId)
         .eq("campaign_id", currentData.campaignId)
         .order("created_at", { ascending: false });
@@ -220,6 +223,8 @@ export function CallActionDialog({
         setHistory(data.map((d: any) => ({
           ...d,
           operator_name: d.call_operators?.operator_name || "—",
+          action_name: d.call_script_actions?.name || null,
+          action_color: d.call_script_actions?.color || null,
         })));
       }
       setHistoryLoading(false);
@@ -688,6 +693,22 @@ export function CallActionDialog({
                                entry.call_status || "—"}
                             </Badge>
                           </div>
+                          {entry.action_name && (
+                            <div className="text-xs">
+                              <span className="text-muted-foreground">⚡ Ação: </span>
+                              <Badge
+                                variant="secondary"
+                                className="text-xs"
+                                style={{ borderColor: entry.action_color || undefined }}
+                              >
+                                <span
+                                  className="h-2 w-2 rounded-full inline-block mr-1"
+                                  style={{ backgroundColor: entry.action_color || "hsl(var(--muted-foreground))" }}
+                                />
+                                {entry.action_name}
+                              </Badge>
+                            </div>
+                          )}
                           {entry.custom_message && (
                             <div className="text-xs">
                               <span className="text-muted-foreground">💬 Mensagem: </span>
