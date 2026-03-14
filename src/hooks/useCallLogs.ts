@@ -10,6 +10,8 @@ export interface CallLog {
   endedAt: string | null;
   durationSeconds: number | null;
   actionId: string | null;
+  actionName: string | null;
+  actionColor: string | null;
   notes: string | null;
   scriptPath: unknown[];
   createdAt: string;
