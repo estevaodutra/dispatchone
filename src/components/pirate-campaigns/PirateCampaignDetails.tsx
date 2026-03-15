@@ -5,9 +5,10 @@ import { usePirateLeads } from "@/hooks/usePirateLeads";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Users, BarChart3, Skull, CalendarDays } from "lucide-react";
+import { ArrowLeft, Users, BarChart3, Skull, CalendarDays, Settings } from "lucide-react";
 import { PirateGroupsTab } from "./tabs/PirateGroupsTab";
 import { PirateLeadsTab } from "./tabs/PirateLeadsTab";
+import { PirateConfigTab } from "./tabs/PirateConfigTab";
 
 interface PirateCampaignDetailsProps {
   campaign: PirateCampaign;
@@ -16,7 +17,7 @@ interface PirateCampaignDetailsProps {
 }
 
 export function PirateCampaignDetails({ campaign, onBack, onUpdate }: PirateCampaignDetailsProps) {
-  const [activeTab, setActiveTab] = useState("groups");
+  const [activeTab, setActiveTab] = useState("config");
   const { groups } = usePirateGroups(campaign.id);
   const { leads } = usePirateLeads(campaign.id);
 
@@ -66,6 +67,10 @@ export function PirateCampaignDetails({ campaign, onBack, onUpdate }: PirateCamp
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
+          <TabsTrigger value="config" className="gap-2">
+            <Settings className="h-4 w-4" />
+            Config
+          </TabsTrigger>
           <TabsTrigger value="groups" className="gap-2">
             <Users className="h-4 w-4" />
             Grupos ({groups.length})
@@ -75,6 +80,10 @@ export function PirateCampaignDetails({ campaign, onBack, onUpdate }: PirateCamp
             Leads ({campaign.totalLeadsCaptured})
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="config" className="mt-6">
+          <PirateConfigTab campaign={campaign} onUpdate={onUpdate} />
+        </TabsContent>
 
         <TabsContent value="groups" className="mt-6">
           <PirateGroupsTab campaignId={campaign.id} instanceId={campaign.instanceId} />
