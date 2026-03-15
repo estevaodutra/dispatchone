@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { apiEndpoints, EndpointCategory } from "@/data/api-endpoints";
-import { BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone, ChevronRight } from "lucide-react";
+import { BookOpen, Key, Webhook, MessageSquare, Server, AlertTriangle, Settings, Vote, Radio, CheckCircle, Search, Phone, ChevronRight, Skull } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
@@ -22,6 +22,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   validation: <CheckCircle className="h-4 w-4" />,
   queries: <Search className="h-4 w-4" />,
   calls: <Phone className="h-4 w-4" />,
+  pirate: <Skull className="h-4 w-4" />,
 };
 
 const methodColors: Record<string, string> = {

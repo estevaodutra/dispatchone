@@ -1,54 +1,53 @@
 
 
-## Nova Arquitetura: Endpoint API para Campanha Pirata
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Mudança de Abordagem
+### Problema 1: Build error em `call-status/index.ts`
 
-Atualmente o fluxo é: Z-API → n8n → webhook-inbound → pirate-process-join. A nova abordagem simplifica: **n8n filtra apenas `GROUP_PARTICIPANT_INVITE` e envia diretamente para um endpoint da API**, eliminando a dependência do webhook-inbound para pirata.
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-### 1. Criar Edge Function `pirate-leads-api`
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-Nova edge function que recebe o payload do n8n e processa os leads:
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-**Payload de entrada (array):**
-```json
-[
-  {
-    "group": { "name": "🎁 AULÃO HOJE 20H! #157", "id": "120363425932296878-group" },
-    "lead": { "@lid": "15041025855619@lid", "phone": "5512982402981" }
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
   }
-]
+}
 ```
 
-**Lógica:**
-- Autenticação via API key (mesmo padrão do `leads-api`)
-- Para cada item do array, buscar campanhas pirata ativas que monitoram o `group.id`
-- Reutilizar a lógica existente do `pirate-process-join` (dedup, auto_create_lead, webhook, contadores)
-- Retornar resumo: `{ success: true, processed: N, results: [...] }`
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-**Arquivo:** `supabase/functions/pirate-leads-api/index.ts`
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
-### 2. Adicionar categoria na documentação da API
+### Arquivos alterados
 
-Adicionar nova categoria `pirate` em `src/data/api-endpoints.ts` com o endpoint `POST /pirate-leads-api`:
-- Atributos documentados: `group.name`, `group.id`, `lead.@lid`, `lead.phone`
-- Exemplos em cURL, Node.js e Python
-- Respostas de sucesso e erro
-
-### 3. Atualizar ícone na sidebar
-
-Adicionar ícone `Skull` (ou `Anchor`) para a categoria `pirate` no mapa `categoryIcons` de `ApiSidebar.tsx`.
-
-### 4. Config e deploy
-
-- Adicionar `[functions.pirate-leads-api]` com `verify_jwt = false` no config
-- Deploy da nova edge function
-
-### Arquivos
-
-| Arquivo | Ação |
-|---------|------|
-| `supabase/functions/pirate-leads-api/index.ts` | Criar |
-| `src/data/api-endpoints.ts` | Adicionar categoria `pirate` |
-| `src/components/api-docs/ApiSidebar.tsx` | Adicionar ícone |
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 
