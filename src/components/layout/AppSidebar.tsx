@@ -83,7 +83,7 @@ export function AppSidebar() {
     whatsapp: [
       { title: "Disparos", url: "/campaigns/whatsapp/despacho", icon: SendHorizontal },
       { title: "Grupos", url: "/campaigns/whatsapp/grupos", icon: Users },
-      { title: "Pirata", url: "/campaigns/whatsapp/pirata", icon: Skull, comingSoon: true },
+      { title: "Pirata", url: "/campaigns/whatsapp/pirata", icon: Skull },
     ],
     telefonia: [
       { title: "URA", url: "/campaigns/telefonia/ura", icon: Bot, comingSoon: true },
