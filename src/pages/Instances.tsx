@@ -554,6 +554,7 @@ export default function Instances() {
           name: editInstance.name,
           provider: editInstance.provider,
           phone: editInstance.phoneNumber?.replace(/\D/g, "") || "",
+          instance_function: editInstance.function || "dispatcher",
         }
       });
       setShowEditDialog(false);
