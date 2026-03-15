@@ -2335,6 +2335,130 @@ print(response.json())`
         }
       }
     ]
+  },
+  {
+    id: "pirate",
+    name: "Pirata",
+    description: "Endpoints para captura de leads via campanhas pirata (monitoramento de grupos WhatsApp)",
+    endpoints: [
+      {
+        id: "pirate-leads-ingest",
+        method: "POST" as const,
+        path: "/pirate-leads-api",
+        description: "Recebe leads capturados de grupos WhatsApp. Ideal para integração com n8n filtrando eventos GROUP_PARTICIPANT_INVITE. Aceita um array de leads.",
+        attributes: [
+          {
+            name: "group.id",
+            type: "string",
+            required: true,
+            description: "JID do grupo WhatsApp (ex: 120363425932296878-group)"
+          },
+          {
+            name: "group.name",
+            type: "string",
+            required: false,
+            description: "Nome do grupo WhatsApp"
+          },
+          {
+            name: "lead.phone",
+            type: "string",
+            required: true,
+            description: "Telefone real do lead no formato DDI+DDD+Número (ex: 5512982402981)"
+          },
+          {
+            name: "lead.@lid",
+            type: "string",
+            required: false,
+            description: "Identificador LID do WhatsApp (ex: 15041025855619@lid)"
+          }
+        ],
+        examples: {
+          curl: `curl -X POST "${API_BASE_URL}/pirate-leads-api" \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer YOUR_API_TOKEN" \\
+  -d '[
+    {
+      "group": {
+        "name": "🎁 AULÃO HOJE 20H! #157",
+        "id": "120363425932296878-group"
+      },
+      "lead": {
+        "@lid": "15041025855619@lid",
+        "phone": "5512982402981"
+      }
+    }
+  ]'`,
+          nodejs: `const axios = require('axios');
+
+const response = await axios.post(
+  '${API_BASE_URL}/pirate-leads-api',
+  [
+    {
+      group: {
+        name: '🎁 AULÃO HOJE 20H! #157',
+        id: '120363425932296878-group'
+      },
+      lead: {
+        '@lid': '15041025855619@lid',
+        phone: '5512982402981'
+      }
+    }
+  ],
+  {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+  }
+);`,
+          python: `import requests
+
+response = requests.post(
+    '${API_BASE_URL}/pirate-leads-api',
+    json=[
+        {
+            'group': {
+                'name': '🎁 AULÃO HOJE 20H! #157',
+                'id': '120363425932296878-group'
+            },
+            'lead': {
+                '@lid': '15041025855619@lid',
+                'phone': '5512982402981'
+            }
+        }
+    ],
+    headers={
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer YOUR_API_TOKEN'
+    }
+)`
+        },
+        responses: {
+          success: {
+            code: 200,
+            body: {
+              success: true,
+              processed: 1,
+              total: 1,
+              results: [
+                {
+                  group_id: "120363425932296878-group",
+                  phone: "5512982402981",
+                  status: "processed",
+                  detail: "Campaign abc-123"
+                }
+              ]
+            }
+          },
+          error: {
+            code: 403,
+            body: {
+              error: "Invalid API key"
+            }
+          }
+        }
+      }
+    ]
   }
 ];
 
