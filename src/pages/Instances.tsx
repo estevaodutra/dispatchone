@@ -75,6 +75,73 @@ const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: bo
     </div>
   );
 };
+// Payment status badge component
+const PaymentStatusBadge = ({ status }: { status?: string }) => {
+  if (!status) return null;
+  const upper = status.toUpperCase();
+  const config: Record<string, { className: string; label: string }> = {
+    TRIAL: { className: "bg-warning/15 text-warning", label: "Trial" },
+    ACTIVE: { className: "bg-success/15 text-success", label: "Ativo" },
+    EXPIRED: { className: "bg-destructive/15 text-destructive", label: "Expirado" },
+    SUSPENDED: { className: "bg-destructive/15 text-destructive", label: "Suspenso" },
+  };
+  const c = config[upper] || { className: "bg-muted text-muted-foreground", label: status };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${c.className}`}>
+      {c.label}
+    </span>
+  );
+};
+
+// Expiration countdown component
+const ExpirationCountdown = ({ expirationDate }: { expirationDate: string }) => {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const expMs = new Date(expirationDate).getTime();
+  const diffMs = expMs - now;
+
+  if (diffMs <= 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Expirado
+      </div>
+    );
+  }
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  let label: string;
+  let colorClass: string;
+
+  if (days > 0) {
+    label = `${days}d ${remainingHours}h restantes`;
+    colorClass = "text-success";
+  } else if (hours >= 1) {
+    label = `${hours}h ${minutes}m restantes`;
+    colorClass = hours > 1 ? "text-success" : "text-warning";
+  } else {
+    label = `${minutes}m restantes`;
+    colorClass = "text-destructive";
+  }
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs font-medium ${colorClass}`}>
+      <Clock className="h-3.5 w-3.5" />
+      {label}
+    </div>
+  );
+};
+
 export default function Instances() {
   const { toast } = useToast();
   const { t } = useLanguage();
