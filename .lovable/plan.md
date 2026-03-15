@@ -1,53 +1,53 @@
 
 
-## Adicionar aba "Config" nas Campanhas Pirata
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Visão Geral
-Criar uma nova aba de configuração na tela de detalhes da campanha pirata com os campos: Link de Captura, Perfil (foto, nome, descrição, status), Oferta, Link de Pagamento e Destino (webhook ou sequência de disparo).
+### Problema 1: Build error em `call-status/index.ts`
 
-### 1. Migração de Banco
-Adicionar novas colunas à tabela `pirate_campaigns`:
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-```sql
-ALTER TABLE public.pirate_campaigns
-  ADD COLUMN capture_link text,
-  ADD COLUMN profile_photo_url text,
-  ADD COLUMN profile_name text,
-  ADD COLUMN profile_description text,
-  ADD COLUMN profile_status text,
-  ADD COLUMN offer_text text,
-  ADD COLUMN payment_link text,
-  ADD COLUMN destination_type text NOT NULL DEFAULT 'webhook',
-  ADD COLUMN destination_sequence_id uuid,
-  ADD COLUMN destination_campaign_id uuid;
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+
+### Problema 2: Item "Em Ligação" fantasma persiste
+
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
+}
 ```
 
-- `destination_type`: `'webhook'` ou `'sequence'`
-- Quando `webhook`, usa os campos `webhook_url`/`webhook_headers` já existentes
-- Quando `sequence`, usa `destination_campaign_id` + `destination_sequence_id` para apontar para uma sequência de disparo
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-### 2. Atualizar Hook `usePirateCampaigns.ts`
-- Adicionar os novos campos à interface `PirateCampaign`
-- Mapear no `transform` e no `updateCampaign`
-
-### 3. Criar componente `src/components/pirate-campaigns/tabs/PirateConfigTab.tsx`
-Seguindo o padrão do `ConfigTab` de grupo/dispatch, com cards:
-
-- **Link de Captura** -- Input para URL de redirecionamento ao grupo
-- **Perfil** -- Upload de foto (usando `useMediaUpload`), inputs para nome, descrição e status
-- **Oferta** -- Textarea para texto da oferta
-- **Link de Pagamento** -- Input para URL
-- **Destino** -- Select entre "Webhook" e "Sequência". Se webhook: inputs de URL e headers. Se sequência: selects de campanha de disparo e sequência (usando `useDispatchCampaigns` + `useDispatchSequences`)
-- Botão "Salvar Alterações"
-
-### 4. Atualizar `PirateCampaignDetails.tsx`
-- Importar `PirateConfigTab` e ícone `Settings`
-- Adicionar tab "Config" como primeira aba
-- Mudar `activeTab` default para `"config"`
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
 ### Arquivos alterados
-- Migração SQL (novas colunas)
-- `src/hooks/usePirateCampaigns.ts` (interface + transform + update)
-- `src/components/pirate-campaigns/tabs/PirateConfigTab.tsx` (novo)
-- `src/components/pirate-campaigns/PirateCampaignDetails.tsx` (nova aba)
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 

@@ -1822,13 +1822,23 @@ export type Database = {
       pirate_campaigns: {
         Row: {
           auto_create_lead: boolean | null
+          capture_link: string | null
           company_id: string
           created_at: string | null
           description: string | null
+          destination_campaign_id: string | null
+          destination_sequence_id: string | null
+          destination_type: string
           id: string
           ignore_duplicates: boolean | null
           instance_id: string | null
           name: string
+          offer_text: string | null
+          payment_link: string | null
+          profile_description: string | null
+          profile_name: string | null
+          profile_photo_url: string | null
+          profile_status: string | null
           status: string | null
           target_campaign_id: string | null
           total_leads_captured: number | null
@@ -1839,13 +1849,23 @@ export type Database = {
         }
         Insert: {
           auto_create_lead?: boolean | null
+          capture_link?: string | null
           company_id: string
           created_at?: string | null
           description?: string | null
+          destination_campaign_id?: string | null
+          destination_sequence_id?: string | null
+          destination_type?: string
           id?: string
           ignore_duplicates?: boolean | null
           instance_id?: string | null
           name: string
+          offer_text?: string | null
+          payment_link?: string | null
+          profile_description?: string | null
+          profile_name?: string | null
+          profile_photo_url?: string | null
+          profile_status?: string | null
           status?: string | null
           target_campaign_id?: string | null
           total_leads_captured?: number | null
@@ -1856,13 +1876,23 @@ export type Database = {
         }
         Update: {
           auto_create_lead?: boolean | null
+          capture_link?: string | null
           company_id?: string
           created_at?: string | null
           description?: string | null
+          destination_campaign_id?: string | null
+          destination_sequence_id?: string | null
+          destination_type?: string
           id?: string
           ignore_duplicates?: boolean | null
           instance_id?: string | null
           name?: string
+          offer_text?: string | null
+          payment_link?: string | null
+          profile_description?: string | null
+          profile_name?: string | null
+          profile_photo_url?: string | null
+          profile_status?: string | null
           status?: string | null
           target_campaign_id?: string | null
           total_leads_captured?: number | null

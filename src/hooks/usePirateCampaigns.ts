@@ -17,6 +17,16 @@ export interface PirateCampaign {
   targetCampaignId: string | null;
   status: "active" | "paused" | "stopped";
   totalLeadsCaptured: number;
+  captureLink: string | null;
+  profilePhotoUrl: string | null;
+  profileName: string | null;
+  profileDescription: string | null;
+  profileStatus: string | null;
+  offerText: string | null;
+  paymentLink: string | null;
+  destinationType: "webhook" | "sequence";
+  destinationSequenceId: string | null;
+  destinationCampaignId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -35,6 +45,16 @@ const transform = (row: any): PirateCampaign => ({
   targetCampaignId: row.target_campaign_id,
   status: row.status || "active",
   totalLeadsCaptured: row.total_leads_captured || 0,
+  captureLink: row.capture_link,
+  profilePhotoUrl: row.profile_photo_url,
+  profileName: row.profile_name,
+  profileDescription: row.profile_description,
+  profileStatus: row.profile_status,
+  offerText: row.offer_text,
+  paymentLink: row.payment_link,
+  destinationType: row.destination_type || "webhook",
+  destinationSequenceId: row.destination_sequence_id,
+  destinationCampaignId: row.destination_campaign_id,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -123,6 +143,16 @@ export function usePirateCampaigns() {
       if (updates.ignoreDuplicates !== undefined) dbUpdates.ignore_duplicates = updates.ignoreDuplicates;
       if (updates.targetCampaignId !== undefined) dbUpdates.target_campaign_id = updates.targetCampaignId;
       if (updates.status !== undefined) dbUpdates.status = updates.status;
+      if (updates.captureLink !== undefined) dbUpdates.capture_link = updates.captureLink;
+      if (updates.profilePhotoUrl !== undefined) dbUpdates.profile_photo_url = updates.profilePhotoUrl;
+      if (updates.profileName !== undefined) dbUpdates.profile_name = updates.profileName;
+      if (updates.profileDescription !== undefined) dbUpdates.profile_description = updates.profileDescription;
+      if (updates.profileStatus !== undefined) dbUpdates.profile_status = updates.profileStatus;
+      if (updates.offerText !== undefined) dbUpdates.offer_text = updates.offerText;
+      if (updates.paymentLink !== undefined) dbUpdates.payment_link = updates.paymentLink;
+      if (updates.destinationType !== undefined) dbUpdates.destination_type = updates.destinationType;
+      if (updates.destinationSequenceId !== undefined) dbUpdates.destination_sequence_id = updates.destinationSequenceId;
+      if (updates.destinationCampaignId !== undefined) dbUpdates.destination_campaign_id = updates.destinationCampaignId;
 
       const { error } = await (supabase as any)
         .from("pirate_campaigns")
