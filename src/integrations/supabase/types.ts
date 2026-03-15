@@ -1517,6 +1517,7 @@ export type Database = {
           external_instance_id: string | null
           external_instance_token: string | null
           id: string
+          instance_function: string
           last_message_at: string | null
           messages_count: number | null
           name: string
@@ -1532,6 +1533,7 @@ export type Database = {
           external_instance_id?: string | null
           external_instance_token?: string | null
           id?: string
+          instance_function?: string
           last_message_at?: string | null
           messages_count?: number | null
           name: string
@@ -1547,6 +1549,7 @@ export type Database = {
           external_instance_id?: string | null
           external_instance_token?: string | null
           id?: string
+          instance_function?: string
           last_message_at?: string | null
           messages_count?: number | null
           name?: string
