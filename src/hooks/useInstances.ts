@@ -217,6 +217,8 @@ export function useInstances() {
         status: string;
         external_instance_id: string;
         external_instance_token: string;
+        payment_status: string;
+        expiration_date: string;
       }>;
     }) => {
       const { data, error } = await supabase
