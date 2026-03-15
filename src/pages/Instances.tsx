@@ -612,7 +612,10 @@ export default function Instances() {
                       </div>
                     </div>
                   </div>
-                  <StatusBadge status={getStatusDisplay(instance.status)} />
+                  <div className="flex flex-col items-end gap-1">
+                    <StatusBadge status={getStatusDisplay(instance.status)} />
+                    <PaymentStatusBadge status={instance.paymentStatus} />
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Connected Number */}
