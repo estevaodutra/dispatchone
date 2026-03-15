@@ -1513,12 +1513,14 @@ export type Database = {
       instances: {
         Row: {
           created_at: string | null
+          expiration_date: string | null
           external_instance_id: string | null
           external_instance_token: string | null
           id: string
           last_message_at: string | null
           messages_count: number | null
           name: string
+          payment_status: string | null
           phone: string
           provider: string
           status: string
@@ -1526,12 +1528,14 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          expiration_date?: string | null
           external_instance_id?: string | null
           external_instance_token?: string | null
           id?: string
           last_message_at?: string | null
           messages_count?: number | null
           name: string
+          payment_status?: string | null
           phone: string
           provider: string
           status?: string
@@ -1539,12 +1543,14 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          expiration_date?: string | null
           external_instance_id?: string | null
           external_instance_token?: string | null
           id?: string
           last_message_at?: string | null
           messages_count?: number | null
           name?: string
+          payment_status?: string | null
           phone?: string
           provider?: string
           status?: string
