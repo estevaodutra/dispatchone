@@ -1,42 +1,53 @@
 
 
-## Corrigir QR Code não gerado na conexão
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Problema
+### Problema 1: Build error em `call-status/index.ts`
 
-Quando o usuário clica em "Conectar com QR Code", o webhook é chamado com `method: "qr"` e a resposta vem no formato:
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-```json
-[{ "instance": {...}, "Client-Token": "...", "connection": { "code": "Y7F9JDYN" } }]
-```
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-O código na **linha 780** faz `setConnectionStep("qr")` incondicionalmente, mas a resposta não contém nenhum campo de imagem QR (`qrcode_image`, `value`, `qrCode`, `qrCodeUrl`). Resultado: o dialog mostra o ícone estático de QR em vez de um QR real.
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-A resposta contém um **código de pareamento** (`connection.code`), que já foi corrigido para ser extraído, mas o fluxo não redireciona para a tela de código.
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-### Solução
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
 
-No handler do botão QR (linha 777-783), após receber a resposta do webhook, verificar se há imagem QR ou código de pareamento e redirecionar para o step correto:
+**Correção em `call-status/index.ts` (linha 550-554):**
 
-```typescript
-// Linha 777-783 — handler do botão QR
-onClick={async () => {
-  try {
-    const response = await triggerConnectionWebhook("qr");
-    // Se a resposta contém QR image, mostra QR; senão se tem code, mostra code
-    if (response?.qrcode_image || response?.value || response?.qrCode || response?.qrCodeUrl) {
-      setConnectionStep("qr");
-    } else if (response?.code) {
-      setConnectionStep("code");
-    } else {
-      setConnectionStep("qr"); // fallback
-    }
-  } catch {
-    // Error already handled
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
   }
-}}
+}
 ```
 
-### Arquivo alterado
-- `src/pages/Instances.tsx` — alterar handler do botão QR (~5 linhas)
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 

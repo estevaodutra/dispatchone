@@ -776,8 +776,14 @@ export default function Instances() {
               <div className="space-y-3">
                 <Button variant="outline" className="w-full justify-start h-auto p-4" disabled={isConnecting} onClick={async () => {
               try {
-                await triggerConnectionWebhook("qr");
-                setConnectionStep("qr");
+                const response = await triggerConnectionWebhook("qr");
+                if (response?.qrcode_image || response?.value || response?.qrCode || response?.qrCodeUrl) {
+                  setConnectionStep("qr");
+                } else if (response?.code) {
+                  setConnectionStep("code");
+                } else {
+                  setConnectionStep("qr");
+                }
               } catch {
                 // Error already handled in triggerConnectionWebhook
               }
