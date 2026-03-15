@@ -632,6 +632,11 @@ export default function Instances() {
                     </div>
                   )}
 
+                  {/* Expiration Countdown */}
+                  {instance.expirationDate && (
+                    <ExpirationCountdown expirationDate={instance.expirationDate} />
+                  )}
+
                   {/* Health & Stats */}
                   {instance.status === "connected" && <>
                       <div className="grid grid-cols-2 gap-4">
