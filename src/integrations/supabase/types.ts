@@ -1766,6 +1766,168 @@ export type Database = {
           },
         ]
       }
+      pirate_campaign_groups: {
+        Row: {
+          campaign_id: string
+          created_at: string | null
+          group_jid: string
+          group_name: string | null
+          id: string
+          is_active: boolean | null
+          leads_captured: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          campaign_id: string
+          created_at?: string | null
+          group_jid: string
+          group_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          leads_captured?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          campaign_id?: string
+          created_at?: string | null
+          group_jid?: string
+          group_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          leads_captured?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pirate_campaign_groups_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "pirate_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pirate_campaigns: {
+        Row: {
+          auto_create_lead: boolean | null
+          company_id: string
+          created_at: string | null
+          description: string | null
+          id: string
+          ignore_duplicates: boolean | null
+          instance_id: string | null
+          name: string
+          status: string | null
+          target_campaign_id: string | null
+          total_leads_captured: number | null
+          updated_at: string | null
+          user_id: string
+          webhook_headers: Json | null
+          webhook_url: string | null
+        }
+        Insert: {
+          auto_create_lead?: boolean | null
+          company_id: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          ignore_duplicates?: boolean | null
+          instance_id?: string | null
+          name: string
+          status?: string | null
+          target_campaign_id?: string | null
+          total_leads_captured?: number | null
+          updated_at?: string | null
+          user_id: string
+          webhook_headers?: Json | null
+          webhook_url?: string | null
+        }
+        Update: {
+          auto_create_lead?: boolean | null
+          company_id?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          ignore_duplicates?: boolean | null
+          instance_id?: string | null
+          name?: string
+          status?: string | null
+          target_campaign_id?: string | null
+          total_leads_captured?: number | null
+          updated_at?: string | null
+          user_id?: string
+          webhook_headers?: Json | null
+          webhook_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pirate_campaigns_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pirate_leads: {
+        Row: {
+          campaign_id: string
+          company_id: string
+          created_at: string | null
+          group_jid: string
+          id: string
+          joined_at: string | null
+          lead_id: string | null
+          lid: string | null
+          phone: string
+          user_id: string
+          webhook_response_status: number | null
+          webhook_sent: boolean | null
+          webhook_sent_at: string | null
+        }
+        Insert: {
+          campaign_id: string
+          company_id: string
+          created_at?: string | null
+          group_jid: string
+          id?: string
+          joined_at?: string | null
+          lead_id?: string | null
+          lid?: string | null
+          phone: string
+          user_id: string
+          webhook_response_status?: number | null
+          webhook_sent?: boolean | null
+          webhook_sent_at?: string | null
+        }
+        Update: {
+          campaign_id?: string
+          company_id?: string
+          created_at?: string | null
+          group_jid?: string
+          id?: string
+          joined_at?: string | null
+          lead_id?: string | null
+          lid?: string | null
+          phone?: string
+          user_id?: string
+          webhook_response_status?: number | null
+          webhook_sent?: boolean | null
+          webhook_sent_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pirate_leads_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "pirate_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       poll_messages: {
         Row: {
           campaign_id: string
@@ -2471,6 +2633,10 @@ export type Database = {
           healed_operator_name: string
           previous_status: string
         }[]
+      }
+      increment_pirate_counters: {
+        Args: { p_campaign_id: string; p_group_jid: string }
+        Returns: undefined
       }
       is_company_admin: {
         Args: { _company_id: string; _user_id: string }
