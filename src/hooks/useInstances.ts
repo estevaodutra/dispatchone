@@ -16,6 +16,8 @@ interface DbInstance {
   external_instance_id: string | null;
   external_instance_token: string | null;
   user_id: string | null;
+  payment_status: string | null;
+  expiration_date: string | null;
 }
 
 // Frontend instance type
