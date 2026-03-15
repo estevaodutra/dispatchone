@@ -664,6 +664,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ==========================================
+    // AUTO-PROCESS GROUP JOIN for Pirate Campaigns
+    // ==========================================
+    if (classification.eventType === "group_join" && context.chatJid && context.senderPhone) {
+      try {
+        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${context.senderPhone}`);
+        const pirateResponse = await fetch(
+          `${supabaseUrl}/functions/v1/pirate-process-join`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              group_jid: context.chatJid,
+              phone: context.senderPhone,
+              lid: null,
+              instance_id: instance?.id || null,
+              raw_event: rawEvent,
+            }),
+          }
+        );
+        const pirateResult = await pirateResponse.json();
+        console.log(`[webhook-inbound] Pirate process result: ${JSON.stringify(pirateResult)}`);
+      } catch (pirateError) {
+        console.error("[webhook-inbound] Error processing pirate join:", pirateError);
+      }
+    }
+
     return new Response(
       JSON.stringify({
       success: true,

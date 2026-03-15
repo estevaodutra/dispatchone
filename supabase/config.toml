@@ -74,3 +74,6 @@ verify_jwt = false
 
 [functions.execute-call-action]
 verify_jwt = false
+
+[functions.pirate-process-join]
+verify_jwt = false
