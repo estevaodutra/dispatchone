@@ -492,6 +492,7 @@ export default function Instances() {
         name: newInstance.name,
         provider: newInstance.provider,
         phone: newInstance.phoneNumber?.replace(/\D/g, "") || "",
+        instance_function: newInstance.function || "dispatcher",
       });
       setShowAddDialog(false);
       setNewInstance({
