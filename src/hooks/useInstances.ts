@@ -132,6 +132,8 @@ const transformDbToFrontend = (dbInstance: DbInstance): Instance => {
     phoneNumber: dbInstance.phone,
     idInstance: dbInstance.external_instance_id || undefined,
     tokenInstance: dbInstance.external_instance_token || undefined,
+    paymentStatus: dbInstance.payment_status || undefined,
+    expirationDate: dbInstance.expiration_date || undefined,
   };
 };
 
