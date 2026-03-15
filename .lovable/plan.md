@@ -1,26 +1,55 @@
 
 
-## Re-deploy da Edge Function `webhook-inbound`
+## Corrigir extração: usar `connectedPhone` como telefone do lead
 
-### Diagnóstico
-O código no repositório está **correto** — a extração do participante real de `notificationParameters` está implementada nas linhas 402-408. Porém, a edge function deployada **não contém essas alterações**. Evidências:
+### Entendimento do Payload
 
-1. Os eventos `group_join` recentes (19:14, 19:03 UTC) ainda têm `sender_phone` = JID do grupo (ex: `120363406647107801-group`)
-2. Nenhum log contendo "Detected group_join" ou "Pirate process result" aparece nos logs da função
-3. A tabela `pirate_leads` continua vazia (0 leads)
+Com base no payload real fornecido:
+- `body.phone` = JID do grupo (ex: `120363425932296878-group`) -- **NÃO é o telefone do lead**
+- `body.connectedPhone` = telefone real do lead (ex: `5512982402981`) -- **ESTE é o destino**
+- `body.notificationParameters[0]` = LID do participante (ex: `15041025855619@lid`)
 
-### Solução
-Forçar o re-deploy da edge function `webhook-inbound` para que as alterações já presentes no código (extração de participante e invocação do `pirate-process-join`) entrem em vigor.
+### Alterações em `supabase/functions/webhook-inbound/index.ts`
 
-Também re-deployar `pirate-process-join` para garantir que ambas as funções estejam sincronizadas.
+**1. `extractZApiContext` (linhas 402-408)**: Substituir a lógica atual que usa `notificationParameters[0]` como `senderPhone` para usar `body.connectedPhone`:
 
-### Resultado Esperado
-Após o deploy, novos eventos `group_join` devem:
-- Salvar `sender_phone` com o LID/número do participante (ex: `75441268367584`) em vez do JID do grupo
-- Invocar `pirate-process-join` automaticamente
-- Criar registros em `pirate_leads` para campanhas ativas que monitoram o grupo
-- Disparar o webhook para o n8n com os dados do participante
+```typescript
+// For group participant notifications, extract real participant data
+const notification = body?.notification as string | undefined;
+const notificationParams = body?.notificationParameters as string[] | undefined;
+if (notification?.startsWith("GROUP_PARTICIPANT")) {
+  // connectedPhone is the actual phone number of the joining participant
+  const connectedPhone = body?.connectedPhone as string | undefined;
+  if (connectedPhone) {
+    senderPhone = connectedPhone;
+  }
+}
+```
 
-### Ação
-- Re-deploy: `webhook-inbound` e `pirate-process-join`
+**2. Invocação do `pirate-process-join` (linhas 681-703)**: Passar `connectedPhone` como `phone` e `notificationParameters[0]` como `lid`:
+
+```typescript
+const rawBody = rawEvent.body as Record<string, unknown> | undefined;
+const notifParams = rawBody?.notificationParameters as string[] | undefined;
+const participantRaw = notifParams?.[0] || null;
+const isLid = participantRaw?.includes("@lid");
+const connectedPhone = rawBody?.connectedPhone as string | undefined;
+
+body: JSON.stringify({
+  group_jid: context.chatJid,
+  phone: connectedPhone || context.senderPhone,  // telefone real
+  lid: isLid ? participantRaw : null,              // LID completo
+  instance_id: instance?.id || null,
+  raw_event: rawEvent,
+}),
+```
+
+### Resultado
+- `phone` em `pirate_leads` = `5512982402981` (telefone real, usável como destino)
+- `lid` em `pirate_leads` = `15041025855619@lid` (identificador WhatsApp)
+- Webhook para n8n enviará ambos os campos corretamente
+
+### Arquivos
+- `supabase/functions/webhook-inbound/index.ts` (~10 linhas em 2 pontos)
+- Re-deploy da edge function após alteração
 
