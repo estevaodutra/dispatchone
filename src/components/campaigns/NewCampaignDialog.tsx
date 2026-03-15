@@ -50,7 +50,7 @@ const campaignTypes = {
       icon: Skull,
       href: "/campaigns/whatsapp/pirata",
       colorClass: "bg-purple-500",
-      enabled: false,
+      enabled: true,
     },
   ],
   telefonia: [

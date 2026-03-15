@@ -81,7 +81,7 @@ export default function CampaignsHub() {
             activeCount={stats?.pirata.active || 0}
             colorClass="bg-purple-500"
             href="/campaigns/whatsapp/pirata"
-            comingSoon
+            
           />
         </div>
       </section>

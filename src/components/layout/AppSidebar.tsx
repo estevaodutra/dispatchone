@@ -79,11 +79,11 @@ export function AppSidebar() {
     { title: t("nav.logs") || "Logs", url: "/logs", icon: FileText },
   ];
 
-  const campaignSubItems = {
+  const campaignSubItems: Record<string, Array<{ title: string; url: string; icon: typeof SendHorizontal; comingSoon?: boolean }>> = {
     whatsapp: [
       { title: "Disparos", url: "/campaigns/whatsapp/despacho", icon: SendHorizontal },
       { title: "Grupos", url: "/campaigns/whatsapp/grupos", icon: Users },
-      { title: "Pirata", url: "/campaigns/whatsapp/pirata", icon: Skull, comingSoon: true },
+      { title: "Pirata", url: "/campaigns/whatsapp/pirata", icon: Skull },
     ],
     telefonia: [
       { title: "URA", url: "/campaigns/telefonia/ura", icon: Bot, comingSoon: true },
