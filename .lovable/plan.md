@@ -1,53 +1,26 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Re-deploy da Edge Function `webhook-inbound`
 
-### Problema 1: Build error em `call-status/index.ts`
+### Diagnóstico
+O código no repositório está **correto** — a extração do participante real de `notificationParameters` está implementada nas linhas 402-408. Porém, a edge function deployada **não contém essas alterações**. Evidências:
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+1. Os eventos `group_join` recentes (19:14, 19:03 UTC) ainda têm `sender_phone` = JID do grupo (ex: `120363406647107801-group`)
+2. Nenhum log contendo "Detected group_join" ou "Pirate process result" aparece nos logs da função
+3. A tabela `pirate_leads` continua vazia (0 leads)
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+### Solução
+Forçar o re-deploy da edge function `webhook-inbound` para que as alterações já presentes no código (extração de participante e invocação do `pirate-process-join`) entrem em vigor.
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+Também re-deployar `pirate-process-join` para garantir que ambas as funções estejam sincronizadas.
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+### Resultado Esperado
+Após o deploy, novos eventos `group_join` devem:
+- Salvar `sender_phone` com o LID/número do participante (ex: `75441268367584`) em vez do JID do grupo
+- Invocar `pirate-process-join` automaticamente
+- Criar registros em `pirate_leads` para campanhas ativas que monitoram o grupo
+- Disparar o webhook para o n8n com os dados do participante
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
-
-**Correção em `call-status/index.ts` (linha 550-554):**
-
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
-
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
-
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
-```
-
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
-
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
-
-### Arquivos alterados
-
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+### Ação
+- Re-deploy: `webhook-inbound` e `pirate-process-join`
 
