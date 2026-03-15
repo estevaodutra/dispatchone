@@ -606,98 +606,119 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Batch reclassification - prioritize pending events
-    let query = supabase
-      .from("webhook_events")
-      .select("id, source, raw_event, event_type, classification, processing_status")
-      .eq("user_id", user.id);
-
-    if (onlyPending) {
-      query = query.eq("classification", "pending");
-    }
-    if (onlyUnknown) {
-      query = query.eq("event_type", "unknown");
-    }
-
-    // Prioritize pending events by ordering classification descending
-    // 'pending' > 'identified' alphabetically, so DESC puts pending first
-    query = query
-      .order("classification", { ascending: false })
-      .order("received_at", { ascending: false })
-      .limit(1000);
-
-    const { data: events, error: fetchError } = await query;
-
-    if (fetchError) {
-      console.error("[reclassify-events] Fetch error:", fetchError);
-      return new Response(
-        JSON.stringify({ error: "Failed to fetch events" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`[reclassify-events] Found ${events?.length || 0} events to process`);
-
+    // Batch reclassification - process in smaller pages to avoid statement timeout
+    const BATCH_SIZE = 200;
     let reclassified = 0;
     let unchanged = 0;
     let errors = 0;
+    let totalProcessed = 0;
+    let offset = 0;
+    let hasMore = true;
 
-    for (const event of events || []) {
-      try {
-        const rawEvent = event.raw_event as Record<string, unknown>;
-        const classification = classifyEvent(event.source, rawEvent);
-        const context = extractContext(event.source, rawEvent);
+    while (hasMore) {
+      let query = supabase
+        .from("webhook_events")
+        .select("id, source, raw_event, event_type, classification, processing_status")
+        .eq("user_id", user.id);
 
-        // Check if classification changed OR if processing_status is inconsistent
-        const expectedStatus = classification.classification === "identified" ? "processed" : "pending";
-        const hasChanged = 
-          event.event_type !== classification.eventType ||
-          event.classification !== classification.classification ||
-          event.processing_status !== expectedStatus;
+      if (onlyPending) {
+        query = query.eq("classification", "pending");
+      }
+      if (onlyUnknown) {
+        query = query.eq("event_type", "unknown");
+      }
 
-        // Debug logging for first 10 events
-        if (reclassified + unchanged + errors < 10) {
-          console.log(`[reclassify-events] Event ${event.id}: current=${event.event_type}/${event.classification}/${event.processing_status} -> new=${classification.eventType}/${classification.classification}/${expectedStatus} hasChanged=${hasChanged}`);
+      query = query
+        .order("classification", { ascending: false })
+        .order("received_at", { ascending: false })
+        .range(offset, offset + BATCH_SIZE - 1);
+
+      const { data: events, error: fetchError } = await query;
+
+      if (fetchError) {
+        console.error("[reclassify-events] Fetch error:", fetchError);
+        // If we already processed some, return partial results instead of failing
+        if (totalProcessed > 0) {
+          console.log(`[reclassify-events] Returning partial results after error at offset ${offset}`);
+          hasMore = false;
+          break;
         }
+        return new Response(
+          JSON.stringify({ error: "Failed to fetch events" }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
 
-        if (hasChanged) {
-          const { error: updateError } = await supabase
-            .from("webhook_events")
-            .update({
-              event_type: classification.eventType,
-              event_subtype: classification.eventSubtype,
-              classification: classification.classification,
-              processing_status: expectedStatus,
-              processed_at: expectedStatus === "processed" ? new Date().toISOString() : null,
-              chat_jid: context.chatJid,
-              chat_type: context.chatType,
-              chat_name: context.chatName,
-              sender_phone: context.senderPhone,
-              sender_name: context.senderName,
-              message_id: context.messageId,
-              event_timestamp: context.eventTimestamp,
-            })
-            .eq("id", event.id);
+      const batch = events || [];
+      console.log(`[reclassify-events] Batch at offset ${offset}: ${batch.length} events`);
 
-          if (updateError) {
-            console.error(`[reclassify-events] Update error for ${event.id}:`, updateError);
-            errors++;
-          } else {
-            console.log(`[reclassify-events] Reclassified ${event.id}: ${event.event_type} -> ${classification.eventType}`);
-            reclassified++;
+      if (batch.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      for (const event of batch) {
+        try {
+          const rawEvent = event.raw_event as Record<string, unknown>;
+          const classification = classifyEvent(event.source, rawEvent);
+          const context = extractContext(event.source, rawEvent);
+
+          const expectedStatus = classification.classification === "identified" ? "processed" : "pending";
+          const hasChanged = 
+            event.event_type !== classification.eventType ||
+            event.classification !== classification.classification ||
+            event.processing_status !== expectedStatus;
+
+          if (reclassified + unchanged + errors < 10) {
+            console.log(`[reclassify-events] Event ${event.id}: current=${event.event_type}/${event.classification}/${event.processing_status} -> new=${classification.eventType}/${classification.classification}/${expectedStatus} hasChanged=${hasChanged}`);
           }
-        } else {
-          unchanged++;
+
+          if (hasChanged) {
+            const { error: updateError } = await supabase
+              .from("webhook_events")
+              .update({
+                event_type: classification.eventType,
+                event_subtype: classification.eventSubtype,
+                classification: classification.classification,
+                processing_status: expectedStatus,
+                processed_at: expectedStatus === "processed" ? new Date().toISOString() : null,
+                chat_jid: context.chatJid,
+                chat_type: context.chatType,
+                chat_name: context.chatName,
+                sender_phone: context.senderPhone,
+                sender_name: context.senderName,
+                message_id: context.messageId,
+                event_timestamp: context.eventTimestamp,
+              })
+              .eq("id", event.id);
+
+            if (updateError) {
+              console.error(`[reclassify-events] Update error for ${event.id}:`, updateError);
+              errors++;
+            } else {
+              reclassified++;
+            }
+          } else {
+            unchanged++;
+          }
+        } catch (err) {
+          console.error(`[reclassify-events] Error processing event ${(event as any).id}:`, err);
+          errors++;
         }
-      } catch (err) {
-        console.error(`[reclassify-events] Error processing event ${event.id}:`, err);
-        errors++;
+      }
+
+      totalProcessed += batch.length;
+      offset += BATCH_SIZE;
+
+      // Stop after 1000 events max to avoid edge function timeout
+      if (batch.length < BATCH_SIZE || totalProcessed >= 1000) {
+        hasMore = false;
       }
     }
 
     const result = {
       success: true,
-      total_processed: events?.length || 0,
+      total_processed: totalProcessed,
       reclassified,
       unchanged,
       errors,
