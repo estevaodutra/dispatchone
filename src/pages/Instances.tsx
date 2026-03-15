@@ -242,14 +242,24 @@ export default function Instances() {
       }
       setWebhookResponse(normalizedData);
 
-      // Salvar credenciais se presentes na resposta
-      if (normalizedData.id_instance && normalizedData.token_instance) {
+      // Salvar credenciais se presentes na resposta (novo formato com instance.id/token)
+      const instanceData = normalizedData.instance || normalizedData;
+      const instanceId = instanceData.id || normalizedData.id_instance;
+      const instanceToken = instanceData.token || normalizedData.token_instance;
+      const paymentStatus = instanceData.paymentStatus;
+      const expirationDate = instanceData.expirationDate;
+
+      if (instanceId && instanceToken) {
+        const updates: Record<string, string> = {
+          external_instance_id: instanceId,
+          external_instance_token: instanceToken,
+        };
+        if (paymentStatus) updates.payment_status = paymentStatus;
+        if (expirationDate) updates.expiration_date = new Date(expirationDate).toISOString();
+
         await updateInstance({
           id: selectedInstance.id,
-          updates: {
-            external_instance_id: normalizedData.id_instance,
-            external_instance_token: normalizedData.token_instance,
-          }
+          updates,
         });
         
         toast({
