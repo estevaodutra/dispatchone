@@ -1,39 +1,53 @@
 
-Objetivo: corrigir o fluxo de conexão para que, quando o webhook retornar imagem em base64, a UI renderize a imagem (QR) em vez de exibir a string no campo de código.
 
-1) Diagnóstico confirmado no código atual
-- Hoje o fluxo decide a etapa por `response.code` vs `response.qrcode_image/value/qrCode/qrCodeUrl`.
-- Em alguns retornos, o valor de `code` vem como `data:image/...;base64,...` (ou base64 cru), então a tela de “código” mostra texto gigante em vez de imagem.
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-2) Ajuste de normalização no `src/pages/Instances.tsx`
-- Criar helpers locais para:
-  - detectar se um valor é imagem (`data:image/...`, URL de imagem, ou base64 cru válido);
-  - limpar base64 (remover prefixo já existente e espaços);
-  - montar `src` final de imagem (`data:image/png;base64,...` quando necessário).
-- Na `triggerConnectionWebhook`, após normalizar array/objeto:
-  - extrair candidatos de QR de todos os campos possíveis (`qrcode_image`, `value`, `qrCode`, `qrCodeUrl`, `connection.code`, `code`);
-  - se `code` for imagem, mover para campo de QR e não tratar como código de pareamento;
-  - manter `code` apenas quando for realmente código alfanumérico de pareamento.
+### Problema 1: Build error em `call-status/index.ts`
 
-3) Ajuste de roteamento de etapas (QR x Código)
-- Nos handlers de conexão (`qr` e `phone`), decidir etapa com prioridade:
-  1. se existe imagem QR válida => `setConnectionStep("qr")`
-  2. senão, se existe código de pareamento válido => `setConnectionStep("code")`
-  3. senão fallback + toast de retorno inesperado.
-- Aplicar a mesma regra ao “Gerar Novo QR” / “Gerar Novo Código”.
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-4) Ajuste de renderização
-- Na etapa QR, usar sempre `src` já normalizado (garantindo prefixo data URI quando vier base64 cru).
-- Na etapa Código, renderizar apenas texto curto de pareamento; nunca exibir blob base64.
-- Esconder ação “copiar código” quando não houver código válido.
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-5) Validação rápida após implementação
-- Cenário A: webhook retorna `connection.code` alfanumérico -> tela “código” correta.
-- Cenário B: webhook retorna base64 em `qrcode_image/value/qrCode/qrCodeUrl` -> QR renderizado.
-- Cenário C: webhook retorna base64 dentro de `code` -> UI redireciona para QR e renderiza imagem.
-- Cenário D: webhook retorna base64 cru (sem `data:image`) -> renderiza normalmente com prefixo adicionado.
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-Detalhes técnicos (resumo)
-- Arquivo alvo: `src/pages/Instances.tsx`.
-- Sem migração de banco.
-- Sem mudanças em hooks globais; correção fica encapsulada no fluxo de conexão da página de instâncias.
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
+}
+```
+
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+
