@@ -22,6 +22,7 @@ const categoryIcons: Record<string, React.ReactNode> = {
   validation: <CheckCircle className="h-4 w-4" />,
   queries: <Search className="h-4 w-4" />,
   calls: <Phone className="h-4 w-4" />,
+  pirate: <Skull className="h-4 w-4" />,
 };
 
 const methodColors: Record<string, string> = {
