@@ -18,6 +18,7 @@ interface DbInstance {
   user_id: string | null;
   payment_status: string | null;
   expiration_date: string | null;
+  instance_function: string;
 }
 
 // Frontend instance type
