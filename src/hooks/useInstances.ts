@@ -184,6 +184,7 @@ export function useInstances() {
           phone: newInstance.phone,
           status: "disconnected",
           user_id: user.id,
+          instance_function: newInstance.instance_function || "dispatcher",
         })
         .select()
         .single();
