@@ -244,6 +244,37 @@ export default function Instances() {
       if (normalizedData?.connection?.code) {
         normalizedData = { ...normalizedData, code: normalizedData.connection.code };
       }
+
+      // Detectar se algum campo "code" é na verdade uma imagem base64
+      const isImageData = (val: string | undefined | null): boolean => {
+        if (!val || typeof val !== 'string') return false;
+        if (val.startsWith('data:image')) return true;
+        // Base64 cru: string longa sem espaços, apenas chars base64
+        if (val.length > 100 && /^[A-Za-z0-9+/=\s]+$/.test(val.replace(/\s/g, ''))) return true;
+        return false;
+      };
+
+      const ensureDataUri = (val: string): string => {
+        if (val.startsWith('data:image')) return val;
+        return `data:image/png;base64,${val.replace(/\s/g, '')}`;
+      };
+
+      // Se "code" é na verdade imagem, mover para qrcode_image
+      if (isImageData(normalizedData?.code)) {
+        normalizedData = {
+          ...normalizedData,
+          qrcode_image: ensureDataUri(normalizedData.code),
+          code: undefined,
+        };
+      }
+
+      // Garantir prefixo data URI em campos de QR existentes
+      for (const field of ['qrcode_image', 'value', 'qrCode', 'qrCodeUrl'] as const) {
+        if (normalizedData?.[field] && typeof normalizedData[field] === 'string' && isImageData(normalizedData[field]) && !normalizedData[field].startsWith('data:image') && !normalizedData[field].startsWith('http')) {
+          normalizedData = { ...normalizedData, [field]: ensureDataUri(normalizedData[field]) };
+        }
+      }
+
       setWebhookResponse(normalizedData);
 
       // Salvar credenciais se presentes na resposta (novo formato com instance.id/token)
