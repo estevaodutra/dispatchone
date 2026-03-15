@@ -37,6 +37,8 @@ export interface Instance {
   phoneNumber?: string;
   idInstance?: string;
   tokenInstance?: string;
+  paymentStatus?: string;
+  expirationDate?: string;
 }
 
 // Map database status to frontend status
