@@ -173,6 +173,7 @@ export function useInstances() {
       name: string;
       provider: string;
       phone: string;
+      instance_function?: string;
     }) => {
       if (!user) throw new Error("Not authenticated");
 
