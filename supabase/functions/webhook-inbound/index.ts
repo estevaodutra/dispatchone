@@ -399,12 +399,14 @@ function extractZApiContext(rawEvent: Record<string, unknown>): ContextResult {
     senderPhone = (body?.senderPhone || rawEvent.senderPhone || sender?.phone) as string | null;
   }
 
-  // For group participant notifications, extract the real participant from notificationParameters
+  // For group participant notifications, extract the real participant phone
   const notification = body?.notification as string | undefined;
-  const notificationParams = body?.notificationParameters as string[] | undefined;
-  if (notification?.startsWith("GROUP_PARTICIPANT") && notificationParams?.length) {
-    const participant = notificationParams[0]; // e.g. "2495543783502@lid" or "5511999999999@c.us"
-    senderPhone = participant.split("@")[0];
+  if (notification?.startsWith("GROUP_PARTICIPANT")) {
+    // connectedPhone is the actual phone number of the joining participant
+    const connectedPhone = body?.connectedPhone as string | undefined;
+    if (connectedPhone) {
+      senderPhone = connectedPhone;
+    }
   }
   
   // Get sender name from multiple sources
