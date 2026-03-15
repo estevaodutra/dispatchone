@@ -677,7 +677,15 @@ Deno.serve(async (req) => {
     // ==========================================
     if (classification.eventType === "group_join" && context.chatJid && context.senderPhone) {
       try {
-        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${context.senderPhone}`);
+        // Extract full LID from notificationParameters if available
+        const rawBody = rawEvent.body as Record<string, unknown> | undefined;
+        const notifParams = rawBody?.notificationParameters as string[] | undefined;
+        const participantRaw = notifParams?.[0] || null; // e.g. "2495543783502@lid"
+        const isLid = participantRaw?.includes("@lid");
+
+        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${context.senderPhone}, lid=${isLid ? participantRaw : "none"}`);
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
         const pirateResponse = await fetch(
           `${supabaseUrl}/functions/v1/pirate-process-join`,
           {
@@ -689,7 +697,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               group_jid: context.chatJid,
               phone: context.senderPhone,
-              lid: null,
+              lid: isLid ? participantRaw : null,
               instance_id: instance?.id || null,
               raw_event: rawEvent,
             }),
