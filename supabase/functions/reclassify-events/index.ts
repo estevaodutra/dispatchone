@@ -712,7 +712,7 @@ Deno.serve(async (req) => {
       }
 
       totalProcessed += batch.length;
-      offset += BATCH_SIZE;
+      lastId = batch[batch.length - 1].id as string;
 
       // Stop after 1000 events max to avoid edge function timeout
       if (batch.length < BATCH_SIZE || totalProcessed >= 1000) {
