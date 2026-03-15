@@ -240,6 +240,10 @@ export default function Instances() {
       if (Array.isArray(data) && data.length > 0) {
         normalizedData = data[0];
       }
+      // Extrair connection.code para o nível raiz para exibição do código de pareamento
+      if (normalizedData?.connection?.code) {
+        normalizedData = { ...normalizedData, code: normalizedData.connection.code };
+      }
       setWebhookResponse(normalizedData);
 
       // Salvar credenciais se presentes na resposta (novo formato com instance.id/token)
