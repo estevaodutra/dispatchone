@@ -17,6 +17,16 @@ export interface PirateCampaign {
   targetCampaignId: string | null;
   status: "active" | "paused" | "stopped";
   totalLeadsCaptured: number;
+  captureLink: string | null;
+  profilePhotoUrl: string | null;
+  profileName: string | null;
+  profileDescription: string | null;
+  profileStatus: string | null;
+  offerText: string | null;
+  paymentLink: string | null;
+  destinationType: "webhook" | "sequence";
+  destinationSequenceId: string | null;
+  destinationCampaignId: string | null;
   createdAt: string;
   updatedAt: string;
 }
