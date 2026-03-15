@@ -17,6 +17,7 @@ import { useInstances, Instance, InstanceFunction, mapFrontendStatusToDb } from 
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { buildInstancePayload } from "@/lib/webhook-utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Função para formatar número de telefone brasileiro
 const formatPhoneNumber = (value: string): string => {
