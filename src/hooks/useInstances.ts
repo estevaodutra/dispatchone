@@ -16,6 +16,8 @@ interface DbInstance {
   external_instance_id: string | null;
   external_instance_token: string | null;
   user_id: string | null;
+  payment_status: string | null;
+  expiration_date: string | null;
 }
 
 // Frontend instance type
@@ -35,6 +37,8 @@ export interface Instance {
   phoneNumber?: string;
   idInstance?: string;
   tokenInstance?: string;
+  paymentStatus?: string;
+  expirationDate?: string;
 }
 
 // Map database status to frontend status
@@ -128,6 +132,8 @@ const transformDbToFrontend = (dbInstance: DbInstance): Instance => {
     phoneNumber: dbInstance.phone,
     idInstance: dbInstance.external_instance_id || undefined,
     tokenInstance: dbInstance.external_instance_token || undefined,
+    paymentStatus: dbInstance.payment_status || undefined,
+    expirationDate: dbInstance.expiration_date || undefined,
   };
 };
 
@@ -211,6 +217,8 @@ export function useInstances() {
         status: string;
         external_instance_id: string;
         external_instance_token: string;
+        payment_status: string;
+        expiration_date: string;
       }>;
     }) => {
       const { data, error } = await supabase

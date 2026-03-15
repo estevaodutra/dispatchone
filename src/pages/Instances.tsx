@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { PageHeader, StatusBadge, HealthBar, AlertBanner } from "@/components/dispatch";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,13 +9,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { MessageSquare, Settings, RefreshCw, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft, Copy } from "lucide-react";
+import { MessageSquare, Settings, RefreshCw, CheckCircle, XCircle, Plus, Loader2, Trash2, Radio, Shield, Eye, GitBranch, Pencil, QrCode, Phone, ArrowLeft, Copy, Clock, AlertTriangle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useLanguage } from "@/i18n";
 import { useInstances, Instance, InstanceFunction, mapFrontendStatusToDb } from "@/hooks/useInstances";
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { buildInstancePayload } from "@/lib/webhook-utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Função para formatar número de telefone brasileiro
 const formatPhoneNumber = (value: string): string => {
@@ -73,6 +75,73 @@ const TimerDisplay = ({ timeLeft, isExpired }: { timeLeft: number; isExpired: bo
     </div>
   );
 };
+// Payment status badge component
+const PaymentStatusBadge = ({ status }: { status?: string }) => {
+  if (!status) return null;
+  const upper = status.toUpperCase();
+  const config: Record<string, { className: string; label: string }> = {
+    TRIAL: { className: "bg-warning/15 text-warning", label: "Trial" },
+    ACTIVE: { className: "bg-success/15 text-success", label: "Ativo" },
+    EXPIRED: { className: "bg-destructive/15 text-destructive", label: "Expirado" },
+    SUSPENDED: { className: "bg-destructive/15 text-destructive", label: "Suspenso" },
+  };
+  const c = config[upper] || { className: "bg-muted text-muted-foreground", label: status };
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${c.className}`}>
+      {c.label}
+    </span>
+  );
+};
+
+// Expiration countdown component
+const ExpirationCountdown = ({ expirationDate }: { expirationDate: string }) => {
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const expMs = new Date(expirationDate).getTime();
+  const diffMs = expMs - now;
+
+  if (diffMs <= 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-destructive font-medium">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        Expirado
+      </div>
+    );
+  }
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+
+  let label: string;
+  let colorClass: string;
+
+  if (days > 0) {
+    label = `${days}d ${remainingHours}h restantes`;
+    colorClass = "text-success";
+  } else if (hours >= 1) {
+    label = `${hours}h ${minutes}m restantes`;
+    colorClass = hours > 1 ? "text-success" : "text-warning";
+  } else {
+    label = `${minutes}m restantes`;
+    colorClass = "text-destructive";
+  }
+
+  return (
+    <div className={`flex items-center gap-1.5 text-xs font-medium ${colorClass}`}>
+      <Clock className="h-3.5 w-3.5" />
+      {label}
+    </div>
+  );
+};
+
 export default function Instances() {
   const { toast } = useToast();
   const { t } = useLanguage();
@@ -173,14 +242,24 @@ export default function Instances() {
       }
       setWebhookResponse(normalizedData);
 
-      // Salvar credenciais se presentes na resposta
-      if (normalizedData.id_instance && normalizedData.token_instance) {
+      // Salvar credenciais se presentes na resposta (novo formato com instance.id/token)
+      const instanceData = normalizedData.instance || normalizedData;
+      const instanceId = instanceData.id || normalizedData.id_instance;
+      const instanceToken = instanceData.token || normalizedData.token_instance;
+      const paymentStatus = instanceData.paymentStatus;
+      const expirationDate = instanceData.expirationDate;
+
+      if (instanceId && instanceToken) {
+        const updates: Record<string, string> = {
+          external_instance_id: instanceId,
+          external_instance_token: instanceToken,
+        };
+        if (paymentStatus) updates.payment_status = paymentStatus;
+        if (expirationDate) updates.expiration_date = new Date(expirationDate).toISOString();
+
         await updateInstance({
           id: selectedInstance.id,
-          updates: {
-            external_instance_id: normalizedData.id_instance,
-            external_instance_token: normalizedData.token_instance,
-          }
+          updates,
         });
         
         toast({
@@ -231,6 +310,54 @@ export default function Instances() {
       setIsQrExpired(true);
     }
   }, [qrTimeLeft, isQrExpired]);
+
+  const { user } = useAuth();
+
+  // Auto-disconnect instances expiring in < 1 hour
+  const autoDisconnectedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!instances.length || !user) return;
+    
+    const checkExpirations = async () => {
+      for (const inst of instances) {
+        if (inst.status !== "connected" || !inst.expirationDate) continue;
+        if (autoDisconnectedRef.current.has(inst.id)) continue;
+        
+        const diffMs = new Date(inst.expirationDate).getTime() - Date.now();
+        if (diffMs < 60 * 60 * 1000) { // < 1 hour
+          autoDisconnectedRef.current.add(inst.id);
+          
+          try {
+            await updateInstance({
+              id: inst.id,
+              updates: { status: "disconnected" }
+            });
+
+            // Create alert for the user
+            await supabase.from("alerts").insert({
+              user_id: user.id,
+              severity: "warning",
+              title: `Instância ${inst.name} desconectada`,
+              description: `A instância foi desconectada automaticamente porque o vencimento é em menos de 1 hora.`,
+              entity: inst.name,
+            });
+
+            toast({
+              title: "Instância desconectada",
+              description: `${inst.name} foi desconectada automaticamente por vencimento próximo.`,
+              variant: "destructive",
+            });
+          } catch (e) {
+            console.error("Auto-disconnect error:", e);
+          }
+        }
+      }
+    };
+    
+    checkExpirations();
+    const interval = setInterval(checkExpirations, 60000);
+    return () => clearInterval(interval);
+  }, [instances, user]);
 
   // No longer need localStorage - data persists in database
   const getFunctionIcon = (fn: InstanceFunction) => {
@@ -485,7 +612,10 @@ export default function Instances() {
                       </div>
                     </div>
                   </div>
-                  <StatusBadge status={getStatusDisplay(instance.status)} />
+                  <div className="flex flex-col items-end gap-1">
+                    <StatusBadge status={getStatusDisplay(instance.status)} />
+                    <PaymentStatusBadge status={instance.paymentStatus} />
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Connected Number */}
@@ -500,6 +630,11 @@ export default function Instances() {
                       <p><span className="text-muted-foreground">Instance ID:</span> {instance.idInstance}</p>
                       <p><span className="text-muted-foreground">Token:</span> ••••••{instance.tokenInstance?.slice(-6)}</p>
                     </div>
+                  )}
+
+                  {/* Expiration Countdown */}
+                  {instance.expirationDate && (
+                    <ExpirationCountdown expirationDate={instance.expirationDate} />
                   )}
 
                   {/* Health & Stats */}
