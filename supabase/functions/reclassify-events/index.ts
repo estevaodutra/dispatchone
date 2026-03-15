@@ -607,12 +607,12 @@ Deno.serve(async (req) => {
     }
 
     // Batch reclassification - process in smaller pages to avoid statement timeout
-    const BATCH_SIZE = 200;
+    const BATCH_SIZE = 50;
     let reclassified = 0;
     let unchanged = 0;
     let errors = 0;
     let totalProcessed = 0;
-    let offset = 0;
+    let lastId: string | null = null;
     let hasMore = true;
 
     while (hasMore) {
@@ -628,10 +628,14 @@ Deno.serve(async (req) => {
         query = query.eq("event_type", "unknown");
       }
 
+      // Use cursor-based pagination (keyset) to avoid slow OFFSET on large tables
+      if (lastId) {
+        query = query.gt("id", lastId);
+      }
+
       query = query
-        .order("classification", { ascending: false })
-        .order("received_at", { ascending: false })
-        .range(offset, offset + BATCH_SIZE - 1);
+        .order("id", { ascending: true })
+        .limit(BATCH_SIZE);
 
       const { data: events, error: fetchError } = await query;
 
