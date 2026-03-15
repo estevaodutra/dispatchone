@@ -1,53 +1,57 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Corrigir extração de participante em eventos `group_join` para Campanhas Pirata
 
-### Problema 1: Build error em `call-status/index.ts`
+### Problema
+Quando um membro entra no grupo, o Z-API envia:
+- `body.phone` = JID do grupo (ex: `120363423547118470-group`)
+- `body.notificationParameters` = `["2495543783502@lid"]` (participante real)
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+O `extractZApiContext` usa `chatJid.split("@")[0]` como `senderPhone`, resultando no ID do grupo ao invés do participante. O `pirate-process-join` recebe o grupo como `phone` e `lid: null`.
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+### Solução
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+**1. `supabase/functions/webhook-inbound/index.ts`** -- Duas alterações:
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+**a) Em `extractZApiContext` (~linha 396)**: Após calcular `senderPhone`, detectar se é evento de notificação de grupo e extrair o participante real de `notificationParameters`:
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+```typescript
+let senderPhone = chatJid?.split("@")[0] || null;
 
-**Correção em `call-status/index.ts` (linha 550-554):**
-
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
-
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
-
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
+// For group notifications, extract participant from notificationParameters
+const notification = body?.notification as string | undefined;
+const notificationParams = body?.notificationParameters as string[] | undefined;
+if (notification?.startsWith("GROUP_PARTICIPANT") && notificationParams?.length) {
+  const participant = notificationParams[0]; // "2495543783502@lid" or "5511999@c.us"
+  senderPhone = participant.split("@")[0];
 }
 ```
 
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+**b) Na invocação do `pirate-process-join` (~linha 681)**: Passar tanto o `phone` (que agora será o LID/número do participante) quanto o `lid` extraído do `notificationParameters`:
 
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+```typescript
+const rawBody = rawEvent.body as Record<string, unknown> | undefined;
+const notifParams = rawBody?.notificationParameters as string[] | undefined;
+const participantRaw = notifParams?.[0] || null; // "2495543783502@lid"
+const isLid = participantRaw?.includes("@lid");
+
+body: JSON.stringify({
+  group_jid: context.chatJid,
+  phone: context.senderPhone,           // LID number or phone
+  lid: isLid ? participantRaw : null,    // Full LID if applicable
+  instance_id: instance?.id || null,
+  raw_event: rawEvent,
+}),
+```
+
+**2. `supabase/functions/pirate-process-join/index.ts`** -- Nenhuma alteração necessária. O campo `lid` já é aceito e armazenado. O `phone` agora receberá o valor correto (número do participante em vez do JID do grupo).
+
+### Resultado
+- `phone` no `pirate_leads` passará a conter o ID real do participante (ex: `2495543783502`)
+- `lid` conterá o identificador completo (ex: `2495543783502@lid`) quando aplicável
+- O webhook para n8n enviará os dados corretos do participante
+- Deduplicação por `phone` funcionará corretamente
 
 ### Arquivos alterados
-
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+- `supabase/functions/webhook-inbound/index.ts` (~10 linhas em 2 pontos)
 
