@@ -122,7 +122,7 @@ const transformDbToFrontend = (dbInstance: DbInstance): Instance => {
     id: dbInstance.id,
     name: dbInstance.name,
     provider: dbInstance.provider as Instance["provider"],
-    function: "dispatcher", // Default function since it's not stored in DB
+    function: (dbInstance.instance_function || "dispatcher") as InstanceFunction,
     status,
     health: status === "connected" ? 100 : status === "waitingConnection" ? 50 : 0,
     dispatches: dbInstance.messages_count || 0,
