@@ -192,6 +192,7 @@ export function CallActionDialog({
           isPriority: data.call_campaigns?.is_priority || false,
           callStatus: data.call_status || undefined,
           externalCallId: data.external_call_id,
+          audioUrl: data.audio_url || null,
         });
       } else {
         toast({ title: "Nenhuma ligação anterior encontrada" });
