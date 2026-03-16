@@ -31,6 +31,7 @@ interface CallDialogData {
   isPriority: boolean;
   callStatus?: string;
   externalCallId?: string | null;
+  audioUrl?: string | null;
 }
 
 interface CallActionDialogProps {
