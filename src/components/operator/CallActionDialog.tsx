@@ -88,7 +88,7 @@ export function CallActionDialog({
   const initialData: CallDialogData = {
     callId, campaignId, leadId, leadName, leadPhone, campaignName,
     duration, notes: initialObservations || "", attemptNumber, maxAttempts,
-    isPriority, callStatus, externalCallId,
+    isPriority, callStatus, externalCallId, audioUrl,
   };
 
   const [currentData, setCurrentData] = useState<CallDialogData>(initialData);
