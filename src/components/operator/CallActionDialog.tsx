@@ -757,6 +757,13 @@ export function CallActionDialog({
                           {entry.notes && (
                             <p className="text-xs text-muted-foreground">Obs: {entry.notes}</p>
                           )}
+                          {entry.audio_url && (
+                            <div className="mt-1.5 rounded border border-border bg-muted/10 p-1.5">
+                              <audio controls className="w-full h-7" src={entry.audio_url} preload="none">
+                                Seu navegador não suporta o player de áudio.
+                              </audio>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
