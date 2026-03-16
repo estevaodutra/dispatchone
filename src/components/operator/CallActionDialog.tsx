@@ -82,7 +82,7 @@ export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
   initialObservations, attemptNumber, maxAttempts, isPriority,
-  callStatus, externalCallId, operatorId,
+  callStatus, externalCallId, audioUrl, operatorId,
 }: CallActionDialogProps) {
   // --- Navigation state ---
   const initialData: CallDialogData = {
