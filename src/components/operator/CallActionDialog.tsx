@@ -230,6 +230,7 @@ export function CallActionDialog({
           operator_name: d.call_operators?.operator_name || "—",
           action_name: d.call_script_actions?.name || null,
           action_color: d.call_script_actions?.color || null,
+          audio_url: d.audio_url || null,
         })));
       }
       setHistoryLoading(false);
