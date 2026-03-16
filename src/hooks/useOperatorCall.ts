@@ -103,6 +103,7 @@ export function useOperatorCall() {
       scheduledFor: data.scheduled_for,
       observations: data.observations || null,
       externalCallId: data.external_call_id || null,
+      audioUrl: data.audio_url || null,
     };
 
     return call;
