@@ -50,6 +50,7 @@ interface CallActionDialogProps {
   isPriority: boolean;
   callStatus?: string;
   externalCallId?: string | null;
+  audioUrl?: string | null;
   operatorId?: string;
   depth?: number; // kept for backwards compat but unused
 }
