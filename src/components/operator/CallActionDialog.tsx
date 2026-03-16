@@ -101,7 +101,7 @@ export function CallActionDialog({
       setCurrentData({
         callId, campaignId, leadId, leadName, leadPhone, campaignName,
         duration, notes: initialObservations || "", attemptNumber, maxAttempts,
-        isPriority, callStatus, externalCallId,
+        isPriority, callStatus, externalCallId, audioUrl,
       });
       setForwardStack([]);
     }
