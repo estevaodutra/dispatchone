@@ -69,6 +69,7 @@ interface CallLogEntry {
   operator_name?: string;
   action_name?: string;
   action_color?: string;
+  audio_url?: string | null;
 }
 
 const formatDuration = (s: number) => {
