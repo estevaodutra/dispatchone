@@ -35,6 +35,7 @@ export interface CallData {
   scheduledFor: string | null;
   observations: string | null;
   externalCallId: string | null;
+  audioUrl: string | null;
 }
 
 const mapDbStatus = (dbStatus: string | null): PopupCallStatus => {
