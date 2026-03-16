@@ -1754,6 +1754,7 @@ export default function CallPanel() {
           isPriority={viewingQueueLead.isPriority || false}
           callStatus="queued"
           initialObservations={viewingQueueLead.observations || ""}
+          audioUrl={viewingQueueLead.audioUrl || null}
         />
       )}
           </div>

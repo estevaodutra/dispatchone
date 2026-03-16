@@ -31,6 +31,7 @@ interface CallDialogData {
   isPriority: boolean;
   callStatus?: string;
   externalCallId?: string | null;
+  audioUrl?: string | null;
 }
 
 interface CallActionDialogProps {
@@ -49,6 +50,7 @@ interface CallActionDialogProps {
   isPriority: boolean;
   callStatus?: string;
   externalCallId?: string | null;
+  audioUrl?: string | null;
   operatorId?: string;
   depth?: number; // kept for backwards compat but unused
 }
@@ -67,6 +69,7 @@ interface CallLogEntry {
   operator_name?: string;
   action_name?: string;
   action_color?: string;
+  audio_url?: string | null;
 }
 
 const formatDuration = (s: number) => {
@@ -79,13 +82,13 @@ export function CallActionDialog({
   open, onOpenChange, callId, campaignId, leadId,
   leadName, leadPhone, campaignName, duration,
   initialObservations, attemptNumber, maxAttempts, isPriority,
-  callStatus, externalCallId, operatorId,
+  callStatus, externalCallId, audioUrl, operatorId,
 }: CallActionDialogProps) {
   // --- Navigation state ---
   const initialData: CallDialogData = {
     callId, campaignId, leadId, leadName, leadPhone, campaignName,
     duration, notes: initialObservations || "", attemptNumber, maxAttempts,
-    isPriority, callStatus, externalCallId,
+    isPriority, callStatus, externalCallId, audioUrl,
   };
 
   const [currentData, setCurrentData] = useState<CallDialogData>(initialData);
@@ -98,7 +101,7 @@ export function CallActionDialog({
       setCurrentData({
         callId, campaignId, leadId, leadName, leadPhone, campaignName,
         duration, notes: initialObservations || "", attemptNumber, maxAttempts,
-        isPriority, callStatus, externalCallId,
+        isPriority, callStatus, externalCallId, audioUrl,
       });
       setForwardStack([]);
     }
@@ -164,7 +167,7 @@ export function CallActionDialog({
 
       const { data } = await (supabase as any)
         .from("call_logs")
-        .select("id, campaign_id, lead_id, attempt_number, duration_seconds, notes, call_status, external_call_id, operator_id, call_leads(name, phone), call_campaigns!call_logs_campaign_id_fkey(name, retry_count, is_priority)")
+        .select("id, campaign_id, lead_id, attempt_number, duration_seconds, notes, call_status, external_call_id, audio_url, operator_id, call_leads(name, phone), call_campaigns!call_logs_campaign_id_fkey(name, retry_count, is_priority)")
         .eq("operator_id", operatorId)
         .not("id", "in", `(${excludeIds.join(",")})`)
         .in("call_status", ["completed", "no_answer", "failed", "cancelled", "scheduled", "busy", "voicemail", "timeout"])
@@ -189,6 +192,7 @@ export function CallActionDialog({
           isPriority: data.call_campaigns?.is_priority || false,
           callStatus: data.call_status || undefined,
           externalCallId: data.external_call_id,
+          audioUrl: data.audio_url || null,
         });
       } else {
         toast({ title: "Nenhuma ligação anterior encontrada" });
@@ -215,7 +219,7 @@ export function CallActionDialog({
       setHistoryLoading(true);
       const { data } = await (supabase as any)
         .from("call_logs")
-        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, action_id, call_operators!call_logs_operator_id_fkey(operator_name), call_script_actions!call_logs_action_id_fkey(name, color)")
+        .select("id, call_status, attempt_number, duration_seconds, started_at, ended_at, notes, custom_message, created_at, action_id, audio_url, call_operators!call_logs_operator_id_fkey(operator_name), call_script_actions!call_logs_action_id_fkey(name, color)")
         .eq("lead_id", currentData.leadId)
         .eq("campaign_id", currentData.campaignId)
         .order("created_at", { ascending: false });
@@ -226,6 +230,7 @@ export function CallActionDialog({
           operator_name: d.call_operators?.operator_name || "—",
           action_name: d.call_script_actions?.name || null,
           action_color: d.call_script_actions?.color || null,
+          audio_url: d.audio_url || null,
         })));
       }
       setHistoryLoading(false);
@@ -494,6 +499,14 @@ export function CallActionDialog({
           <p className="text-2xl font-semibold font-mono text-emerald-500">
             ⏱️ {formatDuration(currentData.duration)}
           </p>
+          {currentData.audioUrl && (
+            <div className="rounded-lg border border-border bg-muted/20 p-2 w-full max-w-sm mx-auto">
+              <p className="text-xs font-medium text-muted-foreground mb-1">🎧 Gravação</p>
+              <audio controls className="w-full h-8" src={currentData.audioUrl} preload="metadata">
+                Seu navegador não suporta o player de áudio.
+              </audio>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
@@ -743,6 +756,13 @@ export function CallActionDialog({
                           )}
                           {entry.notes && (
                             <p className="text-xs text-muted-foreground">Obs: {entry.notes}</p>
+                          )}
+                          {entry.audio_url && (
+                            <div className="mt-1.5 rounded border border-border bg-muted/10 p-1.5">
+                              <audio controls className="w-full h-7" src={entry.audio_url} preload="none">
+                                Seu navegador não suporta o player de áudio.
+                              </audio>
+                            </div>
                           )}
                         </div>
                       );

@@ -35,6 +35,7 @@ export interface CallData {
   scheduledFor: string | null;
   observations: string | null;
   externalCallId: string | null;
+  audioUrl: string | null;
 }
 
 const mapDbStatus = (dbStatus: string | null): PopupCallStatus => {
@@ -102,6 +103,7 @@ export function useOperatorCall() {
       scheduledFor: data.scheduled_for,
       observations: data.observations || null,
       externalCallId: data.external_call_id || null,
+      audioUrl: data.audio_url || null,
     };
 
     return call;
@@ -130,6 +132,7 @@ export function useOperatorCall() {
             callStatus: newStatus,
             startedAt: payload.new?.started_at || prev.startedAt,
             externalCallId: payload.new?.external_call_id || prev.externalCallId,
+            audioUrl: payload.new?.audio_url || prev.audioUrl,
           } : prev);
 
           // Terminal status — clear card after brief delay if operator channel hasn't handled it

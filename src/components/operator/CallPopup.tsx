@@ -300,6 +300,7 @@ export function CallPopup({ embedded = false }: CallPopupProps) {
           callStatus={currentCall.callStatus}
           externalCallId={currentCall.externalCallId}
           operatorId={operator?.id}
+          audioUrl={currentCall.audioUrl}
         />
       )}
 
