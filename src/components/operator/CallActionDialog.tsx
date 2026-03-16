@@ -499,6 +499,14 @@ export function CallActionDialog({
           <p className="text-2xl font-semibold font-mono text-emerald-500">
             ⏱️ {formatDuration(currentData.duration)}
           </p>
+          {currentData.audioUrl && (
+            <div className="rounded-lg border border-border bg-muted/20 p-2 w-full max-w-sm mx-auto">
+              <p className="text-xs font-medium text-muted-foreground mb-1">🎧 Gravação</p>
+              <audio controls className="w-full h-8" src={currentData.audioUrl} preload="metadata">
+                Seu navegador não suporta o player de áudio.
+              </audio>
+            </div>
+          )}
         </div>
 
         {/* Tabs */}
