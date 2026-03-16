@@ -167,7 +167,7 @@ export function CallActionDialog({
 
       const { data } = await (supabase as any)
         .from("call_logs")
-        .select("id, campaign_id, lead_id, attempt_number, duration_seconds, notes, call_status, external_call_id, operator_id, call_leads(name, phone), call_campaigns!call_logs_campaign_id_fkey(name, retry_count, is_priority)")
+        .select("id, campaign_id, lead_id, attempt_number, duration_seconds, notes, call_status, external_call_id, audio_url, operator_id, call_leads(name, phone), call_campaigns!call_logs_campaign_id_fkey(name, retry_count, is_priority)")
         .eq("operator_id", operatorId)
         .not("id", "in", `(${excludeIds.join(",")})`)
         .in("call_status", ["completed", "no_answer", "failed", "cancelled", "scheduled", "busy", "voicemail", "timeout"])
