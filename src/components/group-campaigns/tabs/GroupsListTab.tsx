@@ -62,6 +62,14 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
     group => !linkedGroups.some(lg => lg.groupJid === group.phone)
   );
 
+  const filteredGroups = availableGroups.filter(
+    group => {
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return group.name.toLowerCase().includes(term) || group.phone.toLowerCase().includes(term);
+    }
+  );
+
   const toggleGroupSelection = (phone: string) => {
     setSelectedGroups(prev => 
       prev.includes(phone) 
