@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { List, Users, Plus, Trash2 } from "lucide-react";
+import { List, Users, Plus, Trash2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -51,6 +52,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
@@ -58,6 +60,14 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   // Filter out already linked groups from the available list
   const availableGroups = groups.filter(
     group => !linkedGroups.some(lg => lg.groupJid === group.phone)
+  );
+
+  const filteredGroups = availableGroups.filter(
+    group => {
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return group.name.toLowerCase().includes(term) || group.phone.toLowerCase().includes(term);
+    }
   );
 
   const toggleGroupSelection = (phone: string) => {
@@ -69,10 +79,10 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedGroups.length === availableGroups.length) {
+    if (selectedGroups.length === filteredGroups.length) {
       setSelectedGroups([]);
     } else {
-      setSelectedGroups(availableGroups.map(g => g.phone));
+      setSelectedGroups(filteredGroups.map(g => g.phone));
     }
   };
 
@@ -350,7 +360,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="select-all"
-                    checked={selectedGroups.length === availableGroups.length && availableGroups.length > 0}
+                    checked={selectedGroups.length === filteredGroups.length && filteredGroups.length > 0}
                     onCheckedChange={toggleSelectAll}
                   />
                   <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
@@ -367,9 +377,22 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
                 </Button>
               </div>
 
+              {/* Search bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar grupos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
               {/* Groups list */}
-              <div className="rounded-md border divide-y">
-                {availableGroups.map((group) => (
+              <div className="rounded-md border divide-y max-h-96 overflow-y-auto">
+                {filteredGroups.length === 0 ? (
+                  <p className="text-center py-4 text-muted-foreground">Nenhum grupo encontrado</p>
+                ) : filteredGroups.map((group) => (
                   <div 
                     key={group.phone}
                     className="flex items-center space-x-4 p-4 hover:bg-muted/50 transition-colors cursor-pointer"
@@ -404,7 +427,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
 
               {/* Selection counter */}
               <p className="text-sm text-muted-foreground">
-                {selectedGroups.length} de {availableGroups.length} grupo(s) selecionado(s)
+                {selectedGroups.length} de {filteredGroups.length} grupo(s) selecionado(s)
               </p>
             </div>
           ) : null}

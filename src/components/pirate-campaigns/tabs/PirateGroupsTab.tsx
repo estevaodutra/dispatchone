@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Trash2, Pause, Play, List } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Users, Plus, Trash2, Pause, Play, List, Search } from "lucide-react";
 import { toast } from "sonner";
 
 interface WhatsAppGroup {
@@ -33,12 +34,19 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
   const [selectedJids, setSelectedJids] = useState<string[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const connectedInstances = instances?.filter((i) => i.status === "connected") || [];
 
   const unlinkedGroups = availableGroups.filter(
     (g) => !groups.some((lg) => lg.groupJid === g.phone)
   );
+
+  const filteredUnlinked = unlinkedGroups.filter((g) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return g.name.toLowerCase().includes(term) || g.phone.toLowerCase().includes(term);
+  });
 
   const handleListGroups = async () => {
     if (!selectedInstance) return;
@@ -192,9 +200,9 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    checked={selectedJids.length === unlinkedGroups.length && unlinkedGroups.length > 0}
+                    checked={selectedJids.length === filteredUnlinked.length && filteredUnlinked.length > 0}
                     onCheckedChange={() => {
-                      setSelectedJids(selectedJids.length === unlinkedGroups.length ? [] : unlinkedGroups.map((g) => g.phone));
+                      setSelectedJids(selectedJids.length === filteredUnlinked.length ? [] : filteredUnlinked.map((g) => g.phone));
                     }}
                   />
                   <span className="text-sm font-medium">Selecionar todos</span>
@@ -204,8 +212,22 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
                   Adicionar ({selectedJids.length})
                 </Button>
               </div>
+
+              {/* Search bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar grupos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
               <div className="rounded-md border divide-y max-h-80 overflow-y-auto">
-                {unlinkedGroups.map((group) => (
+                {filteredUnlinked.length === 0 ? (
+                  <p className="text-center py-4 text-muted-foreground">Nenhum grupo encontrado</p>
+                ) : filteredUnlinked.map((group) => (
                   <div
                     key={group.phone}
                     className="flex items-center gap-4 p-4 hover:bg-muted/50 cursor-pointer"
