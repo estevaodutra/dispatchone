@@ -52,6 +52,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
