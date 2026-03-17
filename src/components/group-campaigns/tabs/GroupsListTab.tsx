@@ -360,7 +360,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
                 <div className="flex items-center space-x-2">
                   <Checkbox
                     id="select-all"
-                    checked={selectedGroups.length === availableGroups.length && availableGroups.length > 0}
+                    checked={selectedGroups.length === filteredGroups.length && filteredGroups.length > 0}
                     onCheckedChange={toggleSelectAll}
                   />
                   <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
@@ -377,9 +377,22 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
                 </Button>
               </div>
 
+              {/* Search bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar grupos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
               {/* Groups list */}
-              <div className="rounded-md border divide-y">
-                {availableGroups.map((group) => (
+              <div className="rounded-md border divide-y max-h-96 overflow-y-auto">
+                {filteredGroups.length === 0 ? (
+                  <p className="text-center py-4 text-muted-foreground">Nenhum grupo encontrado</p>
+                ) : filteredGroups.map((group) => (
                   <div 
                     key={group.phone}
                     className="flex items-center space-x-4 p-4 hover:bg-muted/50 transition-colors cursor-pointer"
@@ -414,7 +427,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
 
               {/* Selection counter */}
               <p className="text-sm text-muted-foreground">
-                {selectedGroups.length} de {availableGroups.length} grupo(s) selecionado(s)
+                {selectedGroups.length} de {filteredGroups.length} grupo(s) selecionado(s)
               </p>
             </div>
           ) : null}

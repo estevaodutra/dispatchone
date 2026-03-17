@@ -200,9 +200,9 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Checkbox
-                    checked={selectedJids.length === unlinkedGroups.length && unlinkedGroups.length > 0}
+                    checked={selectedJids.length === filteredUnlinked.length && filteredUnlinked.length > 0}
                     onCheckedChange={() => {
-                      setSelectedJids(selectedJids.length === unlinkedGroups.length ? [] : unlinkedGroups.map((g) => g.phone));
+                      setSelectedJids(selectedJids.length === filteredUnlinked.length ? [] : filteredUnlinked.map((g) => g.phone));
                     }}
                   />
                   <span className="text-sm font-medium">Selecionar todos</span>
@@ -212,8 +212,22 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
                   Adicionar ({selectedJids.length})
                 </Button>
               </div>
+
+              {/* Search bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar grupos..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+
               <div className="rounded-md border divide-y max-h-80 overflow-y-auto">
-                {unlinkedGroups.map((group) => (
+                {filteredUnlinked.length === 0 ? (
+                  <p className="text-center py-4 text-muted-foreground">Nenhum grupo encontrado</p>
+                ) : filteredUnlinked.map((group) => (
                   <div
                     key={group.phone}
                     className="flex items-center gap-4 p-4 hover:bg-muted/50 cursor-pointer"
