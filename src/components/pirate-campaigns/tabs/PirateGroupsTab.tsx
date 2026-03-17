@@ -34,6 +34,7 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
   const [selectedJids, setSelectedJids] = useState<string[]>([]);
   const [isFetching, setIsFetching] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const connectedInstances = instances?.filter((i) => i.status === "connected") || [];
 
