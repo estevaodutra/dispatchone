@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Trash2, Pause, Play, List } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Users, Plus, Trash2, Pause, Play, List, Search } from "lucide-react";
 import { toast } from "sonner";
 
 interface WhatsAppGroup {
