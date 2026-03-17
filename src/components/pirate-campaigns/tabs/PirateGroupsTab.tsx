@@ -42,6 +42,12 @@ export function PirateGroupsTab({ campaignId, instanceId }: PirateGroupsTabProps
     (g) => !groups.some((lg) => lg.groupJid === g.phone)
   );
 
+  const filteredUnlinked = unlinkedGroups.filter((g) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    return g.name.toLowerCase().includes(term) || g.phone.toLowerCase().includes(term);
+  });
+
   const handleListGroups = async () => {
     if (!selectedInstance) return;
     const instance = instances?.find((i) => i.id === selectedInstance);
