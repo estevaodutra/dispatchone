@@ -79,10 +79,10 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   };
 
   const toggleSelectAll = () => {
-    if (selectedGroups.length === availableGroups.length) {
+    if (selectedGroups.length === filteredGroups.length) {
       setSelectedGroups([]);
     } else {
-      setSelectedGroups(availableGroups.map(g => g.phone));
+      setSelectedGroups(filteredGroups.map(g => g.phone));
     }
   };
 
