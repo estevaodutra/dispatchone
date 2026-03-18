@@ -199,7 +199,8 @@ Deno.serve(async (req) => {
           const hasChanged =
             event.event_type !== classification.eventType ||
             event.classification !== classification.classification ||
-            event.processing_status !== expectedStatus;
+            event.processing_status !== expectedStatus ||
+            !event.matched_rule;
 
           if (reclassified + unchanged + errors < 10) {
             console.log(`[reclassify-events] Event ${event.id}: current=${event.event_type} -> new=${classification.eventType} (rule: ${classification.matchedRule}) hasChanged=${hasChanged}`);
