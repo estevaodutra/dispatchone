@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
       } else if (onlyUnknown) {
         query = query.eq("event_type", "unknown");
       } else {
-        query = query.in("event_type", ["image_message", "unknown", "text_message"]);
+        query = query.is("matched_rule", null);
       }
 
       if (lastId) {
