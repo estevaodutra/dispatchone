@@ -76,20 +76,16 @@ function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationRes
   
   const mimeType = (body?.mimeType || rawEvent.mimeType || body?.mimetype || rawEvent.mimetype) as string | undefined;
   
-  // Image detection
-  const bodyPhoto = body?.photo as string | undefined;
-  const hasPhotoUrl = bodyPhoto && bodyPhoto.startsWith("https://");
-  
+  // Image detection (body.photo is sender's profile pic, NOT an image message)
   if (
     body?.image !== undefined ||
     body?.imageUrl !== undefined ||
     rawEvent.imageUrl !== undefined ||
-    hasPhotoUrl ||
     mimeType?.startsWith("image/")
   ) {
     return {
       eventType: "image_message",
-      eventSubtype: mimeType || (body?.image ? "body.image" : (hasPhotoUrl ? "body.photo" : "imageUrl")),
+      eventSubtype: mimeType || (body?.image ? "body.image" : "imageUrl"),
       classification: "identified",
     };
   }
