@@ -1,50 +1,53 @@
 
-Objetivo
 
-Corrigir o motivo pelo qual “Reclassificar Tudo” ainda não resolve todos os casos de `pollVote`, e fazer a tela refletir o valor real salvo no backend.
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-Diagnóstico confirmado
+### Problema 1: Build error em `call-status/index.ts`
 
-- O evento `4d6709dc-266a-46bd-a5e0-bb88e8c96e6c` já está salvo no backend como `poll_response`.
-- Porém ainda existem muitos eventos com `body.pollVote` classificados como `image_message` no banco, então a reclassificação em lote não está concluindo tudo.
-- A tela de detalhes usa o objeto da lista (`selectedEvent`) como snapshot local, então pode continuar mostrando valor antigo mesmo depois da reclassificação.
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-Plano de implementação
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-1. Sincronizar o modal com o valor mais recente do backend
-- Em `src/pages/WebhookEvents.tsx`, trocar o modal para carregar os detalhes pelo ID selecionado usando `useWebhookEventById`.
-- Usar esse dado atualizado como fonte principal do modal, em vez de confiar só no objeto vindo da tabela.
-- Após “Reclassificar”, “Classificar” e “Reclassificar Tudo”, atualizar a lista e o detalhe aberto.
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-2. Fazer a reclassificação em lote realmente varrer todos os candidatos
-- Em `supabase/functions/reclassify-events/index.ts`, remover a dependência de um único ciclo com teto fixo.
-- Processar os candidatos em páginas até acabar, ou retornar `has_more/next_cursor` para o frontend continuar chamando automaticamente até finalizar.
-- Priorizar eventos com maior chance de erro (`image_message`, `text_message`, `unknown`) e, dentro deles, reavaliar os que contêm `body.pollVote`.
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-3. Melhorar o retorno da função de reclassificação
-- Retornar métricas mais claras: quantos foram processados, quantos mudaram e se ainda restam eventos.
-- Registrar resumo final nos logs para facilitar auditoria.
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
 
-4. Garantir consistência dos campos do evento
-- Ao reclassificar, atualizar sempre `event_type`, `event_subtype`, `classification`, `processing_status` e timestamps relacionados, para evitar casos híbridos como tipo correto com subtipo antigo.
+**Correção em `call-status/index.ts` (linha 550-554):**
 
-Arquivos envolvidos
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
 
-- `src/pages/WebhookEvents.tsx`
-- `src/hooks/useWebhookEvents.ts`
-- `supabase/functions/reclassify-events/index.ts`
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
 
-Detalhes técnicos
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
+}
+```
 
-- Hoje o detalhe do evento é exibido a partir do item clicado na tabela, que pode ficar desatualizado após mutações.
-- O lote atual ainda deixa eventos para trás; os números no banco mostram que ainda há muitos registros com `pollVote` salvos como `image_message`.
-- A correção ideal é combinar:
-  - modal com fetch por ID
-  - reclassificação paginada/exaustiva
-  - retorno com progresso real
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-Validação depois da implementação
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
-- Abrir um evento com `pollVote` e confirmar que o modal mostra `poll_response` imediatamente após reclassificar.
-- Rodar “Reclassificar Tudo” e verificar que a quantidade de eventos com `body.pollVote` classificados como `image_message` cai até zerar.
-- Conferir especificamente o evento `4d6709dc-266a-46bd-a5e0-bb88e8c96e6c` na UI após refresh do detalhe.
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+
