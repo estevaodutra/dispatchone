@@ -50,15 +50,42 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, cam
 
   const findCampaignByName = (name: string): CampaignOption | undefined => {
     const lower = name.toLowerCase().trim();
-    return campaigns.find((c) => c.name.toLowerCase() === lower);
+    const exact = campaigns.find((c) => c.name.toLowerCase() === lower);
+    if (exact) return exact;
+    const parts = lower.split("|").map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      const match = campaigns.find((c) => c.name.toLowerCase() === part);
+      if (match) return match;
+    }
+    return campaigns.find((c) => lower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(lower));
+  };
+
+  const parseCSVLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+        else if (ch === '"') inQuotes = false;
+        else current += ch;
+      } else {
+        if (ch === '"') inQuotes = true;
+        else if (ch === ',') { result.push(current.trim()); current = ""; }
+        else current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
   };
 
   const parseCSV = (text: string) => {
     const lines = text.split(/\r?\n/).filter((l) => l.trim());
     if (lines.length < 2) return;
-    const hdrs = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+    const hdrs = parseCSVLine(lines[0]);
     setHeaders(hdrs);
-    const dataRows = lines.slice(1).map((line) => line.split(",").map((c) => c.trim().replace(/^"|"$/g, "")));
+    const dataRows = lines.slice(1).map((line) => parseCSVLine(line));
     setRows(dataRows);
 
     const autoMapping: Record<number, MappingField> = {};

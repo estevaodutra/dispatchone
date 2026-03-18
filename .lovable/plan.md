@@ -1,71 +1,53 @@
 
 
-## Plano: Corrigir importação CSV para atribuir campanha automaticamente
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Problema identificado
+### Problema 1: Build error em `call-status/index.ts`
 
-Dois bugs na importação:
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-1. **Parser CSV ingênuo** — O código faz `line.split(",")` que quebra em campos com vírgulas dentro de aspas (ex: `"Club Fisio Paulista: Fisioterapia, Reabilitação, Treinamento Funcional"`). Isso desalinha as colunas, fazendo com que a coluna "campanha" não seja lida corretamente para essas linhas.
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-2. **Match de campanha por nome exato** — O `findCampaignByName` faz match exato (`c.name.toLowerCase() === lower`). Se não existir uma campanha chamada exatamente "Prospecção Fria | Video de IA", o `campaignId` fica `undefined` e o lead é salvo sem campanha. Além disso, o `|` no CSV pode indicar que são **duas campanhas separadas** — o sistema não suporta isso.
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-### Correções
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-**Arquivo:** `src/components/leads/ImportLeadsDialog.tsx`
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
 
-#### 1. Substituir parser CSV por um que respeite aspas
+**Correção em `call-status/index.ts` (linha 550-554):**
 
-Trocar o `line.split(",")` por uma função que parse campos quoted corretamente (RFC 4180):
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
 
-```typescript
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
-  let current = "";
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-      else if (ch === '"') inQuotes = false;
-      else current += ch;
-    } else {
-      if (ch === '"') inQuotes = true;
-      else if (ch === ',') { result.push(current.trim()); current = ""; }
-      else current += ch;
-    }
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
   }
-  result.push(current.trim());
-  return result;
 }
 ```
 
-Aplicar tanto no parse dos headers quanto das linhas de dados.
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-#### 2. Match de campanha com busca parcial
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
-Trocar o match exato por busca que inclua correspondência parcial (`includes`) e que suporte o separador `|` como múltiplas tentativas de nome:
+### Arquivos alterados
 
-```typescript
-const findCampaignByName = (name: string): CampaignOption | undefined => {
-  // Tenta match exato primeiro
-  const lower = name.toLowerCase().trim();
-  const exact = campaigns.find(c => c.name.toLowerCase() === lower);
-  if (exact) return exact;
-  // Tenta cada parte separada por |
-  const parts = lower.split("|").map(p => p.trim()).filter(Boolean);
-  for (const part of parts) {
-    const match = campaigns.find(c => c.name.toLowerCase() === part);
-    if (match) return match;
-  }
-  // Tenta match parcial (contém)
-  return campaigns.find(c => lower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(lower));
-};
-```
-
-### Arquivos modificados
-
-| Arquivo | Ação |
-|---------|------|
-| `src/components/leads/ImportLeadsDialog.tsx` | Corrigir parser CSV + match de campanha |
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 
