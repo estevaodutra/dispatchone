@@ -86,7 +86,7 @@ const actionTypeLabels: Record<CallActionType, string> = {
 export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTabProps) {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<CallLeadStatus | undefined>();
-  const { leads, stats, isLoading, addLead, deleteLead, bulkEnqueueByStatus, isBulkEnqueuing, isAdding } = useCallLeads(
+  const { leads, stats, isLoading, addLead, deleteLead, bulkDeleteAll, isDeletingAll, bulkEnqueueByStatus, isBulkEnqueuing, isAdding } = useCallLeads(
     campaignId,
     statusFilter
   );
