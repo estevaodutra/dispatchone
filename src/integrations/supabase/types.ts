@@ -2565,12 +2565,15 @@ export type Database = {
           chat_name: string | null
           chat_type: string | null
           classification: string | null
+          confidence: string | null
+          direction: string | null
           event_subtype: string | null
           event_timestamp: string | null
           event_type: string
           external_instance_id: string
           id: string
           instance_id: string | null
+          matched_rule: string | null
           message_id: string | null
           processed_at: string | null
           processing_error: string | null
@@ -2588,12 +2591,15 @@ export type Database = {
           chat_name?: string | null
           chat_type?: string | null
           classification?: string | null
+          confidence?: string | null
+          direction?: string | null
           event_subtype?: string | null
           event_timestamp?: string | null
           event_type?: string
           external_instance_id: string
           id?: string
           instance_id?: string | null
+          matched_rule?: string | null
           message_id?: string | null
           processed_at?: string | null
           processing_error?: string | null
@@ -2611,12 +2617,15 @@ export type Database = {
           chat_name?: string | null
           chat_type?: string | null
           classification?: string | null
+          confidence?: string | null
+          direction?: string | null
           event_subtype?: string | null
           event_timestamp?: string | null
           event_type?: string
           external_instance_id?: string
           id?: string
           instance_id?: string | null
+          matched_rule?: string | null
           message_id?: string | null
           processed_at?: string | null
           processing_error?: string | null
