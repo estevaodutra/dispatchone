@@ -612,7 +612,7 @@ Deno.serve(async (req) => {
     let unchanged = 0;
     let errors = 0;
     let totalProcessed = 0;
-    let lastId: string | null = null;
+    let lastId: string | null = inputCursor || null;
     let hasMore = true;
 
     while (hasMore) {
