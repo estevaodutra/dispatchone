@@ -1,36 +1,53 @@
 
 
-## Fix: Reclassificação em lote não alcança eventos incorretos
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Problema
-A reclassificação em lote processa no máximo 1000 eventos ordenados por `id ASC`. Se o evento incorreto (`4d6709dc`) não está entre os primeiros 1000, ele nunca é alcançado. Os 1000 processados já estavam corretos, por isso o resultado foi "reclassified: 0".
+### Problema 1: Build error em `call-status/index.ts`
 
-### Solução
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-**`supabase/functions/reclassify-events/index.ts`**
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-1. Quando chamado sem filtros (`onlyPending`/`onlyUnknown`), priorizar eventos que provavelmente estão errados:
-   - Filtrar por `event_type = 'image_message'` primeiro (os que foram incorretamente classificados), depois processar o restante
-   
-2. Alternativa mais simples e eficaz: **aumentar o limite de 1000 para 5000** e adicionar um filtro inteligente — na reclassificação geral, excluir eventos com `processing_status = 'processed'` E `classification = 'identified'` que já passaram pela versão mais recente (usar um campo como `processed_at` recente como indicador).
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-3. **Abordagem escolhida** (menor risco): Quando nenhum filtro é passado, filtrar apenas eventos que tenham `event_type IN ('image_message', 'unknown', 'text_message')` — os tipos que historicamente foram mal classificados. Isso garante que os 1000 slots sejam usados em eventos que realmente precisam de revisão.
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-### Mudança concreta
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
 
-No loop de batch (linha ~617), quando `!onlyPending && !onlyUnknown`, adicionar filtro:
-```typescript
-// Priorizar eventos potencialmente mal classificados
-if (!onlyPending && !onlyUnknown) {
-  query = query.in("event_type", ["image_message", "unknown", "text_message"]);
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
 }
 ```
 
-Isso faz com que a reclassificação foque nos eventos que podem estar errados, em vez de desperdiçar os 1000 slots em eventos já corretos (como `read_by_me`, `message_status`, etc.).
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
 
-### Arquivo
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
 
-| Arquivo | Mudança |
-|---------|---------|
-| `supabase/functions/reclassify-events/index.ts` | Filtrar batch por tipos potencialmente incorretos |
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 
