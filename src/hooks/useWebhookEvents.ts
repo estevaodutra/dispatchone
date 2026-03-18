@@ -308,6 +308,8 @@ export interface ReclassifyResult {
   reclassified: number;
   unchanged: number;
   errors?: number;
+  has_more?: boolean;
+  last_id?: string;
 }
 
 export function useReclassifyAllEvents() {
