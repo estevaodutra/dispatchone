@@ -248,7 +248,7 @@ Deno.serve(async (req) => {
 
       if (batch.length < BATCH_SIZE) {
         hasMore = false;
-      } else if (totalProcessed >= 2000) {
+      } else if (totalProcessed >= 500) {
         hasMore = true;
         break;
       }
