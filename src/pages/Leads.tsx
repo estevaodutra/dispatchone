@@ -209,6 +209,7 @@ export default function Leads() {
     if (filters.sourceType) query = query.eq("source_type", filters.sourceType);
     if (filters.campaignType) query = query.eq("active_campaign_type", filters.campaignType);
     if (filters.sourceGroupName) query = query.eq("source_group_name", filters.sourceGroupName);
+    if (filters.tags && filters.tags.length > 0) query = query.overlaps("tags", filters.tags);
     const { data } = await query;
     return (data || []).map(d => d.id);
   };
