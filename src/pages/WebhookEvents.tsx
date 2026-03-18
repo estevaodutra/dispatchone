@@ -16,6 +16,7 @@ import { MetricCard } from "@/components/dispatch/MetricCard";
 import { PageHeader } from "@/components/dispatch/PageHeader";
 import {
   useWebhookEvents,
+  useWebhookEventById,
   useWebhookEventStats,
   useClassifyEvent,
   useReprocessEvent,
