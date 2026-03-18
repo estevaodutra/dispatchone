@@ -408,7 +408,7 @@ export default function WebhookEvents() {
             columns={columns}
             data={data?.events || []}
             keyExtractor={(event) => event.id}
-            onRowClick={(event) => setSelectedEvent(event)}
+            onRowClick={(event) => setSelectedEventId(event.id)}
             isLoading={isLoading}
             emptyMessage="Nenhum evento encontrado"
           />
