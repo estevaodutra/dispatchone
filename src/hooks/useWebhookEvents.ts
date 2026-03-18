@@ -316,11 +316,12 @@ export function useReclassifyAllEvents() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (options?: { onlyPending?: boolean; onlyUnknown?: boolean }): Promise<ReclassifyResult> => {
+    mutationFn: async (options?: { onlyPending?: boolean; onlyUnknown?: boolean; lastId?: string | null }): Promise<ReclassifyResult> => {
       const { data, error } = await supabase.functions.invoke('reclassify-events', {
         body: { 
           only_pending: options?.onlyPending,
           only_unknown: options?.onlyUnknown,
+          last_id: options?.lastId || undefined,
         }
       });
       

@@ -121,11 +121,13 @@ export default function WebhookEvents() {
       let totalReclassified = 0;
       let totalProcessed = 0;
       let hasMore = true;
+      let lastId: string | null = null;
       
       while (hasMore) {
-        const result = await reclassifyMutation.mutateAsync({});
+        const result = await reclassifyMutation.mutateAsync({ lastId });
         totalReclassified += result.reclassified;
         totalProcessed += result.total_processed;
+        lastId = (result as any).last_id || null;
         hasMore = (result as any).has_more === true;
         
         if (hasMore) {
