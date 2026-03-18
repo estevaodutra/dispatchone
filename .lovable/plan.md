@@ -1,32 +1,53 @@
 
 
-## Fix: Move pollVote detection to highest priority
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Problem
-Events containing `body.pollVote` are not being classified as `poll_response` because the pollVote check runs after media detection. Even though `body.photo` was removed, other fields in the payload could still trigger earlier returns.
+### Problema 1: Build error em `call-status/index.ts`
 
-### Solution
-Move the `pollVote` check to be the **first classification check** in `classifyZApiEvent()`, before any media detection, in both files:
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-**`supabase/functions/webhook-inbound/index.ts`**
-- Move the pollVote block (lines ~145-156) to right after the `body` extraction (line 70), before media detection
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-**`supabase/functions/reclassify-events/index.ts`**
-- Same change: move pollVote block to the top of the classification function
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-### Logic after fix
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+
+**Correção em `call-status/index.ts` (linha 550-554):**
+
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
+}
 ```
-1. pollVote check  ← FIRST (if body.pollVote exists → poll_response)
-2. media detection (image, video, audio, document, sticker)
-3. notification check
-4. direct event mapping
-5. status checks
-6. ...
-```
 
-### Files
-| File | Change |
-|------|--------|
-| `supabase/functions/webhook-inbound/index.ts` | Move pollVote check to top |
-| `supabase/functions/reclassify-events/index.ts` | Same |
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 
