@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     if (eventId) {
       let query2 = supabase
         .from("webhook_events")
-        .select("id, source, raw_event, event_type, classification, processing_status")
+        .select("id, source, raw_event, event_type, classification, processing_status, matched_rule")
         .eq("id", eventId);
       if (userId) query2 = query2.eq("user_id", userId);
       const { data: event, error: fetchError } = await query2
@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
     while (hasMore) {
       let query = supabase
         .from("webhook_events")
-        .select("id, source, raw_event, event_type, classification, processing_status");
+        .select("id, source, raw_event, event_type, classification, processing_status, matched_rule");
       if (userId) query = query.eq("user_id", userId);
 
       if (onlyPending) {
@@ -199,7 +199,8 @@ Deno.serve(async (req) => {
           const hasChanged =
             event.event_type !== classification.eventType ||
             event.classification !== classification.classification ||
-            event.processing_status !== expectedStatus;
+            event.processing_status !== expectedStatus ||
+            !event.matched_rule;
 
           if (reclassified + unchanged + errors < 10) {
             console.log(`[reclassify-events] Event ${event.id}: current=${event.event_type} -> new=${classification.eventType} (rule: ${classification.matchedRule}) hasChanged=${hasChanged}`);
@@ -247,7 +248,7 @@ Deno.serve(async (req) => {
 
       if (batch.length < BATCH_SIZE) {
         hasMore = false;
-      } else if (totalProcessed >= 2000) {
+      } else if (totalProcessed >= 500) {
         hasMore = true;
         break;
       }
