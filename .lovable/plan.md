@@ -1,53 +1,66 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Plano: Sistema Unificado de Classificação de Eventos WhatsApp
 
-### Problema 1: Build error em `call-status/index.ts`
+### Correções necessárias no plano original
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+O plano referencia tabelas/colunas que **não existem** no projeto:
+- `whatsapp_events` → a tabela real é **`webhook_events`**
+- `whatsapp_instances` → a tabela real é **`instances`** (com `external_instance_id`)
+- Colunas como `company_id`, `direction`, `confidence`, `matched_rule` não existem em `webhook_events`
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+O processamento de **poll responses** e **pirate group joins** em `webhook-inbound` é complexo e crítico — precisa ser preservado integralmente.
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+### Implementação (3 etapas)
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+#### 1. Criar `_shared/event-classifier.ts`
+- Lógica de classificação unificada baseada no plano do usuário
+- Exporta `classifyEvent()`, `extractPhone()`, `extractChatId()`, `extractMessageId()`
+- Adiciona campos `direction`, `confidence`, `matchedRule`
+- Prioridade: pollVote > mídia > grupos > status > texto > fallback
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
-
-**Correção em `call-status/index.ts` (linha 550-554):**
-
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
-
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
-
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
+#### 2. Migração: adicionar colunas a `webhook_events`
+```sql
+ALTER TABLE webhook_events
+ADD COLUMN IF NOT EXISTS direction text DEFAULT 'system',
+ADD COLUMN IF NOT EXISTS confidence text DEFAULT 'low',
+ADD COLUMN IF NOT EXISTS matched_rule text;
 ```
+Índices para `event_type`, `processing_status`, `sender_phone`.
 
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+#### 3. Atualizar as Edge Functions existentes
 
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+**`webhook-inbound/index.ts`**: 
+- Importar classificador de `../_shared/event-classifier.ts`
+- Substituir toda a lógica de classificação duplicada (~400 linhas) pelo import
+- Manter o fluxo de: normalizar payload → classificar → inserir → processar poll/pirate
+- Salvar novos campos (`direction`, `confidence`, `matched_rule`)
+- Manter URL e interface existentes (sem quebrar n8n/Z-API)
 
-### Arquivos alterados
+**`reclassify-events/index.ts`**:
+- Importar o mesmo classificador de `../_shared/event-classifier.ts`
+- Remover ~350 linhas de lógica duplicada
+- Manter toda a lógica de paginação/cursor que já funciona
+- Atualizar novos campos ao reclassificar
 
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+**`useWebhookEvents.ts`** (frontend):
+- Adicionar novos campos ao tipo `WebhookEvent` e ao mapeamento DB→app
+
+**`WebhookEvents.tsx`** (UI):
+- Exibir `direction`, `confidence` e `matched_rule` no modal de detalhes
+
+### Decisão: NÃO criar `webhook-zapi` separado
+
+Criar um novo endpoint exigiria reconfigurar todos os webhooks no n8n/Z-API e invalidaria URLs já documentadas na API docs. A abordagem mais segura é **refatorar in-place**: mesmos endpoints, mesma interface, lógica unificada por trás.
+
+### Arquivos modificados
+
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/_shared/event-classifier.ts` | **Criar** — classificador único |
+| `supabase/functions/webhook-inbound/index.ts` | **Refatorar** — usar classificador compartilhado |
+| `supabase/functions/reclassify-events/index.ts` | **Refatorar** — usar classificador compartilhado |
+| `src/hooks/useWebhookEvents.ts` | **Atualizar** — novos campos |
+| `src/pages/WebhookEvents.tsx` | **Atualizar** — exibir novos campos |
+| Migração SQL | **Criar** — 3 colunas + índices |
 
