@@ -654,7 +654,7 @@ Deno.serve(async (req) => {
       }
 
       const batch = events || [];
-      console.log(`[reclassify-events] Batch at offset ${offset}: ${batch.length} events`);
+      console.log(`[reclassify-events] Batch: ${batch.length} events (processed so far: ${totalProcessed})`);
 
       if (batch.length === 0) {
         hasMore = false;
