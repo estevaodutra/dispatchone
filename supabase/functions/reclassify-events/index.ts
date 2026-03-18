@@ -643,7 +643,7 @@ Deno.serve(async (req) => {
         console.error("[reclassify-events] Fetch error:", fetchError);
         // If we already processed some, return partial results instead of failing
         if (totalProcessed > 0) {
-          console.log(`[reclassify-events] Returning partial results after error at offset ${offset}`);
+          console.log(`[reclassify-events] Returning partial results after error, processed ${totalProcessed}`);
           hasMore = false;
           break;
         }
@@ -654,7 +654,7 @@ Deno.serve(async (req) => {
       }
 
       const batch = events || [];
-      console.log(`[reclassify-events] Batch at offset ${offset}: ${batch.length} events`);
+      console.log(`[reclassify-events] Batch: ${batch.length} events (processed so far: ${totalProcessed})`);
 
       if (batch.length === 0) {
         hasMore = false;
