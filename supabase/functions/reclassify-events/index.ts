@@ -714,9 +714,13 @@ Deno.serve(async (req) => {
       totalProcessed += batch.length;
       lastId = batch[batch.length - 1].id as string;
 
-      // Stop after 1000 events max to avoid edge function timeout
-      if (batch.length < BATCH_SIZE || totalProcessed >= 1000) {
+      // Stop after 2000 events per invocation to avoid edge function timeout
+      // Return has_more so the frontend can call again
+      if (batch.length < BATCH_SIZE) {
         hasMore = false;
+      } else if (totalProcessed >= 2000) {
+        hasMore = true;
+        break;
       }
     }
 
@@ -726,6 +730,8 @@ Deno.serve(async (req) => {
       reclassified,
       unchanged,
       errors,
+      has_more: hasMore,
+      last_id: lastId,
     };
 
     console.log("[reclassify-events] Result:", result);

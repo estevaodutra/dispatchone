@@ -84,7 +84,7 @@ export default function WebhookEvents() {
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState("all");
   const [filters, setFilters] = useState<WebhookEventFilters>({});
-  const [selectedEvent, setSelectedEvent] = useState<WebhookEvent | null>(null);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
   const [showClassifyDialog, setShowClassifyDialog] = useState(false);
   const [newEventType, setNewEventType] = useState("");
   const [isEditingEventType, setIsEditingEventType] = useState(false);
