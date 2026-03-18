@@ -110,7 +110,14 @@ export default function WebhookEvents() {
   const reprocessMutation = useReprocessEvent();
   const ignoreMutation = useIgnoreEvent();
   const reclassifyMutation = useReclassifyAllEvents();
-  
+
+  // Invalidate individual event cache when opening modal
+  useEffect(() => {
+    if (selectedEventId) {
+      queryClient.invalidateQueries({ queryKey: ["webhook-event", selectedEventId] });
+    }
+  }, [selectedEventId, queryClient]);
+
   const handleRefresh = () => {
     refetch();
     refetchStats();
