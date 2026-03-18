@@ -82,6 +82,7 @@ function ProcessingStatusBadge({ status }: { status: string }) {
 
 export default function WebhookEvents() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState("all");
   const [filters, setFilters] = useState<WebhookEventFilters>({});
