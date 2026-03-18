@@ -55,7 +55,7 @@ Deno.serve(async (req) => {
     if (eventId) {
       let query2 = supabase
         .from("webhook_events")
-        .select("id, source, raw_event, event_type, classification, processing_status")
+        .select("id, source, raw_event, event_type, classification, processing_status, matched_rule")
         .eq("id", eventId);
       if (userId) query2 = query2.eq("user_id", userId);
       const { data: event, error: fetchError } = await query2
