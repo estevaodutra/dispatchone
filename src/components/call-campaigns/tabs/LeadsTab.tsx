@@ -185,6 +185,17 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
               </Button>
             </>
           )}
+          {stats.total > 0 && (
+            <Button
+              variant="outline"
+              className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => setShowRemoveAllConfirm(true)}
+              disabled={isDeletingAll}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isDeletingAll ? "Removendo..." : "Remover Todos"}
+            </Button>
+          )}
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Adicionar Lead
