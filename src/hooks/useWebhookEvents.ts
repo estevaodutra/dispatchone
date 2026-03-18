@@ -11,6 +11,9 @@ export interface WebhookEvent {
   eventType: string;
   eventSubtype: string | null;
   classification: string;
+  direction: string | null;
+  confidence: string | null;
+  matchedRule: string | null;
   chatJid: string | null;
   chatType: string | null;
   chatName: string | null;
