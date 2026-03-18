@@ -516,7 +516,9 @@ Deno.serve(async (req) => {
     const eventId = body.event_id as string | undefined;
     const force = body.force === true;
 
-    console.log(`[reclassify-events] User: ${user.id}, onlyPending: ${onlyPending}, onlyUnknown: ${onlyUnknown}, eventId: ${eventId || 'none'}, force: ${force}`);
+    const inputCursor = body.last_id as string | undefined;
+
+    console.log(`[reclassify-events] User: ${user.id}, onlyPending: ${onlyPending}, onlyUnknown: ${onlyUnknown}, eventId: ${eventId || 'none'}, force: ${force}, cursor: ${inputCursor || 'none'}`);
 
     // Single event reprocessing
     if (eventId) {
