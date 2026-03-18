@@ -50,7 +50,14 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, cam
 
   const findCampaignByName = (name: string): CampaignOption | undefined => {
     const lower = name.toLowerCase().trim();
-    return campaigns.find((c) => c.name.toLowerCase() === lower);
+    const exact = campaigns.find((c) => c.name.toLowerCase() === lower);
+    if (exact) return exact;
+    const parts = lower.split("|").map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) {
+      const match = campaigns.find((c) => c.name.toLowerCase() === part);
+      if (match) return match;
+    }
+    return campaigns.find((c) => lower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(lower));
   };
 
   const parseCSV = (text: string) => {
