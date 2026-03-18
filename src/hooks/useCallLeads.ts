@@ -574,6 +574,8 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     completeCall: completeCallMutation.mutateAsync,
     completeLead: completeLeadMutation.mutateAsync,
     deleteLead: deleteLeadMutation.mutateAsync,
+    bulkDeleteAll: bulkDeleteAllMutation.mutateAsync,
+    isDeletingAll: bulkDeleteAllMutation.isPending,
     bulkEnqueueByStatus: bulkEnqueueByStatusMutation.mutateAsync,
     isBulkEnqueuing: bulkEnqueueByStatusMutation.isPending,
     isAdding: addLeadMutation.isPending,

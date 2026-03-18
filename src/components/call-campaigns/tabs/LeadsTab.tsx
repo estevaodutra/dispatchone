@@ -431,6 +431,30 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Remove All Confirmation */}
+      <AlertDialog open={showRemoveAllConfirm} onOpenChange={setShowRemoveAllConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover todos os leads</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover todos os <strong>{stats.total}</strong> leads desta campanha? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                await bulkDeleteAll();
+                setShowRemoveAllConfirm(false);
+              }}
+            >
+              Remover todos
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
