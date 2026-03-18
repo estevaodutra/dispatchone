@@ -166,6 +166,7 @@ export function useWebhookEventById(id: string) {
       return mapDbToWebhookEvent(data as Record<string, unknown>);
     },
     enabled: !!id,
+    staleTime: 0,
   });
 }
 

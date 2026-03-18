@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Radio, RefreshCw, Download, ChevronLeft, ChevronRight, Search, Copy, Eye, RotateCw, Ban, Pencil, Check, X } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,7 @@ function ProcessingStatusBadge({ status }: { status: string }) {
 
 export default function WebhookEvents() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [activeTab, setActiveTab] = useState("all");
   const [filters, setFilters] = useState<WebhookEventFilters>({});
@@ -108,7 +110,14 @@ export default function WebhookEvents() {
   const reprocessMutation = useReprocessEvent();
   const ignoreMutation = useIgnoreEvent();
   const reclassifyMutation = useReclassifyAllEvents();
-  
+
+  // Invalidate individual event cache when opening modal
+  useEffect(() => {
+    if (selectedEventId) {
+      queryClient.invalidateQueries({ queryKey: ["webhook-event", selectedEventId] });
+    }
+  }, [selectedEventId, queryClient]);
+
   const handleRefresh = () => {
     refetch();
     refetchStats();
@@ -139,7 +148,7 @@ export default function WebhookEvents() {
         title: "Reclassificação concluída",
         description: `${totalReclassified} eventos reclassificados de ${totalProcessed} processados`,
       });
-      refetch();
+      await queryClient.invalidateQueries({ queryKey: ["webhook-events"] });
       refetchStats();
     } catch (error) {
       toast({
