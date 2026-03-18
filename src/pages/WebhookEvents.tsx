@@ -264,7 +264,7 @@ export default function WebhookEvents() {
             size="icon"
             onClick={(e) => {
               e.stopPropagation();
-              setSelectedEvent(event);
+              setSelectedEventId(event.id);
             }}
           >
             <Eye className="h-4 w-4" />
