@@ -460,6 +460,28 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     },
   });
 
+  const bulkDeleteAllMutation = useMutation({
+    mutationFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+
+      const { error } = await (supabase as any)
+        .from("call_leads")
+        .delete()
+        .eq("campaign_id", campaignId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      toast({ title: "Leads removidos", description: "Todos os leads foram removidos da campanha." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
   const bulkEnqueueByStatusMutation = useMutation({
     mutationFn: async ({ status, limit }: { status: CallLeadStatus; limit?: number }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -552,6 +574,8 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
     completeCall: completeCallMutation.mutateAsync,
     completeLead: completeLeadMutation.mutateAsync,
     deleteLead: deleteLeadMutation.mutateAsync,
+    bulkDeleteAll: bulkDeleteAllMutation.mutateAsync,
+    isDeletingAll: bulkDeleteAllMutation.isPending,
     bulkEnqueueByStatus: bulkEnqueueByStatusMutation.mutateAsync,
     isBulkEnqueuing: bulkEnqueueByStatusMutation.isPending,
     isAdding: addLeadMutation.isPending,

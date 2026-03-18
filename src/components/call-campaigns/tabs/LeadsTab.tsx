@@ -86,13 +86,14 @@ const actionTypeLabels: Record<CallActionType, string> = {
 export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTabProps) {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<CallLeadStatus | undefined>();
-  const { leads, stats, isLoading, addLead, deleteLead, bulkEnqueueByStatus, isBulkEnqueuing, isAdding } = useCallLeads(
+  const { leads, stats, isLoading, addLead, deleteLead, bulkDeleteAll, isDeletingAll, bulkEnqueueByStatus, isBulkEnqueuing, isAdding } = useCallLeads(
     campaignId,
     statusFilter
   );
   const { actions } = useCallActions(campaignId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [showRemoveAllConfirm, setShowRemoveAllConfirm] = useState(false);
   const [newLead, setNewLead] = useState({ phone: "", name: "", email: "" });
   const [selectedLead, setSelectedLead] = useState<CallLead | null>(null);
 
@@ -183,6 +184,17 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
                 {isBulkEnqueuing ? "Enfileirando..." : bulkButtonText}
               </Button>
             </>
+          )}
+          {stats.total > 0 && (
+            <Button
+              variant="outline"
+              className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={() => setShowRemoveAllConfirm(true)}
+              disabled={isDeletingAll}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              {isDeletingAll ? "Removendo..." : "Remover Todos"}
+            </Button>
           )}
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
@@ -415,6 +427,30 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
               }}
             >
               Confirmar discagem
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Remove All Confirmation */}
+      <AlertDialog open={showRemoveAllConfirm} onOpenChange={setShowRemoveAllConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remover todos os leads</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja remover todos os <strong>{stats.total}</strong> leads desta campanha? Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={async () => {
+                await bulkDeleteAll();
+                setShowRemoveAllConfirm(false);
+              }}
+            >
+              Remover todos
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
