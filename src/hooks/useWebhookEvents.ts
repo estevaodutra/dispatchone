@@ -11,6 +11,9 @@ export interface WebhookEvent {
   eventType: string;
   eventSubtype: string | null;
   classification: string;
+  direction: string | null;
+  confidence: string | null;
+  matchedRule: string | null;
   chatJid: string | null;
   chatType: string | null;
   chatName: string | null;
@@ -77,6 +80,9 @@ function mapDbToWebhookEvent(row: Record<string, unknown>): WebhookEvent {
     eventType: row.event_type as string,
     eventSubtype: row.event_subtype as string | null,
     classification: row.classification as string,
+    direction: row.direction as string | null,
+    confidence: row.confidence as string | null,
+    matchedRule: row.matched_rule as string | null,
     chatJid: row.chat_jid as string | null,
     chatType: row.chat_type as string | null,
     chatName: row.chat_name as string | null,

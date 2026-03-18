@@ -535,6 +535,26 @@ export default function WebhookEvents() {
                       <p className="font-medium capitalize">{selectedEvent.classification}</p>
                     </div>
                     <div>
+                      <span className="text-muted-foreground">Direção:</span>
+                      <p className="font-medium capitalize">{selectedEvent.direction || "-"}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Confiança:</span>
+                      <div className="mt-1">
+                        <Badge variant="outline" className={
+                          selectedEvent.confidence === "high" ? "bg-green-500/10 text-green-600 border-green-200" :
+                          selectedEvent.confidence === "medium" ? "bg-yellow-500/10 text-yellow-600 border-yellow-200" :
+                          "bg-gray-500/10 text-gray-600 border-gray-200"
+                        }>
+                          {selectedEvent.confidence || "low"}
+                        </Badge>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Regra:</span>
+                      <p className="font-mono text-xs">{selectedEvent.matchedRule || "-"}</p>
+                    </div>
+                    <div>
                       <span className="text-muted-foreground">Origem:</span>
                       <p className="font-medium">{selectedEvent.source}</p>
                     </div>
