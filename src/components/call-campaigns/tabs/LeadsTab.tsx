@@ -93,6 +93,7 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
   const { actions } = useCallActions(campaignId);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [showRemoveAllConfirm, setShowRemoveAllConfirm] = useState(false);
   const [newLead, setNewLead] = useState({ phone: "", name: "", email: "" });
   const [selectedLead, setSelectedLead] = useState<CallLead | null>(null);
 
