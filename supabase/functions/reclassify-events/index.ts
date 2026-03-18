@@ -621,9 +621,11 @@ Deno.serve(async (req) => {
 
       if (onlyPending) {
         query = query.eq("classification", "pending");
-      }
-      if (onlyUnknown) {
+      } else if (onlyUnknown) {
         query = query.eq("event_type", "unknown");
+      } else {
+        // Focus on event types historically prone to misclassification
+        query = query.in("event_type", ["image_message", "unknown", "text_message"]);
       }
 
       // Use cursor-based pagination (keyset) to avoid slow OFFSET on large tables
