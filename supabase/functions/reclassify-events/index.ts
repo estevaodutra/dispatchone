@@ -19,25 +19,6 @@ Deno.serve(async (req) => {
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get user from JWT
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: "Authorization header required" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: "Invalid token" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     // Parse options
     const body = await req.json().catch(() => ({}));
     const onlyPending = body.only_pending === true;
@@ -45,18 +26,39 @@ Deno.serve(async (req) => {
     const eventId = body.event_id as string | undefined;
     const force = body.force === true;
     const inputCursor = body.last_id as string | undefined;
+    const batchAll = body.batch_all === true;
 
-    console.log(`[reclassify-events] User: ${user.id}, onlyPending: ${onlyPending}, onlyUnknown: ${onlyUnknown}, eventId: ${eventId || "none"}, force: ${force}, cursor: ${inputCursor || "none"}`);
+    // Get user from JWT (optional for batch_all mode)
+    let userId: string | null = null;
+    const authHeader = req.headers.get("Authorization");
+    if (authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+      if (!authError && user) {
+        userId = user.id;
+      }
+    }
+
+    // batch_all mode skips user filter (service role only)
+    if (!batchAll && !userId) {
+      return new Response(
+        JSON.stringify({ error: "Authorization required" }),
+        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    console.log(`[reclassify-events] User: ${userId || "ALL"}, batchAll: ${batchAll}, onlyPending: ${onlyPending}, onlyUnknown: ${onlyUnknown}, eventId: ${eventId || "none"}, force: ${force}, cursor: ${inputCursor || "none"}`);
 
     // ==========================================
     // SINGLE EVENT REPROCESSING
     // ==========================================
     if (eventId) {
-      const { data: event, error: fetchError } = await supabase
+      let query2 = supabase
         .from("webhook_events")
         .select("id, source, raw_event, event_type, classification, processing_status")
-        .eq("id", eventId)
-        .eq("user_id", user.id)
+        .eq("id", eventId);
+      if (userId) query2 = query2.eq("user_id", userId);
+      const { data: event, error: fetchError } = await query2
         .maybeSingle();
 
       if (fetchError) {
@@ -148,15 +150,15 @@ Deno.serve(async (req) => {
     while (hasMore) {
       let query = supabase
         .from("webhook_events")
-        .select("id, source, raw_event, event_type, classification, processing_status")
-        .eq("user_id", user.id);
+        .select("id, source, raw_event, event_type, classification, processing_status");
+      if (userId) query = query.eq("user_id", userId);
 
       if (onlyPending) {
         query = query.eq("classification", "pending");
       } else if (onlyUnknown) {
         query = query.eq("event_type", "unknown");
       } else {
-        query = query.in("event_type", ["image_message", "unknown", "text_message"]);
+        query = query.is("matched_rule", null);
       }
 
       if (lastId) {
