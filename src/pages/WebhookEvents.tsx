@@ -445,9 +445,9 @@ export default function WebhookEvents() {
       </Tabs>
 
       {/* Event Details Dialog */}
-      <Dialog open={!!selectedEvent && !showClassifyDialog} onOpenChange={(open) => {
+      <Dialog open={!!selectedEventId && !!selectedEvent && !showClassifyDialog} onOpenChange={(open) => {
         if (!open) {
-          setSelectedEvent(null);
+          setSelectedEventId(null);
           setIsEditingEventType(false);
         }
       }}>
