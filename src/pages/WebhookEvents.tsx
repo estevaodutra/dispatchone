@@ -141,7 +141,7 @@ export default function WebhookEvents() {
         title: "Reclassificação concluída",
         description: `${totalReclassified} eventos reclassificados de ${totalProcessed} processados`,
       });
-      refetch();
+      await queryClient.invalidateQueries({ queryKey: ["webhook-events"] });
       refetchStats();
     } catch (error) {
       toast({
