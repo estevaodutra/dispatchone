@@ -150,7 +150,7 @@ Deno.serve(async (req) => {
     while (hasMore) {
       let query = supabase
         .from("webhook_events")
-        .select("id, source, raw_event, event_type, classification, processing_status");
+        .select("id, source, raw_event, event_type, classification, processing_status, matched_rule");
       if (userId) query = query.eq("user_id", userId);
 
       if (onlyPending) {
