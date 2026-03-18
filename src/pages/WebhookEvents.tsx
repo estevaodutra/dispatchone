@@ -103,6 +103,7 @@ export default function WebhookEvents() {
   };
   
   const { data, isLoading, refetch } = useWebhookEvents(activeFilters, page);
+  const { data: selectedEvent, refetch: refetchSelectedEvent } = useWebhookEventById(selectedEventId || "");
   const classifyMutation = useClassifyEvent();
   const reprocessMutation = useReprocessEvent();
   const ignoreMutation = useIgnoreEvent();
@@ -117,11 +118,27 @@ export default function WebhookEvents() {
   const handleReclassifyAll = async () => {
     toast({ title: "Reclassificando...", description: "Processando todos os eventos com a lógica atualizada" });
     try {
-      const result = await reclassifyMutation.mutateAsync({});
+      let totalReclassified = 0;
+      let totalProcessed = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const result = await reclassifyMutation.mutateAsync({});
+        totalReclassified += result.reclassified;
+        totalProcessed += result.total_processed;
+        hasMore = (result as any).has_more === true;
+        
+        if (hasMore) {
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+      
       toast({
         title: "Reclassificação concluída",
-        description: `${result.reclassified} eventos reclassificados de ${result.total_processed} processados`,
+        description: `${totalReclassified} eventos reclassificados de ${totalProcessed} processados`,
       });
+      refetch();
+      refetchStats();
     } catch (error) {
       toast({
         title: "Erro",
@@ -139,11 +156,11 @@ export default function WebhookEvents() {
   };
   
   const handleClassify = async () => {
-    if (selectedEvent && newEventType) {
-      await classifyMutation.mutateAsync({ id: selectedEvent.id, eventType: newEventType });
+    if (selectedEventId && newEventType) {
+      await classifyMutation.mutateAsync({ id: selectedEventId, eventType: newEventType });
       toast({ title: "Classificado", description: "Evento classificado com sucesso" });
       setShowClassifyDialog(false);
-      setSelectedEvent(null);
+      setSelectedEventId(null);
     }
   };
   
@@ -152,7 +169,7 @@ export default function WebhookEvents() {
       await classifyMutation.mutateAsync({ id: selectedEvent.id, eventType: editedEventType });
       toast({ title: "Tipo alterado", description: `Evento reclassificado para "${editedEventType.replace(/_/g, " ")}"` });
       setIsEditingEventType(false);
-      setSelectedEvent({ ...selectedEvent, eventType: editedEventType, classification: "identified" });
+      refetchSelectedEvent();
     } else {
       setIsEditingEventType(false);
     }
@@ -165,7 +182,7 @@ export default function WebhookEvents() {
         title: "Evento reclassificado",
         description: `Tipo: ${result.event_type}, Status: ${result.processing_status}`,
       });
-      setSelectedEvent(null);
+      refetchSelectedEvent();
     } catch (error) {
       toast({
         title: "Erro",
@@ -178,7 +195,7 @@ export default function WebhookEvents() {
   const handleIgnore = async (event: WebhookEvent) => {
     await ignoreMutation.mutateAsync(event.id);
     toast({ title: "Ignorado", description: "Evento marcado como ignorado" });
-    setSelectedEvent(null);
+    setSelectedEventId(null);
   };
   
   const columns: Column<WebhookEvent>[] = [
