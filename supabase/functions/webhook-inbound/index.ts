@@ -1,4 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import {
+  classifyEvent,
+  extractContext,
+  type ClassificationResult,
+  type EventContext,
+} from "../_shared/event-classifier.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,446 +18,7 @@ interface InboundPayload {
   raw_event: Record<string, unknown>;
 }
 
-interface ClassificationResult {
-  eventType: string;
-  eventSubtype: string | null;
-  classification: "identified" | "pending";
-}
-
-interface ContextResult {
-  chatJid: string | null;
-  chatType: string | null;
-  chatName: string | null;
-  senderPhone: string | null;
-  senderName: string | null;
-  messageId: string | null;
-  eventTimestamp: string | null;
-}
-
-// Direct event mapping for Z-API
-const ZAPI_EVENT_MAP: Record<string, string> = {
-  "poll.vote": "poll_response",
-  "message.ack": "message_status",
-  "group.participant.add": "group_join",
-  "group.participant.remove": "group_leave",
-  "group.participant.promote": "group_promote",
-  "group.participant.demote": "group_demote",
-  "group.update": "group_update",
-  "connection.update": "connection_status",
-  "qrcode.updated": "qrcode_update",
-  "call.received": "call_received",
-  "message.revoked": "message_revoked",
-  "ReceivedCallback": "text_message",
-};
-
-// Message type mapping for Z-API message.received events
-const MESSAGE_TYPE_MAP: Record<string, string> = {
-  conversation: "text_message",
-  extendedTextMessage: "text_message",
-  imageMessage: "image_message",
-  videoMessage: "video_message",
-  audioMessage: "audio_message",
-  documentMessage: "document_message",
-  stickerMessage: "sticker_message",
-  locationMessage: "location_message",
-  contactMessage: "contact_message",
-  buttonsResponseMessage: "button_response",
-  listResponseMessage: "list_response",
-  reactionMessage: "message_reaction",
-};
-
-function classifyZApiEvent(rawEvent: Record<string, unknown>): ClassificationResult {
-  const event = rawEvent.event as string | undefined;
-  const eventType = rawEvent.eventType as string | undefined;
-  const rawType = rawEvent.type as string | undefined;
-  const eventName = event || eventType || rawType;
-  
-  // Extract body for n8n/Z-API format detection
-  const body = rawEvent.body as Record<string, unknown> | undefined;
-  
-  // ==========================================
-  // POLL VOTE DETECTION - HIGHEST PRIORITY
-  // body.pollVote indicates a poll response - must check FIRST
-  // ==========================================
-  const pollVote = body?.pollVote as Record<string, unknown> | undefined;
-  if (pollVote) {
-    return {
-      eventType: "poll_response",
-      eventSubtype: "pollVote",
-      classification: "identified",
-    };
-  }
-  
-  // ==========================================
-  // MEDIA DETECTION (n8n/Z-API format)
-  // Must check BEFORE direct mapping to avoid text_message override
-  // ==========================================
-  
-  const mimeType = (body?.mimeType || rawEvent.mimeType || body?.mimetype || rawEvent.mimetype) as string | undefined;
-  
-  // Image detection (body.photo is sender's profile pic, NOT an image message)
-  if (
-    body?.image !== undefined ||
-    body?.imageUrl !== undefined ||
-    rawEvent.imageUrl !== undefined ||
-    mimeType?.startsWith("image/")
-  ) {
-    return {
-      eventType: "image_message",
-      eventSubtype: mimeType || (body?.image ? "body.image" : "imageUrl"),
-      classification: "identified",
-    };
-  }
-  
-  // Video detection
-  if (
-    body?.video !== undefined ||
-    body?.videoUrl !== undefined ||
-    rawEvent.videoUrl !== undefined ||
-    mimeType?.startsWith("video/")
-  ) {
-    return {
-      eventType: "video_message",
-      eventSubtype: mimeType || (body?.video ? "body.video" : "videoUrl"),
-      classification: "identified",
-    };
-  }
-  
-  // Audio detection
-  if (
-    body?.audio !== undefined ||
-    body?.audioUrl !== undefined ||
-    rawEvent.audioUrl !== undefined ||
-    body?.ptt !== undefined ||
-    mimeType?.startsWith("audio/")
-  ) {
-    return {
-      eventType: "audio_message",
-      eventSubtype: mimeType || (body?.audio ? "body.audio" : (body?.ptt ? "ptt" : "audioUrl")),
-      classification: "identified",
-    };
-  }
-  
-  // Document detection
-  if (
-    body?.document !== undefined ||
-    body?.documentUrl !== undefined ||
-    rawEvent.documentUrl !== undefined ||
-    mimeType?.startsWith("application/")
-  ) {
-    return {
-      eventType: "document_message",
-      eventSubtype: mimeType || (body?.document ? "body.document" : "documentUrl"),
-      classification: "identified",
-    };
-  }
-  
-  // Sticker detection
-  if (body?.sticker !== undefined || rawEvent.sticker !== undefined) {
-    return {
-      eventType: "sticker_message",
-      eventSubtype: "sticker",
-      classification: "identified",
-    };
-  }
-  
-  // (pollVote detection moved to top of function)
-  
-  // ==========================================
-  // GROUP NOTIFICATION DETECTION (n8n/Z-API format)
-  // body.notification contains group events like GROUP_PARTICIPANT_ADD
-  // ==========================================
-  const notification = body?.notification as string | undefined;
-
-  if (notification) {
-    const notificationMap: Record<string, string> = {
-      "GROUP_PARTICIPANT_ADD": "group_join",
-      "GROUP_PARTICIPANT_REMOVE": "group_leave",
-      "GROUP_PARTICIPANT_PROMOTE": "group_promote",
-      "GROUP_PARTICIPANT_DEMOTE": "group_demote",
-      "GROUP_PARTICIPANT_LEAVE": "group_leave",
-      "GROUP_CREATE": "group_update",
-      "GROUP_SUBJECT": "group_update",
-      "GROUP_DESCRIPTION": "group_update",
-      "GROUP_ICON": "group_update",
-    };
-
-    if (notificationMap[notification]) {
-      return {
-        eventType: notificationMap[notification],
-        eventSubtype: notification,
-        classification: "identified",
-      };
-    }
-  }
-  
-  // ==========================================
-  // Direct event mapping (after media check)
-  // ==========================================
-  if (eventName && ZAPI_EVENT_MAP[eventName]) {
-    return {
-      eventType: ZAPI_EVENT_MAP[eventName],
-      eventSubtype: eventName,
-      classification: "identified",
-    };
-  }
-  
-  // Check for reaction events (n8n wraps in body)
-  const reaction = (body?.reaction || rawEvent.reaction) as Record<string, unknown> | undefined;
-  
-  if (reaction?.value !== undefined) {
-    return {
-      eventType: "reaction",
-      eventSubtype: String(reaction.value),
-      classification: "identified",
-    };
-  }
-  
-  // Check for message status callbacks (PLAYED, RECEIVED, etc.)
-  // Z-API sends status directly in body.status when body.type === "MessageStatusCallback"
-  const bodyStatus = body?.status as string | undefined;
-
-  if (bodyStatus === "PLAYED") {
-    return {
-      eventType: "played",
-      eventSubtype: "PLAYED",
-      classification: "identified",
-    };
-  }
-
-  if (bodyStatus === "RECEIVED") {
-    return {
-      eventType: "message_received",
-      eventSubtype: "RECEIVED",
-      classification: "identified",
-    };
-  }
-
-  if (bodyStatus === "READ") {
-    return {
-      eventType: "message_read",
-      eventSubtype: "READ",
-      classification: "identified",
-    };
-  }
-
-  if (bodyStatus === "READ_BY_ME") {
-    return {
-      eventType: "read_by_me",
-      eventSubtype: "READ_BY_ME",
-      classification: "identified",
-    };
-  }
-  
-  // Check for text message in body.text (n8n Z-API format)
-  const bodyText = body?.text as Record<string, unknown> | undefined;
-  if (bodyText?.message !== undefined) {
-    return {
-      eventType: "text_message",
-      eventSubtype: "ReceivedCallback",
-      classification: "identified",
-    };
-  }
-  
-  // Check if it's a message.received event
-  if (eventName === "message.received" || eventName === "ReceivedCallback") {
-    const data = rawEvent.data as Record<string, unknown> | undefined;
-    const message = (data?.message || rawEvent.message) as Record<string, unknown> | undefined;
-    
-    if (message) {
-      for (const [key, messageType] of Object.entries(MESSAGE_TYPE_MAP)) {
-        if (message[key] !== undefined) {
-          return {
-            eventType: messageType,
-            eventSubtype: key,
-            classification: "identified",
-          };
-        }
-      }
-    }
-  }
-  
-  return {
-    eventType: "unknown",
-    eventSubtype: eventName || null,
-    classification: "pending",
-  };
-}
-
-function classifyEvolutionEvent(rawEvent: Record<string, unknown>): ClassificationResult {
-  const event = rawEvent.event as string | undefined;
-  
-  // Evolution API uses similar event structure
-  if (event) {
-    // Map Evolution events to our standard types
-    const evolutionMap: Record<string, string> = {
-      "messages.upsert": "text_message",
-      "messages.update": "message_status",
-      "groups.upsert": "group_update",
-      "connection.update": "connection_status",
-      "qrcode.updated": "qrcode_update",
-    };
-    
-    if (evolutionMap[event]) {
-      return {
-        eventType: evolutionMap[event],
-        eventSubtype: event,
-        classification: "identified",
-      };
-    }
-  }
-  
-  return {
-    eventType: "unknown",
-    eventSubtype: event || null,
-    classification: "pending",
-  };
-}
-
-function classifyMetaEvent(rawEvent: Record<string, unknown>): ClassificationResult {
-  // Meta/Cloud API webhook structure
-  const entry = (rawEvent.entry as Array<Record<string, unknown>>)?.[0];
-  const changes = (entry?.changes as Array<Record<string, unknown>>)?.[0];
-  const field = changes?.field as string | undefined;
-  
-  if (field === "messages") {
-    const value = changes?.value as Record<string, unknown>;
-    const messages = value?.messages as Array<Record<string, unknown>>;
-    const statuses = value?.statuses as Array<Record<string, unknown>>;
-    
-    if (messages?.length) {
-      const messageType = messages[0].type as string;
-      const typeMap: Record<string, string> = {
-        text: "text_message",
-        image: "image_message",
-        video: "video_message",
-        audio: "audio_message",
-        document: "document_message",
-        sticker: "sticker_message",
-        location: "location_message",
-        contacts: "contact_message",
-        button: "button_response",
-        interactive: "list_response",
-        reaction: "message_reaction",
-      };
-      
-      return {
-        eventType: typeMap[messageType] || "unknown",
-        eventSubtype: messageType,
-        classification: typeMap[messageType] ? "identified" : "pending",
-      };
-    }
-    
-    if (statuses?.length) {
-      return {
-        eventType: "message_status",
-        eventSubtype: statuses[0].status as string,
-        classification: "identified",
-      };
-    }
-  }
-  
-  return {
-    eventType: "unknown",
-    eventSubtype: field || null,
-    classification: "pending",
-  };
-}
-
-function classifyEvent(source: string, rawEvent: Record<string, unknown>): ClassificationResult {
-  switch (source) {
-    case "z-api":
-      return classifyZApiEvent(rawEvent);
-    case "evolution":
-      return classifyEvolutionEvent(rawEvent);
-    case "meta":
-      return classifyMetaEvent(rawEvent);
-    default:
-      return {
-        eventType: "unknown",
-        eventSubtype: null,
-        classification: "pending",
-      };
-  }
-}
-
-function extractZApiContext(rawEvent: Record<string, unknown>): ContextResult {
-  const data = rawEvent.data as Record<string, unknown> | undefined;
-  const key = (data?.key || rawEvent.key) as Record<string, unknown> | undefined;
-  const body = rawEvent.body as Record<string, unknown> | undefined;
-  
-  // Try multiple sources for chatJid, including n8n format (phone/from)
-  let chatJid = (key?.remoteJid || data?.chatId || rawEvent.chatId) as string | null;
-  
-  // Fallback for n8n/Z-API format
-  if (!chatJid) {
-    chatJid = (rawEvent.phone || rawEvent.from || body?.phone || body?.from || body?.chatId) as string | null;
-  }
-  
-  const chatType = chatJid?.endsWith("@g.us") ? "group" : "private";
-  
-  // Extract phone from JID or use sender field
-  let senderPhone = chatJid?.split("@")[0] || null;
-  if (!senderPhone) {
-    const sender = body?.sender as Record<string, unknown> | undefined;
-    senderPhone = (body?.senderPhone || rawEvent.senderPhone || sender?.phone) as string | null;
-  }
-
-  // For group participant notifications, extract the real participant phone
-  const notification = body?.notification as string | undefined;
-  if (notification?.startsWith("GROUP_PARTICIPANT")) {
-    // connectedPhone is the actual phone number of the joining participant
-    const connectedPhone = body?.connectedPhone as string | undefined;
-    if (connectedPhone) {
-      senderPhone = connectedPhone;
-    }
-  }
-  
-  // Get sender name from multiple sources
-  const senderName = (data?.pushName || rawEvent.senderName || body?.senderName || body?.pushName || rawEvent.pushName) as string | null;
-  
-  // Get chat name (for groups)
-  const chatName = (data?.groupName || data?.pushName || rawEvent.chatName || body?.chatName) as string | null;
-  
-  // Get message ID from multiple sources
-  const messageId = (key?.id || data?.messageId || rawEvent.messageId || body?.messageId || rawEvent.zapiMessageId) as string | null;
-  
-  // Parse timestamp
-  let eventTimestamp: string | null = null;
-  const timestamp = data?.messageTimestamp || rawEvent.messageTimestamp || rawEvent.timestamp || body?.momment || body?.timestamp;
-  if (timestamp) {
-    try {
-      // Could be seconds or milliseconds
-      const ts = Number(timestamp);
-      if (ts > 1000000000000) {
-        eventTimestamp = new Date(ts).toISOString();
-      } else {
-        eventTimestamp = new Date(ts * 1000).toISOString();
-      }
-    } catch {
-      // Ignore parsing errors
-    }
-  }
-  
-  return {
-    chatJid,
-    chatType,
-    chatName,
-    senderPhone,
-    senderName,
-    messageId,
-    eventTimestamp,
-  };
-}
-
-function extractContext(source: string, rawEvent: Record<string, unknown>): ContextResult {
-  // For now, Z-API context extraction works for most providers
-  // Can be extended for Evolution and Meta specifics
-  return extractZApiContext(rawEvent);
-}
-
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
@@ -463,38 +30,31 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    
+
     // Detect payload format and normalize
     let payload: InboundPayload;
-    
+
     if (body.raw_event && body.instance_id) {
-      // Already in expected encapsulated format
       payload = body as InboundPayload;
     } else {
-      // Direct payload from provider - auto-wrap it
-      // n8n sends the payload nested in body.body when forwarding webhooks
       const nestedBody = body.body as Record<string, unknown> | undefined;
-      
-      // Try to extract instance_id from common Z-API/Evolution fields
-      // Check both root level and nested body (for n8n forwarded webhooks)
-      const instanceId = body.instanceId || 
-                         nestedBody?.instanceId ||
-                         body.instance || 
-                         nestedBody?.connectedPhone ||
-                         body.phone ||
-                         body.sender?.phone ||
-                         "unknown";
-      
+      const instanceId = body.instanceId ||
+        nestedBody?.instanceId ||
+        body.instance ||
+        nestedBody?.connectedPhone ||
+        body.phone ||
+        body.sender?.phone ||
+        "unknown";
+
       payload = {
         source: "z-api",
         instance_id: String(instanceId),
-        raw_event: body
+        raw_event: body,
       };
-      
+
       console.log("[webhook-inbound] Auto-wrapped raw payload, detected instance_id:", instanceId);
     }
-    
-    // Validate required fields after normalization
+
     if (!payload.instance_id || !payload.raw_event) {
       return new Response(
         JSON.stringify({ success: false, error: "Missing required fields: instance_id and raw_event" }),
@@ -509,21 +69,21 @@ Deno.serve(async (req) => {
 
     console.log(`[webhook-inbound] Received event from ${source}, instance: ${externalInstanceId}`);
 
-    // Try to find the internal instance ID and user_id
+    // Find internal instance
     const { data: instance } = await supabase
       .from("instances")
       .select("id, user_id")
       .eq("external_instance_id", externalInstanceId)
       .maybeSingle();
 
-    // Classify the event
-    const classification = classifyEvent(source, rawEvent);
-    console.log(`[webhook-inbound] Classified as: ${classification.eventType} (${classification.classification})`);
+    // Classify using shared classifier
+    const classification: ClassificationResult = classifyEvent(source, rawEvent);
+    console.log(`[webhook-inbound] Classified as: ${classification.eventType} (${classification.classification}, rule: ${classification.matchedRule}, confidence: ${classification.confidence})`);
 
-    // Extract context
-    const context = extractContext(source, rawEvent);
+    // Extract context using shared extractor
+    const context: EventContext = extractContext(source, rawEvent);
 
-    // Insert the event
+    // Insert event with new classification fields
     const { data: insertedEvent, error: insertError } = await supabase
       .from("webhook_events")
       .insert({
@@ -534,6 +94,9 @@ Deno.serve(async (req) => {
         event_type: classification.eventType,
         event_subtype: classification.eventSubtype,
         classification: classification.classification,
+        direction: classification.direction,
+        confidence: classification.confidence,
+        matched_rule: classification.matchedRule,
         chat_jid: context.chatJid,
         chat_type: context.chatType,
         chat_name: context.chatName,
@@ -562,53 +125,49 @@ Deno.serve(async (req) => {
     // AUTO-PROCESS POLL RESPONSES
     // ==========================================
     let pollProcessingResult: Record<string, unknown> | null = null;
-    
+
     if (classification.eventType === "poll_response") {
       try {
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        
-        const body = rawEvent.body as Record<string, unknown> | undefined;
-        const pollVote = body?.pollVote as Record<string, unknown> | undefined;
-        
+
+        const eventBody = rawEvent.body as Record<string, unknown> | undefined;
+        const pollVote = eventBody?.pollVote as Record<string, unknown> | undefined;
+
         if (pollVote) {
-          const options = pollVote.options as Array<{name: string}> | undefined;
+          const options = pollVote.options as Array<{ name: string }> | undefined;
           const pollMessageId = pollVote.pollMessageId as string;
-          
+
           if (pollMessageId && options?.length) {
-            // Extract respondent data (body is guaranteed to exist if pollVote exists)
-            const participantPhone = (body?.participantPhone as string) || 
-                                     String(body?.phone || "").split("-")[0];
-            const senderName = (body?.senderName as string) || (body?.pushName as string) || "";
-            const groupJid = (body?.phone as string) || context.chatJid || "";
-            
+            const participantPhone = (eventBody?.participantPhone as string) ||
+              String(eventBody?.phone || "").split("-")[0];
+            const senderName = (eventBody?.senderName as string) || (eventBody?.pushName as string) || "";
+            const groupJid = (eventBody?.phone as string) || context.chatJid || "";
+
             console.log(`[webhook-inbound] Auto-processing poll vote from ${participantPhone} for message ${pollMessageId}`);
-            
-            // Find poll_message by message_id or zaap_id
+
             const { data: pollMessage } = await supabase
               .from("poll_messages")
               .select("id, options, instance_id")
               .or(`message_id.eq.${pollMessageId},zaap_id.eq.${pollMessageId}`)
               .maybeSingle();
-            
+
             if (pollMessage) {
-              // Find the voted option index (fuzzy match)
               const votedOptionText = options[0]?.name || "";
               const pollOptions = pollMessage.options as string[];
               let optionIndex = pollOptions.findIndex(
-                opt => opt.toLowerCase() === votedOptionText.toLowerCase()
+                (opt) => opt.toLowerCase() === votedOptionText.toLowerCase()
               );
-              
-              // Fallback to partial match
+
               if (optionIndex === -1) {
                 optionIndex = pollOptions.findIndex(
-                  opt => opt.toLowerCase().includes(votedOptionText.toLowerCase()) ||
-                         votedOptionText.toLowerCase().includes(opt.toLowerCase())
+                  (opt) =>
+                    opt.toLowerCase().includes(votedOptionText.toLowerCase()) ||
+                    votedOptionText.toLowerCase().includes(opt.toLowerCase())
                 );
               }
-              
+
               if (optionIndex >= 0) {
-                // Build payload for handle-poll-response
                 const pollPayload = {
                   message_id: pollMessageId,
                   instance_id: pollMessage.instance_id || instance?.id || "",
@@ -623,26 +182,24 @@ Deno.serve(async (req) => {
                     option_text: votedOptionText,
                   },
                   timestamp: new Date().toISOString(),
-                  _raw_event: rawEvent, // Original Z-API payload for forwardRawBody
+                  _raw_event: rawEvent,
                 };
-                
-                // Invoke handle-poll-response
+
                 const pollResponse = await fetch(
                   `${supabaseUrl}/functions/v1/handle-poll-response`,
                   {
                     method: "POST",
                     headers: {
                       "Content-Type": "application/json",
-                      "Authorization": `Bearer ${supabaseServiceKey}`,
+                      Authorization: `Bearer ${supabaseServiceKey}`,
                     },
                     body: JSON.stringify(pollPayload),
                   }
                 );
-                
+
                 pollProcessingResult = await pollResponse.json();
                 console.log(`[webhook-inbound] Auto-processed poll response: ${JSON.stringify(pollProcessingResult)}`);
-                
-                // Update webhook_events with processing result
+
                 await supabase
                   .from("webhook_events")
                   .update({
@@ -661,7 +218,6 @@ Deno.serve(async (req) => {
         }
       } catch (pollError) {
         console.error("[webhook-inbound] Error auto-processing poll:", pollError);
-        // Don't fail the request, just log the error
         await supabase
           .from("webhook_events")
           .update({
@@ -677,27 +233,25 @@ Deno.serve(async (req) => {
     // ==========================================
     if (classification.eventType === "group_join" && context.chatJid && context.senderPhone) {
       try {
-        // Extract full LID from notificationParameters if available
         const rawBody = rawEvent.body as Record<string, unknown> | undefined;
         const notifParams = rawBody?.notificationParameters as string[] | undefined;
-        const participantRaw = notifParams?.[0] || null; // e.g. "15041025855619@lid"
+        const participantRaw = notifParams?.[0] || null;
         const isLid = participantRaw?.includes("@lid");
         const connectedPhone = rawBody?.connectedPhone as string | undefined;
-
-        // connectedPhone = real phone number of the participant (e.g. "5512982402981")
-        // notificationParameters[0] = LID identifier (e.g. "15041025855619@lid")
         const phoneToSend = connectedPhone || context.senderPhone;
 
         console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${isLid ? participantRaw : "none"}, connectedPhone=${connectedPhone || "none"}`);
+
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+
         const pirateResponse = await fetch(
           `${supabaseUrl}/functions/v1/pirate-process-join`,
           {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": `Bearer ${supabaseServiceKey}`,
+              Authorization: `Bearer ${supabaseServiceKey}`,
             },
             body: JSON.stringify({
               group_jid: context.chatJid,
@@ -708,6 +262,7 @@ Deno.serve(async (req) => {
             }),
           }
         );
+
         const pirateResult = await pirateResponse.json();
         console.log(`[webhook-inbound] Pirate process result: ${JSON.stringify(pirateResult)}`);
       } catch (pirateError) {
@@ -717,20 +272,23 @@ Deno.serve(async (req) => {
 
     return new Response(
       JSON.stringify({
-      success: true,
-      event_id: insertedEvent.id,
-      event_type: classification.eventType,
-      classification: classification.classification,
-      poll_processing: pollProcessingResult,
-    }),
-    { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-} catch (error) {
-  const errorMessage = error instanceof Error ? error.message : "Unknown error";
-  console.error("[webhook-inbound] Error:", errorMessage);
-  return new Response(
-    JSON.stringify({ success: false, error: errorMessage }),
-    { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-  );
-}
+        success: true,
+        event_id: insertedEvent.id,
+        event_type: classification.eventType,
+        classification: classification.classification,
+        direction: classification.direction,
+        confidence: classification.confidence,
+        matched_rule: classification.matchedRule,
+        poll_processing: pollProcessingResult,
+      }),
+      { status: 201, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("[webhook-inbound] Error:", errorMessage);
+    return new Response(
+      JSON.stringify({ success: false, error: errorMessage }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
 });
