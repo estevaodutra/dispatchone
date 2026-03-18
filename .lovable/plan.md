@@ -1,53 +1,48 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Plano: Reclassificar todos os eventos e verificar consistência
 
-### Problema 1: Build error em `call-status/index.ts`
+### Diagnóstico atual
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+| Métrica | Valor |
+|---------|-------|
+| Total de eventos | 252,626 |
+| Sem `matched_rule` (lógica antiga) | 251,758 (99.7%) |
+| Com `matched_rule` (classificador unificado) | 868 |
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+O batch atual do `reclassify-events` só processa eventos com `event_type IN ('image_message', 'unknown', 'text_message')` — isso cobre apenas **145,283** dos 251,758 pendentes. Os outros **106,475** eventos (message_received, played, message_read, group_join, etc.) estão corretamente tipados mas sem os metadados `matched_rule`, `confidence` e `direction`.
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+### Amostras verificadas
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+- `image_message` com `body.image` → classificador retornará `image_message` (Rule 2, high) -- **correto**
+- `image_message` com `body.text.message` e sem `body.image` → classificador retornará `text_message` (Rule 11, high) -- **corrige erro**
+- `image_message` com `body.photo` (foto de perfil) → classificador ignora `photo`, classifica pelo conteúdo real -- **corrige erro**
+- `message_received` com `body.status = "RECEIVED"` → classificador retornará `message_received` (Rule 10, high) -- **mantém tipo, adiciona metadata**
+- `unknown` com `body.status = "RECEIVED"` → classificador retornará `message_received` (Rule 10, high) -- **corrige erro**
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+### Mudança necessária
 
-**Correção em `call-status/index.ts` (linha 550-554):**
+**Arquivo:** `supabase/functions/reclassify-events/index.ts`
 
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+Atualizar o filtro batch (linha 159) para incluir todos os eventos sem `matched_rule`:
 
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
+```typescript
+// Antes:
+query = query.in("event_type", ["image_message", "unknown", "text_message"]);
 
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
+// Depois:
+query = query.is("matched_rule", null);
 ```
 
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+Isso garante que TODOS os 251,758 eventos antigos sejam reprocessados pelo classificador unificado, preenchendo `matched_rule`, `confidence` e `direction`, e corrigindo tipos errados.
 
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+### Execução
 
-### Arquivos alterados
+1. Aplicar a mudança no filtro
+2. Rodar a reclassificação via UI (botão "Reclassificar Tudo") — processa em lotes de 2000 com cursor
+3. Verificar distribuição final com query de validação
 
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+### Validação esperada
+
+Após a reclassificação completa, todos os eventos terão `matched_rule IS NOT NULL` e `confidence IN ('high', 'medium')`. Eventos que eram `image_message` incorretamente (com `body.text.message` sem `body.image`) serão corrigidos para `text_message`.
 
