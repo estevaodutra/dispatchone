@@ -16,6 +16,7 @@ export function SequencesTab({ campaignId }: SequencesTabProps) {
     createSequence,
     updateSequence,
     deleteSequence,
+    duplicateSequence,
     isCreating,
   } = useSequences(campaignId);
 
