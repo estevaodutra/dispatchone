@@ -1,53 +1,55 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Plano: Duplicar Sequência por Completo
 
-### Problema 1: Build error em `call-status/index.ts`
+### Objetivo
+Adicionar botão de duplicar em cada card de sequência, clonando a sequência (metadados + nós/steps internos) com o prefixo "Cópia de".
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+### Mudanças
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+**1. Props — `UnifiedSequenceList` e wrappers**
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+Adicionar prop opcional `onDuplicate?: (id: string) => Promise<void>` em:
+- `UnifiedSequenceListProps<T>` (shared component)
+- `SequenceListProps` (group wrapper)
+- `DispatchSequenceListProps` (dispatch wrapper)
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+**2. UI — Botão duplicar no card**
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+No `UnifiedSequenceList.tsx`, adicionar ícone `Copy` ao lado dos botões Edit/Delete (linha 139-145), visível apenas se `onDuplicate` estiver definido.
 
-**Correção em `call-status/index.ts` (linha 550-554):**
+**3. Hook `useSequences` — mutation `duplicateSequence`**
 
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+Nova mutation que:
+1. Busca a sequência original (`message_sequences`)
+2. Insere clone com nome "Cópia de {nome}", `active: false`
+3. Busca todos os `sequence_nodes` da sequência original
+4. Insere clones dos nós na nova sequência, mapeando IDs antigos → novos
+5. Busca todos os `sequence_connections` da sequência original
+6. Insere clones das conexões usando o mapeamento de IDs
 
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
+**4. Hook `useDispatchSequences` — mutation `duplicateSequence`**
 
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
-```
+Nova mutation que:
+1. Busca a sequência original (`dispatch_sequences`)
+2. Insere clone com nome "Cópia de {nome}", `is_active: false`
+3. Busca todos os `dispatch_sequence_steps` da sequência original
+4. Insere clones dos steps na nova sequência
 
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+**5. Tabs `SequencesTab` (group e dispatch)**
 
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+Passar `onDuplicate` do hook para o componente de lista.
 
-### Arquivos alterados
+### Arquivos afetados
 
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+| Arquivo | Ação |
+|---------|------|
+| `src/components/sequences/UnifiedSequenceList.tsx` | Prop + botão Copy |
+| `src/components/sequences/shared-types.ts` | Nenhuma mudança |
+| `src/hooks/useSequences.ts` | Mutation duplicateSequence |
+| `src/hooks/useDispatchSequences.ts` | Mutation duplicateSequence |
+| `src/components/group-campaigns/sequences/SequenceList.tsx` | Passar onDuplicate |
+| `src/components/dispatch-campaigns/sequences/DispatchSequenceList.tsx` | Passar onDuplicate |
+| `src/components/group-campaigns/tabs/SequencesTab.tsx` | Conectar duplicateSequence |
+| `src/components/dispatch-campaigns/tabs/SequencesTab.tsx` | Conectar duplicateSequence |
 
