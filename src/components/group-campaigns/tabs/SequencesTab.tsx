@@ -59,6 +59,7 @@ export function SequencesTab({ campaignId }: SequencesTabProps) {
       onCreate={handleCreate}
       onDelete={deleteSequence}
       onToggleActive={handleToggleActive}
+      onDuplicate={duplicateSequence}
       isCreating={isCreating}
     />
   );

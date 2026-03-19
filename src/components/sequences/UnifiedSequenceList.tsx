@@ -142,6 +142,11 @@ export function UnifiedSequenceList<T>({
                       <Button variant="ghost" size="icon" onClick={() => onEdit(seq)}>
                         <Edit className="h-4 w-4" />
                       </Button>
+                      {onDuplicate && (
+                        <Button variant="ghost" size="icon" onClick={() => onDuplicate(item.id)}>
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => onDelete(item.id)}>
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>

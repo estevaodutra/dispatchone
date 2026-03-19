@@ -207,6 +207,92 @@ export function useSequences(campaignId: string | undefined) {
     },
   });
 
+  const duplicateSequenceMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // 1. Fetch original sequence
+      const { data: original, error: seqError } = await supabase
+        .from("message_sequences")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (seqError) throw seqError;
+
+      // 2. Clone sequence
+      const { data: newSeq, error: insertError } = await supabase
+        .from("message_sequences")
+        .insert({
+          user_id: user.id,
+          group_campaign_id: original.group_campaign_id,
+          name: `Cópia de ${original.name}`,
+          description: original.description,
+          trigger_type: original.trigger_type,
+          trigger_config: original.trigger_config,
+          active: false,
+        })
+        .select()
+        .single();
+      if (insertError) throw insertError;
+
+      // 3. Clone nodes
+      const { data: originalNodes } = await supabase
+        .from("sequence_nodes")
+        .select("*")
+        .eq("sequence_id", id)
+        .order("node_order", { ascending: true });
+
+      const idMapping: Record<string, string> = {};
+
+      if (originalNodes && originalNodes.length > 0) {
+        const { data: newNodes, error: nodesError } = await supabase
+          .from("sequence_nodes")
+          .insert(originalNodes.map((n: any) => ({
+            sequence_id: newSeq.id,
+            user_id: user.id,
+            node_type: n.node_type,
+            position_x: n.position_x,
+            position_y: n.position_y,
+            node_order: n.node_order,
+            config: n.config,
+          })))
+          .select("id");
+        if (nodesError) throw nodesError;
+
+        originalNodes.forEach((n: any, i: number) => {
+          if (newNodes?.[i]) idMapping[n.id] = newNodes[i].id;
+        });
+
+        // 4. Clone connections
+        const { data: originalConns } = await supabase
+          .from("sequence_connections")
+          .select("*")
+          .eq("sequence_id", id);
+
+        if (originalConns && originalConns.length > 0) {
+          const { error: connsError } = await supabase
+            .from("sequence_connections")
+            .insert(originalConns.map((c: any) => ({
+              sequence_id: newSeq.id,
+              user_id: user.id,
+              source_node_id: idMapping[c.source_node_id] || c.source_node_id,
+              target_node_id: idMapping[c.target_node_id] || c.target_node_id,
+              condition_path: c.condition_path,
+            })));
+          if (connsError) throw connsError;
+        }
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["message_sequences", campaignId] });
+      toast({ title: "Sequência duplicada" });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao duplicar", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     sequences,
     isLoading,
@@ -215,6 +301,7 @@ export function useSequences(campaignId: string | undefined) {
     createSequence: createSequenceMutation.mutateAsync,
     updateSequence: updateSequenceMutation.mutateAsync,
     deleteSequence: deleteSequenceMutation.mutateAsync,
+    duplicateSequence: duplicateSequenceMutation.mutateAsync,
     isCreating: createSequenceMutation.isPending,
     isUpdating: updateSequenceMutation.isPending,
     isDeleting: deleteSequenceMutation.isPending,
