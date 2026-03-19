@@ -140,12 +140,75 @@ export function useDispatchSequences(campaignId: string | undefined) {
     },
   });
 
+  const duplicateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !campaignId) throw new Error("Not authenticated");
+
+      const { data: original, error: seqError } = await supabase
+        .from("dispatch_sequences")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (seqError) throw seqError;
+
+      const { data: newSeq, error: insertError } = await supabase
+        .from("dispatch_sequences")
+        .insert({
+          user_id: user.id,
+          campaign_id: campaignId,
+          name: `Cópia de ${original.name}`,
+          description: original.description,
+          trigger_type: original.trigger_type,
+          trigger_config: original.trigger_config,
+          is_active: false,
+        })
+        .select()
+        .single();
+      if (insertError) throw insertError;
+
+      const { data: originalSteps } = await supabase
+        .from("dispatch_sequence_steps")
+        .select("*")
+        .eq("sequence_id", id)
+        .order("step_order", { ascending: true });
+
+      if (originalSteps && originalSteps.length > 0) {
+        const { error: stepsError } = await supabase
+          .from("dispatch_sequence_steps")
+          .insert(originalSteps.map((s: any) => ({
+            sequence_id: newSeq.id,
+            user_id: user.id,
+            step_type: s.step_type,
+            step_order: s.step_order,
+            message_type: s.message_type,
+            message_content: s.message_content,
+            message_media_url: s.message_media_url,
+            message_buttons: s.message_buttons,
+            delay_value: s.delay_value,
+            delay_unit: s.delay_unit,
+            condition_type: s.condition_type,
+            condition_config: s.condition_config,
+          })));
+        if (stepsError) throw stepsError;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["dispatch_sequences", campaignId] });
+      toast({ title: "Sequência duplicada" });
+    },
+    onError: (error) => {
+      toast({ title: "Erro ao duplicar", description: error.message, variant: "destructive" });
+    },
+  });
+
   return {
     sequences,
     isLoading,
     createSequence: createMutation.mutateAsync,
     updateSequence: updateMutation.mutateAsync,
     deleteSequence: deleteMutation.mutateAsync,
+    duplicateSequence: duplicateMutation.mutateAsync,
     isCreating: createMutation.isPending,
   };
 }

@@ -19,6 +19,7 @@ interface SequenceListProps {
   onCreate: (data: { name: string; description?: string; triggerType: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToggleActive: (id: string, active: boolean) => Promise<void>;
+  onDuplicate?: (id: string) => Promise<void>;
   isCreating: boolean;
 }
 
@@ -56,7 +57,7 @@ const getTriggerPreview = (seq: MessageSequence) => {
   }
 };
 
-export function SequenceList({ sequences, isLoading, onEdit, onCreate, onDelete, onToggleActive, isCreating }: SequenceListProps) {
+export function SequenceList({ sequences, isLoading, onEdit, onCreate, onDelete, onToggleActive, onDuplicate, isCreating }: SequenceListProps) {
   return (
     <UnifiedSequenceList<MessageSequence>
       sequences={sequences}
@@ -65,6 +66,7 @@ export function SequenceList({ sequences, isLoading, onEdit, onCreate, onDelete,
       onCreate={onCreate}
       onDelete={onDelete}
       onToggleActive={onToggleActive}
+      onDuplicate={onDuplicate}
       isCreating={isCreating}
       triggerTypes={TRIGGER_TYPES}
       triggerSelectorType="select"

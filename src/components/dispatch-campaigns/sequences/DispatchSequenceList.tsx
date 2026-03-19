@@ -18,6 +18,7 @@ interface DispatchSequenceListProps {
   onCreate: (data: { name: string; description?: string; triggerType: string; triggerConfig?: Record<string, unknown> }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToggleActive: (id: string, isActive: boolean) => Promise<void>;
+  onDuplicate?: (id: string) => Promise<void>;
   isCreating: boolean;
 }
 
@@ -29,7 +30,7 @@ const getSequenceItem = (seq: DispatchSequence): UnifiedSequenceItem => ({
   isActive: seq.isActive,
 });
 
-export function DispatchSequenceList({ sequences, isLoading, onEdit, onCreate, onDelete, onToggleActive, isCreating }: DispatchSequenceListProps) {
+export function DispatchSequenceList({ sequences, isLoading, onEdit, onCreate, onDelete, onToggleActive, onDuplicate, isCreating }: DispatchSequenceListProps) {
   return (
     <UnifiedSequenceList<DispatchSequence>
       sequences={sequences}
@@ -38,6 +39,7 @@ export function DispatchSequenceList({ sequences, isLoading, onEdit, onCreate, o
       onCreate={onCreate}
       onDelete={onDelete}
       onToggleActive={onToggleActive}
+      onDuplicate={onDuplicate}
       isCreating={isCreating}
       triggerTypes={TRIGGER_TYPES}
       triggerSelectorType="radio"

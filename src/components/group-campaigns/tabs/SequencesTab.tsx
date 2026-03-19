@@ -16,6 +16,7 @@ export function SequencesTab({ campaignId }: SequencesTabProps) {
     createSequence,
     updateSequence,
     deleteSequence,
+    duplicateSequence,
     isCreating,
   } = useSequences(campaignId);
 
@@ -58,6 +59,7 @@ export function SequencesTab({ campaignId }: SequencesTabProps) {
       onCreate={handleCreate}
       onDelete={deleteSequence}
       onToggleActive={handleToggleActive}
+      onDuplicate={duplicateSequence}
       isCreating={isCreating}
     />
   );
