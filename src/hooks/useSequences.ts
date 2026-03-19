@@ -101,6 +101,7 @@ const transformConnection = (db: DbConnection): SequenceConnection => ({
   conditionPath: db.condition_path,
 });
 
+// Hook for managing message sequences
 export function useSequences(campaignId: string | undefined) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
