@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Workflow, Trash2, Edit } from "lucide-react";
+import { Plus, Workflow, Trash2, Edit, Copy } from "lucide-react";
 
 interface UnifiedSequenceListProps<T> {
   sequences: T[];
