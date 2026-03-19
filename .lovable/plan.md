@@ -1,41 +1,53 @@
 
 
-## Plano: Notificação pop-up quando todas as instâncias estiverem desconectadas/vencidas
+## Corrigir: Build error + Item "Em Ligação" persistente na fila
 
-### Objetivo
-Exibir um banner/pop-up persistente no topo do layout quando **todas** as instâncias do usuário estiverem desconectadas ou com pagamento vencido (EXPIRED), com botão para ir à página de instâncias.
+### Problema 1: Build error em `call-status/index.ts`
 
-### Mudanças
+Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
 
-**Novo componente:** `src/components/layout/InstanceStatusBanner.tsx`
+**Correção:**
+- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
+- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
 
-1. Usar `useInstances()` para obter a lista de instâncias
-2. Verificar se `instances.length > 0` e **todas** têm `status !== "connected"` ou `paymentStatus === "EXPIRED"`
-3. Se sim, renderizar um banner fixo (usando AlertBanner ou componente customizado) com:
-   - Ícone de alerta
-   - Texto: "Nenhuma instância conectada. Conecte uma instância para enviar mensagens."
-   - Botão "Conectar Instância" que navega para `/instances`
-   - Botão de dismiss (salva no sessionStorage para não reaparecer na sessão)
-4. Não exibir enquanto `isLoading` ou se não há instâncias cadastradas
+### Problema 2: Item "Em Ligação" fantasma persiste
 
-**Arquivo:** `src/components/layout/AppLayout.tsx`
+A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
 
-5. Importar e renderizar `<InstanceStatusBanner />` acima do `<main>`, dentro do layout protegido
+Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
 
-### Detalhes Técnicos
+**Correção em `call-status/index.ts` (linha 550-554):**
 
-```text
-┌──────────────────────────────────────┐
-│  AppHeader                           │
-├──────────────────────────────────────┤
-│  ⚠ Nenhuma instância conectada...   │  ← Banner (condicional)
-│  [Conectar Instância]  [✕]          │
-├──────────────────────────────────────┤
-│  main content                        │
-└──────────────────────────────────────┘
+Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
+
+```ts
+const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
+if (ALL_TERMINAL.includes(mappedStatus)) {
+  // Primary: delete by call_log_id
+  const { data: deleted } = await supabase
+    .from('call_queue')
+    .delete()
+    .eq('call_log_id', callLog.id)
+    .select('id');
+
+  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
+  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
+    await supabase
+      .from('call_queue')
+      .delete()
+      .eq('lead_id', callLog.lead_id)
+      .eq('campaign_id', callLog.campaign_id)
+      .eq('status', 'in_call');
+  }
+}
 ```
 
-- Lógica: `const allDown = instances.length > 0 && instances.every(i => i.status !== "connected")`
-- Dismiss via `sessionStorage.setItem("instance-banner-dismissed", "true")`
-- Usa `useNavigate()` para redirecionar ao clicar
+**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
+
+Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
+
+### Arquivos alterados
+
+1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
+2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
 

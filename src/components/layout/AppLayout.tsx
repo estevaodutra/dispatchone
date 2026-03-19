@@ -1,6 +1,7 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { InstanceStatusBanner } from "./InstanceStatusBanner";
 import { useCallQueue } from "@/hooks/useCallQueue";
 
 interface AppLayoutProps {
@@ -17,6 +18,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <AppSidebar />
         <div className="flex flex-1 flex-col">
           <AppHeader />
+          <InstanceStatusBanner />
           <main className="flex-1 p-6">{children}</main>
         </div>
       </div>
