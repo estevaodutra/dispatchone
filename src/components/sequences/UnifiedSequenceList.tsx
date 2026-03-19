@@ -35,6 +35,7 @@ export function UnifiedSequenceList<T>({
   onCreate,
   onDelete,
   onToggleActive,
+  onDuplicate,
   isCreating,
   triggerTypes,
   triggerSelectorType = "select",
