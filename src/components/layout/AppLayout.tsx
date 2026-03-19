@@ -1,6 +1,7 @@
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { InstanceStatusBanner } from "./InstanceStatusBanner";
 import { useCallQueue } from "@/hooks/useCallQueue";
 
 interface AppLayoutProps {
