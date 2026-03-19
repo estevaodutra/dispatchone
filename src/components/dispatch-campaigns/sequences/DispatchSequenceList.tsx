@@ -18,6 +18,7 @@ interface DispatchSequenceListProps {
   onCreate: (data: { name: string; description?: string; triggerType: string; triggerConfig?: Record<string, unknown> }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToggleActive: (id: string, isActive: boolean) => Promise<void>;
+  onDuplicate?: (id: string) => Promise<void>;
   isCreating: boolean;
 }
 
