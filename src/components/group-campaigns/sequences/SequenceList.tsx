@@ -19,6 +19,7 @@ interface SequenceListProps {
   onCreate: (data: { name: string; description?: string; triggerType: string }) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onToggleActive: (id: string, active: boolean) => Promise<void>;
+  onDuplicate?: (id: string) => Promise<void>;
   isCreating: boolean;
 }
 
