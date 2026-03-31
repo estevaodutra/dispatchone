@@ -1,53 +1,29 @@
 
 
-## Corrigir: Build error + Item "Em Ligação" persistente na fila
+## Plano: Parar execuções quando sequência for desativada
 
-### Problema 1: Build error em `call-status/index.ts`
+### Problema
+Quando o usuário desativa uma sequência (toggle para "Inativa"), execuções já pausadas (`sequence_executions` com `status = 'paused'`) continuam sendo retomadas pelo scheduler. O bloco "PROCESS PAUSED EXECUTIONS" (linha 295) do `process-scheduled-messages` **não verifica** se a sequência pai ainda está `active = true`.
 
-Na linha 284, o `select` do `callLog` não inclui `company_id`. Na linha 626, o `select` do `campaignData` também não inclui `company_id`. Ambos são referenciados na linha 656.
+### Correção (2 pontos)
 
-**Correção:**
-- Linha 284: adicionar `company_id` ao select → `'id, campaign_id, lead_id, operator_id, started_at, ended_at, call_status, company_id'`
-- Linha 626: adicionar `company_id` ao select → `'retry_count, retry_interval_minutes, retry_exceeded_behavior, retry_exceeded_action_id, company_id'`
+**1. Edge Function `process-scheduled-messages/index.ts` — Verificar `active` antes de retomar**
 
-### Problema 2: Item "Em Ligação" fantasma persiste
+No loop de paused executions (linha 307), antes de retomar cada execução:
+- Buscar a sequência pai (`message_sequences`) pelo `execution.sequence_id`
+- Se `active = false`, marcar a execução como `cancelled` em vez de retomá-la
+- Logar a decisão
 
-A remoção do item da fila em `call-status` (linha 553) usa apenas `call_log_id`. Se o `call_log_id` no queue item não corresponder ao log processado pelo callback, o item nunca é removido.
+**2. Hook `useSequences.ts` — Cancelar execuções pausadas ao desativar**
 
-Além disso, `healStaleInCallItems` só roda no `global_tick` — que depende do loop do frontend estar ativo. Se o loop parou, a limpeza não acontece.
+Quando `updates.active === false`, adicionar lógica no `updateSequenceMutation` para:
+- Atualizar todas as `sequence_executions` com `status = 'paused'` e `sequence_id = id` para `status = 'cancelled'`
+- Isso garante cancelamento imediato sem depender do próximo ciclo do scheduler
 
-**Correção em `call-status/index.ts` (linha 550-554):**
+### Arquivos afetados
 
-Adicionar fallback de remoção por `lead_id` + `campaign_id` quando a remoção por `call_log_id` não encontra nada:
-
-```ts
-const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
-if (ALL_TERMINAL.includes(mappedStatus)) {
-  // Primary: delete by call_log_id
-  const { data: deleted } = await supabase
-    .from('call_queue')
-    .delete()
-    .eq('call_log_id', callLog.id)
-    .select('id');
-
-  // Fallback: if nothing was deleted, try by lead_id + campaign_id + status in_call
-  if ((!deleted || deleted.length === 0) && callLog.lead_id && callLog.campaign_id) {
-    await supabase
-      .from('call_queue')
-      .delete()
-      .eq('lead_id', callLog.lead_id)
-      .eq('campaign_id', callLog.campaign_id)
-      .eq('status', 'in_call');
-  }
-}
-```
-
-**Correção em `healStaleInCallItems` (`queue-processor/index.ts`):**
-
-Adicionar verificação de itens `in_call` sem `call_log_id` com mais de **5 minutos** (reduzir de 10 para 5) e também verificar itens `in_call` cujo `call_log` tenha status ativo mas com `ended_at` preenchido (indicando que o callback chegou mas a fila não foi limpa).
-
-### Arquivos alterados
-
-1. **`supabase/functions/call-status/index.ts`**: Fix select fields + fallback de remoção por lead_id/campaign_id
-2. **`supabase/functions/queue-processor/index.ts`**: Reduzir timeout de orphan items + verificar `ended_at`
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/process-scheduled-messages/index.ts` | Checar `active` da sequência antes de retomar pausadas |
+| `src/hooks/useSequences.ts` | Cancelar execuções pausadas ao desativar sequência |
 
