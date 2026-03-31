@@ -306,6 +306,22 @@ Deno.serve(async (req) => {
 
       for (const execution of pausedExecutions as PausedExecution[]) {
         try {
+          // Check if parent sequence is still active before resuming
+          const { data: parentSequence } = await supabase
+            .from("message_sequences")
+            .select("active")
+            .eq("id", execution.sequence_id)
+            .single();
+
+          if (!parentSequence || parentSequence.active === false) {
+            console.log(`[Scheduler] Sequence ${execution.sequence_id} is inactive — cancelling execution ${execution.id}`);
+            await supabase
+              .from("sequence_executions")
+              .update({ status: "cancelled", error_message: "Sequence deactivated", updated_at: new Date().toISOString() })
+              .eq("id", execution.id);
+            continue;
+          }
+
           console.log(`[Scheduler] Resuming execution ${execution.id} from node ${execution.current_node_index}`);
 
           // Mark as running to prevent duplicate processing

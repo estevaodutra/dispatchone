@@ -181,6 +181,15 @@ export function useSequences(campaignId: string | undefined) {
         .eq("id", id);
 
       if (error) throw error;
+
+      // When deactivating, cancel all paused executions immediately
+      if (updates.active === false) {
+        await supabase
+          .from("sequence_executions")
+          .update({ status: "cancelled", error_message: "Sequence deactivated by user", updated_at: new Date().toISOString() })
+          .eq("sequence_id", id)
+          .eq("status", "paused");
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["message_sequences", campaignId] });
