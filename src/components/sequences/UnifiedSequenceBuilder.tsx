@@ -39,6 +39,7 @@ export function UnifiedSequenceBuilder({
   renderConfigPanel,
   onSave,
   onToggleActive,
+  onManualSendNode,
   onBack,
   initialNodes,
   initialConnections,
