@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
 
     // Validate request parameters
     // Allow: resumed, triggered, direct sequence (campaignId + sequenceId), or normal (campaignId + messageId)
-    if (!isResumedExecution && !isTriggeredExecution && !isDirectSequenceExecution && (!messageId || !campaignId)) {
+    if (!isResumedExecution && !isTriggeredExecution && !isDirectSequenceExecution && !isManualNodeExecution && (!messageId || !campaignId)) {
       return new Response(
         JSON.stringify({ error: "messageId and campaignId are required (or sequenceId for direct execution)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
