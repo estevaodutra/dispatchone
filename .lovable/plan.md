@@ -1,48 +1,53 @@
 
 
-## Plano: Agendamento e disparo manual por mensagem na sequência
+## Plano: Popup com autosave, nome nos componentes, e ordenação por agendamento
 
 ### O que será feito
-Adicionar duas funcionalidades a cada nó (mensagem) dentro do painel de configuração da sequência:
 
-1. **Agendamento individual** — Permitir definir dias da semana e horários específicos para envio de cada mensagem, sem depender de delay
-2. **Botão "Disparar agora"** — Enviar manualmente uma mensagem específica da sequência de forma imediata
+1. **Config panel vira Dialog (popup)** — Substituir o painel lateral (`Card w-80`) por um `Dialog` centralizado que abre ao clicar no nó no canvas
+2. **Autosave** — Cada alteração no config do nó salva automaticamente (debounce de 800ms) sem necessidade de clicar "Salvar"
+3. **Nome customizado por componente** — Campo "Nome" no topo do popup e exibido no canvas junto ao tipo
+4. **Agendamento organiza a ordem** — Ao salvar/fechar, nós com schedule ativo são reordenados automaticamente pelo primeiro horário configurado (dias + hora mais cedo)
 
 ### Alterações
 
 **1. `src/components/sequences/UnifiedNodeConfigPanel.tsx`**
-- Adicionar seção "Agendamento" no final de **todos** os nós de mensagem/mídia (message, image, video, audio, document, buttons, list)
-- Campos: toggle "Agendar envio", seleção de dias da semana (chips), horários (lista com botão +/-)
-- Botão "Disparar agora" com ícone Play — chama callback `onManualSend`
-- Config armazenada em `node.config.schedule: { enabled: boolean, days: number[], times: string[] }`
+- Envolver todo o conteúdo em `<Dialog>` ao invés de `<Card>`
+- Adicionar campo `<Input>` para nome do nó no topo (`node.config.label`)
+- O popup abre via prop `open` e fecha via `onClose`
+- Largura máxima maior (~md) com scroll interno
 
 **2. `src/components/sequences/UnifiedSequenceBuilder.tsx`**
-- Adicionar prop opcional `onManualSendNode?: (node: LocalNode) => Promise<void>` ao `UnifiedSequenceBuilderProps`
-- Repassar para `renderConfigPanel`
+- Substituir o painel lateral pelo Dialog (renderConfigPanel agora recebe `open` boolean)
+- Implementar autosave com `useEffect` + `useRef` (debounce 800ms) que chama `onSave` automaticamente quando `localNodes` mudam
+- Exibir `node.config.label` no canvas (fallback para `nodeInfo.label`)
+- Adicionar função `autoSortBySchedule()`: ao fechar o popup, reordena nós que têm `schedule.enabled` pelo horário mais cedo, mantendo nós sem schedule na posição relativa original
+- Remover o layout 3-panel para 2-panel (paleta + canvas), já que o config é popup
 
 **3. `src/components/sequences/shared-types.ts`**
-- Sem alteração estrutural necessária — schedule fica dentro de `config: Record<string, unknown>`
+- Sem alteração — `label` fica dentro de `config: Record<string, unknown>`
 
-**4. `src/components/group-campaigns/sequences/SequenceBuilder.tsx`**
-- Implementar `onManualSendNode` — invocar edge function `execute-message` com `nodeIndex` específico
-- Passar para `UnifiedSequenceBuilder`
+### Lógica de auto-ordenação por agendamento
+```text
+Para cada nó com schedule.enabled:
+  - Extrair menor dia (0-6) e menor horário
+  - Gerar score: dia * 1440 + horaEmMinutos
+Nós sem schedule ficam no final, na ordem original.
+Reordenar localNodes por score crescente.
+```
 
-**5. `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`**
-- Implementar `onManualSendNode` — invocar edge function `execute-dispatch-sequence` com step específico
-- Passar para `UnifiedSequenceBuilder`
-
-**6. Edge Functions (`execute-message`, `execute-dispatch-sequence`, `process-scheduled-messages`)**
-- Suportar parâmetro opcional `nodeIndex` / `stepIndex` para executar apenas um nó específico
-- No scheduler, verificar `schedule` config de cada nó antes de executar (dias/horários)
+### Lógica de autosave
+```text
+useEffect com debounce:
+  - A cada mudança em localNodes, resetar timer de 800ms
+  - Ao expirar, chamar onSave(sequenceName, localNodes, localConnections)
+  - Indicador visual sutil ("Salvo ✓" / "Salvando...")
+```
 
 ### Fluxo do usuário
-1. Abre configuração de um nó (ex: Texto)
-2. Ativa toggle "Agendar envio" → aparece seleção de dias e horários
-3. Ou clica "Disparar agora" → mensagem é enviada imediatamente
-4. Ao salvar, o schedule fica persistido no `config` do nó
-
-### Detalhes técnicos
-- O schedule por nó é armazenado em `node.config.schedule` como JSON, sem necessidade de migração de banco
-- O botão "Disparar agora" faz `supabase.functions.invoke()` passando `sequenceId` + `nodeIndex`
-- O scheduler (`process-scheduled-messages`) já processa nós — precisa apenas checar `node.config.schedule` para filtrar quais nós executar no horário atual
+1. Clica no nó no canvas → popup abre centralizado
+2. Digita nome, edita conteúdo, configura agendamento
+3. Cada mudança salva automaticamente (feedback visual)
+4. Ao fechar popup, nós são reordenados pelo agendamento
+5. No canvas, cada nó mostra o nome customizado
 
