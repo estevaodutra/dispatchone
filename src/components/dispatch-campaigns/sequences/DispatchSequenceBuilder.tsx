@@ -135,6 +135,10 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
     await onUpdate({ id: sequence.id, updates: { isActive: !sequence.isActive } });
   };
 
+  const handleManualSendNode = async (node: LocalNode) => {
+    toast.info("Disparo manual de nó individual não disponível para campanhas de disparo (requer contato)");
+  };
+
   return (
     <UnifiedSequenceBuilder
       sequenceName={sequence.name}
@@ -151,12 +155,14 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
           sequenceId={sequence.id}
         />
       )}
-      renderConfigPanel={(node, onUpdateConfig, onClose) => (
+      renderConfigPanel={(node, onUpdateConfig, onClose, onManualSend, isSendingManual) => (
         <UnifiedNodeConfigPanel
           node={node}
           onUpdate={onUpdateConfig}
           onClose={onClose}
           mode="dispatch"
+          onManualSend={onManualSend}
+          isSendingManual={isSendingManual}
           renderMediaUploader={(props) => (
             <MediaUploader
               mediaType={props.mediaType as "image" | "video" | "audio" | "document" | "sticker"}
@@ -170,6 +176,7 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
       )}
       onSave={handleSave}
       onToggleActive={handleToggleActive}
+      onManualSendNode={handleManualSendNode}
       onBack={onBack}
       initialNodes={initialNodes}
       initialConnections={[]}
