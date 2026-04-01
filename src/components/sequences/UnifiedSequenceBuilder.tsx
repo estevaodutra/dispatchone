@@ -345,7 +345,16 @@ export function UnifiedSequenceBuilder({
         {selectedNode && renderConfigPanel(
           selectedNode,
           (config) => handleUpdateNodeConfig(selectedNode.id, config),
-          () => setSelectedNodeId(null)
+          () => setSelectedNodeId(null),
+          onManualSendNode ? async () => {
+            setIsSendingManual(true);
+            try {
+              await onManualSendNode(selectedNode);
+            } finally {
+              setIsSendingManual(false);
+            }
+          } : undefined,
+          isSendingManual
         )}
       </div>
     </div>

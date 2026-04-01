@@ -1077,6 +1077,15 @@ export function UnifiedNodeConfigPanel({
               </div>
             </>
           )}
+
+          {/* Schedule & Manual Send Section */}
+          <NodeScheduleSection
+            config={node.config}
+            onUpdateConfig={updateConfig}
+            onManualSend={onManualSend}
+            isSendingManual={isSendingManual}
+            nodeType={node.nodeType}
+          />
         </CardContent>
       </ScrollArea>
     </Card>
