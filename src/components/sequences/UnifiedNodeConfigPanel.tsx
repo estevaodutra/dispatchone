@@ -1094,7 +1094,7 @@ export function UnifiedNodeConfigPanel({
             nodeType={node.nodeType}
           />
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
