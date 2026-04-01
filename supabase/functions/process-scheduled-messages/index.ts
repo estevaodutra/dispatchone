@@ -1033,6 +1033,144 @@ Deno.serve(async (req) => {
       console.log(`[Scheduler] Scheduled sequences summary:`, sequenceResults);
     }
 
+    // ============= PROCESS PER-NODE SCHEDULED MESSAGES =============
+    // Scan ALL active sequences (any trigger_type) for nodes with individual schedules
+    
+    console.log(`[Scheduler] Checking for per-node scheduled messages...`);
+    
+    const { data: allActiveSequences, error: allSeqError } = await supabase
+      .from("message_sequences")
+      .select("id, name, user_id, group_campaign_id, trigger_type")
+      .eq("active", true);
+
+    if (allSeqError) {
+      console.error("[Scheduler] Error fetching active sequences for per-node schedules:", allSeqError);
+    } else {
+      const perNodeResults: Array<{ sequenceId: string; nodeOrder: number; status: string; error?: string }> = [];
+      
+      for (const seq of allActiveSequences || []) {
+        try {
+          // Fetch nodes for this sequence
+          const { data: scheduledNodes, error: nodesError } = await supabase
+            .from("sequence_nodes")
+            .select("id, node_type, node_order, config")
+            .eq("sequence_id", seq.id);
+
+          if (nodesError || !scheduledNodes) continue;
+
+          // Filter nodes with config.schedule.enabled = true
+          const nodesWithSchedule = scheduledNodes.filter((n: any) => {
+            const schedule = n.config?.schedule;
+            return schedule?.enabled === true && Array.isArray(schedule?.days) && Array.isArray(schedule?.times);
+          });
+
+          if (nodesWithSchedule.length === 0) continue;
+
+          for (const node of nodesWithSchedule) {
+            const schedule = (node as any).config.schedule as { days: number[]; times: string[]; enabled: boolean };
+            
+            const matchesDay = schedule.days.includes(currentDay);
+            const matchesTime = schedule.times.includes(currentTime);
+            
+            if (!matchesDay || !matchesTime) continue;
+
+            console.log(`[Scheduler] ✅ Per-node match: sequence "${seq.name}" node ${(node as any).node_order} (${(node as any).node_type})`);
+
+            // Idempotency check using scheduled_time with node_order suffix
+            const idempotencyTime = `${currentTime}_node_${(node as any).node_order}`;
+            const { data: existingNodeExec } = await supabase
+              .from("scheduled_sequence_executions")
+              .select("id")
+              .eq("sequence_id", seq.id)
+              .eq("scheduled_date", todayDate)
+              .eq("scheduled_time", idempotencyTime)
+              .maybeSingle();
+
+            if (existingNodeExec) {
+              console.log(`[Scheduler] Node ${(node as any).node_order} of "${seq.name}" already executed at ${currentTime} today, skipping`);
+              perNodeResults.push({ sequenceId: seq.id, nodeOrder: (node as any).node_order, status: "skipped", error: "Already executed" });
+              continue;
+            }
+
+            // Validate campaign + instance
+            const { data: perNodeCampaign } = await supabase
+              .from("group_campaigns")
+              .select("id, name, status, instance_id, instances!inner(id, status)")
+              .eq("id", seq.group_campaign_id)
+              .single();
+
+            if (!perNodeCampaign || perNodeCampaign.status !== "active") {
+              console.log(`[Scheduler] Campaign for per-node "${seq.name}" not active`);
+              perNodeResults.push({ sequenceId: seq.id, nodeOrder: (node as any).node_order, status: "skipped", error: "Campaign not active" });
+              continue;
+            }
+
+            const perNodeInst = perNodeCampaign.instances as unknown as { id: string; status: string };
+            if (perNodeInst.status !== "connected") {
+              console.log(`[Scheduler] Instance for per-node "${seq.name}" not connected`);
+              perNodeResults.push({ sequenceId: seq.id, nodeOrder: (node as any).node_order, status: "skipped", error: "Instance not connected" });
+              continue;
+            }
+
+            // Record execution for idempotency
+            await supabase.from("scheduled_sequence_executions").insert({
+              sequence_id: seq.id,
+              campaign_id: seq.group_campaign_id,
+              user_id: seq.user_id,
+              scheduled_date: todayDate,
+              scheduled_time: idempotencyTime,
+              status: "executing",
+            });
+
+            // Call execute-message with manualNodeIndex
+            console.log(`[Scheduler] 🚀 Triggering per-node: "${seq.name}" node ${(node as any).node_order} via execute-message...`);
+
+            const perNodeResponse = await fetch(`${supabaseUrl}/functions/v1/execute-message`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${supabaseServiceKey}`,
+              },
+              body: JSON.stringify({
+                campaignId: seq.group_campaign_id,
+                sequenceId: seq.id,
+                manualNodeIndex: (node as any).node_order,
+              }),
+            });
+
+            const perNodeResponseData = await perNodeResponse.json();
+
+            // Update execution status
+            await supabase
+              .from("scheduled_sequence_executions")
+              .update({
+                status: perNodeResponse.ok ? "executed" : "failed",
+                error_message: perNodeResponse.ok ? null : JSON.stringify(perNodeResponseData),
+              })
+              .eq("sequence_id", seq.id)
+              .eq("scheduled_date", todayDate)
+              .eq("scheduled_time", idempotencyTime);
+
+            if (perNodeResponse.ok) {
+              console.log(`[Scheduler] ✅ Per-node "${seq.name}" node ${(node as any).node_order} triggered successfully`);
+              perNodeResults.push({ sequenceId: seq.id, nodeOrder: (node as any).node_order, status: "triggered" });
+            } else {
+              console.error(`[Scheduler] ❌ Per-node "${seq.name}" node ${(node as any).node_order} failed:`, perNodeResponseData);
+              perNodeResults.push({ sequenceId: seq.id, nodeOrder: (node as any).node_order, status: "failed", error: perNodeResponseData.error || "Unknown" });
+            }
+          }
+        } catch (err) {
+          console.error(`[Scheduler] Error processing per-node schedule for sequence ${seq.id}:`, err);
+        }
+      }
+
+      if (perNodeResults.length > 0) {
+        console.log(`[Scheduler] Per-node scheduled results:`, perNodeResults);
+      } else {
+        console.log(`[Scheduler] No per-node scheduled messages matched current time`);
+      }
+    }
+
     // ============= PROCESS DISPATCH SCHEDULED SEQUENCES =============
     
     console.log(`[Scheduler] Checking for scheduled dispatch sequences...`);
