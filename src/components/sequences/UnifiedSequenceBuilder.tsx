@@ -59,6 +59,7 @@ export function UnifiedSequenceBuilder({
   const [sequenceName, setSequenceName] = useState(initialName);
   const [openCategories, setOpenCategories] = useState<string[]>(nodeCategories.map(c => c.id));
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isSendingManual, setIsSendingManual] = useState(false);
 
   const allNodeTypes = ALL_NODES_FROM(nodeCategories);
 
