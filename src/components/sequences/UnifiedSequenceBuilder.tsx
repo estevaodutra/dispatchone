@@ -1,4 +1,4 @@
-import { useState, useCallback, ReactNode } from "react";
+import { useState, useCallback, useEffect, ReactNode } from "react";
 import { LocalNode, LocalConnection, NodeCategory, NodeTypeInfo } from "./shared-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,14 @@ export function UnifiedSequenceBuilder({
 }: UnifiedSequenceBuilderProps) {
   const [localNodes, setLocalNodes] = useState<LocalNode[]>(initialNodes);
   const [localConnections, setLocalConnections] = useState<LocalConnection[]>(initialConnections);
+
+  useEffect(() => {
+    setLocalNodes(initialNodes);
+  }, [initialNodes]);
+
+  useEffect(() => {
+    setLocalConnections(initialConnections);
+  }, [initialConnections]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [sequenceName, setSequenceName] = useState(initialName);
   const [openCategories, setOpenCategories] = useState<string[]>(nodeCategories.map(c => c.id));
