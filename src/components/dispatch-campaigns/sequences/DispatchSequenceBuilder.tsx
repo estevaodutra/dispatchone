@@ -7,6 +7,7 @@ import { LocalNode, NodeCategory } from "@/components/sequences/shared-types";
 import { DispatchTriggerConfigCard, DispatchTriggerType, DispatchTriggerConfig } from "./DispatchTriggerConfigCard";
 import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { MessageSquare, Clock, Image, Video, Music, FileText, MousePointerClick, List as ListIcon } from "lucide-react";
 
 interface DispatchSequenceBuilderProps {
