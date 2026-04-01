@@ -1,32 +1,48 @@
 
 
-## Plano: Corrigir scroll no popup de configuração
+## Plano: Corrigir loop infinito de autosave e dialog fechando
 
-### Problema
-O `DialogContent` base usa `display: grid` e `gap-4 p-6`. Mesmo com `p-0 gap-0` override, o `ScrollArea` com `flex-1` não recebe restrição de altura adequada dentro de grid, impedindo o scroll.
+### Problema raiz
+Ciclo infinito: autosave → `saveNodes` (deleta e re-insere nós no banco) → React Query refetch → `initialNodes` muda → `useEffect` sincroniza `localNodes` → autosave dispara de novo. Os IDs dos nós mudam a cada save (re-insert), então o `selectedNode` não é encontrado e o dialog fecha.
 
-### Correção
+### Correções
 
-**Arquivo:** `src/components/sequences/UnifiedNodeConfigPanel.tsx` (linha 258)
+**1. `src/components/sequences/UnifiedSequenceBuilder.tsx`**
+- Trocar o `useEffect` de sincronização de `initialNodes` para só rodar **uma vez** (quando os dados carregam pela primeira vez), usando um ref `hasLoadedRef`
+- Isso quebra o ciclo: após o load inicial, `localNodes` é a source of truth e não é sobrescrito por refetches
+- Remover toast do autosave — o feedback visual ("Salvando..." / "Salvo") já é suficiente
 
-Adicionar `overflow-hidden` ao `DialogContent` e `min-h-0` ao `ScrollArea` para que o flex layout funcione corretamente com scroll:
+**2. `src/components/group-campaigns/sequences/SequenceBuilder.tsx`**
+- No `handleSave`: diferenciar save manual vs autosave. Passar flag `silent` ou simplesmente remover o `toast.success` do `handleSave` (já que o autosave indicator cobre isso)
+- Alternativa mais simples: aceitar um parâmetro `silent?: boolean` no `onSave` e só mostrar toast quando é save manual
 
-```tsx
-// Antes:
-<DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0 gap-0">
-  ...
-  <ScrollArea className="flex-1 px-6 pb-6">
+**3. `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`**
+- Mesma correção: remover/condicionar toast no `handleSave`
 
-// Depois:
-<DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
-  ...
-  <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
+### Detalhes técnicos
+
+```text
+// UnifiedSequenceBuilder.tsx — sync apenas no primeiro load
+const hasLoadedRef = useRef(false);
+useEffect(() => {
+  if (!hasLoadedRef.current && initialNodes.length > 0) {
+    setLocalNodes(initialNodes);
+    hasLoadedRef.current = true;
+  }
+}, [initialNodes]);
 ```
 
-- `overflow-hidden` no container impede que o conteúdo extrapole o `max-h`
-- `min-h-0` no `ScrollArea` permite que o flex item encolha abaixo do tamanho do conteúdo, ativando o scroll
+```text
+// SequenceBuilder.tsx — sem toast no save (autosave indicator basta)
+const handleSave = async (name, nodes, connections) => {
+  await onUpdate(...);
+  await saveNodes(...);
+  await saveConnections(...);
+  // sem toast.success aqui — o indicador "Salvo ✓" no header cobre
+};
+```
 
 ### Impacto
-- 1 arquivo, 2 linhas alteradas
-- O popup passará a ter scroll funcional quando o conteúdo exceder 85vh
+- 3 arquivos, mudanças pequenas
+- Elimina o loop infinito, o spam de toasts, e o dialog que fecha sozinho
 
