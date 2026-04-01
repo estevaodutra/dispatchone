@@ -260,7 +260,10 @@ Deno.serve(async (req) => {
     const isTriggeredExecution = !!triggerContext && !messageId;
 
     // Check if this is a direct sequence execution (from scheduler with only sequenceId)
-    const isDirectSequenceExecution = !!sequenceId && !messageId && !triggerContext && !isResumedExecution;
+    const isDirectSequenceExecution = !!sequenceId && !messageId && !triggerContext && !isResumedExecution && manualNodeIndex === undefined;
+
+    // Check if this is a manual single-node execution
+    const isManualNodeExecution = manualNodeIndex !== undefined && !!sequenceId;
 
     // Validate request parameters
     // Allow: resumed, triggered, direct sequence (campaignId + sequenceId), or normal (campaignId + messageId)
