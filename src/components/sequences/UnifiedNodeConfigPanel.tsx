@@ -255,7 +255,7 @@ export function UnifiedNodeConfigPanel({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-      <DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-md max-h-[85vh] !flex !flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <div className="flex items-center gap-2">
             <Icon className="h-4 w-4" />
