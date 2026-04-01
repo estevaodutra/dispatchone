@@ -646,6 +646,18 @@ Deno.serve(async (req) => {
 
           for (let nodeIndex = 0; nodeIndex < sortedNodes.length; nodeIndex++) {
             const node = sortedNodes[nodeIndex];
+
+            // Check per-node schedule if configured
+            const nodeSchedule = node.config?.schedule as { enabled?: boolean; days?: number[]; times?: string[] } | undefined;
+            if (nodeSchedule?.enabled) {
+              const nodeDayMatch = nodeSchedule.days?.includes(currentDay) ?? false;
+              const nodeTimeMatch = nodeSchedule.times?.includes(currentTime) ?? false;
+              if (!nodeDayMatch || !nodeTimeMatch) {
+                console.log(`[Scheduler] Node ${node.node_type} (order ${node.node_order}) has schedule but doesn't match current time, skipping`);
+                continue;
+              }
+              console.log(`[Scheduler] Node ${node.node_type} (order ${node.node_order}) matches its own schedule`);
+            }
             
             console.log(`[Scheduler] Processing node ${nodeIndex + 1}/${sortedNodes.length}: ${node.node_type}`);
 
