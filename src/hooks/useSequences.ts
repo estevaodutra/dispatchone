@@ -193,7 +193,6 @@ export function useSequences(campaignId: string | undefined) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["message_sequences", campaignId] });
-      toast({ title: "Atualizado", description: "Sequência atualizada com sucesso." });
     },
     onError: (error) => {
       toast({ title: "Erro", description: error.message, variant: "destructive" });
