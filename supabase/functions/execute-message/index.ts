@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: ExecuteMessageRequest = await req.json();
-    const { messageId, campaignId, sequenceId, triggerContext, executionId, startFromNodeIndex } = body;
+    const { messageId, campaignId, sequenceId, triggerContext, executionId, startFromNodeIndex, manualNodeIndex } = body;
 
     // Check if this is a resumed execution
     const isResumedExecution = !!executionId && startFromNodeIndex !== undefined;
