@@ -17,9 +17,10 @@ export interface UnifiedSequenceBuilderProps {
   getDefaultConfig: (nodeType: string) => Record<string, unknown>;
   getNodePreview?: (node: LocalNode) => string;
   renderTrigger: () => ReactNode;
-  renderConfigPanel: (node: LocalNode, onUpdate: (config: Record<string, unknown>) => void, onClose: () => void) => ReactNode;
+  renderConfigPanel: (node: LocalNode, onUpdate: (config: Record<string, unknown>) => void, onClose: () => void, onManualSend?: () => void, isSendingManual?: boolean) => ReactNode;
   onSave: (name: string, nodes: LocalNode[], connections: LocalConnection[]) => Promise<void>;
   onToggleActive: () => Promise<void>;
+  onManualSendNode?: (node: LocalNode) => Promise<void>;
   onBack: () => void;
   initialNodes: LocalNode[];
   initialConnections: LocalConnection[];
