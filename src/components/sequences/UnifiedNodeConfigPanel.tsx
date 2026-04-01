@@ -23,6 +23,8 @@ interface UnifiedNodeConfigPanelProps {
   onUpdate: (config: Record<string, unknown>) => void;
   onClose: () => void;
   mode: "group" | "dispatch";
+  onManualSend?: () => void;
+  isSendingManual?: boolean;
   // Group-specific components passed as render props
   renderMediaUploader?: (props: {
     mediaType: string;
