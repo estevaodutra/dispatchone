@@ -80,13 +80,14 @@ export function UnifiedSequenceBuilder({
   const [localNodes, setLocalNodes] = useState<LocalNode[]>(initialNodes);
   const [localConnections, setLocalConnections] = useState<LocalConnection[]>(initialConnections);
 
+  const hasLoadedRef = useRef(false);
   useEffect(() => {
-    setLocalNodes(initialNodes);
-  }, [initialNodes]);
-
-  useEffect(() => {
-    setLocalConnections(initialConnections);
-  }, [initialConnections]);
+    if (!hasLoadedRef.current && initialNodes.length > 0) {
+      setLocalNodes(initialNodes);
+      setLocalConnections(initialConnections);
+      hasLoadedRef.current = true;
+    }
+  }, [initialNodes, initialConnections]);
 
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [sequenceName, setSequenceName] = useState(initialName);

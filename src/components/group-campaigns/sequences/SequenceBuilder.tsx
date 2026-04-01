@@ -88,16 +88,11 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
   }));
 
   const handleSave = async (name: string, localNodes: LocalNode[], localConnections: { sourceNodeId: string; targetNodeId: string; conditionPath?: string }[]) => {
-    try {
-      await onUpdate({ id: sequence.id, updates: { name, triggerType, triggerConfig: triggerConfig as Record<string, unknown> } });
-      const idMapping = await saveNodes(localNodes.map(node => ({
-        localId: node.id, nodeType: node.nodeType, positionX: 0, positionY: node.nodeOrder * 100, nodeOrder: node.nodeOrder, config: node.config,
-      })));
-      await saveConnections({ connectionsToSave: localConnections, idMapping });
-      toast.success("Sequência salva com sucesso!");
-    } catch {
-      toast.error("Erro ao salvar sequência");
-    }
+    await onUpdate({ id: sequence.id, updates: { name, triggerType, triggerConfig: triggerConfig as Record<string, unknown> } });
+    const idMapping = await saveNodes(localNodes.map(node => ({
+      localId: node.id, nodeType: node.nodeType, positionX: 0, positionY: node.nodeOrder * 100, nodeOrder: node.nodeOrder, config: node.config,
+    })));
+    await saveConnections({ connectionsToSave: localConnections, idMapping });
   };
 
   const handleToggleActive = async () => {

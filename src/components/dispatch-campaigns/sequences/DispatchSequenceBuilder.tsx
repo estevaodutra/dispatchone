@@ -122,13 +122,8 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
   const initialNodes = stepsToNodes(steps);
 
   const handleSave = async (name: string, localNodes: LocalNode[]) => {
-    try {
-      await onUpdate({ id: sequence.id, updates: { name, triggerType, triggerConfig: triggerConfig as Record<string, unknown> } });
-      await saveAllSteps(nodesToSteps([...localNodes].sort((a, b) => a.nodeOrder - b.nodeOrder)));
-      toast.success("Sequência salva com sucesso!");
-    } catch {
-      toast.error("Erro ao salvar sequência");
-    }
+    await onUpdate({ id: sequence.id, updates: { name, triggerType, triggerConfig: triggerConfig as Record<string, unknown> } });
+    await saveAllSteps(nodesToSteps([...localNodes].sort((a, b) => a.nodeOrder - b.nodeOrder)));
   };
 
   const handleToggleActive = async () => {
