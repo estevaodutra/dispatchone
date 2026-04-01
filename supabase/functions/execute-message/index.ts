@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
     // Get message details (only if not triggered/direct/resumed execution)
     let typedMessage: GroupMessage | null = null;
     
-    if (!isTriggeredExecution && !isResumedExecution && !isDirectSequenceExecution && messageId) {
+    if (!isTriggeredExecution && !isResumedExecution && !isDirectSequenceExecution && !isManualNodeExecution && messageId) {
       const { data: message, error: messageError } = await supabase
         .from("group_messages")
         .select("*")
