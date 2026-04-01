@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -255,14 +255,14 @@ export function UnifiedNodeConfigPanel({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
-      <DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-md max-h-[85vh] !flex !flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
           <div className="flex items-center gap-2">
             <Icon className="h-4 w-4" />
             <DialogTitle className="text-sm">{nodeInfo.title}</DialogTitle>
           </div>
         </DialogHeader>
-        <ScrollArea className="flex-1 min-h-0 px-6 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
           <div className="space-y-4">
             {/* Node Label/Name */}
             <div className="space-y-2">
@@ -1094,7 +1094,7 @@ export function UnifiedNodeConfigPanel({
             nodeType={node.nodeType}
           />
           </div>
-        </ScrollArea>
+        </div>
       </DialogContent>
     </Dialog>
   );
