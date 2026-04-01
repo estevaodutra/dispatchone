@@ -160,6 +160,7 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
           node={node}
           onUpdate={onUpdateConfig}
           onClose={onClose}
+          open={true}
           mode="dispatch"
           onManualSend={onManualSend}
           isSendingManual={isSendingManual}
