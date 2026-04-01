@@ -22,6 +22,8 @@ interface ExecuteMessageRequest {
   // For resumed executions
   executionId?: string;
   startFromNodeIndex?: number;
+  // For manual single-node execution
+  manualNodeIndex?: number;
 }
 
 interface TriggerContext {
