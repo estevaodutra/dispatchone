@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { LocalNode } from "./shared-types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -12,7 +11,10 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  X, Plus, Trash2, Zap, Play,
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Plus, Trash2, Zap, Play,
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
@@ -22,10 +24,10 @@ interface UnifiedNodeConfigPanelProps {
   node: LocalNode;
   onUpdate: (config: Record<string, unknown>) => void;
   onClose: () => void;
+  open: boolean;
   mode: "group" | "dispatch";
   onManualSend?: () => void;
   isSendingManual?: boolean;
-  // Group-specific components passed as render props
   renderMediaUploader?: (props: {
     mediaType: string;
     currentUrl: string;
@@ -137,7 +139,6 @@ function NodeScheduleSection({
 
         {enabled && (
           <div className="space-y-3 pl-1">
-            {/* Days */}
             <div className="space-y-1.5">
               <Label className="text-xs">Dias da semana</Label>
               <div className="flex flex-wrap gap-1">
@@ -154,7 +155,6 @@ function NodeScheduleSection({
               </div>
             </div>
 
-            {/* Times */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Horários</Label>
@@ -182,7 +182,6 @@ function NodeScheduleSection({
           </div>
         )}
 
-        {/* Manual send button */}
         {onManualSend && (
           <Button
             variant="outline"
@@ -204,6 +203,7 @@ export function UnifiedNodeConfigPanel({
   node,
   onUpdate,
   onClose,
+  open,
   mode,
   onManualSend,
   isSendingManual,
@@ -230,7 +230,6 @@ export function UnifiedNodeConfigPanel({
     setActionDialogOpen(true);
   };
 
-  // Media field: group uses MediaUploader, dispatch uses simple Input
   const renderMediaField = (mediaType: string, placeholder: string) => {
     if (renderMediaUploader) {
       return renderMediaUploader({
@@ -255,18 +254,28 @@ export function UnifiedNodeConfigPanel({
   };
 
   return (
-    <Card className="w-80 shrink-0 flex flex-col">
-      <CardHeader className="pb-3 flex flex-row items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4" />
-          <CardTitle className="text-sm">{nodeInfo.title}</CardTitle>
-        </div>
-        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </Button>
-      </CardHeader>
-      <ScrollArea className="flex-1">
-        <CardContent className="space-y-4">
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
+      <DialogContent className="max-w-md max-h-[85vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-3 shrink-0">
+          <div className="flex items-center gap-2">
+            <Icon className="h-4 w-4" />
+            <DialogTitle className="text-sm">{nodeInfo.title}</DialogTitle>
+          </div>
+        </DialogHeader>
+        <ScrollArea className="flex-1 px-6 pb-6">
+          <div className="space-y-4">
+            {/* Node Label/Name */}
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">Nome do componente</Label>
+              <Input
+                placeholder={nodeInfo.title}
+                value={(node.config.label as string) || ""}
+                onChange={e => updateConfig("label", e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+            <Separator />
+
           {/* MESSAGE */}
           {node.nodeType === "message" && (
             <>
@@ -680,7 +689,6 @@ export function UnifiedNodeConfigPanel({
           {/* BUTTONS */}
           {node.nodeType === "buttons" && (() => {
             if (isGroup) {
-              // Group mode: full button config with type (REPLY/CALL/URL)
               type ButtonAction = { id: string; label: string; type: "REPLY" | "CALL" | "URL"; phone?: string; url?: string; };
               const buttons = (node.config.buttons as ButtonAction[]) || [];
               const updateButton = (index: number, field: keyof ButtonAction, value: string) => {
@@ -718,7 +726,7 @@ export function UnifiedNodeConfigPanel({
                       </Button>
                     </div>
                     {buttons.map((btn, i) => (
-                      <Card key={i} className="p-3 space-y-3">
+                      <div key={i} className="border rounded-lg p-3 space-y-3">
                         <div className="flex gap-2">
                           <Input placeholder={`Botão ${i + 1}`} value={btn.label || ""} onChange={e => updateButton(i, "label", e.target.value)} />
                           {buttons.length > 1 && (
@@ -750,13 +758,12 @@ export function UnifiedNodeConfigPanel({
                             <Input placeholder="https://exemplo.com" value={btn.url || ""} onChange={e => updateButton(i, "url", e.target.value)} />
                           </div>
                         )}
-                      </Card>
+                      </div>
                     ))}
                   </div>
                 </>
               );
             } else {
-              // Dispatch mode: simple buttons
               const buttons = (node.config.buttons as { id: string; label: string }[]) || [];
               return (
                 <>
@@ -1086,8 +1093,9 @@ export function UnifiedNodeConfigPanel({
             isSendingManual={isSendingManual}
             nodeType={node.nodeType}
           />
-        </CardContent>
-      </ScrollArea>
-    </Card>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   );
 }

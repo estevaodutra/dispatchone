@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, ReactNode } from "react";
+import { useState, useCallback, useEffect, useRef, ReactNode } from "react";
 import { LocalNode, LocalConnection, NodeCategory, NodeTypeInfo } from "./shared-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
-  ArrowLeft, Save, Play, Pause, Trash2, GripVertical, ChevronDown, ChevronUp, Copy, List,
+  ArrowLeft, Save, Play, Pause, Trash2, GripVertical, ChevronDown, ChevronUp, Copy, List, Check, Loader2,
 } from "lucide-react";
 
 export interface UnifiedSequenceBuilderProps {
@@ -29,6 +29,38 @@ export interface UnifiedSequenceBuilderProps {
 
 const ALL_NODES_FROM = (categories: NodeCategory[]): NodeTypeInfo[] =>
   categories.flatMap(cat => cat.nodes);
+
+function getScheduleScore(node: LocalNode): number | null {
+  const schedule = node.config?.schedule as { enabled?: boolean; days?: number[]; times?: string[] } | undefined;
+  if (!schedule?.enabled) return null;
+  const days = schedule.days || [];
+  const times = schedule.times || [];
+  if (days.length === 0 && times.length === 0) return null;
+  const minDay = days.length > 0 ? Math.min(...days) : 0;
+  const minTime = times.length > 0
+    ? Math.min(...times.map(t => { const [h, m] = t.split(":").map(Number); return h * 60 + (m || 0); }))
+    : 0;
+  return minDay * 1440 + minTime;
+}
+
+function autoSortBySchedule(nodes: LocalNode[]): LocalNode[] {
+  const sorted = [...nodes].sort((a, b) => a.nodeOrder - b.nodeOrder);
+  const withSchedule: { node: LocalNode; score: number }[] = [];
+  const withoutSchedule: LocalNode[] = [];
+
+  for (const node of sorted) {
+    const score = getScheduleScore(node);
+    if (score !== null) {
+      withSchedule.push({ node, score });
+    } else {
+      withoutSchedule.push(node);
+    }
+  }
+
+  withSchedule.sort((a, b) => a.score - b.score);
+  const result = [...withSchedule.map(w => w.node), ...withoutSchedule];
+  return result.map((node, idx) => ({ ...node, nodeOrder: idx }));
+}
 
 export function UnifiedSequenceBuilder({
   sequenceName: initialName,
@@ -55,11 +87,46 @@ export function UnifiedSequenceBuilder({
   useEffect(() => {
     setLocalConnections(initialConnections);
   }, [initialConnections]);
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [sequenceName, setSequenceName] = useState(initialName);
   const [openCategories, setOpenCategories] = useState<string[]>(nodeCategories.map(c => c.id));
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isSendingManual, setIsSendingManual] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nodesRef = useRef(localNodes);
+  const connectionsRef = useRef(localConnections);
+  const nameRef = useRef(sequenceName);
+  nodesRef.current = localNodes;
+  connectionsRef.current = localConnections;
+  nameRef.current = sequenceName;
+
+  // Autosave debounce
+  const triggerAutosave = useCallback(() => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(async () => {
+      setAutoSaveStatus("saving");
+      try {
+        await onSave(nameRef.current, nodesRef.current, connectionsRef.current);
+        setAutoSaveStatus("saved");
+        setTimeout(() => setAutoSaveStatus("idle"), 2000);
+      } catch {
+        setAutoSaveStatus("idle");
+      }
+    }, 800);
+  }, [onSave]);
+
+  // Trigger autosave on node/connection/name changes
+  const prevDataRef = useRef<string>("");
+  useEffect(() => {
+    const dataKey = JSON.stringify({ n: localNodes, c: localConnections, name: sequenceName });
+    if (prevDataRef.current && prevDataRef.current !== dataKey) {
+      triggerAutosave();
+    }
+    prevDataRef.current = dataKey;
+  }, [localNodes, localConnections, sequenceName, triggerAutosave]);
 
   const allNodeTypes = ALL_NODES_FROM(nodeCategories);
 
@@ -159,6 +226,12 @@ export function UnifiedSequenceBuilder({
     setLocalNodes(prev => prev.map(n => n.id === nodeId ? { ...n, config } : n));
   };
 
+  const handleCloseConfigPanel = () => {
+    // Auto-sort by schedule when closing
+    setLocalNodes(prev => autoSortBySchedule(prev));
+    setSelectedNodeId(null);
+  };
+
   const handleSave = async () => {
     await onSave(sequenceName, localNodes, localConnections);
   };
@@ -189,6 +262,19 @@ export function UnifiedSequenceBuilder({
           <Badge variant={isActive ? "default" : "secondary"}>
             {isActive ? "Ativa" : "Inativa"}
           </Badge>
+          {/* Autosave indicator */}
+          {autoSaveStatus === "saving" && (
+            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Salvando...
+            </div>
+          )}
+          {autoSaveStatus === "saved" && (
+            <div className="flex items-center gap-1 text-xs text-green-600">
+              <Check className="h-3 w-3" />
+              Salvo
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={onToggleActive}>
@@ -205,7 +291,7 @@ export function UnifiedSequenceBuilder({
       {/* Trigger */}
       {renderTrigger()}
 
-      {/* 3-Panel Layout */}
+      {/* 2-Panel Layout: Palette + Canvas */}
       <div className="flex gap-4 h-[calc(100vh-380px)] min-h-[400px]">
         {/* Palette */}
         <Card className="w-52 shrink-0 overflow-y-auto">
@@ -279,6 +365,9 @@ export function UnifiedSequenceBuilder({
                   const isSelected = selectedNodeId === node.id;
                   const isFirst = index === 0;
                   const isLast = index === sortedNodes.length - 1;
+                  const nodeLabel = (node.config.label as string) || "";
+                  const schedule = node.config.schedule as { enabled?: boolean; times?: string[] } | undefined;
+                  const hasSchedule = schedule?.enabled;
 
                   return (
                     <div key={node.id}>
@@ -304,7 +393,15 @@ export function UnifiedSequenceBuilder({
                           <NodeIcon className="h-4 w-4 text-white" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-sm">{nodeInfo.label}</p>
+                          <p className="font-medium text-sm">{nodeLabel || nodeInfo.label}</p>
+                          {nodeLabel && (
+                            <p className="text-xs text-muted-foreground">{nodeInfo.label}</p>
+                          )}
+                          {hasSchedule && schedule?.times && schedule.times.length > 0 && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              ⏰ {schedule.times.join(", ")}
+                            </p>
+                          )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <Button variant="ghost" size="icon" className="h-7 w-7" disabled={isFirst}
@@ -340,23 +437,23 @@ export function UnifiedSequenceBuilder({
             )}
           </CardContent>
         </Card>
-
-        {/* Config Panel */}
-        {selectedNode && renderConfigPanel(
-          selectedNode,
-          (config) => handleUpdateNodeConfig(selectedNode.id, config),
-          () => setSelectedNodeId(null),
-          onManualSendNode ? async () => {
-            setIsSendingManual(true);
-            try {
-              await onManualSendNode(selectedNode);
-            } finally {
-              setIsSendingManual(false);
-            }
-          } : undefined,
-          isSendingManual
-        )}
       </div>
+
+      {/* Config Panel as Dialog */}
+      {selectedNode && renderConfigPanel(
+        selectedNode,
+        (config) => handleUpdateNodeConfig(selectedNode.id, config),
+        handleCloseConfigPanel,
+        onManualSendNode ? async () => {
+          setIsSendingManual(true);
+          try {
+            await onManualSendNode(selectedNode);
+          } finally {
+            setIsSendingManual(false);
+          }
+        } : undefined,
+        isSendingManual
+      )}
     </div>
   );
 }
