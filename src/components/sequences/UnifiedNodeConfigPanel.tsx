@@ -105,8 +105,9 @@ export function UnifiedNodeConfigPanel({
         mediaType,
         currentUrl: (node.config.url as string) || "",
         onUpload: (url, filename) => {
-          updateConfig("url", url);
-          if (filename) updateConfig("filename", filename);
+          const updates: Record<string, unknown> = { ...node.config, url };
+          if (filename) updates.filename = filename;
+          onUpdate(updates);
         },
         onUrlChange: (url) => updateConfig("url", url),
         placeholder,
