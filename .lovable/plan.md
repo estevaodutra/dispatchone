@@ -1,30 +1,29 @@
 
 
-## Plano: Corrigir seleção de mídia da biblioteca
+## Plano: Sincronizar nós carregados do banco no canvas
 
 ### Problema
-Em `UnifiedNodeConfigPanel.tsx`, o callback `onUpload` dentro de `renderMediaField` chama `updateConfig` duas vezes consecutivas. Cada chamada faz spread de `node.config` (que é stale/não atualizado entre as duas chamadas), então a segunda chamada (`filename`) sobrescreve a primeira (`url`), resultando na URL nunca ser aplicada.
+`UnifiedSequenceBuilder` usa `useState<LocalNode[]>(initialNodes)` (linha 46). O `useState` do React ignora mudanças em `initialNodes` após a montagem. Quando os nós são carregados assincronamente do banco, o canvas permanece vazio.
 
 ### Correção
 
-**Arquivo:** `src/components/sequences/UnifiedNodeConfigPanel.tsx`
+**Arquivo:** `src/components/sequences/UnifiedSequenceBuilder.tsx`
 
-Substituir as duas chamadas separadas por uma única chamada a `onUpdate` com ambas as chaves:
+Adicionar um `useEffect` que sincroniza `localNodes` e `localConnections` quando `initialNodes`/`initialConnections` mudam (dados carregados do DB):
 
 ```typescript
-// Antes (bugado):
-onUpload: (url, filename) => {
-  updateConfig("url", url);
-  if (filename) updateConfig("filename", filename);
-},
+useEffect(() => {
+  setLocalNodes(initialNodes);
+}, [initialNodes]);
 
-// Depois (corrigido):
-onUpload: (url, filename) => {
-  const updates: Record<string, unknown> = { ...node.config, url };
-  if (filename) updates.filename = filename;
-  onUpdate(updates);
-},
+useEffect(() => {
+  setLocalConnections(initialConnections);
+}, [initialConnections]);
 ```
 
-Apenas 1 arquivo, ~3 linhas alteradas.
+Também importar `useEffect` do React.
+
+### Impacto
+- 1 arquivo, ~6 linhas adicionadas
+- Resolve o canvas vazio para sequências que já possuem nós salvos
 
