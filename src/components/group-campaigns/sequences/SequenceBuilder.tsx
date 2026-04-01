@@ -159,6 +159,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
           node={node}
           onUpdate={onUpdateConfig}
           onClose={onClose}
+          open={true}
           mode="group"
           onManualSend={onManualSend}
           isSendingManual={isSendingManual}
