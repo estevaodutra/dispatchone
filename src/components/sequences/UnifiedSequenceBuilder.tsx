@@ -17,9 +17,10 @@ export interface UnifiedSequenceBuilderProps {
   getDefaultConfig: (nodeType: string) => Record<string, unknown>;
   getNodePreview?: (node: LocalNode) => string;
   renderTrigger: () => ReactNode;
-  renderConfigPanel: (node: LocalNode, onUpdate: (config: Record<string, unknown>) => void, onClose: () => void) => ReactNode;
+  renderConfigPanel: (node: LocalNode, onUpdate: (config: Record<string, unknown>) => void, onClose: () => void, onManualSend?: () => void, isSendingManual?: boolean) => ReactNode;
   onSave: (name: string, nodes: LocalNode[], connections: LocalConnection[]) => Promise<void>;
   onToggleActive: () => Promise<void>;
+  onManualSendNode?: (node: LocalNode) => Promise<void>;
   onBack: () => void;
   initialNodes: LocalNode[];
   initialConnections: LocalConnection[];
@@ -38,6 +39,7 @@ export function UnifiedSequenceBuilder({
   renderConfigPanel,
   onSave,
   onToggleActive,
+  onManualSendNode,
   onBack,
   initialNodes,
   initialConnections,
@@ -57,6 +59,7 @@ export function UnifiedSequenceBuilder({
   const [sequenceName, setSequenceName] = useState(initialName);
   const [openCategories, setOpenCategories] = useState<string[]>(nodeCategories.map(c => c.id));
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isSendingManual, setIsSendingManual] = useState(false);
 
   const allNodeTypes = ALL_NODES_FROM(nodeCategories);
 
@@ -342,7 +345,16 @@ export function UnifiedSequenceBuilder({
         {selectedNode && renderConfigPanel(
           selectedNode,
           (config) => handleUpdateNodeConfig(selectedNode.id, config),
-          () => setSelectedNodeId(null)
+          () => setSelectedNodeId(null),
+          onManualSendNode ? async () => {
+            setIsSendingManual(true);
+            try {
+              await onManualSendNode(selectedNode);
+            } finally {
+              setIsSendingManual(false);
+            }
+          } : undefined,
+          isSendingManual
         )}
       </div>
     </div>

@@ -7,6 +7,7 @@ import { LocalNode, NodeCategory } from "@/components/sequences/shared-types";
 import { DispatchTriggerConfigCard, DispatchTriggerType, DispatchTriggerConfig } from "./DispatchTriggerConfigCard";
 import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { MessageSquare, Clock, Image, Video, Music, FileText, MousePointerClick, List as ListIcon } from "lucide-react";
 
 interface DispatchSequenceBuilderProps {
@@ -134,6 +135,10 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
     await onUpdate({ id: sequence.id, updates: { isActive: !sequence.isActive } });
   };
 
+  const handleManualSendNode = async (node: LocalNode) => {
+    toast.info("Disparo manual de nó individual não disponível para campanhas de disparo (requer contato)");
+  };
+
   return (
     <UnifiedSequenceBuilder
       sequenceName={sequence.name}
@@ -150,12 +155,14 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
           sequenceId={sequence.id}
         />
       )}
-      renderConfigPanel={(node, onUpdateConfig, onClose) => (
+      renderConfigPanel={(node, onUpdateConfig, onClose, onManualSend, isSendingManual) => (
         <UnifiedNodeConfigPanel
           node={node}
           onUpdate={onUpdateConfig}
           onClose={onClose}
           mode="dispatch"
+          onManualSend={onManualSend}
+          isSendingManual={isSendingManual}
           renderMediaUploader={(props) => (
             <MediaUploader
               mediaType={props.mediaType as "image" | "video" | "audio" | "document" | "sticker"}
@@ -169,6 +176,7 @@ export function DispatchSequenceBuilder({ sequence, onBack, onUpdate }: Dispatch
       )}
       onSave={handleSave}
       onToggleActive={handleToggleActive}
+      onManualSendNode={handleManualSendNode}
       onBack={onBack}
       initialNodes={initialNodes}
       initialConnections={[]}

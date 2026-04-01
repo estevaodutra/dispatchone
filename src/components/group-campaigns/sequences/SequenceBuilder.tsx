@@ -7,6 +7,7 @@ import { TriggerConfigCard, TriggerType, TriggerConfig } from "./TriggerConfigCa
 import { MediaUploader } from "./MediaUploader";
 import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
@@ -103,6 +104,35 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
     await onUpdate({ id: sequence.id, updates: { active: !sequence.active } });
   };
 
+  const handleManualSendNode = async (node: LocalNode) => {
+    try {
+      const { data: campaign } = await supabase
+        .from("group_campaigns")
+        .select("id")
+        .eq("id", sequence.groupCampaignId)
+        .single();
+
+      if (!campaign) {
+        toast.error("Campanha não encontrada");
+        return;
+      }
+
+      const { error } = await supabase.functions.invoke("execute-message", {
+        body: {
+          campaignId: sequence.groupCampaignId,
+          sequenceId: sequence.id,
+          manualNodeIndex: node.nodeOrder,
+        },
+      });
+
+      if (error) throw error;
+      toast.success("Mensagem disparada com sucesso!");
+    } catch (err) {
+      console.error("Manual send error:", err);
+      toast.error("Erro ao disparar mensagem");
+    }
+  };
+
   const getOptionAction = (node: LocalNode, index: number): PollActionConfig | null => {
     const optionActions = (node.config.optionActions as Record<string, PollActionConfig>) || {};
     return optionActions[String(index)] || null;
@@ -124,12 +154,14 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
           sequenceId={sequence.id}
         />
       )}
-      renderConfigPanel={(node, onUpdateConfig, onClose) => (
+      renderConfigPanel={(node, onUpdateConfig, onClose, onManualSend, isSendingManual) => (
         <UnifiedNodeConfigPanel
           node={node}
           onUpdate={onUpdateConfig}
           onClose={onClose}
           mode="group"
+          onManualSend={onManualSend}
+          isSendingManual={isSendingManual}
           renderMediaUploader={(props) => (
             <MediaUploader
               mediaType={props.mediaType as "image" | "video" | "audio" | "document" | "sticker"}
@@ -156,6 +188,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
       )}
       onSave={handleSave}
       onToggleActive={handleToggleActive}
+      onManualSendNode={handleManualSendNode}
       onBack={onBack}
       initialNodes={initialNodes}
       initialConnections={initialConnections}

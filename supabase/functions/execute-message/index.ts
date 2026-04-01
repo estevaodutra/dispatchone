@@ -22,6 +22,8 @@ interface ExecuteMessageRequest {
   // For resumed executions
   executionId?: string;
   startFromNodeIndex?: number;
+  // For manual single-node execution
+  manualNodeIndex?: number;
 }
 
 interface TriggerContext {
@@ -249,7 +251,7 @@ Deno.serve(async (req) => {
 
     // Parse request body
     const body: ExecuteMessageRequest = await req.json();
-    const { messageId, campaignId, sequenceId, triggerContext, executionId, startFromNodeIndex } = body;
+    const { messageId, campaignId, sequenceId, triggerContext, executionId, startFromNodeIndex, manualNodeIndex } = body;
 
     // Check if this is a resumed execution
     const isResumedExecution = !!executionId && startFromNodeIndex !== undefined;
@@ -258,11 +260,14 @@ Deno.serve(async (req) => {
     const isTriggeredExecution = !!triggerContext && !messageId;
 
     // Check if this is a direct sequence execution (from scheduler with only sequenceId)
-    const isDirectSequenceExecution = !!sequenceId && !messageId && !triggerContext && !isResumedExecution;
+    const isDirectSequenceExecution = !!sequenceId && !messageId && !triggerContext && !isResumedExecution && manualNodeIndex === undefined;
+
+    // Check if this is a manual single-node execution
+    const isManualNodeExecution = manualNodeIndex !== undefined && !!sequenceId;
 
     // Validate request parameters
     // Allow: resumed, triggered, direct sequence (campaignId + sequenceId), or normal (campaignId + messageId)
-    if (!isResumedExecution && !isTriggeredExecution && !isDirectSequenceExecution && (!messageId || !campaignId)) {
+    if (!isResumedExecution && !isTriggeredExecution && !isDirectSequenceExecution && !isManualNodeExecution && (!messageId || !campaignId)) {
       return new Response(
         JSON.stringify({ error: "messageId and campaignId are required (or sequenceId for direct execution)" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -276,14 +281,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[ExecuteMessage] Mode: resumed=${isResumedExecution}, triggered=${isTriggeredExecution}, directSequence=${isDirectSequenceExecution}`);
+    console.log(`[ExecuteMessage] Mode: resumed=${isResumedExecution}, triggered=${isTriggeredExecution}, directSequence=${isDirectSequenceExecution}, manualNode=${isManualNodeExecution} (index=${manualNodeIndex})`);
 
     console.log(`[ExecuteMessage] Starting - campaign: ${campaignId}, sequence: ${sequenceId}, message: ${messageId}`);
 
     // Get message details (only if not triggered/direct/resumed execution)
     let typedMessage: GroupMessage | null = null;
     
-    if (!isTriggeredExecution && !isResumedExecution && !isDirectSequenceExecution && messageId) {
+    if (!isTriggeredExecution && !isResumedExecution && !isDirectSequenceExecution && !isManualNodeExecution && messageId) {
       const { data: message, error: messageError } = await supabase
         .from("group_messages")
         .select("*")
@@ -387,6 +392,18 @@ Deno.serve(async (req) => {
         .order("node_order", { ascending: true });
       
       sequenceNodes = (nodes || []) as SequenceNode[];
+    }
+
+    // For manual node execution, filter to just that one node
+    if (isManualNodeExecution && manualNodeIndex !== undefined) {
+      sequenceNodes = sequenceNodes.filter(n => n.node_order === manualNodeIndex);
+      if (sequenceNodes.length === 0) {
+        return new Response(
+          JSON.stringify({ error: `Node at index ${manualNodeIndex} not found` }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`[ExecuteMessage] Manual node execution: filtered to node order ${manualNodeIndex} (${sequenceNodes[0].node_type})`);
     }
 
     console.log(`[ExecuteMessage] ${sequenceNodes.length} sequence nodes, triggered: ${isTriggeredExecution}, sendPrivate: ${sendToPrivate}, webhook: ${webhookUrl}`);

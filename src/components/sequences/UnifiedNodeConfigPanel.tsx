@@ -9,8 +9,10 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 import {
-  X, Plus, Trash2, Zap,
+  X, Plus, Trash2, Zap, Play,
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
@@ -21,6 +23,8 @@ interface UnifiedNodeConfigPanelProps {
   onUpdate: (config: Record<string, unknown>) => void;
   onClose: () => void;
   mode: "group" | "dispatch";
+  onManualSend?: () => void;
+  isSendingManual?: boolean;
   // Group-specific components passed as render props
   renderMediaUploader?: (props: {
     mediaType: string;
@@ -70,11 +74,139 @@ const QUICK_DELAYS = [
   { label: "2 dias", minutes: 0, hours: 0, days: 2 },
 ];
 
+const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const SENDABLE_NODE_TYPES = ["message", "image", "video", "audio", "document", "sticker", "buttons", "list", "poll", "location", "contact", "event"];
+
+function NodeScheduleSection({
+  config,
+  onUpdateConfig,
+  onManualSend,
+  isSendingManual,
+  nodeType,
+}: {
+  config: Record<string, unknown>;
+  onUpdateConfig: (key: string, value: unknown) => void;
+  onManualSend?: () => void;
+  isSendingManual?: boolean;
+  nodeType: string;
+}) {
+  if (!SENDABLE_NODE_TYPES.includes(nodeType)) return null;
+
+  const schedule = (config.schedule as { enabled?: boolean; days?: number[]; times?: string[] }) || {};
+  const enabled = schedule.enabled || false;
+  const days = schedule.days || [];
+  const times = schedule.times || [];
+
+  const updateSchedule = (patch: Partial<typeof schedule>) => {
+    onUpdateConfig("schedule", { ...schedule, ...patch });
+  };
+
+  const toggleDay = (day: number) => {
+    const newDays = days.includes(day) ? days.filter(d => d !== day) : [...days, day].sort();
+    updateSchedule({ days: newDays });
+  };
+
+  const addTime = () => {
+    updateSchedule({ times: [...times, "09:00"] });
+  };
+
+  const removeTime = (index: number) => {
+    updateSchedule({ times: times.filter((_, i) => i !== index) });
+  };
+
+  const updateTime = (index: number, value: string) => {
+    const newTimes = [...times];
+    newTimes[index] = value;
+    updateSchedule({ times: newTimes });
+  };
+
+  return (
+    <>
+      <Separator />
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">Agendar envio</Label>
+            <p className="text-xs text-muted-foreground">Definir dias e horários específicos</p>
+          </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={checked => updateSchedule({ enabled: checked })}
+          />
+        </div>
+
+        {enabled && (
+          <div className="space-y-3 pl-1">
+            {/* Days */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Dias da semana</Label>
+              <div className="flex flex-wrap gap-1">
+                {WEEKDAY_LABELS.map((label, idx) => (
+                  <Badge
+                    key={idx}
+                    variant={days.includes(idx) ? "default" : "outline"}
+                    className="cursor-pointer text-xs px-2 py-1 select-none"
+                    onClick={() => toggleDay(idx)}
+                  >
+                    {label}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {/* Times */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Horários</Label>
+                <Button variant="ghost" size="sm" className="h-6 px-2" onClick={addTime}>
+                  <Plus className="h-3 w-3 mr-1" /> Horário
+                </Button>
+              </div>
+              {times.map((time, idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <Input
+                    type="time"
+                    value={time}
+                    onChange={e => updateTime(idx, e.target.value)}
+                    className="h-8 text-xs flex-1"
+                  />
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeTime(idx)}>
+                    <Trash2 className="h-3 w-3 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+              {times.length === 0 && (
+                <p className="text-xs text-muted-foreground italic">Nenhum horário definido</p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Manual send button */}
+        {onManualSend && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={onManualSend}
+            disabled={isSendingManual}
+          >
+            <Play className="h-4 w-4 mr-2" />
+            {isSendingManual ? "Disparando..." : "Disparar agora"}
+          </Button>
+        )}
+      </div>
+    </>
+  );
+}
+
 export function UnifiedNodeConfigPanel({
   node,
   onUpdate,
   onClose,
   mode,
+  onManualSend,
+  isSendingManual,
   renderMediaUploader,
   renderPollActionDialog,
   getOptionAction,
@@ -945,6 +1077,15 @@ export function UnifiedNodeConfigPanel({
               </div>
             </>
           )}
+
+          {/* Schedule & Manual Send Section */}
+          <NodeScheduleSection
+            config={node.config}
+            onUpdateConfig={updateConfig}
+            onManualSend={onManualSend}
+            isSendingManual={isSendingManual}
+            nodeType={node.nodeType}
+          />
         </CardContent>
       </ScrollArea>
     </Card>
