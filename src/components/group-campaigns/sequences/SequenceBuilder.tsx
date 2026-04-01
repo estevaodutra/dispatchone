@@ -7,6 +7,7 @@ import { TriggerConfigCard, TriggerType, TriggerConfig } from "./TriggerConfigCa
 import { MediaUploader } from "./MediaUploader";
 import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
