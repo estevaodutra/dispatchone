@@ -394,6 +394,18 @@ Deno.serve(async (req) => {
       sequenceNodes = (nodes || []) as SequenceNode[];
     }
 
+    // For manual node execution, filter to just that one node
+    if (isManualNodeExecution && manualNodeIndex !== undefined) {
+      sequenceNodes = sequenceNodes.filter(n => n.node_order === manualNodeIndex);
+      if (sequenceNodes.length === 0) {
+        return new Response(
+          JSON.stringify({ error: `Node at index ${manualNodeIndex} not found` }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`[ExecuteMessage] Manual node execution: filtered to node order ${manualNodeIndex} (${sequenceNodes[0].node_type})`);
+    }
+
     console.log(`[ExecuteMessage] ${sequenceNodes.length} sequence nodes, triggered: ${isTriggeredExecution}, sendPrivate: ${sendToPrivate}, webhook: ${webhookUrl}`);
 
     let nodesProcessed = isResumedExecution ? (startFromNodeIndex || 0) : 0;
