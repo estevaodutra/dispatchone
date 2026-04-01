@@ -1,48 +1,31 @@
 
 
-## Plano: Corrigir loop infinito de autosave e dialog fechando
+## Plano: Corrigir scroll do popup de configuração
 
-### Problema raiz
-Ciclo infinito: autosave → `saveNodes` (deleta e re-insere nós no banco) → React Query refetch → `initialNodes` muda → `useEffect` sincroniza `localNodes` → autosave dispara de novo. Os IDs dos nós mudam a cada save (re-insert), então o `selectedNode` não é encontrado e o dialog fecha.
+### Problema
+O `DialogContent` base aplica `display: grid` via Tailwind. Mesmo com `flex flex-col` no override, o `cn()` não garante que `flex` sobrescreva `grid` (depende da ordem no CSS gerado). Além disso, o `ScrollArea` do Radix precisa de altura explícita para funcionar — `flex-1 min-h-0` nem sempre resolve dentro de grid.
 
-### Correções
+### Correção
 
-**1. `src/components/sequences/UnifiedSequenceBuilder.tsx`**
-- Trocar o `useEffect` de sincronização de `initialNodes` para só rodar **uma vez** (quando os dados carregam pela primeira vez), usando um ref `hasLoadedRef`
-- Isso quebra o ciclo: após o load inicial, `localNodes` é a source of truth e não é sobrescrito por refetches
-- Remover toast do autosave — o feedback visual ("Salvando..." / "Salvo") já é suficiente
+**Arquivo:** `src/components/sequences/UnifiedNodeConfigPanel.tsx`
 
-**2. `src/components/group-campaigns/sequences/SequenceBuilder.tsx`**
-- No `handleSave`: diferenciar save manual vs autosave. Passar flag `silent` ou simplesmente remover o `toast.success` do `handleSave` (já que o autosave indicator cobre isso)
-- Alternativa mais simples: aceitar um parâmetro `silent?: boolean` no `onSave` e só mostrar toast quando é save manual
+Substituir `ScrollArea` por um `div` com `overflow-y-auto` e garantir que o layout funcione:
 
-**3. `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`**
-- Mesma correção: remover/condicionar toast no `handleSave`
+```tsx
+// Linha 258 - Forçar !grid e usar flex
+<DialogContent className="max-w-md max-h-[85vh] !flex !flex-col p-0 gap-0 overflow-hidden">
 
-### Detalhes técnicos
-
-```text
-// UnifiedSequenceBuilder.tsx — sync apenas no primeiro load
-const hasLoadedRef = useRef(false);
-useEffect(() => {
-  if (!hasLoadedRef.current && initialNodes.length > 0) {
-    setLocalNodes(initialNodes);
-    hasLoadedRef.current = true;
-  }
-}, [initialNodes]);
+// Linha 265 - Trocar ScrollArea por div com overflow
+<div className="flex-1 min-h-0 overflow-y-auto px-6 pb-6">
+  ...
+</div>
+// Remover fechamento do ScrollArea correspondente
 ```
 
-```text
-// SequenceBuilder.tsx — sem toast no save (autosave indicator basta)
-const handleSave = async (name, nodes, connections) => {
-  await onUpdate(...);
-  await saveNodes(...);
-  await saveConnections(...);
-  // sem toast.success aqui — o indicador "Salvo ✓" no header cobre
-};
-```
+- `!flex !flex-col` usa `!important` para sobrescrever o `grid` base
+- `overflow-y-auto` num div simples é mais confiável que `ScrollArea` quando o container tem height constraints via flex
 
 ### Impacto
-- 3 arquivos, mudanças pequenas
-- Elimina o loop infinito, o spam de toasts, e o dialog que fecha sozinho
+- 1 arquivo, 3 linhas alteradas
+- Scroll funcional para acessar agendamento e demais campos abaixo
 
