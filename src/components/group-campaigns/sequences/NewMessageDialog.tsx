@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import {
   CalendarIcon, MessageSquare, Image as ImageIcon, Video, Music, FileText,
   BarChart3, MousePointerClick, List, Smile, MapPin, Contact, CalendarDays,
-  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
+  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus,
 } from "lucide-react";
 
 interface NewMessageDialogProps {
