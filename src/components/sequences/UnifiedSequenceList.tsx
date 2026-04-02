@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Workflow, Trash2, Edit, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 interface UnifiedSequenceListProps<T> {
   sequences: T[];
