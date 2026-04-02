@@ -94,8 +94,14 @@ function NodeScheduleSection({
 }) {
   if (!SENDABLE_NODE_TYPES.includes(nodeType)) return null;
 
-  const schedule = (config.schedule as { enabled?: boolean; days?: number[]; times?: string[] }) || {};
+  const schedule = (config.schedule as {
+    enabled?: boolean; scheduleType?: string;
+    days?: number[]; times?: string[];
+    fixedDate?: string; fixedTime?: string;
+    delayValue?: number; delayUnit?: string; delayTime?: string;
+  }) || {};
   const enabled = schedule.enabled || false;
+  const scheduleType = schedule.scheduleType || "recurring";
   const days = schedule.days || [];
   const times = schedule.times || [];
 
@@ -129,7 +135,7 @@ function NodeScheduleSection({
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
             <Label className="text-sm font-medium">Agendar envio</Label>
-            <p className="text-xs text-muted-foreground">Definir dias e horários específicos</p>
+            <p className="text-xs text-muted-foreground">Definir quando esta mensagem será enviada</p>
           </div>
           <Switch
             checked={enabled}
@@ -139,46 +145,131 @@ function NodeScheduleSection({
 
         {enabled && (
           <div className="space-y-3 pl-1">
+            {/* Schedule type selector */}
             <div className="space-y-1.5">
-              <Label className="text-xs">Dias da semana</Label>
-              <div className="flex flex-wrap gap-1">
-                {WEEKDAY_LABELS.map((label, idx) => (
-                  <Badge
-                    key={idx}
-                    variant={days.includes(idx) ? "default" : "outline"}
-                    className="cursor-pointer text-xs px-2 py-1 select-none"
-                    onClick={() => toggleDay(idx)}
-                  >
-                    {label}
-                  </Badge>
-                ))}
-              </div>
+              <Label className="text-xs">Tipo de agendamento</Label>
+              <Select value={scheduleType} onValueChange={v => updateSchedule({ scheduleType: v })}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="fixed">📅 Data e hora fixa</SelectItem>
+                  <SelectItem value="delay">⏱️ Delay relativo</SelectItem>
+                  <SelectItem value="recurring">🔄 Recorrente (dias da semana)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Horários</Label>
-                <Button variant="ghost" size="sm" className="h-6 px-2" onClick={addTime}>
-                  <Plus className="h-3 w-3 mr-1" /> Horário
-                </Button>
-              </div>
-              {times.map((time, idx) => (
-                <div key={idx} className="flex items-center gap-2">
+            {/* FIXED */}
+            {scheduleType === "fixed" && (
+              <div className="space-y-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Data</Label>
+                  <Input
+                    type="date"
+                    value={(schedule.fixedDate as string) || ""}
+                    onChange={e => updateSchedule({ fixedDate: e.target.value })}
+                    className="h-8 text-xs"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Hora</Label>
                   <Input
                     type="time"
-                    value={time}
-                    onChange={e => updateTime(idx, e.target.value)}
-                    className="h-8 text-xs flex-1"
+                    value={(schedule.fixedTime as string) || "09:00"}
+                    onChange={e => updateSchedule({ fixedTime: e.target.value })}
+                    className="h-8 text-xs"
                   />
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeTime(idx)}>
-                    <Trash2 className="h-3 w-3 text-destructive" />
-                  </Button>
                 </div>
-              ))}
-              {times.length === 0 && (
-                <p className="text-xs text-muted-foreground italic">Nenhum horário definido</p>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* DELAY */}
+            {scheduleType === "delay" && (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Valor</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={(schedule.delayValue as number) || 1}
+                      onChange={e => updateSchedule({ delayValue: Number(e.target.value) })}
+                      className="h-8 text-xs w-20"
+                    />
+                  </div>
+                  <div className="space-y-1 flex-1">
+                    <Label className="text-xs">Unidade</Label>
+                    <Select value={(schedule.delayUnit as string) || "days"} onValueChange={v => updateSchedule({ delayUnit: v })}>
+                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="minutes">Minutos</SelectItem>
+                        <SelectItem value="hours">Horas</SelectItem>
+                        <SelectItem value="days">Dias</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Horário</Label>
+                    <Input
+                      type="time"
+                      value={(schedule.delayTime as string) || "08:00"}
+                      onChange={e => updateSchedule({ delayTime: e.target.value })}
+                      className="h-8 text-xs w-24"
+                    />
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  💡 Enviado após {(schedule.delayValue as number) || 1} {(schedule.delayUnit as string) === "minutes" ? "min" : (schedule.delayUnit as string) === "hours" ? "h" : "dias"} da entrada na campanha
+                </p>
+              </div>
+            )}
+
+            {/* RECURRING */}
+            {scheduleType === "recurring" && (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Dias da semana</Label>
+                  <div className="flex flex-wrap gap-1">
+                    {WEEKDAY_LABELS.map((label, idx) => (
+                      <Badge
+                        key={idx}
+                        variant={days.includes(idx) ? "default" : "outline"}
+                        className="cursor-pointer text-xs px-2 py-1 select-none"
+                        onClick={() => toggleDay(idx)}
+                      >
+                        {label}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs">Horários</Label>
+                    <Button variant="ghost" size="sm" className="h-6 px-2" onClick={addTime}>
+                      <Plus className="h-3 w-3 mr-1" /> Horário
+                    </Button>
+                  </div>
+                  {times.map((time, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        type="time"
+                        value={time}
+                        onChange={e => updateTime(idx, e.target.value)}
+                        className="h-8 text-xs flex-1"
+                      />
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeTime(idx)}>
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
+                  ))}
+                  {times.length === 0 && (
+                    <p className="text-xs text-muted-foreground italic">Nenhum horário definido</p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
 
