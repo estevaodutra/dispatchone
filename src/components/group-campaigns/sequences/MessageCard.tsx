@@ -108,7 +108,7 @@ function getContentPreview(node: LocalNode): string {
 
 export function MessageCard({
   node, status, errorMessage,
-  onEdit, onDuplicate, onTogglePause, onMoveUp, onMoveDown, onDelete,
+  onEdit, onDuplicate, onTogglePause, onExecute, onMoveUp, onMoveDown, onDelete,
   isFirst, isLast,
 }: MessageCardProps) {
   const meta = TYPE_META[node.nodeType] || TYPE_META.message;
