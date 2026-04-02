@@ -84,7 +84,7 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
       }
 
       // Check logs for this node_order
-      const nodeLogs = seqLogs.filter(l => l.nodeOrder === node.nodeOrder);
+      const nodeLogs = seqLogs.filter(l => l.nodeOrder === node.nodeOrder && isToday(parseISO(l.sentAt)));
       const latestLog = nodeLogs[0]; // already sorted desc by sentAt
 
       if (latestLog) {
