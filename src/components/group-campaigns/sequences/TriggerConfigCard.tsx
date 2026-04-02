@@ -52,15 +52,6 @@ const TRIGGER_TYPES = [
   { value: "manual" as TriggerType, label: "Manual", icon: Play, color: "bg-slate-500" },
 ];
 
-const WEEK_DAYS = [
-  { value: 0, label: "D", fullLabel: "Dom" },
-  { value: 1, label: "S", fullLabel: "Seg" },
-  { value: 2, label: "T", fullLabel: "Ter" },
-  { value: 3, label: "Q", fullLabel: "Qua" },
-  { value: 4, label: "Q", fullLabel: "Qui" },
-  { value: 5, label: "S", fullLabel: "Sex" },
-  { value: 6, label: "S", fullLabel: "Sáb" },
-];
 
 const MATCH_TYPES = [
   { value: "exact", label: "Exato" },
@@ -87,13 +78,6 @@ export function TriggerConfigCard({
     ? `https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/trigger-sequence/${sequenceId}`
     : "";
 
-  const toggleDay = (day: number) => {
-    const currentDays = triggerConfig.days || [];
-    const newDays = currentDays.includes(day)
-      ? currentDays.filter(d => d !== day)
-      : [...currentDays, day].sort((a, b) => a - b);
-    onTriggerConfigChange({ ...triggerConfig, days: newDays });
-  };
 
   return (
     <Card className="border-2 border-primary/30 bg-primary/5">
@@ -174,51 +158,20 @@ export function TriggerConfigCard({
               </div>
             )}
 
-            {/* Scheduled Once Config — only date, time is per message */}
+            {/* Scheduled Once Config */}
             {effectiveTriggerType === "scheduled_once" && (
-              <div className="space-y-4 p-3 rounded-lg bg-background border">
-                <div className="space-y-2">
-                  <Label className="text-sm">Data</Label>
-                  <Input
-                    type="date"
-                    value={triggerConfig.date || ""}
-                    onChange={(e) =>
-                      onTriggerConfigChange({ ...triggerConfig, date: e.target.value })
-                    }
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  A sequência será executada na data especificada. O horário de cada mensagem é definido individualmente.
+              <div className="p-3 rounded-lg bg-background border">
+                <p className="text-sm text-muted-foreground">
+                  Cada mensagem define sua própria data e horário de execução.
                 </p>
               </div>
             )}
 
-            {/* Scheduled Recurring Config — only days, time is per message */}
-            {(effectiveTriggerType === "scheduled_recurring") && (
-              <div className="space-y-4 p-3 rounded-lg bg-background border">
-                <div className="space-y-2">
-                  <Label className="text-sm">Dias da semana</Label>
-                  <div className="flex gap-1">
-                    {WEEK_DAYS.map(day => (
-                      <button
-                        key={day.value}
-                        type="button"
-                        onClick={() => toggleDay(day.value)}
-                        className={cn(
-                          "w-9 h-9 rounded-full text-sm font-medium transition-all",
-                          (triggerConfig.days || []).includes(day.value)
-                            ? "bg-primary text-primary-foreground"
-                            : "bg-muted hover:bg-muted/80"
-                        )}
-                        title={day.fullLabel}
-                      >
-                        {day.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  A sequência será executada nos dias selecionados. O horário de cada mensagem é definido individualmente.
+            {/* Scheduled Recurring Config */}
+            {effectiveTriggerType === "scheduled_recurring" && (
+              <div className="p-3 rounded-lg bg-background border">
+                <p className="text-sm text-muted-foreground">
+                  Cada mensagem define seus próprios dias e horários de execução.
                 </p>
               </div>
             )}
