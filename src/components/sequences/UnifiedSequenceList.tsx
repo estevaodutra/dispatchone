@@ -219,6 +219,7 @@ export function UnifiedSequenceList<T>({
                 <RadioGroup value={form.triggerType} onValueChange={v => setForm({ ...form, triggerType: v })}>
                   {triggerTypes.map(trigger => {
                     const Icon = trigger.icon;
+                    const isUsed = usedTriggerTypes.has(trigger.value);
                     return (
                       <div key={trigger.value} className={`flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer ${isUsed ? "opacity-50 pointer-events-none" : ""}`}>
                         <RadioGroupItem value={trigger.value} id={trigger.value} disabled={isUsed} />
