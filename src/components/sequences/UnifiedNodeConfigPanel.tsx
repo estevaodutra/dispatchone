@@ -75,6 +75,8 @@ const NODE_TITLES: Record<string, { title: string; icon: React.ElementType }> = 
   group_promote_admin: { title: "Promover Admin", icon: ShieldPlus },
   group_remove_admin: { title: "Remover Admin", icon: ShieldMinus },
   group_settings: { title: "Configurações do Grupo", icon: Settings },
+  status_image: { title: "Status Imagem", icon: CircleDot },
+  status_video: { title: "Status Vídeo", icon: CircleDot },
 };
 
 const QUICK_DELAYS = [
