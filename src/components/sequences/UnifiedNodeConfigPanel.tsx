@@ -1403,6 +1403,44 @@ export function UnifiedNodeConfigPanel({
             </>
           )}
 
+          {/* STATUS IMAGE */}
+          {node.nodeType === "status_image" && (
+            <>
+              <div className="space-y-2">
+                <Label>Mídia do Status</Label>
+                {renderMediaField("image", "https://exemplo.com/imagem.jpg")}
+              </div>
+              <div className="space-y-2">
+                <Label>Legenda (opcional)</Label>
+                <Textarea
+                  placeholder="Texto do status..."
+                  value={(node.config.caption as string) || ""}
+                  onChange={e => updateConfig("caption", e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </>
+          )}
+
+          {/* STATUS VIDEO */}
+          {node.nodeType === "status_video" && (
+            <>
+              <div className="space-y-2">
+                <Label>Mídia do Status</Label>
+                {renderMediaField("video", "https://exemplo.com/video.mp4")}
+              </div>
+              <div className="space-y-2">
+                <Label>Legenda (opcional)</Label>
+                <Textarea
+                  placeholder="Texto do status..."
+                  value={(node.config.caption as string) || ""}
+                  onChange={e => updateConfig("caption", e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </>
+          )}
+
           {/* Schedule & Manual Send Section */}
           <NodeScheduleSection
             config={node.config}
