@@ -1,25 +1,29 @@
 
 
-## Plano: Remover horário do gatilho — usar horário de cada mensagem
+## Plano: Resetar status dos cards à meia-noite
 
-### Contexto
+### Problema
 
-Atualmente o gatilho de agendamento (tanto `scheduled_once` quanto `scheduled_recurring`) configura horários no nível do trigger. Porém, cada nó/mensagem já possui seu próprio `node.config.schedule` com horário individual. O usuário quer que o horário considerado seja o de cada mensagem, não o do gatilho.
+Atualmente, o cálculo de status dos nós (`nodeStatuses`) considera **todos os logs** do período de 72h. Para sequências recorrentes, um nó que foi enviado ontem continua aparecendo como "sent" (verde) hoje, quando deveria voltar a "scheduled" (cinza) à meia-noite.
 
-### Alterações
+### Alteração
 
-**Arquivo: `src/components/group-campaigns/sequences/TriggerConfigCard.tsx`**
+**Arquivo: `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
 
-1. **`scheduled_once`**: Remover o campo "Horário" (input time), manter apenas o campo "Data". Atualizar a descrição para: "A sequência será executada na data especificada. O horário de cada mensagem será definido individualmente."
+Na função `nodeStatuses` (linhas 75-117), ao verificar os logs de um nó, filtrar apenas os logs de **hoje** usando `isToday(parseISO(log.sentAt))`:
 
-2. **`scheduled_recurring`**: Remover toda a seção de horários (modo manual com input de horários + modo intervalo automático). Manter apenas a seleção de dias da semana. Atualizar descrição: "A sequência será executada nos dias selecionados. O horário de cada mensagem será definido individualmente."
+```tsx
+// Antes:
+const nodeLogs = seqLogs.filter(l => l.nodeOrder === node.nodeOrder);
 
-3. **Limpar `TriggerConfig`**: Remover os campos `times`, `time`, `mode`, `intervalConfig` da interface (ou deixá-los opcionais para backward compatibility).
+// Depois:
+const nodeLogs = seqLogs.filter(l => l.nodeOrder === node.nodeOrder && isToday(parseISO(l.sentAt)));
+```
 
-4. **Remover código morto**: Remover `newTime` state, `addTime`, `removeTime`, `updateIntervalConfig`, `previewTimes`, `generateTimesFromInterval`, `INTERVAL_OPTIONS`, e imports de `Plus`/`X` se não usados em outro lugar.
+Assim, à meia-noite todos os logs são de "ontem" e nenhum nó terá status "sent" — todos voltam para "scheduled" automaticamente.
 
 ### Resumo
-- 1 arquivo modificado
-- Remove configuração de horário do gatilho
-- Cada mensagem/nó define seu próprio horário via `node.config.schedule`
+- 1 arquivo, 1 linha alterada
+- Logs de dias anteriores são ignorados no cálculo de status visual
+- Nenhuma mudança no backend — é puramente visual/frontend
 
