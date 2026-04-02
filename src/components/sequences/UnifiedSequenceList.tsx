@@ -46,7 +46,14 @@ export function UnifiedSequenceList<T>({
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", triggerType: triggerTypes[0]?.value || "manual" });
 
+  // Get trigger types already used by existing sequences
+  const usedTriggerTypes = new Set(sequences.map(seq => getSequenceItem(seq).triggerType));
+
   const handleCreate = async () => {
+    if (usedTriggerTypes.has(form.triggerType)) {
+      toast.error("Já existe uma sequência com este gatilho");
+      return;
+    }
     await onCreate(form);
     setShowCreate(false);
     setForm({ name: "", description: "", triggerType: triggerTypes[0]?.value || "manual" });
