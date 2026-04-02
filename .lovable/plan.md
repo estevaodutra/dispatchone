@@ -1,38 +1,30 @@
 
 
-## Plano: Adicionar categoria "Gestão de Grupo" no Sequence Builder
+## Plano: Corrigir carregamento inicial de nós na sequência
 
-### O que muda
+### Problema
+No `TimelineSequenceBuilder`, o `useEffect` de sincronização (linha 66-72) marca `hasLoadedRef.current = true` quando `dbNodes.length === 0`, mas `dbNodes` começa como `[]` enquanto a query ainda está carregando. Isso faz com que, quando os dados reais chegam, o ref já está `true` e os nós nunca são carregados no estado local.
 
-Adicionar uma 5ª categoria de nós chamada **"Gestão de Grupo"** no construtor de sequências, com os seguintes componentes arrastáveis:
+### Correção
 
-| Nó | Ícone | Config |
-|---|---|---|
-| `group_rename` | Pencil | Campo: novo nome |
-| `group_photo` | ImageIcon | Upload de foto (MediaUploader) |
-| `group_description` | FileText | Textarea: nova descrição |
-| `group_add_participant` | UserPlus | Lista de números |
-| `group_remove_participant` | UserMinus | Número do participante |
-| `group_promote_admin` | ShieldPlus | Número do participante |
-| `group_remove_admin` | ShieldMinus | Número do participante |
-| `group_settings` | Settings | 4 toggles (adminOnly...) |
+**Arquivo: `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
 
-### Arquivos alterados
+1. Extrair `isLoading` do hook `useSequenceNodes` (já disponível como retorno do hook)
+2. Alterar o `useEffect` de sync para **não marcar como carregado quando `isLoading` é `true`**:
 
-**1. `src/components/group-campaigns/sequences/SequenceBuilder.tsx`**
-- Adicionar nova categoria `{ id: "group_management", label: "Gestão de Grupo", nodes: [...] }` ao array `NODE_CATEGORIES`
-- Adicionar configs default para cada novo tipo no `getDefaultConfig`
+```typescript
+const { nodes: dbNodes, isLoading: nodesLoading, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
 
-**2. `src/components/sequences/UnifiedNodeConfigPanel.tsx`**
-- Adicionar entradas no `NODE_TITLES` para os 8 novos tipos
-- Adicionar blocos de renderização condicional (`node.nodeType === "group_rename"`, etc.) com formulários de configuração específicos para cada ação
-- Cada formulário configura os campos que serão enviados à Z-API quando o nó for executado na sequência
+useEffect(() => {
+  if (nodesLoading) return; // Don't mark as loaded while still fetching
+  if (!hasLoadedRef.current) {
+    if (dbNodes.length > 0) {
+      setLocalNodes(dbNodes.map(n => ({ id: n.id, nodeType: n.nodeType, nodeOrder: n.nodeOrder, config: n.config })));
+    }
+    hasLoadedRef.current = true;
+  }
+}, [dbNodes, nodesLoading]);
+```
 
-**3. `supabase/functions/execute-message/index.ts`** (se necessário)
-- Adicionar handlers para os novos tipos de nó que chamam o `zapi-proxy` com os endpoints correspondentes
-
-### Detalhes técnicos
-- Os nós de gestão de grupo NÃO são "sendable" (não entram em `SENDABLE_NODE_TYPES` — não têm agendamento)
-- Cada nó armazena sua config (nome, número, toggles) e na execução da sequência a Edge Function chama o endpoint Z-API correspondente
-- Reutiliza o padrão existente de config panel com formulários inline
+1 arquivo, ~3 linhas alteradas.
 
