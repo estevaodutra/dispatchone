@@ -20,6 +20,7 @@ interface NewMessageDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (nodeType: string, schedule: Record<string, unknown>) => void;
+  triggerType?: string;
 }
 
 const CATEGORIES = [
