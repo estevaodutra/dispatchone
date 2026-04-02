@@ -292,6 +292,7 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         open={newMessageOpen}
         onClose={() => setNewMessageOpen(false)}
         onSave={handleNewMessage}
+        triggerType={triggerType}
       />
 
       {/* Edit node panel */}

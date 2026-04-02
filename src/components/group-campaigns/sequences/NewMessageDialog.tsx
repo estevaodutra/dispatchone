@@ -20,6 +20,7 @@ interface NewMessageDialogProps {
   open: boolean;
   onClose: () => void;
   onSave: (nodeType: string, schedule: Record<string, unknown>) => void;
+  triggerType?: string;
 }
 
 const CATEGORIES = [
@@ -78,8 +79,11 @@ const DAYS_OF_WEEK = [
   { value: "6", label: "Sáb" },
 ];
 
-export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProps) {
+const SCHEDULE_TRIGGERS = ["scheduled_once", "scheduled_recurring", "manual"];
+
+export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMessageDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
+  const isScheduledTrigger = triggerType ? SCHEDULE_TRIGGERS.includes(triggerType) : true;
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [scheduleType, setScheduleType] = useState<"fixed" | "delay" | "recurring">("fixed");
   const [fixedDate, setFixedDate] = useState<Date | undefined>();
@@ -138,26 +142,30 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
               <DialogTitle>Nova Mensagem</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {CATEGORIES.map(({ label, items }) => (
-                <div key={label}>
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {items.map(({ type, label: itemLabel, icon: Icon }) => (
-                      <button
-                        key={type}
-                        onClick={() => handleSelectType(type)}
-                        className={cn(
-                          "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-colors",
-                          "hover:bg-accent hover:border-primary/30 cursor-pointer"
-                        )}
-                      >
-                        <Icon className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-[11px] font-medium text-center leading-tight">{itemLabel}</span>
-                      </button>
-                    ))}
+              {CATEGORIES.map(({ label, items }) => {
+                const filteredItems = items.filter(item => item.type !== "group_create" || isScheduledTrigger);
+                if (filteredItems.length === 0) return null;
+                return (
+                  <div key={label}>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {filteredItems.map(({ type, label: itemLabel, icon: Icon }) => (
+                        <button
+                          key={type}
+                          onClick={() => handleSelectType(type)}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-colors",
+                            "hover:bg-accent hover:border-primary/30 cursor-pointer"
+                          )}
+                        >
+                          <Icon className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-[11px] font-medium text-center leading-tight">{itemLabel}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>Cancelar</Button>
