@@ -1,36 +1,38 @@
 
 
-## Plano: Adicionar ações de Gestão de Grupo na aba "Grupos Vinculados"
+## Plano: Adicionar categoria "Gestão de Grupo" no Sequence Builder
 
-### Problema
-Os componentes de gestão de grupo (`GroupUpdateNameModal`, `GroupSettingsModal`, etc.) foram criados mas não estão sendo usados em nenhuma tela.
+### O que muda
 
-### Alteração
+Adicionar uma 5ª categoria de nós chamada **"Gestão de Grupo"** no construtor de sequências, com os seguintes componentes arrastáveis:
 
-**Arquivo: `src/components/group-campaigns/tabs/GroupsListTab.tsx`**
+| Nó | Ícone | Config |
+|---|---|---|
+| `group_rename` | Pencil | Campo: novo nome |
+| `group_photo` | ImageIcon | Upload de foto (MediaUploader) |
+| `group_description` | FileText | Textarea: nova descrição |
+| `group_add_participant` | UserPlus | Lista de números |
+| `group_remove_participant` | UserMinus | Número do participante |
+| `group_promote_admin` | ShieldPlus | Número do participante |
+| `group_remove_admin` | ShieldMinus | Número do participante |
+| `group_settings` | Settings | 4 toggles (adminOnly...) |
 
-Na seção "Grupos Vinculados", para cada grupo vinculado que tem `instanceId`, adicionar um `DropdownMenu` com as ações de gestão disponíveis:
+### Arquivos alterados
 
-1. **Importar** os componentes de `@/components/whatsapp/group-management`
-2. **Substituir** o botão de delete solitário por um `DropdownMenu` (ícone `MoreVertical`) com as seguintes ações:
-   - **Renomear** → abre `GroupUpdateNameModal` (instanceId + groupJid + currentName)
-   - **Atualizar Foto** → abre `GroupUpdatePhotoModal`
-   - **Atualizar Descrição** → abre `GroupUpdateDescriptionModal`
-   - **Adicionar Participante** → abre `GroupAddParticipantModal`
-   - **Remover Participante** → abre `GroupRemoveParticipantModal`
-   - **Promover Admin** → abre `GroupPromoteAdminModal`
-   - **Remover Admin** → abre `GroupRemoveAdminModal`
-   - **Configurações** → abre `GroupSettingsModal`
-   - **Link de Convite** → abre `GroupInviteLinkModal`
-   - Separador
-   - **Remover da Campanha** → ação existente de delete (com confirmação)
+**1. `src/components/group-campaigns/sequences/SequenceBuilder.tsx`**
+- Adicionar nova categoria `{ id: "group_management", label: "Gestão de Grupo", nodes: [...] }` ao array `NODE_CATEGORIES`
+- Adicionar configs default para cada novo tipo no `getDefaultConfig`
 
-3. **Estado local** para controlar qual modal está aberto e para qual grupo (usando `activeGroupAction` com `{ groupJid, instanceId, groupName, action }`)
+**2. `src/components/sequences/UnifiedNodeConfigPanel.tsx`**
+- Adicionar entradas no `NODE_TITLES` para os 8 novos tipos
+- Adicionar blocos de renderização condicional (`node.nodeType === "group_rename"`, etc.) com formulários de configuração específicos para cada ação
+- Cada formulário configura os campos que serão enviados à Z-API quando o nó for executado na sequência
 
-4. Os modais recebem `onSuccess={() => refetch()}` para atualizar a lista após alterações
+**3. `supabase/functions/execute-message/index.ts`** (se necessário)
+- Adicionar handlers para os novos tipos de nó que chamam o `zapi-proxy` com os endpoints correspondentes
 
 ### Detalhes técnicos
-- Cada `CampaignGroup` já possui `instanceId` e `groupJid` — são as props necessárias para os modais
-- Grupos sem `instanceId` mostram apenas a opção de remover
-- 1 arquivo modificado
+- Os nós de gestão de grupo NÃO são "sendable" (não entram em `SENDABLE_NODE_TYPES` — não têm agendamento)
+- Cada nó armazena sua config (nome, número, toggles) e na execução da sequência a Edge Function chama o endpoint Z-API correspondente
+- Reutiliza o padrão existente de config panel com formulários inline
 
