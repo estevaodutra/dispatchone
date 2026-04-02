@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -9,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
   Zap, Users, LogOut, Clock, Keyboard, Webhook, Play,
-  ChevronDown, Plus, X, CalendarDays
+  ChevronDown, CalendarDays
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WebhookFieldMappings, FieldMapping } from "./WebhookFieldMappings";
@@ -63,38 +62,11 @@ const WEEK_DAYS = [
   { value: 6, label: "S", fullLabel: "Sáb" },
 ];
 
-const INTERVAL_OPTIONS = [
-  { value: 15, label: "15 minutos" },
-  { value: 30, label: "30 minutos" },
-  { value: 60, label: "1 hora" },
-  { value: 120, label: "2 horas" },
-  { value: 180, label: "3 horas" },
-  { value: 240, label: "4 horas" },
-];
-
 const MATCH_TYPES = [
   { value: "exact", label: "Exato" },
   { value: "contains", label: "Contém" },
   { value: "startsWith", label: "Começa com" },
 ];
-
-const generateTimesFromInterval = (start: string, end: string, intervalMinutes: number): string[] => {
-  const times: string[] = [];
-  const [startHour, startMin] = start.split(":").map(Number);
-  const [endHour, endMin] = end.split(":").map(Number);
-  
-  let currentMinutes = startHour * 60 + startMin;
-  const endMinutes = endHour * 60 + endMin;
-  
-  while (currentMinutes <= endMinutes) {
-    const hours = Math.floor(currentMinutes / 60);
-    const mins = currentMinutes % 60;
-    times.push(`${hours.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}`);
-    currentMinutes += intervalMinutes;
-  }
-  
-  return times;
-};
 
 export function TriggerConfigCard({
   triggerType,
@@ -104,7 +76,6 @@ export function TriggerConfigCard({
   sequenceId,
 }: TriggerConfigCardProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const [newTime, setNewTime] = useState("");
 
   // Map legacy "scheduled" to "scheduled_recurring" for display
   const effectiveTriggerType = triggerType === "scheduled" ? "scheduled_recurring" : triggerType;
@@ -123,40 +94,6 @@ export function TriggerConfigCard({
       : [...currentDays, day].sort((a, b) => a - b);
     onTriggerConfigChange({ ...triggerConfig, days: newDays });
   };
-
-  const addTime = () => {
-    if (newTime && !(triggerConfig.times || []).includes(newTime)) {
-      onTriggerConfigChange({
-        ...triggerConfig,
-        times: [...(triggerConfig.times || []), newTime].sort(),
-      });
-      setNewTime("");
-    }
-  };
-
-  const removeTime = (time: string) => {
-    onTriggerConfigChange({
-      ...triggerConfig,
-      times: (triggerConfig.times || []).filter(t => t !== time),
-    });
-  };
-
-  const updateIntervalConfig = (field: string, value: string | number) => {
-    const intervalConfig = triggerConfig.intervalConfig || { start: "08:00", end: "19:00", minutes: 60 };
-    onTriggerConfigChange({
-      ...triggerConfig,
-      intervalConfig: { ...intervalConfig, [field]: value },
-    });
-  };
-
-  // Calculate preview times for interval mode
-  const previewTimes = triggerConfig.mode === "interval" && triggerConfig.intervalConfig
-    ? generateTimesFromInterval(
-        triggerConfig.intervalConfig.start,
-        triggerConfig.intervalConfig.end,
-        triggerConfig.intervalConfig.minutes
-      )
-    : [];
 
   return (
     <Card className="border-2 border-primary/30 bg-primary/5">
@@ -237,42 +174,28 @@ export function TriggerConfigCard({
               </div>
             )}
 
-            {/* Scheduled Config */}
-            {/* Scheduled Once Config */}
+            {/* Scheduled Once Config — only date, time is per message */}
             {effectiveTriggerType === "scheduled_once" && (
               <div className="space-y-4 p-3 rounded-lg bg-background border">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-2">
-                    <Label className="text-sm">Data</Label>
-                    <Input
-                      type="date"
-                      value={triggerConfig.date || ""}
-                      onChange={(e) =>
-                        onTriggerConfigChange({ ...triggerConfig, date: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm">Horário</Label>
-                    <Input
-                      type="time"
-                      value={triggerConfig.time || ""}
-                      onChange={(e) =>
-                        onTriggerConfigChange({ ...triggerConfig, time: e.target.value })
-                      }
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">Data</Label>
+                  <Input
+                    type="date"
+                    value={triggerConfig.date || ""}
+                    onChange={(e) =>
+                      onTriggerConfigChange({ ...triggerConfig, date: e.target.value })
+                    }
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  A sequência será executada uma única vez na data e horário especificados.
+                  A sequência será executada na data especificada. O horário de cada mensagem é definido individualmente.
                 </p>
               </div>
             )}
 
-            {/* Scheduled Recurring Config */}
+            {/* Scheduled Recurring Config — only days, time is per message */}
             {(effectiveTriggerType === "scheduled_recurring") && (
               <div className="space-y-4 p-3 rounded-lg bg-background border">
-                {/* Days selection */}
                 <div className="space-y-2">
                   <Label className="text-sm">Dias da semana</Label>
                   <div className="flex gap-1">
@@ -294,108 +217,9 @@ export function TriggerConfigCard({
                     ))}
                   </div>
                 </div>
-
-                {/* Mode selection */}
-                <div className="space-y-2">
-                  <Label className="text-sm">Modo de horários</Label>
-                  <Select
-                    value={triggerConfig.mode || "manual"}
-                    onValueChange={(value) => 
-                      onTriggerConfigChange({ ...triggerConfig, mode: value as "manual" | "interval" })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="manual">Horários específicos</SelectItem>
-                      <SelectItem value="interval">Intervalo automático</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {/* Manual times */}
-                {(triggerConfig.mode || "manual") === "manual" && (
-                  <div className="space-y-2">
-                    <Label className="text-sm">Horários</Label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="time"
-                        value={newTime}
-                        onChange={(e) => setNewTime(e.target.value)}
-                        className="flex-1"
-                      />
-                      <Button type="button" variant="outline" onClick={addTime}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {(triggerConfig.times || []).length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {(triggerConfig.times || []).map(time => (
-                          <Badge key={time} variant="secondary" className="gap-1">
-                            {time}
-                            <button
-                              type="button"
-                              onClick={() => removeTime(time)}
-                              className="ml-1 hover:text-destructive"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Interval mode */}
-                {triggerConfig.mode === "interval" && (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Início</Label>
-                        <Input
-                          type="time"
-                          value={triggerConfig.intervalConfig?.start || "08:00"}
-                          onChange={(e) => updateIntervalConfig("start", e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-xs">Fim</Label>
-                        <Input
-                          type="time"
-                          value={triggerConfig.intervalConfig?.end || "19:00"}
-                          onChange={(e) => updateIntervalConfig("end", e.target.value)}
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Frequência</Label>
-                      <Select
-                        value={String(triggerConfig.intervalConfig?.minutes || 60)}
-                        onValueChange={(value) => updateIntervalConfig("minutes", parseInt(value))}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {INTERVAL_OPTIONS.map(opt => (
-                            <SelectItem key={opt.value} value={String(opt.value)}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    {previewTimes.length > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        <span className="font-medium">Preview:</span>{" "}
-                        {previewTimes.slice(0, 5).join(", ")}
-                        {previewTimes.length > 5 && ` +${previewTimes.length - 5} mais`}
-                      </div>
-                    )}
-                  </div>
-                )}
+                <p className="text-xs text-muted-foreground">
+                  A sequência será executada nos dias selecionados. O horário de cada mensagem é definido individualmente.
+                </p>
               </div>
             )}
 
