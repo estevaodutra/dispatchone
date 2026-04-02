@@ -51,7 +51,7 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
 };
 
 export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: TimelineSequenceBuilderProps) {
-  const { nodes: dbNodes, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
+  const { nodes: dbNodes, isLoading: nodesLoading, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
   const { logs } = useSequenceLogs(sequence.groupCampaignId);
   const [localNodes, setLocalNodes] = useState<LocalNode[]>([]);
   const [editingNode, setEditingNode] = useState<LocalNode | null>(null);
@@ -64,13 +64,14 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
 
   // One-time sync from DB
   useEffect(() => {
-    if (dbNodes.length > 0 && !hasLoadedRef.current) {
-      setLocalNodes(dbNodes.map(n => ({ id: n.id, nodeType: n.nodeType, nodeOrder: n.nodeOrder, config: n.config })));
-      hasLoadedRef.current = true;
-    } else if (dbNodes.length === 0 && !hasLoadedRef.current) {
+    if (nodesLoading) return;
+    if (!hasLoadedRef.current) {
+      if (dbNodes.length > 0) {
+        setLocalNodes(dbNodes.map(n => ({ id: n.id, nodeType: n.nodeType, nodeOrder: n.nodeOrder, config: n.config })));
+      }
       hasLoadedRef.current = true;
     }
-  }, [dbNodes]);
+  }, [dbNodes, nodesLoading]);
 
   useEffect(() => {
     setName(sequence.name);
