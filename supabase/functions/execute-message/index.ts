@@ -425,6 +425,7 @@ Deno.serve(async (req) => {
 
     let nodesProcessed = isResumedExecution ? (startFromNodeIndex || 0) : 0;
     let nodesFailed = 0;
+    const webhookResponses: Array<{ nodeType: string; nodeOrder: number; destination: string; status: string; data: unknown }> = [];
 
     // ============= NODE-FIRST ORCHESTRATION =============
     if (sequenceNodes.length === 0) {
