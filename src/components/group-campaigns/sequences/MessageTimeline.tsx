@@ -149,7 +149,7 @@ export function MessageTimeline({
                 const { dateStr } = getScheduleLabel(node);
 
                 return (
-                  <div key={node.id} className="flex flex-col items-center relative">
+                  <div key={node.id} className="flex flex-col items-center relative shrink-0" style={{ width: 288 }}>
                     <MessageCard
                       node={node}
                       status={nodeStatus}
