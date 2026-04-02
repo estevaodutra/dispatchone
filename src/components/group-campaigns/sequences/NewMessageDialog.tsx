@@ -146,24 +146,26 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
                 const filteredItems = items.filter(item => item.type !== "group_create" || isScheduledTrigger);
                 if (filteredItems.length === 0) return null;
                 return (
-                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
-                  <div className="grid grid-cols-4 gap-2">
-                    {items.map(({ type, label: itemLabel, icon: Icon }) => (
-                      <button
-                        key={type}
-                        onClick={() => handleSelectType(type)}
-                        className={cn(
-                          "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-colors",
-                          "hover:bg-accent hover:border-primary/30 cursor-pointer"
-                        )}
-                      >
-                        <Icon className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-[11px] font-medium text-center leading-tight">{itemLabel}</span>
-                      </button>
-                    ))}
+                  <div key={label}>
+                    <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {filteredItems.map(({ type, label: itemLabel, icon: Icon }) => (
+                        <button
+                          key={type}
+                          onClick={() => handleSelectType(type)}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-colors",
+                            "hover:bg-accent hover:border-primary/30 cursor-pointer"
+                          )}
+                        >
+                          <Icon className="h-5 w-5 text-muted-foreground" />
+                          <span className="text-[11px] font-medium text-center leading-tight">{itemLabel}</span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={handleClose}>Cancelar</Button>
