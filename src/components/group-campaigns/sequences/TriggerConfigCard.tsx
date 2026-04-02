@@ -9,12 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
   Zap, Users, LogOut, Clock, Keyboard, Webhook, Play,
-  ChevronDown, Plus, X
+  ChevronDown, Plus, X, CalendarDays
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WebhookFieldMappings, FieldMapping } from "./WebhookFieldMappings";
 
-export type TriggerType = "member_join" | "member_leave" | "scheduled" | "keyword" | "webhook" | "manual";
+export type TriggerType = "member_join" | "member_leave" | "scheduled" | "scheduled_recurring" | "scheduled_once" | "keyword" | "webhook" | "manual";
 
 export interface TriggerConfig {
   sendPrivate?: boolean;
