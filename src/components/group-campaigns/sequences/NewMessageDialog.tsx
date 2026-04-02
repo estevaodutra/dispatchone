@@ -10,7 +10,11 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
-import { CalendarIcon, MessageSquare, Image, Video, Music, FileText, BarChart3, MousePointerClick, List } from "lucide-react";
+import {
+  CalendarIcon, MessageSquare, Image as ImageIcon, Video, Music, FileText,
+  BarChart3, MousePointerClick, List, Smile, MapPin, Contact, CalendarDays,
+  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
+} from "lucide-react";
 
 interface NewMessageDialogProps {
   open: boolean;
@@ -18,16 +22,50 @@ interface NewMessageDialogProps {
   onSave: (nodeType: string, schedule: Record<string, unknown>) => void;
 }
 
-const MESSAGE_TYPES = [
-  { type: "message", label: "Texto", icon: MessageSquare },
-  { type: "image", label: "Imagem", icon: Image },
-  { type: "video", label: "Vídeo", icon: Video },
-  { type: "audio", label: "Áudio", icon: Music },
-  { type: "document", label: "Documento", icon: FileText },
-  { type: "buttons", label: "Botões", icon: MousePointerClick },
-  { type: "list", label: "Lista", icon: List },
-  { type: "poll", label: "Enquete", icon: BarChart3 },
+const CATEGORIES = [
+  {
+    label: "Mensagens",
+    items: [
+      { type: "message", label: "Texto", icon: MessageSquare },
+      { type: "buttons", label: "Botões", icon: MousePointerClick },
+      { type: "list", label: "Lista", icon: List },
+      { type: "poll", label: "Enquete", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "Mídia",
+    items: [
+      { type: "image", label: "Imagem", icon: ImageIcon },
+      { type: "video", label: "Vídeo", icon: Video },
+      { type: "audio", label: "Áudio", icon: Music },
+      { type: "document", label: "Documento", icon: FileText },
+      { type: "sticker", label: "Figurinha", icon: Smile },
+    ],
+  },
+  {
+    label: "Interativo",
+    items: [
+      { type: "location", label: "Localização", icon: MapPin },
+      { type: "contact", label: "Contato", icon: Contact },
+      { type: "event", label: "Evento", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "Gestão de Grupo",
+    items: [
+      { type: "group_rename", label: "Renomear Grupo", icon: Pencil },
+      { type: "group_photo", label: "Alterar Foto", icon: ImageIcon },
+      { type: "group_description", label: "Alterar Descrição", icon: FileText },
+      { type: "group_add_participant", label: "Adicionar", icon: UserPlus },
+      { type: "group_remove_participant", label: "Remover", icon: UserMinus },
+      { type: "group_promote_admin", label: "Promover Admin", icon: ShieldPlus },
+      { type: "group_remove_admin", label: "Remover Admin", icon: ShieldMinus },
+      { type: "group_settings", label: "Configurações", icon: Settings },
+    ],
+  },
 ];
+
+const ALL_TYPES = CATEGORIES.flatMap(c => c.items);
 
 const DAYS_OF_WEEK = [
   { value: "0", label: "Dom" },
@@ -64,24 +102,13 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
     setRecurringTime("08:00");
   };
 
-  const handleClose = () => {
-    reset();
-    onClose();
-  };
+  const handleClose = () => { reset(); onClose(); };
 
-  const handleSelectType = (type: string) => {
-    setSelectedType(type);
-    setStep(2);
-  };
+  const handleSelectType = (type: string) => { setSelectedType(type); setStep(2); };
 
   const handleSave = () => {
     if (!selectedType) return;
-
-    const schedule: Record<string, unknown> = {
-      enabled: true,
-      scheduleType,
-    };
-
+    const schedule: Record<string, unknown> = { enabled: true, scheduleType };
     if (scheduleType === "fixed" && fixedDate) {
       schedule.fixedDate = format(fixedDate, "yyyy-MM-dd");
       schedule.fixedTime = fixedTime;
@@ -93,41 +120,42 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
       schedule.days = recurringDays.map(Number);
       schedule.times = [recurringTime];
     }
-
     onSave(selectedType, schedule);
     handleClose();
   };
 
   const unitLabel = delayUnit === "minutes" ? "minuto(s)" : delayUnit === "hours" ? "hora(s)" : "dia(s)";
-
-  const selectedDayLabels = recurringDays
-    .map(Number)
-    .sort((a, b) => a - b)
-    .map(d => DAYS_OF_WEEK[d]?.label)
-    .join(", ");
+  const selectedDayLabels = recurringDays.map(Number).sort((a, b) => a - b).map(d => DAYS_OF_WEEK[d]?.label).join(", ");
+  const selectedTypeInfo = ALL_TYPES.find(t => t.type === selectedType);
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         {step === 1 ? (
           <>
             <DialogHeader>
               <DialogTitle>Nova Mensagem</DialogTitle>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground mb-3">Selecione o tipo de mensagem:</p>
-            <div className="grid grid-cols-4 gap-3">
-              {MESSAGE_TYPES.map(({ type, label, icon: Icon }) => (
-                <button
-                  key={type}
-                  onClick={() => handleSelectType(type)}
-                  className={cn(
-                    "flex flex-col items-center gap-2 p-4 rounded-lg border transition-colors",
-                    "hover:bg-accent hover:border-primary/30 cursor-pointer"
-                  )}
-                >
-                  <Icon className="h-6 w-6 text-muted-foreground" />
-                  <span className="text-xs font-medium">{label}</span>
-                </button>
+            <div className="space-y-4">
+              {CATEGORIES.map(({ label, items }) => (
+                <div key={label}>
+                  <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {items.map(({ type, label: itemLabel, icon: Icon }) => (
+                      <button
+                        key={type}
+                        onClick={() => handleSelectType(type)}
+                        className={cn(
+                          "flex flex-col items-center gap-1.5 p-3 rounded-lg border transition-colors",
+                          "hover:bg-accent hover:border-primary/30 cursor-pointer"
+                        )}
+                      >
+                        <Icon className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-[11px] font-medium text-center leading-tight">{itemLabel}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
             <DialogFooter>
@@ -138,7 +166,7 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
           <>
             <DialogHeader>
               <DialogTitle>
-                {MESSAGE_TYPES.find(t => t.type === selectedType)?.label || "Mensagem"} — Agendamento
+                {selectedTypeInfo?.label || "Mensagem"} — Agendamento
               </DialogTitle>
             </DialogHeader>
 
