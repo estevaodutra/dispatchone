@@ -142,8 +142,10 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
               <DialogTitle>Nova Mensagem</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              {CATEGORIES.map(({ label, items }) => (
-                <div key={label}>
+              {CATEGORIES.map(({ label, items }) => {
+                const filteredItems = items.filter(item => item.type !== "group_create" || isScheduledTrigger);
+                if (filteredItems.length === 0) return null;
+                return (
                   <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
                   <div className="grid grid-cols-4 gap-2">
                     {items.map(({ type, label: itemLabel, icon: Icon }) => (
