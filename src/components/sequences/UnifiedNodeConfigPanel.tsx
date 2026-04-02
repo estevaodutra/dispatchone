@@ -66,6 +66,7 @@ const NODE_TITLES: Record<string, { title: string; icon: React.ElementType }> = 
   condition: { title: "Condição", icon: GitBranch },
   notify: { title: "Notificar", icon: Bell },
   webhook: { title: "Webhook", icon: Link2 },
+  group_create: { title: "Criar Grupo", icon: Plus },
   group_rename: { title: "Renomear Grupo", icon: Pencil },
   group_photo: { title: "Alterar Foto", icon: ImageIcon },
   group_description: { title: "Alterar Descrição", icon: FileText },

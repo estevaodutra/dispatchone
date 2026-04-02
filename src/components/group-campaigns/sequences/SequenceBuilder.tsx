@@ -77,6 +77,7 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "condition": return { field: "member_count", operator: "greater_than", value: 0 };
     case "notify": return { message: "", notifyAdmins: true };
     case "webhook": return { url: "", method: "POST", body: "" };
+    case "group_create": return { groupName: "", phones: [""] };
     case "group_rename": return { newName: "" };
     case "group_photo": return { url: "" };
     case "group_description": return { description: "" };
