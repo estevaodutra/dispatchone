@@ -1,42 +1,59 @@
 
+Objetivo
 
-## Plano: Aplicar substituição de variáveis nos nós de gestão de grupo
+Fazer as variáveis do webhook realmente chegarem resolvidas nos nós de gestão de grupo, especialmente no `group_create`.
 
-### Problema
-O `execute-message` não aplica `replaceVariables()` nos campos dos nós de gestão de grupo (`group_create`, `group_rename`, `group_description`, etc.). Os campos como `groupName`, `groupDescription`, `participants` passam direto sem substituição de `{{variavel}}`.
+Diagnóstico
 
-### Causa
-Na linha 674, o `formattedConfig` é criado mas nunca passa por `replaceVariables()`. Diferente dos nós de mensagem (linha 752-757) que fazem substituição em campos como `text`, `caption`, etc.
+- O screenshot mostra o payload saindo com `action: "message.send_group_create"` e `groupName` ainda com `{{first_name}}`.
+- Isso confirma que o `group_create` não está entrando no fluxo de “group management” em `supabase/functions/execute-message/index.ts`.
+- Hoje o código:
+  - não mapeia `group_create` para `group.create`
+  - não inclui `group_create` em `GROUP_MANAGEMENT_NODE_TYPES`
+  - faz replace em campos que a UI nem usa (`participants`, `groupDescription`) e deixa de fora os campos reais (`groupName`, `newName`, `phones`)
 
-### Alteração
+Plano de implementação
 
-**Arquivo: `supabase/functions/execute-message/index.ts`**
+1. Corrigir o roteamento do nó `group_create`
+- Arquivo: `supabase/functions/execute-message/index.ts`
+- Adicionar `group_create: "group.create"` em `getActionForNodeType`
+- Incluir `group_create` em `GROUP_MANAGEMENT_NODE_TYPES`
 
-Após a linha 674 (`const formattedConfig = formatNodeConfig(...)`) no bloco de GROUP MANAGEMENT NODES, adicionar substituição de variáveis em todos os campos de texto do config:
+2. Corrigir a substituição de variáveis nos campos reais
+- No mesmo arquivo, trocar o replace manual por uma função recursiva para percorrer:
+  - strings
+  - arrays
+  - objetos
+- Aplicar isso no config dos nós de gestão de grupo para cobrir corretamente:
+  - `groupName`
+  - `newName`
+  - `description`
+  - `url`
+  - `phone`
+  - `phones[]`
 
-```typescript
-// Replace variables in group management config fields
-const groupMgmtTextFields = [
-  "groupName", "groupDescription", "groupSubject",
-  "participants", "phone", "name", "text", "message",
-  "description", "title", "content"
-];
-groupMgmtTextFields.forEach((field) => {
-  if (typeof formattedConfig[field] === "string") {
-    formattedConfig[field] = replaceVariables(formattedConfig[field] as string);
-  }
-});
+3. Adicionar um fallback seguro no gatilho do webhook
+- Arquivo: `supabase/functions/trigger-sequence/index.ts`
+- Além dos `fieldMappings`, incluir fallback para chaves simples do payload (ex.: `first_name`, `last_name`) em `customFields`
+- Manter os `fieldMappings` como prioridade quando existirem
 
-// Also handle arrays (e.g., participants list)
-if (Array.isArray(formattedConfig.participants)) {
-  formattedConfig.participants = formattedConfig.participants.map(
-    (p: unknown) => typeof p === "string" ? replaceVariables(p) : p
-  );
-}
-```
+4. Validação
+- Disparar o webhook com `first_name` e `last_name`
+- Confirmar que o payload/log sai com:
+  - `action: "group.create"`
+  - `groupName: "Suporte VIP | João Silva"`
+  - `phones[]` resolvidos quando houver variáveis
+- Confirmar que a sequência continua executando apenas 1 vez
 
-### Resultado
-Variáveis como `{{first_name}}` e `{{last_name}}` mapeadas via webhook serão corretamente substituídas no `groupName` e em qualquer outro campo dos nós de gestão de grupo.
+Resultado esperado
 
-1 arquivo, ~15 linhas adicionadas.
+- `group_create` deixa de sair como `message.send_group_create`
+- Variáveis passam a funcionar em `group_create`, `group_rename`, `group_add_participant` e demais nós de gestão de grupo
+- O comportamento fica consistente mesmo quando o webhook manda campos simples no JSON
 
+Detalhes técnicos
+
+- Arquivos afetados:
+  - `supabase/functions/execute-message/index.ts`
+  - `supabase/functions/trigger-sequence/index.ts`
+- Sem mudanças de banco ou UI; é correção na orquestração do backend.
