@@ -1,48 +1,117 @@
 
 
-## Plano: Disparar nós com agendamento individual dentro de sequências
+## Plano: Timeline Horizontal de Mensagens na Sequência
 
-### Problema raiz
+### Contexto
+Atualmente, ao editar uma sequência dentro de uma campanha de grupo, o usuário vê um **builder drag-and-drop** com paleta lateral + canvas vertical. O pedido é substituir essa visão por uma **timeline horizontal de cards** ordenados por data/hora de disparo, com filtros, status visuais e modais de criação/edição.
 
-O `process-scheduled-messages` só verifica agendamentos por nó quando processa `group_messages` (sistema antigo). Para `message_sequences`, ele dispara a sequência inteira via `execute-message`, que **não verifica** `node.config.schedule` — envia todos os nós de uma vez.
+O modelo de agendamento atual (dias da semana + horários recorrentes) será expandido para suportar também **data/hora fixa** e **delay relativo**.
 
-Não existe mecanismo para disparar nós individuais nos horários configurados. O `execute-message` já suporta `manualNodeIndex`, mas ninguém o usa para agendamentos.
+### Escopo de Alterações
 
-### Solução
+**Nenhuma migração de banco necessária** — o campo `config` dos `sequence_nodes` é JSONB e já aceita qualquer estrutura. Apenas expandimos os campos dentro de `config.schedule`.
 
-Adicionar uma nova seção no `process-scheduled-messages` que:
-1. Busca todas as `message_sequences` ativas (qualquer trigger_type, não só "scheduled")
-2. Carrega os `sequence_nodes` dessas sequências
-3. Filtra nós que têm `config.schedule.enabled = true` e que combinam com dia/hora atual
-4. Para cada nó que combina, chama `execute-message` com `manualNodeIndex` para disparar apenas aquele nó
-5. Usa idempotência para não disparar o mesmo nó duas vezes no mesmo horário
+---
 
-### Arquivo modificado
+### Novos Componentes (4 arquivos)
 
-**`supabase/functions/process-scheduled-messages/index.ts`**
+**1. `src/components/group-campaigns/sequences/MessageCard.tsx`**
+- Card com header colorido por status (cinza/amarelo/verde/vermelho/escuro)
+- Preview do conteúdo por tipo (texto truncado, thumbnail, enquete, etc.)
+- Menu de ações (⋯): Editar, Duplicar, Pausar, Mover, Excluir
+- Status calculado: `scheduled` | `today` | `sent` | `error` | `paused`
+- Mostra data/hora programada ou "Hoje - HH:mm"
 
-Nova seção entre "PROCESS SCHEDULED SEQUENCES" e "DISPATCH SEQUENCES":
+**2. `src/components/group-campaigns/sequences/MessageTimeline.tsx`**
+- Container com scroll horizontal
+- Linha de timeline com pontos coloridos conectados
+- Datas/horas abaixo de cada ponto
+- Filtros no topo: status e tipo de mensagem
+- Barra de stats no rodapé (total, enviadas, hoje, agendadas)
+- Botão "+ Nova Mensagem"
+- Ordena cards por `getScheduleDate(node)`
 
-```text
-// ============= PROCESS PER-NODE SCHEDULED MESSAGES =============
-// Scan all active sequences for nodes with individual schedules
+**3. `src/components/group-campaigns/sequences/NewMessageDialog.tsx`**
+- Modal com 2 passos:
+  - **Passo 1**: Grid de tipos (Texto, Imagem, Vídeo, Áudio, Documento, Botões, Lista, Enquete)
+  - **Passo 2**: Formulário com seção de agendamento (data fixa ou delay) + conteúdo da mensagem
+- Ao salvar, cria um novo `LocalNode` e abre o `UnifiedNodeConfigPanel` para edição detalhada
+- Agendamento: radio "Data e hora específica" vs "Delay após entrada"
+  - Fixo: DatePicker + TimePicker
+  - Delay: valor + unidade (minutos/horas/dias) + horário de envio
 
-1. Query message_sequences WHERE active = true
-2. For each sequence, load sequence_nodes WHERE config->schedule->enabled = true
-3. Filter nodes matching currentDay + currentTime
-4. Check idempotency via scheduled_sequence_executions (using sequence_id + node_order + date + time)
-5. Validate campaign status + instance connected
-6. Call execute-message with { campaignId, sequenceId, manualNodeIndex: node.node_order }
-7. Record execution for idempotency
+**4. `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
+- Substitui o `SequenceBuilder` atual quando estiver no modo timeline
+- Mantém header com nome da sequência, badge ativa/inativa, auto-save
+- Renderiza `MessageTimeline` como corpo principal
+- Ao clicar "Editar" num card, abre `UnifiedNodeConfigPanel` (reutiliza o dialog existente)
+- Mantém `TriggerConfigCard` para configuração do trigger da sequência
+
+---
+
+### Componentes Modificados
+
+**5. `src/components/group-campaigns/tabs/SequencesTab.tsx`**
+- Ao entrar em edição, renderiza `TimelineSequenceBuilder` em vez de `SequenceBuilder`
+- Passa os mesmos props (`sequence`, `onBack`, `onUpdate`)
+
+**6. `src/components/sequences/UnifiedNodeConfigPanel.tsx`**
+- Expandir `NodeScheduleSection` para suportar o novo modelo de agendamento:
+  - Adicionar radio toggle: "Data fixa" vs "Delay relativo" vs "Recorrente (dias da semana)"
+  - Data fixa: `config.schedule.fixedDate` (ISO string) + `config.schedule.fixedTime` (HH:mm)
+  - Delay: `config.schedule.delayValue` + `config.schedule.delayUnit` + `config.schedule.delayTime`
+  - Manter modo recorrente atual como terceira opção (compatibilidade)
+
+---
+
+### Estrutura do `config.schedule` expandida
+
+```typescript
+interface NodeSchedule {
+  enabled: boolean;
+  // Modo: 'fixed' | 'delay' | 'recurring' (default: recurring para compatibilidade)
+  scheduleType?: 'fixed' | 'delay' | 'recurring';
+  // Fixed
+  fixedDate?: string;  // "2024-09-15"
+  fixedTime?: string;  // "15:00"
+  // Delay
+  delayValue?: number;
+  delayUnit?: 'minutes' | 'hours' | 'days';
+  delayTime?: string;  // "08:00"
+  // Recurring (existente)
+  days?: number[];
+  times?: string[];
+}
 ```
 
-### Detalhes técnicos
+### Status do Card — lógica
 
-- Reutiliza o parâmetro `manualNodeIndex` já existente no `execute-message` — não precisa mudar essa função
-- Idempotência: insere em `scheduled_sequence_executions` com `scheduled_time` incluindo o `node_order` (ex: `"08:00_node_2"`) para evitar duplicatas
-- Não interfere com o disparo da sequência completa (trigger "scheduled") — são fluxos independentes
+```text
+if config.paused → 'paused'
+if hasErrorLog(nodeId) → 'error'  
+if hasSentLog(nodeId) → 'sent'
+if scheduleDate is today → 'today'
+else → 'scheduled'
+```
+
+Os logs de envio já existem em `group_message_logs` com `sequence_id` e `node_order`. O componente fará um query para buscar o último status de envio por nó.
+
+---
+
+### Resumo de Arquivos
+
+| Arquivo | Ação |
+|---------|------|
+| `MessageCard.tsx` | Criar |
+| `MessageTimeline.tsx` | Criar |
+| `NewMessageDialog.tsx` | Criar |
+| `TimelineSequenceBuilder.tsx` | Criar |
+| `SequencesTab.tsx` (group) | Modificar |
+| `UnifiedNodeConfigPanel.tsx` | Modificar (schedule section) |
 
 ### Impacto
-- 1 arquivo (edge function), ~80 linhas adicionadas
-- Nenhuma mudança no frontend ou banco de dados
+- 4 novos arquivos, 2 modificados
+- Sem migrações de banco
+- Compatibilidade total com nodes existentes (campo schedule expandido, não substituído)
+- O builder antigo (`SequenceBuilder`) permanece disponível se necessário no futuro
 
