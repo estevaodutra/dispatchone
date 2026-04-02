@@ -497,6 +497,75 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Group Management Modals */}
+      {activeAction && (
+        <>
+          <GroupUpdateNameModal
+            open={activeAction.action === 'rename'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            currentName={activeAction.groupName}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupUpdatePhotoModal
+            open={activeAction.action === 'photo'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupUpdateDescriptionModal
+            open={activeAction.action === 'description'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupAddParticipantModal
+            open={activeAction.action === 'addParticipant'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupRemoveParticipantModal
+            open={activeAction.action === 'removeParticipant'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupPromoteAdminModal
+            open={activeAction.action === 'promoteAdmin'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupRemoveAdminModal
+            open={activeAction.action === 'removeAdmin'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupSettingsModal
+            open={activeAction.action === 'settings'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupInviteLinkModal
+            open={activeAction.action === 'inviteLink'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+          />
+        </>
+      )}
     </div>
   );
 }
