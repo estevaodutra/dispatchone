@@ -1,30 +1,40 @@
 
 
-## Plano: Corrigir carregamento inicial de nós na sequência
+## Plano: Adicionar tipos de Gestão de Grupo no NewMessageDialog
 
 ### Problema
-No `TimelineSequenceBuilder`, o `useEffect` de sincronização (linha 66-72) marca `hasLoadedRef.current = true` quando `dbNodes.length === 0`, mas `dbNodes` começa como `[]` enquanto a query ainda está carregando. Isso faz com que, quando os dados reais chegam, o ref já está `true` e os nós nunca são carregados no estado local.
+O `NewMessageDialog.tsx` (usado pelo `TimelineSequenceBuilder`) tem uma lista hardcoded de 8 tipos de mensagem (texto, imagem, vídeo, etc.) mas **não inclui os nós de gestão de grupo** (renomear, alterar foto, etc.). Esses nós existem no `SequenceBuilder.tsx` e no `UnifiedNodeConfigPanel.tsx`, mas não aparecem no fluxo de criação do timeline.
 
 ### Correção
 
-**Arquivo: `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
+**Arquivo: `src/components/group-campaigns/sequences/NewMessageDialog.tsx`**
 
-1. Extrair `isLoading` do hook `useSequenceNodes` (já disponível como retorno do hook)
-2. Alterar o `useEffect` de sync para **não marcar como carregado quando `isLoading` é `true`**:
+1. Importar ícones faltantes: `Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Smile, MapPin, Contact, Calendar`
 
-```typescript
-const { nodes: dbNodes, isLoading: nodesLoading, saveNodes, saveConnections, isSaving } = useSequenceNodes(sequence.id);
+2. Adicionar os tipos de gestão de grupo ao array `MESSAGE_TYPES` (ou criar uma seção separada com label de categoria):
 
-useEffect(() => {
-  if (nodesLoading) return; // Don't mark as loaded while still fetching
-  if (!hasLoadedRef.current) {
-    if (dbNodes.length > 0) {
-      setLocalNodes(dbNodes.map(n => ({ id: n.id, nodeType: n.nodeType, nodeOrder: n.nodeOrder, config: n.config })));
-    }
-    hasLoadedRef.current = true;
-  }
-}, [dbNodes, nodesLoading]);
+```
+// Interativo
+{ type: "sticker", label: "Figurinha", icon: Smile },
+{ type: "location", label: "Localização", icon: MapPin },
+{ type: "contact", label: "Contato", icon: Contact },
+{ type: "event", label: "Evento", icon: Calendar },
+
+// Gestão de Grupo
+{ type: "group_rename", label: "Renomear Grupo", icon: Pencil },
+{ type: "group_photo", label: "Alterar Foto", icon: ImageIcon },
+{ type: "group_description", label: "Alterar Descrição", icon: FileText },
+{ type: "group_add_participant", label: "Adicionar Participante", icon: UserPlus },
+{ type: "group_remove_participant", label: "Remover Participante", icon: UserMinus },
+{ type: "group_promote_admin", label: "Promover Admin", icon: ShieldPlus },
+{ type: "group_remove_admin", label: "Remover Admin", icon: ShieldMinus },
+{ type: "group_settings", label: "Configurações", icon: Settings },
 ```
 
-1 arquivo, ~3 linhas alteradas.
+3. Organizar o step 1 do dialog em **seções visuais** com labels de categoria (Mensagens, Mídia, Interativo, Gestão de Grupo) para facilitar a navegação entre os ~20 tipos
+
+4. Também adicionar os tipos faltantes ao `getDefaultConfig` do `TimelineSequenceBuilder.tsx` se necessário (sticker, location, contact, event já estão lá)
+
+### Resultado
+1 arquivo principal modificado (`NewMessageDialog.tsx`), ajustes cosméticos no layout do grid de seleção.
 
