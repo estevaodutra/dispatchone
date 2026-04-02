@@ -305,14 +305,56 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
                       {group.groupJid}
                     </p>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => handleRemoveGroup(group.id)}
-                    disabled={isRemoving}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {group.instanceId && (
+                        <>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'rename' })}>
+                            <Pencil className="mr-2 h-4 w-4" /> Renomear
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'photo' })}>
+                            <Image className="mr-2 h-4 w-4" /> Atualizar Foto
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'description' })}>
+                            <FileText className="mr-2 h-4 w-4" /> Atualizar Descrição
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'addParticipant' })}>
+                            <UserPlus className="mr-2 h-4 w-4" /> Adicionar Participante
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'removeParticipant' })}>
+                            <UserMinus className="mr-2 h-4 w-4" /> Remover Participante
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'promoteAdmin' })}>
+                            <ShieldPlus className="mr-2 h-4 w-4" /> Promover Admin
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'removeAdmin' })}>
+                            <ShieldMinus className="mr-2 h-4 w-4" /> Remover Admin
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'settings' })}>
+                            <Settings className="mr-2 h-4 w-4" /> Configurações
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'inviteLink' })}>
+                            <Link2 className="mr-2 h-4 w-4" /> Link de Convite
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => handleRemoveGroup(group.id)}
+                        disabled={isRemoving}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Remover da Campanha
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               ))}
             </div>
