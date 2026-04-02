@@ -182,14 +182,31 @@ Deno.serve(async (req) => {
                              extractField(payload, "to");
     
     // Build trigger context with custom fields
-    const triggerContext = {
+    const triggerContext: Record<string, unknown> = {
       respondentPhone: destinationPhone,
       respondentName: extractField(payload, "name") || extractField(payload, "user.name") || "",
       respondentJid: destinationPhone ? `${destinationPhone}@s.whatsapp.net` : "",
       groupJid: "",
-      sendPrivate: !!destinationPhone,
+      sendPrivate: true, // Always single execution for webhook triggers
       customFields,
     };
+
+    // When no phone provided, use first campaign group as single destination
+    if (!destinationPhone) {
+      const { data: firstGroup } = await supabase
+        .from("campaign_groups")
+        .select("group_jid, group_name")
+        .eq("campaign_id", typedCampaign.id)
+        .limit(1)
+        .single();
+
+      if (firstGroup) {
+        triggerContext.respondentJid = firstGroup.group_jid;
+        triggerContext.respondentName = firstGroup.group_name || "";
+        triggerContext.groupJid = firstGroup.group_jid;
+      }
+      console.log(`[TriggerSequence] No phone in payload, using first group as destination: ${firstGroup?.group_jid}`);
+    }
 
     console.log(`[TriggerSequence] Trigger context built, sendPrivate: ${triggerContext.sendPrivate}`);
 
