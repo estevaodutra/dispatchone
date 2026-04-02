@@ -1,32 +1,46 @@
 
 
-## Plano: Pular agendamento para sequências webhook
+## Plano: Executar sequência webhook apenas uma vez (não por grupo)
 
 ### Problema
-Quando o gatilho da sequência é "webhook", o passo 2 (agendamento) não faz sentido — o disparo é controlado pelo webhook. Além disso, o filtro de `group_create` deve ser removido para que apareça sempre.
+Quando o `trigger-sequence` é chamado sem um telefone no payload, o `triggerContext.sendPrivate` fica `false`. O `execute-message` então usa todos os grupos vinculados à campanha como destinos (linha 596), executando cada nó uma vez **por grupo**. Isso causa a repetição observada.
+
+Para sequências webhook, o disparo deve acontecer **uma única vez**, não multiplicado pela quantidade de grupos.
+
+### Solução
+No `trigger-sequence/index.ts`, sempre definir `sendPrivate: true` para garantir que o `execute-message` use apenas um destino. Quando não houver telefone no payload, usar o `groupJid` do primeiro grupo vinculado como destino único (ou um destino "virtual").
+
+**Abordagem mais limpa:** Adicionar um campo `singleExecution: true` no `triggerContext` e ajustar o `execute-message` para respeitar isso.
 
 ### Alterações
 
-**Arquivo: `src/components/group-campaigns/sequences/NewMessageDialog.tsx`**
+**1. `supabase/functions/trigger-sequence/index.ts`**
+- Buscar o primeiro grupo da campanha para usar como destino padrão quando não houver telefone
+- Definir `sendPrivate: true` sempre, usando o primeiro grupo como fallback de destino
+- Isso garante que `execute-message` use apenas 1 destino em vez de iterar todos os grupos
 
-1. **Remover filtro de `group_create`** — a opção aparece sempre, independente do tipo de gatilho
-2. **Pular step 2 quando `triggerType === "webhook"`** — ao selecionar um tipo de mensagem, salvar direto com `schedule: { enabled: false }` em vez de ir para a tela de agendamento
-3. Manter step 2 normalmente para os demais tipos de gatilho
+```typescript
+// Quando não tem telefone, buscar primeiro grupo como destino único
+if (!destinationPhone) {
+  const { data: firstGroup } = await supabase
+    .from("campaign_groups")
+    .select("group_jid, group_name")
+    .eq("campaign_id", typedCampaign.id)
+    .limit(1)
+    .single();
 
-Lógica no `handleSelectType`:
-```tsx
-const handleSelectType = (type: string) => {
-  setSelectedType(type);
-  if (triggerType === "webhook") {
-    // Salva direto sem agendamento
-    onSave(type, { enabled: false });
-    reset();
-    onClose();
-  } else {
-    setStep(2);
-  }
-};
+  triggerContext.respondentJid = firstGroup?.group_jid || "";
+  triggerContext.respondentName = firstGroup?.group_name || "";
+  triggerContext.groupJid = firstGroup?.group_jid || "";
+  triggerContext.sendPrivate = true; // forçar execução única
+}
 ```
 
-1 arquivo, ~10 linhas alteradas.
+**2. `supabase/functions/execute-message/index.ts`** (opcional)
+- Nenhuma alteração necessária se usarmos a abordagem acima — o `sendPrivate: true` já faz o `execute-message` usar apenas 1 destino
+
+### Resultado
+O webhook executa a sequência **1 vez** direcionada ao primeiro grupo vinculado, em vez de repetir para cada grupo.
+
+1 arquivo alterado, ~15 linhas.
 
