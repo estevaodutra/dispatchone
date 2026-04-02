@@ -13,6 +13,7 @@ interface MessageTimelineProps {
   onTogglePauseNode: (node: LocalNode) => void;
   onMoveNode: (node: LocalNode, direction: "up" | "down") => void;
   onDeleteNode: (node: LocalNode) => void;
+  onExecuteNode?: (node: LocalNode) => void;
   onNewMessage: () => void;
 }
 
