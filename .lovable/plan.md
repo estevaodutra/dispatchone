@@ -1,39 +1,24 @@
 
 
-## Plano: Corrigir Layout Timeline para Scroll Horizontal
-
-### Diagnóstico
-
-O `MessageTimeline.tsx` já usa `flex gap-6` e `overflow-x-auto`, mas falta `flex-nowrap` explícito no container dos cards. Além disso, a largura mínima precisa ser garantida com `min-w-max` no container correto e os cards precisam de `shrink-0` explícito no wrapper (não só no card interno).
+## Plano: Cards em Grid
 
 ### Alteração
 
 **Arquivo: `src/components/group-campaigns/sequences/MessageTimeline.tsx`**
 
-Linha 139 — alterar o container flex dos cards:
-```tsx
-// DE:
-<div className="flex gap-6 px-6 min-w-max py-2">
+Substituir o layout horizontal (`flex flex-nowrap` + `overflow-x-auto` + scroll arrows) por um **grid responsivo** com 3-4 colunas:
 
-// PARA:
-<div className="flex flex-nowrap gap-6 px-6 py-2" style={{ minWidth: "max-content" }}>
-```
-
-Linha 152 — adicionar `shrink-0` ao wrapper de cada card:
-```tsx
-// DE:
-<div key={node.id} className="flex flex-col items-center relative">
-
-// PARA:
-<div key={node.id} className="flex flex-col items-center relative shrink-0" style={{ width: 288 }}>
-```
-
-Isso garante que:
-- `flex-nowrap` impede quebra de linha
-- `shrink-0` + largura fixa no wrapper impede que os cards encolham
-- `style={{ minWidth: "max-content" }}` via inline style é mais robusto que a classe Tailwind
+1. **Remover** scroll arrows (ChevronLeft/ChevronRight buttons) e o `scrollRef`
+2. **Remover** imports não usados (`useRef`, `ChevronLeft`, `ChevronRight`)
+3. **Substituir** o container flex horizontal por:
+   ```tsx
+   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+   ```
+4. **Remover** `shrink-0`, `style={{ width: 288 }}` e timeline connectors (dots + horizontal line) de cada card wrapper
+5. **Manter** filtros, stats bar e empty state
 
 ### Resumo
-- 1 arquivo, 2 linhas alteradas
-- Sem impacto funcional, apenas visual
+- 1 arquivo modificado
+- Remove scroll horizontal, arrows e timeline visual
+- Cards em grid responsivo (1→2→3→4 colunas)
 
