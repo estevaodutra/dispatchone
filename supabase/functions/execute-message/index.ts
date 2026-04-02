@@ -230,9 +230,23 @@ const getActionForNodeType = (nodeType: string): string => {
     poll: "message.send_poll",
     reaction: "message.send_reaction",
     media: "message.send_media",
+    group_rename: "group.update_name",
+    group_photo: "group.update_photo",
+    group_description: "group.update_description",
+    group_add_participant: "group.add_participant",
+    group_remove_participant: "group.remove_participant",
+    group_promote_admin: "group.promote_admin",
+    group_remove_admin: "group.demote_admin",
+    group_settings: "group.update_settings",
   };
   return actionMap[nodeType] || `message.send_${nodeType}`;
 };
+
+const GROUP_MANAGEMENT_NODE_TYPES = [
+  "group_rename", "group_photo", "group_description",
+  "group_add_participant", "group_remove_participant",
+  "group_promote_admin", "group_remove_admin", "group_settings",
+];
 
 // ============= Main handler =============
 
