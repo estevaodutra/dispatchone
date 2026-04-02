@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { List, Users, Plus, Trash2, Search } from "lucide-react";
+import { List, Users, Plus, Trash2, Search, MoreVertical, Pencil, Image, FileText, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Link2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useInstances } from "@/hooks/useInstances";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useGroupMembers } from "@/hooks/useGroupMembers";
@@ -14,6 +15,17 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { buildGroupPayload } from "@/lib/webhook-utils";
 import { toast } from "sonner";
+import {
+  GroupUpdateNameModal,
+  GroupUpdatePhotoModal,
+  GroupUpdateDescriptionModal,
+  GroupAddParticipantModal,
+  GroupRemoveParticipantModal,
+  GroupPromoteAdminModal,
+  GroupRemoveAdminModal,
+  GroupSettingsModal,
+  GroupInviteLinkModal,
+} from "@/components/whatsapp/group-management";
 
 interface WhatsAppGroup {
   phone: string;
