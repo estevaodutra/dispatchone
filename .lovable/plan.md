@@ -1,29 +1,24 @@
 
 
-## Plano: Resetar status dos cards à meia-noite
+## Plano: Remover configuração de dias/data do gatilho
 
 ### Problema
-
-Atualmente, o cálculo de status dos nós (`nodeStatuses`) considera **todos os logs** do período de 72h. Para sequências recorrentes, um nó que foi enviado ontem continua aparecendo como "sent" (verde) hoje, quando deveria voltar a "scheduled" (cinza) à meia-noite.
+O gatilho `scheduled_recurring` ainda configura "Dias da semana" e o `scheduled_once` configura "Data". O usuário quer que **toda** especificação de tempo/dia fique nas configurações individuais de cada mensagem.
 
 ### Alteração
 
-**Arquivo: `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
+**Arquivo: `src/components/group-campaigns/sequences/TriggerConfigCard.tsx`**
 
-Na função `nodeStatuses` (linhas 75-117), ao verificar os logs de um nó, filtrar apenas os logs de **hoje** usando `isToday(parseISO(log.sentAt))`:
+1. **Remover seção `scheduled_once`** (linhas 177-194): O bloco com input de data. Substituir por texto informativo: "Cada mensagem define sua própria data e horário de execução."
 
-```tsx
-// Antes:
-const nodeLogs = seqLogs.filter(l => l.nodeOrder === node.nodeOrder);
+2. **Remover seção `scheduled_recurring`** (linhas 196-224): O bloco com seletor de dias da semana. Substituir por texto informativo: "Cada mensagem define seus próprios dias e horários de execução."
 
-// Depois:
-const nodeLogs = seqLogs.filter(l => l.nodeOrder === node.nodeOrder && isToday(parseISO(l.sentAt)));
-```
+3. **Remover `WEEK_DAYS` constante e `toggleDay` helper** — ficam sem uso.
 
-Assim, à meia-noite todos os logs são de "ontem" e nenhum nó terá status "sent" — todos voltam para "scheduled" automaticamente.
+4. **Limpar `TriggerConfig`**: Campos `days`, `date` ficam opcionais (backward compat) mas não são mais configurados no trigger.
 
-### Resumo
-- 1 arquivo, 1 linha alterada
-- Logs de dias anteriores são ignorados no cálculo de status visual
-- Nenhuma mudança no backend — é puramente visual/frontend
+### Resultado
+- Os gatilhos agendados funcionam apenas como **classificação** (recorrente vs pontual)
+- Toda configuração de quando disparar fica no `node.config.schedule` de cada mensagem
+- 1 arquivo modificado
 
