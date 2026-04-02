@@ -673,6 +673,24 @@ Deno.serve(async (req) => {
           const action = getActionForNodeType(node.node_type);
           const formattedConfig = formatNodeConfig(node.config, node.node_type);
           
+          // Replace variables in group management config fields
+          const groupMgmtTextFields = [
+            "groupName", "groupDescription", "groupSubject",
+            "participants", "phone", "name", "text", "message",
+            "description", "title", "content"
+          ];
+          groupMgmtTextFields.forEach((field) => {
+            if (typeof formattedConfig[field] === "string") {
+              formattedConfig[field] = replaceVariables(formattedConfig[field] as string);
+            }
+          });
+          // Also handle arrays (e.g., participants list)
+          if (Array.isArray(formattedConfig.participants)) {
+            formattedConfig.participants = formattedConfig.participants.map(
+              (p: unknown) => typeof p === "string" ? replaceVariables(p) : p
+            );
+          }
+          
           // Group management nodes operate on linked groups (using group_jid)
           for (const dest of destinations) {
             const payload = buildStandardPayload({
