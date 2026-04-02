@@ -5,7 +5,7 @@ import { LocalNode } from "@/components/sequences/shared-types";
 import { MessageTimeline } from "./MessageTimeline";
 import { NewMessageDialog } from "./NewMessageDialog";
 import { UnifiedNodeConfigPanel } from "@/components/sequences/UnifiedNodeConfigPanel";
-import { TriggerType, TriggerConfig } from "./TriggerConfigCard";
+import { TriggerType, TriggerConfig, TriggerConfigCard } from "./TriggerConfigCard";
 import { MediaUploader } from "./MediaUploader";
 import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 import { MessageStatus } from "./MessageCard";
@@ -264,7 +264,15 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         </div>
       </div>
 
-      {/* Trigger is configured at sequence creation time, not shown here */}
+      {triggerType === "webhook" && (
+        <TriggerConfigCard
+          triggerType={triggerType}
+          triggerConfig={triggerConfig}
+          onTriggerTypeChange={() => {}}
+          onTriggerConfigChange={(config) => setTriggerConfig(config)}
+          sequenceId={sequence.id}
+        />
+      )}
 
       {/* Timeline */}
       <MessageTimeline
