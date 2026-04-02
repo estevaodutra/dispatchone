@@ -12,6 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Workflow, Trash2, Edit, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 interface UnifiedSequenceListProps<T> {
   sequences: T[];
@@ -45,7 +46,14 @@ export function UnifiedSequenceList<T>({
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ name: "", description: "", triggerType: triggerTypes[0]?.value || "manual" });
 
+  // Get trigger types already used by existing sequences
+  const usedTriggerTypes = new Set(sequences.map(seq => getSequenceItem(seq).triggerType));
+
   const handleCreate = async () => {
+    if (usedTriggerTypes.has(form.triggerType)) {
+      toast.error("Já existe uma sequência com este gatilho");
+      return;
+    }
     await onCreate(form);
     setShowCreate(false);
     setForm({ name: "", description: "", triggerType: triggerTypes[0]?.value || "manual" });
@@ -193,26 +201,34 @@ export function UnifiedSequenceList<T>({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {triggerTypes.map(trigger => (
-                      <SelectItem key={trigger.value} value={trigger.value}>
-                        <div className="flex items-center gap-2">
-                          <trigger.icon className="h-4 w-4" />
-                          {trigger.label}
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {triggerTypes.map(trigger => {
+                      const isUsed = usedTriggerTypes.has(trigger.value);
+                      return (
+                        <SelectItem key={trigger.value} value={trigger.value} disabled={isUsed}>
+                          <div className="flex items-center gap-2">
+                            <trigger.icon className="h-4 w-4" />
+                            {trigger.label}
+                            {isUsed && <span className="text-xs text-muted-foreground ml-1">(em uso)</span>}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               ) : (
                 <RadioGroup value={form.triggerType} onValueChange={v => setForm({ ...form, triggerType: v })}>
                   {triggerTypes.map(trigger => {
                     const Icon = trigger.icon;
+                    const isUsed = usedTriggerTypes.has(trigger.value);
                     return (
-                      <div key={trigger.value} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer">
-                        <RadioGroupItem value={trigger.value} id={trigger.value} />
+                      <div key={trigger.value} className={`flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer ${isUsed ? "opacity-50 pointer-events-none" : ""}`}>
+                        <RadioGroupItem value={trigger.value} id={trigger.value} disabled={isUsed} />
                         <Icon className="h-4 w-4 text-muted-foreground" />
                         <div className="flex-1">
-                          <Label htmlFor={trigger.value} className="font-medium cursor-pointer">{trigger.label}</Label>
+                          <Label htmlFor={trigger.value} className="font-medium cursor-pointer">
+                            {trigger.label}
+                            {isUsed && <span className="text-xs text-muted-foreground ml-2">(em uso)</span>}
+                          </Label>
                           {trigger.description && (
                             <p className="text-xs text-muted-foreground">{trigger.description}</p>
                           )}

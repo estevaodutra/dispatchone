@@ -9,12 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { 
   Zap, Users, LogOut, Clock, Keyboard, Webhook, Play,
-  ChevronDown, Plus, X
+  ChevronDown, Plus, X, CalendarDays
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { WebhookFieldMappings, FieldMapping } from "./WebhookFieldMappings";
 
-export type TriggerType = "member_join" | "member_leave" | "scheduled" | "keyword" | "webhook" | "manual";
+export type TriggerType = "member_join" | "member_leave" | "scheduled" | "scheduled_recurring" | "scheduled_once" | "keyword" | "webhook" | "manual";
 
 export interface TriggerConfig {
   sendPrivate?: boolean;
@@ -26,6 +26,8 @@ export interface TriggerConfig {
     end: string;
     minutes: number;
   };
+  date?: string;
+  time?: string;
   keyword?: string;
   matchType?: "exact" | "contains" | "startsWith";
   caseSensitive?: boolean;
@@ -44,7 +46,8 @@ interface TriggerConfigCardProps {
 const TRIGGER_TYPES = [
   { value: "member_join" as TriggerType, label: "Membro entrar", icon: Users, color: "bg-green-500" },
   { value: "member_leave" as TriggerType, label: "Membro sair", icon: LogOut, color: "bg-red-500" },
-  { value: "scheduled" as TriggerType, label: "Agendado", icon: Clock, color: "bg-orange-500" },
+  { value: "scheduled_recurring" as TriggerType, label: "Agendado recorrente", icon: Clock, color: "bg-orange-500" },
+  { value: "scheduled_once" as TriggerType, label: "Agendado pontual", icon: CalendarDays, color: "bg-yellow-500" },
   { value: "keyword" as TriggerType, label: "Palavra-chave", icon: Keyboard, color: "bg-purple-500" },
   { value: "webhook" as TriggerType, label: "Webhook externo", icon: Webhook, color: "bg-blue-500" },
   { value: "manual" as TriggerType, label: "Manual", icon: Play, color: "bg-slate-500" },
@@ -103,7 +106,9 @@ export function TriggerConfigCard({
   const [isOpen, setIsOpen] = useState(true);
   const [newTime, setNewTime] = useState("");
 
-  const triggerInfo = TRIGGER_TYPES.find(t => t.value === triggerType) || TRIGGER_TYPES[5];
+  // Map legacy "scheduled" to "scheduled_recurring" for display
+  const effectiveTriggerType = triggerType === "scheduled" ? "scheduled_recurring" : triggerType;
+  const triggerInfo = TRIGGER_TYPES.find(t => t.value === effectiveTriggerType) || TRIGGER_TYPES[6];
   const TriggerIcon = triggerInfo.icon;
 
   // Generate webhook URL pointing to the actual Edge Function
@@ -233,7 +238,39 @@ export function TriggerConfigCard({
             )}
 
             {/* Scheduled Config */}
-            {triggerType === "scheduled" && (
+            {/* Scheduled Once Config */}
+            {effectiveTriggerType === "scheduled_once" && (
+              <div className="space-y-4 p-3 rounded-lg bg-background border">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Data</Label>
+                    <Input
+                      type="date"
+                      value={triggerConfig.date || ""}
+                      onChange={(e) =>
+                        onTriggerConfigChange({ ...triggerConfig, date: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Horário</Label>
+                    <Input
+                      type="time"
+                      value={triggerConfig.time || ""}
+                      onChange={(e) =>
+                        onTriggerConfigChange({ ...triggerConfig, time: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  A sequência será executada uma única vez na data e horário especificados.
+                </p>
+              </div>
+            )}
+
+            {/* Scheduled Recurring Config */}
+            {(effectiveTriggerType === "scheduled_recurring") && (
               <div className="space-y-4 p-3 rounded-lg bg-background border">
                 {/* Days selection */}
                 <div className="space-y-2">
