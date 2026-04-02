@@ -220,11 +220,14 @@ export function UnifiedSequenceList<T>({
                   {triggerTypes.map(trigger => {
                     const Icon = trigger.icon;
                     return (
-                      <div key={trigger.value} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer">
-                        <RadioGroupItem value={trigger.value} id={trigger.value} />
+                      <div key={trigger.value} className={`flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer ${isUsed ? "opacity-50 pointer-events-none" : ""}`}>
+                        <RadioGroupItem value={trigger.value} id={trigger.value} disabled={isUsed} />
                         <Icon className="h-4 w-4 text-muted-foreground" />
                         <div className="flex-1">
-                          <Label htmlFor={trigger.value} className="font-medium cursor-pointer">{trigger.label}</Label>
+                          <Label htmlFor={trigger.value} className="font-medium cursor-pointer">
+                            {trigger.label}
+                            {isUsed && <span className="text-xs text-muted-foreground ml-2">(em uso)</span>}
+                          </Label>
                           {trigger.description && (
                             <p className="text-xs text-muted-foreground">{trigger.description}</p>
                           )}

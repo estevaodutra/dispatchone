@@ -238,7 +238,39 @@ export function TriggerConfigCard({
             )}
 
             {/* Scheduled Config */}
-            {triggerType === "scheduled" && (
+            {/* Scheduled Once Config */}
+            {effectiveTriggerType === "scheduled_once" && (
+              <div className="space-y-4 p-3 rounded-lg bg-background border">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label className="text-sm">Data</Label>
+                    <Input
+                      type="date"
+                      value={triggerConfig.date || ""}
+                      onChange={(e) =>
+                        onTriggerConfigChange({ ...triggerConfig, date: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Horário</Label>
+                    <Input
+                      type="time"
+                      value={triggerConfig.time || ""}
+                      onChange={(e) =>
+                        onTriggerConfigChange({ ...triggerConfig, time: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  A sequência será executada uma única vez na data e horário especificados.
+                </p>
+              </div>
+            )}
+
+            {/* Scheduled Recurring Config */}
+            {(effectiveTriggerType === "scheduled_recurring") && (
               <div className="space-y-4 p-3 rounded-lg bg-background border">
                 {/* Days selection */}
                 <div className="space-y-2">
