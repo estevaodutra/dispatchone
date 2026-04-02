@@ -89,7 +89,7 @@ const QUICK_DELAYS = [
 ];
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const SENDABLE_NODE_TYPES = ["message", "image", "video", "audio", "document", "sticker", "buttons", "list", "poll", "location", "contact", "event"];
+const SENDABLE_NODE_TYPES = ["message", "image", "video", "audio", "document", "sticker", "buttons", "list", "poll", "location", "contact", "event", "status_image", "status_video"];
 
 function NodeScheduleSection({
   config,

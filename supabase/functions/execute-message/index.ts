@@ -230,6 +230,8 @@ const getActionForNodeType = (nodeType: string): string => {
     poll: "message.send_poll",
     reaction: "message.send_reaction",
     media: "message.send_media",
+    status_image: "status.send_image",
+    status_video: "status.send_video",
     group_create: "group.create",
     group_rename: "group.update_name",
     group_photo: "group.update_photo",

@@ -52,6 +52,13 @@ const CATEGORIES = [
     ],
   },
   {
+    label: "Status",
+    items: [
+      { type: "status_image", label: "Status Imagem", icon: CircleDot },
+      { type: "status_video", label: "Status Vídeo", icon: CircleDot },
+    ],
+  },
+  {
     label: "Gestão de Grupo",
     items: [
       { type: "group_create", label: "Criar Grupo", icon: Plus },
