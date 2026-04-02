@@ -1,46 +1,42 @@
 
 
-## Plano: Executar sequência webhook apenas uma vez (não por grupo)
+## Plano: Aplicar substituição de variáveis nos nós de gestão de grupo
 
 ### Problema
-Quando o `trigger-sequence` é chamado sem um telefone no payload, o `triggerContext.sendPrivate` fica `false`. O `execute-message` então usa todos os grupos vinculados à campanha como destinos (linha 596), executando cada nó uma vez **por grupo**. Isso causa a repetição observada.
+O `execute-message` não aplica `replaceVariables()` nos campos dos nós de gestão de grupo (`group_create`, `group_rename`, `group_description`, etc.). Os campos como `groupName`, `groupDescription`, `participants` passam direto sem substituição de `{{variavel}}`.
 
-Para sequências webhook, o disparo deve acontecer **uma única vez**, não multiplicado pela quantidade de grupos.
+### Causa
+Na linha 674, o `formattedConfig` é criado mas nunca passa por `replaceVariables()`. Diferente dos nós de mensagem (linha 752-757) que fazem substituição em campos como `text`, `caption`, etc.
 
-### Solução
-No `trigger-sequence/index.ts`, sempre definir `sendPrivate: true` para garantir que o `execute-message` use apenas um destino. Quando não houver telefone no payload, usar o `groupJid` do primeiro grupo vinculado como destino único (ou um destino "virtual").
+### Alteração
 
-**Abordagem mais limpa:** Adicionar um campo `singleExecution: true` no `triggerContext` e ajustar o `execute-message` para respeitar isso.
+**Arquivo: `supabase/functions/execute-message/index.ts`**
 
-### Alterações
-
-**1. `supabase/functions/trigger-sequence/index.ts`**
-- Buscar o primeiro grupo da campanha para usar como destino padrão quando não houver telefone
-- Definir `sendPrivate: true` sempre, usando o primeiro grupo como fallback de destino
-- Isso garante que `execute-message` use apenas 1 destino em vez de iterar todos os grupos
+Após a linha 674 (`const formattedConfig = formatNodeConfig(...)`) no bloco de GROUP MANAGEMENT NODES, adicionar substituição de variáveis em todos os campos de texto do config:
 
 ```typescript
-// Quando não tem telefone, buscar primeiro grupo como destino único
-if (!destinationPhone) {
-  const { data: firstGroup } = await supabase
-    .from("campaign_groups")
-    .select("group_jid, group_name")
-    .eq("campaign_id", typedCampaign.id)
-    .limit(1)
-    .single();
+// Replace variables in group management config fields
+const groupMgmtTextFields = [
+  "groupName", "groupDescription", "groupSubject",
+  "participants", "phone", "name", "text", "message",
+  "description", "title", "content"
+];
+groupMgmtTextFields.forEach((field) => {
+  if (typeof formattedConfig[field] === "string") {
+    formattedConfig[field] = replaceVariables(formattedConfig[field] as string);
+  }
+});
 
-  triggerContext.respondentJid = firstGroup?.group_jid || "";
-  triggerContext.respondentName = firstGroup?.group_name || "";
-  triggerContext.groupJid = firstGroup?.group_jid || "";
-  triggerContext.sendPrivate = true; // forçar execução única
+// Also handle arrays (e.g., participants list)
+if (Array.isArray(formattedConfig.participants)) {
+  formattedConfig.participants = formattedConfig.participants.map(
+    (p: unknown) => typeof p === "string" ? replaceVariables(p) : p
+  );
 }
 ```
 
-**2. `supabase/functions/execute-message/index.ts`** (opcional)
-- Nenhuma alteração necessária se usarmos a abordagem acima — o `sendPrivate: true` já faz o `execute-message` usar apenas 1 destino
-
 ### Resultado
-O webhook executa a sequência **1 vez** direcionada ao primeiro grupo vinculado, em vez de repetir para cada grupo.
+Variáveis como `{{first_name}}` e `{{last_name}}` mapeadas via webhook serão corretamente substituídas no `groupName` e em qualquer outro campo dos nós de gestão de grupo.
 
-1 arquivo alterado, ~15 linhas.
+1 arquivo, ~15 linhas adicionadas.
 
