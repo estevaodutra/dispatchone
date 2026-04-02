@@ -52,15 +52,6 @@ const TRIGGER_TYPES = [
   { value: "manual" as TriggerType, label: "Manual", icon: Play, color: "bg-slate-500" },
 ];
 
-const WEEK_DAYS = [
-  { value: 0, label: "D", fullLabel: "Dom" },
-  { value: 1, label: "S", fullLabel: "Seg" },
-  { value: 2, label: "T", fullLabel: "Ter" },
-  { value: 3, label: "Q", fullLabel: "Qua" },
-  { value: 4, label: "Q", fullLabel: "Qui" },
-  { value: 5, label: "S", fullLabel: "Sex" },
-  { value: 6, label: "S", fullLabel: "Sáb" },
-];
 
 const MATCH_TYPES = [
   { value: "exact", label: "Exato" },
