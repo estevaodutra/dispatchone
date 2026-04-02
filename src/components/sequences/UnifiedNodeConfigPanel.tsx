@@ -18,7 +18,7 @@ import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
-  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus,
+  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
 } from "lucide-react";
 
 interface UnifiedNodeConfigPanelProps {
