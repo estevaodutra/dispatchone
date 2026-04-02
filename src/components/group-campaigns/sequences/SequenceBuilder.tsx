@@ -46,6 +46,16 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "notify", label: "Notificar", icon: Bell, color: "bg-green-500" },
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
   ]},
+  { id: "group_management", label: "Gestão de Grupo", nodes: [
+    { type: "group_rename", label: "Renomear Grupo", icon: Pencil, color: "bg-sky-600" },
+    { type: "group_photo", label: "Alterar Foto", icon: ImageIcon, color: "bg-emerald-600" },
+    { type: "group_description", label: "Alterar Descrição", icon: FileText, color: "bg-slate-600" },
+    { type: "group_add_participant", label: "Adicionar Participante", icon: UserPlus, color: "bg-green-600" },
+    { type: "group_remove_participant", label: "Remover Participante", icon: UserMinus, color: "bg-red-600" },
+    { type: "group_promote_admin", label: "Promover Admin", icon: ShieldPlus, color: "bg-violet-600" },
+    { type: "group_remove_admin", label: "Remover Admin", icon: ShieldMinus, color: "bg-orange-600" },
+    { type: "group_settings", label: "Configurações", icon: Settings, color: "bg-zinc-600" },
+  ]},
 ];
 
 const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
