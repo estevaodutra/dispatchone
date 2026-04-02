@@ -79,11 +79,10 @@ const DAYS_OF_WEEK = [
   { value: "6", label: "Sáb" },
 ];
 
-const SCHEDULE_TRIGGERS = ["scheduled_once", "scheduled_recurring", "manual"];
+
 
 export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMessageDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const isScheduledTrigger = triggerType ? SCHEDULE_TRIGGERS.includes(triggerType) : true;
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [scheduleType, setScheduleType] = useState<"fixed" | "delay" | "recurring">("fixed");
   const [fixedDate, setFixedDate] = useState<Date | undefined>();
@@ -109,7 +108,16 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
 
   const handleClose = () => { reset(); onClose(); };
 
-  const handleSelectType = (type: string) => { setSelectedType(type); setStep(2); };
+  const handleSelectType = (type: string) => {
+    setSelectedType(type);
+    if (triggerType === "webhook") {
+      onSave(type, { enabled: false });
+      reset();
+      onClose();
+    } else {
+      setStep(2);
+    }
+  };
 
   const handleSave = () => {
     if (!selectedType) return;
@@ -143,13 +151,12 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
             </DialogHeader>
             <div className="space-y-4">
               {CATEGORIES.map(({ label, items }) => {
-                const filteredItems = items.filter(item => item.type !== "group_create" || isScheduledTrigger);
-                if (filteredItems.length === 0) return null;
+                if (items.length === 0) return null;
                 return (
                   <div key={label}>
                     <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
                     <div className="grid grid-cols-4 gap-2">
-                      {filteredItems.map(({ type, label: itemLabel, icon: Icon }) => (
+                      {items.map(({ type, label: itemLabel, icon: Icon }) => (
                         <button
                           key={type}
                           onClick={() => handleSelectType(type)}
