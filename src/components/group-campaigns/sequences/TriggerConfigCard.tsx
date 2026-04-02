@@ -26,6 +26,8 @@ export interface TriggerConfig {
     end: string;
     minutes: number;
   };
+  date?: string;
+  time?: string;
   keyword?: string;
   matchType?: "exact" | "contains" | "startsWith";
   caseSensitive?: boolean;
