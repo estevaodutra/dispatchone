@@ -739,9 +739,11 @@ Deno.serve(async (req) => {
 
               if (response.ok) {
                 console.log(`[ExecuteMessage] ✅ Group mgmt ${node.node_type} on ${dest.group_name}`);
+                webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: dest.group_jid, status: "sent", data: responseData });
               } else {
                 nodesFailed++;
                 console.log(`[ExecuteMessage] ❌ Group mgmt ${node.node_type} failed: HTTP ${response.status}`);
+                webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: dest.group_jid, status: "failed", data: responseData });
               }
             } catch (err) {
               nodesFailed++;
@@ -865,6 +867,7 @@ Deno.serve(async (req) => {
 
             if (response.ok) {
               console.log(`[ExecuteMessage] ✅ Node ${node.node_type} sent to ${dest.group_name}${dest.isPrivate ? ' (private)' : ''}`);
+              webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: dest.group_jid, status: "sent", data: responseData });
               
               // If this is a poll node and send was successful, register in poll_messages (only for group sends)
               if (node.node_type === "poll" && (zaapId || externalMessageId) && !dest.isPrivate) {
