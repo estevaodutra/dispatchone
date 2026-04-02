@@ -47,6 +47,7 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
   ]},
   { id: "group_management", label: "Gestão de Grupo", nodes: [
+    { type: "group_create", label: "Criar Grupo", icon: Plus, color: "bg-teal-600" },
     { type: "group_rename", label: "Renomear Grupo", icon: Pencil, color: "bg-sky-600" },
     { type: "group_photo", label: "Alterar Foto", icon: ImageIcon, color: "bg-emerald-600" },
     { type: "group_description", label: "Alterar Descrição", icon: FileText, color: "bg-slate-600" },
