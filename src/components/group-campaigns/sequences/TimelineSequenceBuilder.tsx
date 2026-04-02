@@ -252,6 +252,7 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         onTogglePauseNode={handleTogglePauseNode}
         onMoveNode={handleMoveNode}
         onDeleteNode={handleDeleteNode}
+        onExecuteNode={handleExecuteNode}
         onNewMessage={() => setNewMessageOpen(true)}
       />
 
