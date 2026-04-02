@@ -152,8 +152,7 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
             </DialogHeader>
             <div className="space-y-4">
               {CATEGORIES.map(({ label, items }) => {
-                const filteredItems = items.filter(item => item.type !== "group_create" || isScheduledTrigger);
-                if (filteredItems.length === 0) return null;
+                if (items.length === 0) return null;
                 return (
                   <div key={label}>
                     <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
