@@ -106,7 +106,9 @@ export function TriggerConfigCard({
   const [isOpen, setIsOpen] = useState(true);
   const [newTime, setNewTime] = useState("");
 
-  const triggerInfo = TRIGGER_TYPES.find(t => t.value === triggerType) || TRIGGER_TYPES[5];
+  // Map legacy "scheduled" to "scheduled_recurring" for display
+  const effectiveTriggerType = triggerType === "scheduled" ? "scheduled_recurring" : triggerType;
+  const triggerInfo = TRIGGER_TYPES.find(t => t.value === effectiveTriggerType) || TRIGGER_TYPES[6];
   const TriggerIcon = triggerInfo.icon;
 
   // Generate webhook URL pointing to the actual Edge Function
