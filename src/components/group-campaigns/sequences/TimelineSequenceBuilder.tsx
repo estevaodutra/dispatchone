@@ -264,7 +264,15 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         </div>
       </div>
 
-      {/* Trigger is configured at sequence creation time, not shown here */}
+      {triggerType === "webhook" && (
+        <TriggerConfigCard
+          triggerType={triggerType}
+          triggerConfig={triggerConfig}
+          onTriggerTypeChange={() => {}}
+          onTriggerConfigChange={(config) => setTriggerConfig(config)}
+          sequenceId={sequence.id}
+        />
+      )}
 
       {/* Timeline */}
       <MessageTimeline
