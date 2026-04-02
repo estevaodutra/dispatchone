@@ -8,7 +8,7 @@ import {
 import {
   MoreHorizontal, Pencil, Copy, Pause, Play, ArrowUp, ArrowDown, Trash2,
   MessageSquare, Image, Video, Music, FileText, Smile,
-  BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
+  BarChart3, MousePointerClick, List, MapPin, Contact, Calendar, Zap,
 } from "lucide-react";
 
 export type MessageStatus = "scheduled" | "today" | "sent" | "error" | "paused";
@@ -20,6 +20,7 @@ interface MessageCardProps {
   onEdit: () => void;
   onDuplicate: () => void;
   onTogglePause: () => void;
+  onExecute?: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
@@ -107,7 +108,7 @@ function getContentPreview(node: LocalNode): string {
 
 export function MessageCard({
   node, status, errorMessage,
-  onEdit, onDuplicate, onTogglePause, onMoveUp, onMoveDown, onDelete,
+  onEdit, onDuplicate, onTogglePause, onExecute, onMoveUp, onMoveDown, onDelete,
   isFirst, isLast,
 }: MessageCardProps) {
   const meta = TYPE_META[node.nodeType] || TYPE_META.message;
@@ -139,6 +140,11 @@ export function MessageCard({
               {isPaused ? <Play className="mr-2 h-3.5 w-3.5" /> : <Pause className="mr-2 h-3.5 w-3.5" />}
               {isPaused ? "Ativar" : "Pausar"}
             </DropdownMenuItem>
+            {onExecute && (
+              <DropdownMenuItem onClick={onExecute} className="text-primary focus:text-primary">
+                <Zap className="mr-2 h-3.5 w-3.5" /> Executar agora
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             {!isFirst && <DropdownMenuItem onClick={onMoveUp}><ArrowUp className="mr-2 h-3.5 w-3.5" /> Mover para cima</DropdownMenuItem>}
             {!isLast && <DropdownMenuItem onClick={onMoveDown}><ArrowDown className="mr-2 h-3.5 w-3.5" /> Mover para baixo</DropdownMenuItem>}

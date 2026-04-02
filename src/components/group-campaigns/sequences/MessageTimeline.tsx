@@ -13,13 +13,14 @@ interface MessageTimelineProps {
   onTogglePauseNode: (node: LocalNode) => void;
   onMoveNode: (node: LocalNode, direction: "up" | "down") => void;
   onDeleteNode: (node: LocalNode) => void;
+  onExecuteNode?: (node: LocalNode) => void;
   onNewMessage: () => void;
 }
 
 export function MessageTimeline({
   nodes, nodeStatuses,
   onEditNode, onDuplicateNode, onTogglePauseNode, onMoveNode, onDeleteNode,
-  onNewMessage,
+  onExecuteNode, onNewMessage,
 }: MessageTimelineProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -123,6 +124,7 @@ export function MessageTimeline({
                   onEdit={() => onEditNode(node)}
                   onDuplicate={() => onDuplicateNode(node)}
                   onTogglePause={() => onTogglePauseNode(node)}
+                  onExecute={onExecuteNode ? () => onExecuteNode(node) : undefined}
                   onMoveUp={() => onMoveNode(node, "up")}
                   onMoveDown={() => onMoveNode(node, "down")}
                   onDelete={() => onDeleteNode(node)}
