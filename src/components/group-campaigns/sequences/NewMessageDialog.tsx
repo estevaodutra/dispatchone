@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import {
   CalendarIcon, MessageSquare, Image as ImageIcon, Video, Music, FileText,
   BarChart3, MousePointerClick, List, Smile, MapPin, Contact, CalendarDays,
-  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
+  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus,
 } from "lucide-react";
 
 interface NewMessageDialogProps {
@@ -53,6 +53,7 @@ const CATEGORIES = [
   {
     label: "Gestão de Grupo",
     items: [
+      { type: "group_create", label: "Criar Grupo", icon: Plus },
       { type: "group_rename", label: "Renomear Grupo", icon: Pencil },
       { type: "group_photo", label: "Alterar Foto", icon: ImageIcon },
       { type: "group_description", label: "Alterar Descrição", icon: FileText },

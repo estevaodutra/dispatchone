@@ -38,6 +38,7 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "location": return { latitude: "", longitude: "", name: "", address: "" };
     case "contact": return { fullName: "", phone: "", email: "", organization: "" };
     case "event": return { name: "", description: "", startDate: "", endDate: "", location: "" };
+    case "group_create": return { groupName: "", phones: [""] };
     case "group_rename": return { newName: "" };
     case "group_photo": return { url: "" };
     case "group_description": return { description: "" };

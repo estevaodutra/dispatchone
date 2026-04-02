@@ -66,6 +66,7 @@ const NODE_TITLES: Record<string, { title: string; icon: React.ElementType }> = 
   condition: { title: "Condição", icon: GitBranch },
   notify: { title: "Notificar", icon: Bell },
   webhook: { title: "Webhook", icon: Link2 },
+  group_create: { title: "Criar Grupo", icon: Plus },
   group_rename: { title: "Renomear Grupo", icon: Pencil },
   group_photo: { title: "Alterar Foto", icon: ImageIcon },
   group_description: { title: "Alterar Descrição", icon: FileText },
@@ -1186,6 +1187,59 @@ export function UnifiedNodeConfigPanel({
           )}
 
           {/* GROUP MANAGEMENT NODES */}
+          {node.nodeType === "group_create" && isGroup && (
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <Label>Nome do Grupo</Label>
+                <Input
+                  placeholder="Nome do novo grupo..."
+                  value={(node.config.groupName as string) || ""}
+                  onChange={e => updateConfig("groupName", e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Participantes (números com DDI)</Label>
+                {((node.config.phones as string[]) || [""]).map((phone, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <Input
+                      placeholder="5511999999999"
+                      value={phone}
+                      onChange={e => {
+                        const phones = [...((node.config.phones as string[]) || [""])];
+                        phones[idx] = e.target.value;
+                        updateConfig("phones", phones);
+                      }}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={() => {
+                        const phones = [...((node.config.phones as string[]) || [""])];
+                        phones.splice(idx, 1);
+                        updateConfig("phones", phones.length ? phones : [""]);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const phones = [...((node.config.phones as string[]) || [""])];
+                    phones.push("");
+                    updateConfig("phones", phones);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" /> Adicionar número
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Um novo grupo será criado com os participantes listados</p>
+            </div>
+          )}
+
           {node.nodeType === "group_rename" && isGroup && (
             <div className="space-y-2">
               <Label>Novo Nome do Grupo</Label>

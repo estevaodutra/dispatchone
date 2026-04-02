@@ -12,7 +12,7 @@ import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
-  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
+  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus,
 } from "lucide-react";
 
 interface SequenceBuilderProps {
@@ -47,6 +47,7 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
   ]},
   { id: "group_management", label: "Gestão de Grupo", nodes: [
+    { type: "group_create", label: "Criar Grupo", icon: Plus, color: "bg-teal-600" },
     { type: "group_rename", label: "Renomear Grupo", icon: Pencil, color: "bg-sky-600" },
     { type: "group_photo", label: "Alterar Foto", icon: ImageIcon, color: "bg-emerald-600" },
     { type: "group_description", label: "Alterar Descrição", icon: FileText, color: "bg-slate-600" },
@@ -76,6 +77,7 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "condition": return { field: "member_count", operator: "greater_than", value: 0 };
     case "notify": return { message: "", notifyAdmins: true };
     case "webhook": return { url: "", method: "POST", body: "" };
+    case "group_create": return { groupName: "", phones: [""] };
     case "group_rename": return { newName: "" };
     case "group_photo": return { url: "" };
     case "group_description": return { description: "" };
