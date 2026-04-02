@@ -1,21 +1,32 @@
 
 
-## Plano: Mostrar "Criar Grupo" apenas em sequências agendadas
+## Plano: Pular agendamento para sequências webhook
 
 ### Problema
-A opção "Criar Grupo" aparece para todos os tipos de sequência, mas só faz sentido em sequências com gatilho de agendamento (`scheduled_once`, `scheduled_recurring`, `manual`).
-
-### Solução
-Passar o `triggerType` para o `NewMessageDialog` e filtrar o item `group_create` da categoria "Gestão de Grupo" quando o gatilho não for de agendamento.
+Quando o gatilho da sequência é "webhook", o passo 2 (agendamento) não faz sentido — o disparo é controlado pelo webhook. Além disso, o filtro de `group_create` deve ser removido para que apareça sempre.
 
 ### Alterações
 
-**1. `src/components/group-campaigns/sequences/NewMessageDialog.tsx`**
-- Adicionar prop `triggerType?: string` na interface
-- Filtrar `group_create` de `CATEGORIES` quando `triggerType` não for `"scheduled_once"`, `"scheduled_recurring"` ou `"manual"`
+**Arquivo: `src/components/group-campaigns/sequences/NewMessageDialog.tsx`**
 
-**2. `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
-- Passar `triggerType={triggerType}` ao `NewMessageDialog`
+1. **Remover filtro de `group_create`** — a opção aparece sempre, independente do tipo de gatilho
+2. **Pular step 2 quando `triggerType === "webhook"`** — ao selecionar um tipo de mensagem, salvar direto com `schedule: { enabled: false }` em vez de ir para a tela de agendamento
+3. Manter step 2 normalmente para os demais tipos de gatilho
 
-2 arquivos, ~5 linhas alteradas.
+Lógica no `handleSelectType`:
+```tsx
+const handleSelectType = (type: string) => {
+  setSelectedType(type);
+  if (triggerType === "webhook") {
+    // Salva direto sem agendamento
+    onSave(type, { enabled: false });
+    reset();
+    onClose();
+  } else {
+    setStep(2);
+  }
+};
+```
+
+1 arquivo, ~10 linhas alteradas.
 
