@@ -136,7 +136,7 @@ export function MessageTimeline({
           ref={scrollRef}
           className="overflow-x-auto pb-4 scrollbar-thin"
         >
-          <div className="flex gap-6 px-6 min-w-max py-2">
+          <div className="flex flex-nowrap gap-6 px-6 py-2" style={{ minWidth: "max-content" }}>
             {sortedNodes.length === 0 ? (
               <div className="flex items-center justify-center w-full py-12 text-muted-foreground text-sm">
                 Nenhuma mensagem na sequência.
@@ -149,7 +149,7 @@ export function MessageTimeline({
                 const { dateStr } = getScheduleLabel(node);
 
                 return (
-                  <div key={node.id} className="flex flex-col items-center relative">
+                  <div key={node.id} className="flex flex-col items-center relative shrink-0" style={{ width: 288 }}>
                     <MessageCard
                       node={node}
                       status={nodeStatus}
