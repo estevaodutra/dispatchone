@@ -413,13 +413,19 @@ Deno.serve(async (req) => {
 
     // For manual node execution, filter to just that one node
     if (isManualNodeExecution && manualNodeIndex !== undefined) {
-      sequenceNodes = sequenceNodes.filter(n => n.node_order === manualNodeIndex);
-      if (sequenceNodes.length === 0) {
+      // Try exact node_order match first, fallback to positional index
+      let manualNode = sequenceNodes.filter(n => n.node_order === manualNodeIndex);
+      if (manualNode.length === 0 && manualNodeIndex < sequenceNodes.length) {
+        manualNode = [sequenceNodes[manualNodeIndex]];
+        console.log(`[ExecuteMessage] Manual node: exact order ${manualNodeIndex} not found, using positional index`);
+      }
+      if (manualNode.length === 0) {
         return new Response(
-          JSON.stringify({ error: `Node at index ${manualNodeIndex} not found` }),
+          JSON.stringify({ error: `Node at index ${manualNodeIndex} not found (total nodes: ${sequenceNodes.length})` }),
           { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
         );
       }
+      sequenceNodes = manualNode;
       console.log(`[ExecuteMessage] Manual node execution: filtered to node order ${manualNodeIndex} (${sequenceNodes[0].node_type})`);
     }
 
