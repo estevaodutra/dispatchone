@@ -83,7 +83,6 @@ const SCHEDULE_TRIGGERS = ["scheduled_once", "scheduled_recurring", "manual"];
 
 export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMessageDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
-  const isScheduledTrigger = triggerType ? SCHEDULE_TRIGGERS.includes(triggerType) : true;
   const [selectedType, setSelectedType] = useState<string | null>(null);
   const [scheduleType, setScheduleType] = useState<"fixed" | "delay" | "recurring">("fixed");
   const [fixedDate, setFixedDate] = useState<Date | undefined>();
