@@ -1,33 +1,21 @@
 
 
-## Plano: Exibir configuração de webhook no editor de sequência
+## Plano: Mostrar "Criar Grupo" apenas em sequências agendadas
 
 ### Problema
-O `TimelineSequenceBuilder` oculta deliberadamente o `TriggerConfigCard` (linha 267: "Trigger is configured at sequence creation time, not shown here"). Para gatilhos webhook, isso impede o usuário de ver a URL e configurar o mapeamento de campos.
+A opção "Criar Grupo" aparece para todos os tipos de sequência, mas só faz sentido em sequências com gatilho de agendamento (`scheduled_once`, `scheduled_recurring`, `manual`).
 
 ### Solução
-Renderizar o `TriggerConfigCard` condicionalmente no `TimelineSequenceBuilder` **apenas quando o triggerType for "webhook"**, logo acima do timeline.
+Passar o `triggerType` para o `NewMessageDialog` e filtrar o item `group_create` da categoria "Gestão de Grupo" quando o gatilho não for de agendamento.
 
-### Alteração
+### Alterações
 
-**Arquivo: `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
+**1. `src/components/group-campaigns/sequences/NewMessageDialog.tsx`**
+- Adicionar prop `triggerType?: string` na interface
+- Filtrar `group_create` de `CATEGORIES` quando `triggerType` não for `"scheduled_once"`, `"scheduled_recurring"` ou `"manual"`
 
-1. Importar `TriggerConfigCard` de `./TriggerConfigCard`
-2. Substituir o comentário da linha 267 por renderização condicional:
+**2. `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx`**
+- Passar `triggerType={triggerType}` ao `NewMessageDialog`
 
-```tsx
-{triggerType === "webhook" && (
-  <TriggerConfigCard
-    triggerType={triggerType}
-    triggerConfig={triggerConfig}
-    onTriggerTypeChange={() => {}} // tipo não editável após criação
-    onTriggerConfigChange={(config) => setTriggerConfig(config)}
-    sequenceId={sequence.id}
-  />
-)}
-```
-
-Isso exibe a URL do webhook + mapeamento de campos para sequências webhook, mantendo oculto para os demais tipos de gatilho.
-
-1 arquivo, ~10 linhas adicionadas.
+2 arquivos, ~5 linhas alteradas.
 
