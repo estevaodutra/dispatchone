@@ -1185,6 +1185,168 @@ export function UnifiedNodeConfigPanel({
             </>
           )}
 
+          {/* GROUP MANAGEMENT NODES */}
+          {node.nodeType === "group_rename" && isGroup && (
+            <div className="space-y-2">
+              <Label>Novo Nome do Grupo</Label>
+              <Input
+                placeholder="Nome do grupo..."
+                value={(node.config.newName as string) || ""}
+                onChange={e => updateConfig("newName", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">O grupo será renomeado quando este nó for executado</p>
+            </div>
+          )}
+
+          {node.nodeType === "group_photo" && isGroup && (
+            <div className="space-y-2">
+              <Label>Foto do Grupo</Label>
+              {renderMediaUploader ? renderMediaUploader({
+                mediaType: "image",
+                currentUrl: (node.config.url as string) || "",
+                onUpload: (url) => updateConfig("url", url),
+                onUrlChange: (url) => updateConfig("url", url),
+                placeholder: "https://exemplo.com/foto.jpg",
+              }) : (
+                <Input
+                  placeholder="URL da foto..."
+                  value={(node.config.url as string) || ""}
+                  onChange={e => updateConfig("url", e.target.value)}
+                />
+              )}
+              <p className="text-xs text-muted-foreground">A foto do grupo será atualizada</p>
+            </div>
+          )}
+
+          {node.nodeType === "group_description" && isGroup && (
+            <div className="space-y-2">
+              <Label>Nova Descrição</Label>
+              <Textarea
+                placeholder="Descrição do grupo..."
+                value={(node.config.description as string) || ""}
+                onChange={e => updateConfig("description", e.target.value)}
+                rows={4}
+              />
+            </div>
+          )}
+
+          {node.nodeType === "group_add_participant" && isGroup && (() => {
+            const phones = (node.config.phones as string[]) || [""];
+            return (
+              <>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Números para Adicionar</Label>
+                    <Button variant="ghost" size="sm" className="h-6" onClick={() => updateConfig("phones", [...phones, ""])}>
+                      <Plus className="h-3 w-3 mr-1" /> Número
+                    </Button>
+                  </div>
+                  {phones.map((phone, i) => (
+                    <div key={i} className="flex gap-1">
+                      <Input
+                        placeholder="5511999999999"
+                        value={phone}
+                        onChange={e => {
+                          const updated = [...phones];
+                          updated[i] = e.target.value;
+                          updateConfig("phones", updated);
+                        }}
+                        className="flex-1"
+                      />
+                      {phones.length > 1 && (
+                        <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" onClick={() => updateConfig("phones", phones.filter((_, idx) => idx !== i))}>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-xs text-muted-foreground">Formato: código do país + DDD + número (sem espaços)</p>
+                </div>
+              </>
+            );
+          })()}
+
+          {node.nodeType === "group_remove_participant" && isGroup && (
+            <div className="space-y-2">
+              <Label>Número do Participante</Label>
+              <Input
+                placeholder="5511999999999"
+                value={(node.config.phone as string) || ""}
+                onChange={e => updateConfig("phone", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">O participante será removido do grupo</p>
+            </div>
+          )}
+
+          {node.nodeType === "group_promote_admin" && isGroup && (
+            <div className="space-y-2">
+              <Label>Número do Participante</Label>
+              <Input
+                placeholder="5511999999999"
+                value={(node.config.phone as string) || ""}
+                onChange={e => updateConfig("phone", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">O participante será promovido a administrador</p>
+            </div>
+          )}
+
+          {node.nodeType === "group_remove_admin" && isGroup && (
+            <div className="space-y-2">
+              <Label>Número do Participante</Label>
+              <Input
+                placeholder="5511999999999"
+                value={(node.config.phone as string) || ""}
+                onChange={e => updateConfig("phone", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">O participante será rebaixado de administrador</p>
+            </div>
+          )}
+
+          {node.nodeType === "group_settings" && isGroup && (
+            <>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Apenas admins enviam mensagens</Label>
+                  <p className="text-xs text-muted-foreground">Restringe o envio de mensagens a administradores</p>
+                </div>
+                <Switch
+                  checked={(node.config.adminOnlyMessage as boolean) || false}
+                  onCheckedChange={checked => updateConfig("adminOnlyMessage", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Apenas admins editam info</Label>
+                  <p className="text-xs text-muted-foreground">Restringe a edição de nome, foto e descrição</p>
+                </div>
+                <Switch
+                  checked={(node.config.adminOnlyEditInfo as boolean) || false}
+                  onCheckedChange={checked => updateConfig("adminOnlyEditInfo", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Modo de aprovação</Label>
+                  <p className="text-xs text-muted-foreground">Novos membros precisam de aprovação</p>
+                </div>
+                <Switch
+                  checked={(node.config.approvalMode as boolean) || false}
+                  onCheckedChange={checked => updateConfig("approvalMode", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Grupo trancado</Label>
+                  <p className="text-xs text-muted-foreground">Impede novas entradas via link</p>
+                </div>
+                <Switch
+                  checked={(node.config.locked as boolean) || false}
+                  onCheckedChange={checked => updateConfig("locked", checked)}
+                />
+              </div>
+            </>
+          )}
+
           {/* Schedule & Manual Send Section */}
           <NodeScheduleSection
             config={node.config}
