@@ -20,6 +20,7 @@ interface MessageCardProps {
   onEdit: () => void;
   onDuplicate: () => void;
   onTogglePause: () => void;
+  onExecute?: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
