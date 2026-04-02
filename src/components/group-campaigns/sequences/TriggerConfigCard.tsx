@@ -78,13 +78,6 @@ export function TriggerConfigCard({
     ? `https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/trigger-sequence/${sequenceId}`
     : "";
 
-  const toggleDay = (day: number) => {
-    const currentDays = triggerConfig.days || [];
-    const newDays = currentDays.includes(day)
-      ? currentDays.filter(d => d !== day)
-      : [...currentDays, day].sort((a, b) => a - b);
-    onTriggerConfigChange({ ...triggerConfig, days: newDays });
-  };
 
   return (
     <Card className="border-2 border-primary/30 bg-primary/5">
