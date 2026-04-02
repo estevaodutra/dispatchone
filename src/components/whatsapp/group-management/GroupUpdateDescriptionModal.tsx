@@ -6,16 +6,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, FileText } from "lucide-react";
 
-interface GroupUpdateDescriptionModalProps {
+export interface GroupUpdateDescriptionModalProps {
   instanceId: string;
   groupId: string;
   currentDescription?: string;
   onSuccess?: () => void;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function GroupUpdateDescriptionModal({ instanceId, groupId, currentDescription, onSuccess, children }: GroupUpdateDescriptionModalProps) {
-  const [open, setOpen] = useState(false);
+export function GroupUpdateDescriptionModal({ instanceId, groupId, currentDescription, onSuccess, children, open: controlledOpen, onOpenChange }: GroupUpdateDescriptionModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => { if (!isControlled) setInternalOpen(v); onOpenChange?.(v); };
+
   const [description, setDescription] = useState(currentDescription || "");
   const [loading, setLoading] = useState(false);
 
@@ -27,12 +33,7 @@ export function GroupUpdateDescriptionModal({ instanceId, groupId, currentDescri
     setLoading(true);
     try {
       const { error } = await supabase.functions.invoke("zapi-proxy", {
-        body: {
-          instanceId,
-          endpoint: "/update-group-description",
-          method: "POST",
-          body: { phone: groupId, description },
-        },
+        body: { instanceId, endpoint: "/update-group-description", method: "POST", body: { phone: groupId, description } },
       });
       if (error) throw error;
       toast.success("Descrição atualizada!");
@@ -47,21 +48,16 @@ export function GroupUpdateDescriptionModal({ instanceId, groupId, currentDescri
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children || <Button variant="outline" size="sm"><FileText className="h-4 w-4 mr-2" />Descrição</Button>}
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {children || <Button variant="outline" size="sm"><FileText className="h-4 w-4 mr-2" />Descrição</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Atualizar Descrição</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Atualizar Descrição</DialogTitle></DialogHeader>
         <div>
           <label className="text-sm font-medium">Descrição</label>
-          <Textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value.slice(0, 500))}
-            placeholder="Descrição do grupo..."
-            rows={4}
-          />
+          <Textarea value={description} onChange={(e) => setDescription(e.target.value.slice(0, 500))} placeholder="Descrição do grupo..." rows={4} />
           <p className="text-xs text-muted-foreground mt-1">{description.length} / 500 caracteres</p>
         </div>
         <DialogFooter>
