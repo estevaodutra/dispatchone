@@ -76,6 +76,14 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "condition": return { field: "member_count", operator: "greater_than", value: 0 };
     case "notify": return { message: "", notifyAdmins: true };
     case "webhook": return { url: "", method: "POST", body: "" };
+    case "group_rename": return { newName: "" };
+    case "group_photo": return { url: "" };
+    case "group_description": return { description: "" };
+    case "group_add_participant": return { phones: [""] };
+    case "group_remove_participant": return { phone: "" };
+    case "group_promote_admin": return { phone: "" };
+    case "group_remove_admin": return { phone: "" };
+    case "group_settings": return { adminOnlyMessage: false, adminOnlyEditInfo: false, approvalMode: false, locked: false };
     default: return {};
   }
 };
