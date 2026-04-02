@@ -7,6 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CalendarIcon, MessageSquare, Image, Video, Music, FileText, BarChart3, MousePointerClick, List } from "lucide-react";
@@ -28,15 +29,27 @@ const MESSAGE_TYPES = [
   { type: "poll", label: "Enquete", icon: BarChart3 },
 ];
 
+const DAYS_OF_WEEK = [
+  { value: "0", label: "Dom" },
+  { value: "1", label: "Seg" },
+  { value: "2", label: "Ter" },
+  { value: "3", label: "Qua" },
+  { value: "4", label: "Qui" },
+  { value: "5", label: "Sex" },
+  { value: "6", label: "Sáb" },
+];
+
 export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedType, setSelectedType] = useState<string | null>(null);
-  const [scheduleType, setScheduleType] = useState<"fixed" | "delay">("fixed");
+  const [scheduleType, setScheduleType] = useState<"fixed" | "delay" | "recurring">("fixed");
   const [fixedDate, setFixedDate] = useState<Date | undefined>();
   const [fixedTime, setFixedTime] = useState("09:00");
   const [delayValue, setDelayValue] = useState(1);
   const [delayUnit, setDelayUnit] = useState("days");
   const [delayTime, setDelayTime] = useState("08:00");
+  const [recurringDays, setRecurringDays] = useState<string[]>([]);
+  const [recurringTime, setRecurringTime] = useState("08:00");
 
   const reset = () => {
     setStep(1);
@@ -47,6 +60,8 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
     setDelayValue(1);
     setDelayUnit("days");
     setDelayTime("08:00");
+    setRecurringDays([]);
+    setRecurringTime("08:00");
   };
 
   const handleClose = () => {
@@ -74,6 +89,9 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
       schedule.delayValue = delayValue;
       schedule.delayUnit = delayUnit;
       schedule.delayTime = delayTime;
+    } else if (scheduleType === "recurring") {
+      schedule.days = recurringDays.map(Number);
+      schedule.times = [recurringTime];
     }
 
     onSave(selectedType, schedule);
@@ -81,6 +99,12 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
   };
 
   const unitLabel = delayUnit === "minutes" ? "minuto(s)" : delayUnit === "hours" ? "hora(s)" : "dia(s)";
+
+  const selectedDayLabels = recurringDays
+    .map(Number)
+    .sort((a, b) => a - b)
+    .map(d => DAYS_OF_WEEK[d]?.label)
+    .join(", ");
 
   return (
     <Dialog open={open} onOpenChange={v => { if (!v) handleClose(); }}>
@@ -119,7 +143,7 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
             </DialogHeader>
 
             <div className="space-y-5">
-              <RadioGroup value={scheduleType} onValueChange={(v) => setScheduleType(v as "fixed" | "delay")} className="flex gap-4">
+              <RadioGroup value={scheduleType} onValueChange={(v) => setScheduleType(v as "fixed" | "delay" | "recurring")} className="flex flex-wrap gap-4">
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="fixed" id="sched-fixed" />
                   <Label htmlFor="sched-fixed" className="text-sm cursor-pointer">Data e hora específica</Label>
@@ -127,6 +151,10 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="delay" id="sched-delay" />
                   <Label htmlFor="sched-delay" className="text-sm cursor-pointer">Delay após entrada</Label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RadioGroupItem value="recurring" id="sched-recurring" />
+                  <Label htmlFor="sched-recurring" className="text-sm cursor-pointer">Dias da semana</Label>
                 </div>
               </RadioGroup>
 
@@ -151,7 +179,7 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
                     <Input type="time" value={fixedTime} onChange={e => setFixedTime(e.target.value)} className="h-9" />
                   </div>
                 </div>
-              ) : (
+              ) : scheduleType === "delay" ? (
                 <div className="space-y-3">
                   <div className="flex gap-3 items-end">
                     <div className="space-y-1.5 w-24">
@@ -177,6 +205,28 @@ export function NewMessageDialog({ open, onClose, onSave }: NewMessageDialogProp
                   <p className="text-xs text-muted-foreground">
                     💡 Mensagem será enviada {delayValue} {unitLabel} após o lead entrar na campanha{delayUnit === "days" ? `, às ${delayTime}` : ""}.
                   </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Dias da semana</Label>
+                    <ToggleGroup type="multiple" value={recurringDays} onValueChange={setRecurringDays} className="justify-start gap-1">
+                      {DAYS_OF_WEEK.map(({ value, label }) => (
+                        <ToggleGroupItem key={value} value={value} variant="outline" size="sm" className="px-3 text-xs">
+                          {label}
+                        </ToggleGroupItem>
+                      ))}
+                    </ToggleGroup>
+                  </div>
+                  <div className="space-y-1.5 w-32">
+                    <Label className="text-xs">Horário de envio</Label>
+                    <Input type="time" value={recurringTime} onChange={e => setRecurringTime(e.target.value)} className="h-9" />
+                  </div>
+                  {recurringDays.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      💡 Mensagem será enviada toda {selectedDayLabels} às {recurringTime}.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
