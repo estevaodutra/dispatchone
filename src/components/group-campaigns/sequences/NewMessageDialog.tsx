@@ -157,7 +157,7 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
                   <div key={label}>
                     <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">{label}</p>
                     <div className="grid grid-cols-4 gap-2">
-                      {filteredItems.map(({ type, label: itemLabel, icon: Icon }) => (
+                      {items.map(({ type, label: itemLabel, icon: Icon }) => (
                         <button
                           key={type}
                           onClick={() => handleSelectType(type)}
