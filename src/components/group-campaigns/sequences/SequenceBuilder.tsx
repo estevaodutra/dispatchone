@@ -12,6 +12,7 @@ import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
+  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
 } from "lucide-react";
 
 interface SequenceBuilderProps {
@@ -45,6 +46,16 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "notify", label: "Notificar", icon: Bell, color: "bg-green-500" },
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
   ]},
+  { id: "group_management", label: "Gestão de Grupo", nodes: [
+    { type: "group_rename", label: "Renomear Grupo", icon: Pencil, color: "bg-sky-600" },
+    { type: "group_photo", label: "Alterar Foto", icon: ImageIcon, color: "bg-emerald-600" },
+    { type: "group_description", label: "Alterar Descrição", icon: FileText, color: "bg-slate-600" },
+    { type: "group_add_participant", label: "Adicionar Participante", icon: UserPlus, color: "bg-green-600" },
+    { type: "group_remove_participant", label: "Remover Participante", icon: UserMinus, color: "bg-red-600" },
+    { type: "group_promote_admin", label: "Promover Admin", icon: ShieldPlus, color: "bg-violet-600" },
+    { type: "group_remove_admin", label: "Remover Admin", icon: ShieldMinus, color: "bg-orange-600" },
+    { type: "group_settings", label: "Configurações", icon: Settings, color: "bg-zinc-600" },
+  ]},
 ];
 
 const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
@@ -65,6 +76,14 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "condition": return { field: "member_count", operator: "greater_than", value: 0 };
     case "notify": return { message: "", notifyAdmins: true };
     case "webhook": return { url: "", method: "POST", body: "" };
+    case "group_rename": return { newName: "" };
+    case "group_photo": return { url: "" };
+    case "group_description": return { description: "" };
+    case "group_add_participant": return { phones: [""] };
+    case "group_remove_participant": return { phone: "" };
+    case "group_promote_admin": return { phone: "" };
+    case "group_remove_admin": return { phone: "" };
+    case "group_settings": return { adminOnlyMessage: false, adminOnlyEditInfo: false, approvalMode: false, locked: false };
     default: return {};
   }
 };

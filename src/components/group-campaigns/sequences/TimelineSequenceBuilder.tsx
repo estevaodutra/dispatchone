@@ -38,6 +38,14 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "location": return { latitude: "", longitude: "", name: "", address: "" };
     case "contact": return { fullName: "", phone: "", email: "", organization: "" };
     case "event": return { name: "", description: "", startDate: "", endDate: "", location: "" };
+    case "group_rename": return { newName: "" };
+    case "group_photo": return { url: "" };
+    case "group_description": return { description: "" };
+    case "group_add_participant": return { phones: [""] };
+    case "group_remove_participant": return { phone: "" };
+    case "group_promote_admin": return { phone: "" };
+    case "group_remove_admin": return { phone: "" };
+    case "group_settings": return { adminOnlyMessage: false, adminOnlyEditInfo: false, approvalMode: false, locked: false };
     default: return {};
   }
 };

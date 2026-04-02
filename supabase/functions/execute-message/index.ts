@@ -230,9 +230,23 @@ const getActionForNodeType = (nodeType: string): string => {
     poll: "message.send_poll",
     reaction: "message.send_reaction",
     media: "message.send_media",
+    group_rename: "group.update_name",
+    group_photo: "group.update_photo",
+    group_description: "group.update_description",
+    group_add_participant: "group.add_participant",
+    group_remove_participant: "group.remove_participant",
+    group_promote_admin: "group.promote_admin",
+    group_remove_admin: "group.demote_admin",
+    group_settings: "group.update_settings",
   };
   return actionMap[nodeType] || `message.send_${nodeType}`;
 };
+
+const GROUP_MANAGEMENT_NODE_TYPES = [
+  "group_rename", "group_photo", "group_description",
+  "group_add_participant", "group_remove_participant",
+  "group_promote_admin", "group_remove_admin", "group_settings",
+];
 
 // ============= Main handler =============
 
@@ -650,6 +664,80 @@ Deno.serve(async (req) => {
             await new Promise(resolve => setTimeout(resolve, delayMs));
           }
           
+          nodesProcessed++;
+          continue;
+        }
+
+        // ============= GROUP MANAGEMENT NODES =============
+        if (GROUP_MANAGEMENT_NODE_TYPES.includes(node.node_type)) {
+          const action = getActionForNodeType(node.node_type);
+          const formattedConfig = formatNodeConfig(node.config, node.node_type);
+          
+          // Group management nodes operate on linked groups (using group_jid)
+          for (const dest of destinations) {
+            const payload = buildStandardPayload({
+              action,
+              node: { id: node.id, type: node.node_type, order: node.node_order, config: formattedConfig },
+              campaign: { id: typedCampaign.id, name: typedCampaign.name },
+              instance: {
+                id: instance.id, name: instance.name, phone: instance.phone || "",
+                provider: instance.provider, externalId: instance.external_instance_id || "",
+                externalToken: instance.external_instance_token || "",
+              },
+              destination: { jid: dest.group_jid, name: dest.group_name },
+            });
+
+            const sendStartTime = Date.now();
+
+            const { data: logEntry } = await supabase
+              .from("group_message_logs")
+              .insert({
+                user_id: userId, group_campaign_id: typedCampaign.id,
+                sequence_id: effectiveSequenceId, node_type: node.node_type,
+                node_order: node.node_order, group_jid: dest.group_jid,
+                group_name: dest.group_name, instance_id: instance.id,
+                instance_name: instance.name, campaign_name: typedCampaign.name,
+                status: "sending", payload,
+              })
+              .select().single();
+
+            try {
+              const response = await fetch(webhookUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+
+              const responseTimeMs = Date.now() - sendStartTime;
+              const responseText = await response.text();
+              let responseData;
+              try { responseData = JSON.parse(responseText); } catch { responseData = { raw: responseText }; }
+
+              if (logEntry?.id) {
+                await supabase.from("group_message_logs").update({
+                  status: response.ok ? "sent" : "failed",
+                  error_message: response.ok ? null : `HTTP ${response.status}`,
+                  response_time_ms: responseTimeMs, provider_response: responseData,
+                }).eq("id", logEntry.id);
+              }
+
+              if (response.ok) {
+                console.log(`[ExecuteMessage] ✅ Group mgmt ${node.node_type} on ${dest.group_name}`);
+              } else {
+                nodesFailed++;
+                console.log(`[ExecuteMessage] ❌ Group mgmt ${node.node_type} failed: HTTP ${response.status}`);
+              }
+            } catch (err) {
+              nodesFailed++;
+              if (logEntry?.id) {
+                await supabase.from("group_message_logs").update({
+                  status: "failed", error_message: err instanceof Error ? err.message : "Unknown error",
+                  response_time_ms: Date.now() - sendStartTime,
+                }).eq("id", logEntry.id);
+              }
+            }
+          }
+
           nodesProcessed++;
           continue;
         }
