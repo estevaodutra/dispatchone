@@ -109,7 +109,16 @@ export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMess
 
   const handleClose = () => { reset(); onClose(); };
 
-  const handleSelectType = (type: string) => { setSelectedType(type); setStep(2); };
+  const handleSelectType = (type: string) => {
+    setSelectedType(type);
+    if (triggerType === "webhook") {
+      onSave(type, { enabled: false });
+      reset();
+      onClose();
+    } else {
+      setStep(2);
+    }
+  };
 
   const handleSave = () => {
     if (!selectedType) return;
