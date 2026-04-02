@@ -140,15 +140,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
       sequenceId={sequence.id}
       nodeCategories={NODE_CATEGORIES}
       getDefaultConfig={getDefaultConfig}
-      renderTrigger={() => (
-        <TriggerConfigCard
-          triggerType={triggerType}
-          triggerConfig={triggerConfig}
-          onTriggerTypeChange={setTriggerType}
-          onTriggerConfigChange={setTriggerConfig}
-          sequenceId={sequence.id}
-        />
-      )}
+      renderTrigger={() => null}
       renderConfigPanel={(node, onUpdateConfig, onClose, onManualSend, isSendingManual) => (
         <UnifiedNodeConfigPanel
           node={node}

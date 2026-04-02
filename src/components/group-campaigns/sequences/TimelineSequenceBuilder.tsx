@@ -232,14 +232,7 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         </div>
       </div>
 
-      {/* Trigger config */}
-      <TriggerConfigCard
-        triggerType={triggerType}
-        triggerConfig={triggerConfig}
-        onTriggerTypeChange={setTriggerType}
-        onTriggerConfigChange={setTriggerConfig}
-        sequenceId={sequence.id}
-      />
+      {/* Trigger is configured at sequence creation time, not shown here */}
 
       {/* Timeline */}
       <MessageTimeline
