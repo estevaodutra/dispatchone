@@ -20,7 +20,7 @@ interface MessageTimelineProps {
 export function MessageTimeline({
   nodes, nodeStatuses,
   onEditNode, onDuplicateNode, onTogglePauseNode, onMoveNode, onDeleteNode,
-  onNewMessage,
+  onExecuteNode, onNewMessage,
 }: MessageTimelineProps) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
