@@ -7,16 +7,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, ShieldMinus } from "lucide-react";
 
-interface GroupRemoveAdminModalProps {
+export interface GroupRemoveAdminModalProps {
   instanceId: string;
   groupId: string;
   admins?: Array<{ phone: string; name?: string }>;
   onSuccess?: () => void;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function GroupRemoveAdminModal({ instanceId, groupId, admins, onSuccess, children }: GroupRemoveAdminModalProps) {
-  const [open, setOpen] = useState(false);
+export function GroupRemoveAdminModal({ instanceId, groupId, admins, onSuccess, children, open: controlledOpen, onOpenChange }: GroupRemoveAdminModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => { if (!isControlled) setInternalOpen(v); onOpenChange?.(v); if (!v) setSelectedPhone(""); };
+
   const [selectedPhone, setSelectedPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,18 +31,12 @@ export function GroupRemoveAdminModal({ instanceId, groupId, admins, onSuccess, 
     setLoading(true);
     try {
       const { error } = await supabase.functions.invoke("zapi-proxy", {
-        body: {
-          instanceId,
-          endpoint: "/remove-admin",
-          method: "POST",
-          body: { phone: groupId, phones: [selectedPhone] },
-        },
+        body: { instanceId, endpoint: "/remove-admin", method: "POST", body: { phone: groupId, phones: [selectedPhone] } },
       });
       if (error) throw error;
       toast.success("Privilégios de admin removidos!");
       onSuccess?.();
       setOpen(false);
-      setSelectedPhone("");
     } catch (err) {
       toast.error("Falha ao remover admin: " + (err as Error).message);
     } finally {
@@ -45,14 +45,14 @@ export function GroupRemoveAdminModal({ instanceId, groupId, admins, onSuccess, 
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSelectedPhone(""); }}>
-      <DialogTrigger asChild>
-        {children || <Button variant="outline" size="sm"><ShieldMinus className="h-4 w-4 mr-2" />Remover Admin</Button>}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {children || <Button variant="outline" size="sm"><ShieldMinus className="h-4 w-4 mr-2" />Remover Admin</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Remover Administrador</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Remover Administrador</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <label className="text-sm font-medium">Administrador *</label>
           {admins && admins.length > 0 ? (
@@ -60,9 +60,7 @@ export function GroupRemoveAdminModal({ instanceId, groupId, admins, onSuccess, 
               <SelectTrigger><SelectValue placeholder="Selecione o administrador..." /></SelectTrigger>
               <SelectContent>
                 {admins.map((a) => (
-                  <SelectItem key={a.phone} value={a.phone}>
-                    {a.name ? `${a.name} - ${a.phone}` : a.phone}
-                  </SelectItem>
+                  <SelectItem key={a.phone} value={a.phone}>{a.name ? `${a.name} - ${a.phone}` : a.phone}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

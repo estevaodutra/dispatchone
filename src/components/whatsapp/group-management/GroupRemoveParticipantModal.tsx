@@ -7,16 +7,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, UserMinus } from "lucide-react";
 
-interface GroupRemoveParticipantModalProps {
+export interface GroupRemoveParticipantModalProps {
   instanceId: string;
   groupId: string;
   participants?: Array<{ phone: string; name?: string }>;
   onSuccess?: () => void;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function GroupRemoveParticipantModal({ instanceId, groupId, participants, onSuccess, children }: GroupRemoveParticipantModalProps) {
-  const [open, setOpen] = useState(false);
+export function GroupRemoveParticipantModal({ instanceId, groupId, participants, onSuccess, children, open: controlledOpen, onOpenChange }: GroupRemoveParticipantModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => { if (!isControlled) setInternalOpen(v); onOpenChange?.(v); if (!v) setSelectedPhone(""); };
+
   const [selectedPhone, setSelectedPhone] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -25,18 +31,12 @@ export function GroupRemoveParticipantModal({ instanceId, groupId, participants,
     setLoading(true);
     try {
       const { error } = await supabase.functions.invoke("zapi-proxy", {
-        body: {
-          instanceId,
-          endpoint: "/remove-participant",
-          method: "POST",
-          body: { phone: groupId, phones: [selectedPhone] },
-        },
+        body: { instanceId, endpoint: "/remove-participant", method: "POST", body: { phone: groupId, phones: [selectedPhone] } },
       });
       if (error) throw error;
       toast.success("Participante removido!");
       onSuccess?.();
       setOpen(false);
-      setSelectedPhone("");
     } catch (err) {
       toast.error("Falha ao remover: " + (err as Error).message);
     } finally {
@@ -45,14 +45,14 @@ export function GroupRemoveParticipantModal({ instanceId, groupId, participants,
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSelectedPhone(""); }}>
-      <DialogTrigger asChild>
-        {children || <Button variant="outline" size="sm"><UserMinus className="h-4 w-4 mr-2" />Remover</Button>}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {children || <Button variant="outline" size="sm"><UserMinus className="h-4 w-4 mr-2" />Remover</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Remover Participante</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Remover Participante</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <label className="text-sm font-medium">Participante *</label>
           {participants && participants.length > 0 ? (
@@ -60,9 +60,7 @@ export function GroupRemoveParticipantModal({ instanceId, groupId, participants,
               <SelectTrigger><SelectValue placeholder="Selecione o participante..." /></SelectTrigger>
               <SelectContent>
                 {participants.map((p) => (
-                  <SelectItem key={p.phone} value={p.phone}>
-                    {p.name ? `${p.name} - ${p.phone}` : p.phone}
-                  </SelectItem>
+                  <SelectItem key={p.phone} value={p.phone}>{p.name ? `${p.name} - ${p.phone}` : p.phone}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

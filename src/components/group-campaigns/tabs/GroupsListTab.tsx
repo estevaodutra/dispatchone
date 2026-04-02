@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { List, Users, Plus, Trash2, Search } from "lucide-react";
+import { List, Users, Plus, Trash2, Search, MoreVertical, Pencil, Image, FileText, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Link2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useInstances } from "@/hooks/useInstances";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useGroupMembers } from "@/hooks/useGroupMembers";
@@ -14,6 +15,17 @@ import { useLanguage } from "@/i18n/LanguageContext";
 import { useWebhookConfigs, getWebhookUrlForCategory } from "@/hooks/useWebhookConfigs";
 import { buildGroupPayload } from "@/lib/webhook-utils";
 import { toast } from "sonner";
+import {
+  GroupUpdateNameModal,
+  GroupUpdatePhotoModal,
+  GroupUpdateDescriptionModal,
+  GroupAddParticipantModal,
+  GroupRemoveParticipantModal,
+  GroupPromoteAdminModal,
+  GroupRemoveAdminModal,
+  GroupSettingsModal,
+  GroupInviteLinkModal,
+} from "@/components/whatsapp/group-management";
 
 interface WhatsAppGroup {
   phone: string;
@@ -31,6 +43,15 @@ interface WhatsAppGroup {
 
 interface GroupsListTabProps {
   campaignId?: string;
+}
+
+type GroupAction = 'rename' | 'photo' | 'description' | 'addParticipant' | 'removeParticipant' | 'promoteAdmin' | 'removeAdmin' | 'settings' | 'inviteLink';
+
+interface ActiveGroupAction {
+  groupJid: string;
+  instanceId: string;
+  groupName: string;
+  action: GroupAction;
 }
 
 export function GroupsListTab({ campaignId }: GroupsListTabProps) {
@@ -53,6 +74,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeAction, setActiveAction] = useState<ActiveGroupAction | null>(null);
 
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
@@ -283,14 +305,56 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
                       {group.groupJid}
                     </p>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => handleRemoveGroup(group.id)}
-                    disabled={isRemoving}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {group.instanceId && (
+                        <>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'rename' })}>
+                            <Pencil className="mr-2 h-4 w-4" /> Renomear
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'photo' })}>
+                            <Image className="mr-2 h-4 w-4" /> Atualizar Foto
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'description' })}>
+                            <FileText className="mr-2 h-4 w-4" /> Atualizar Descrição
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'addParticipant' })}>
+                            <UserPlus className="mr-2 h-4 w-4" /> Adicionar Participante
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'removeParticipant' })}>
+                            <UserMinus className="mr-2 h-4 w-4" /> Remover Participante
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'promoteAdmin' })}>
+                            <ShieldPlus className="mr-2 h-4 w-4" /> Promover Admin
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'removeAdmin' })}>
+                            <ShieldMinus className="mr-2 h-4 w-4" /> Remover Admin
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'settings' })}>
+                            <Settings className="mr-2 h-4 w-4" /> Configurações
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setActiveAction({ groupJid: group.groupJid, instanceId: group.instanceId!, groupName: group.groupName, action: 'inviteLink' })}>
+                            <Link2 className="mr-2 h-4 w-4" /> Link de Convite
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                        </>
+                      )}
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        onClick={() => handleRemoveGroup(group.id)}
+                        disabled={isRemoving}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" /> Remover da Campanha
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               ))}
             </div>
@@ -433,6 +497,75 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
           ) : null}
         </CardContent>
       </Card>
+
+      {/* Group Management Modals */}
+      {activeAction && (
+        <>
+          <GroupUpdateNameModal
+            open={activeAction.action === 'rename'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            currentName={activeAction.groupName}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupUpdatePhotoModal
+            open={activeAction.action === 'photo'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupUpdateDescriptionModal
+            open={activeAction.action === 'description'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupAddParticipantModal
+            open={activeAction.action === 'addParticipant'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupRemoveParticipantModal
+            open={activeAction.action === 'removeParticipant'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupPromoteAdminModal
+            open={activeAction.action === 'promoteAdmin'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupRemoveAdminModal
+            open={activeAction.action === 'removeAdmin'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupSettingsModal
+            open={activeAction.action === 'settings'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+            onSuccess={() => setActiveAction(null)}
+          />
+          <GroupInviteLinkModal
+            open={activeAction.action === 'inviteLink'}
+            onOpenChange={(open) => !open && setActiveAction(null)}
+            instanceId={activeAction.instanceId}
+            groupId={activeAction.groupJid}
+          />
+        </>
+      )}
     </div>
   );
 }

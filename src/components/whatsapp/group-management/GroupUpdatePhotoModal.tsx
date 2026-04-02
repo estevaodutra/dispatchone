@@ -5,15 +5,21 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Camera } from "lucide-react";
 
-interface GroupUpdatePhotoModalProps {
+export interface GroupUpdatePhotoModalProps {
   instanceId: string;
   groupId: string;
   onSuccess?: () => void;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function GroupUpdatePhotoModal({ instanceId, groupId, onSuccess, children }: GroupUpdatePhotoModalProps) {
-  const [open, setOpen] = useState(false);
+export function GroupUpdatePhotoModal({ instanceId, groupId, onSuccess, children, open: controlledOpen, onOpenChange }: GroupUpdatePhotoModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => { if (!isControlled) setInternalOpen(v); onOpenChange?.(v); if (!v) { setFile(null); setPreview(null); } };
+
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -22,10 +28,7 @@ export function GroupUpdatePhotoModal({ instanceId, groupId, onSuccess, children
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
-    if (selected.size > 2 * 1024 * 1024) {
-      toast.error("Imagem muito grande. Máximo 2MB.");
-      return;
-    }
+    if (selected.size > 2 * 1024 * 1024) { toast.error("Imagem muito grande. Máximo 2MB."); return; }
     setFile(selected);
     setPreview(URL.createObjectURL(selected));
   };
@@ -38,23 +41,14 @@ export function GroupUpdatePhotoModal({ instanceId, groupId, onSuccess, children
       const path = `${crypto.randomUUID()}.${ext}`;
       const { error: uploadError } = await supabase.storage.from("group-photos").upload(path, file);
       if (uploadError) throw uploadError;
-
       const { data: urlData } = supabase.storage.from("group-photos").getPublicUrl(path);
-
       const { error } = await supabase.functions.invoke("zapi-proxy", {
-        body: {
-          instanceId,
-          endpoint: "/update-group-photo",
-          method: "POST",
-          body: { phone: groupId, photo: urlData.publicUrl },
-        },
+        body: { instanceId, endpoint: "/update-group-photo", method: "POST", body: { phone: groupId, photo: urlData.publicUrl } },
       });
       if (error) throw error;
       toast.success("Foto do grupo atualizada!");
       onSuccess?.();
       setOpen(false);
-      setFile(null);
-      setPreview(null);
     } catch (err) {
       toast.error("Falha ao atualizar foto: " + (err as Error).message);
     } finally {
@@ -63,18 +57,15 @@ export function GroupUpdatePhotoModal({ instanceId, groupId, onSuccess, children
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) { setFile(null); setPreview(null); } }}>
-      <DialogTrigger asChild>
-        {children || <Button variant="outline" size="sm"><Camera className="h-4 w-4 mr-2" />Alterar Foto</Button>}
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {children || <Button variant="outline" size="sm"><Camera className="h-4 w-4 mr-2" />Alterar Foto</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Atualizar Imagem do Grupo</DialogTitle>
-        </DialogHeader>
-        <div
-          className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
-          onClick={() => inputRef.current?.click()}
-        >
+        <DialogHeader><DialogTitle>Atualizar Imagem do Grupo</DialogTitle></DialogHeader>
+        <div className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors" onClick={() => inputRef.current?.click()}>
           {preview ? (
             <img src={preview} alt="Preview" className="mx-auto max-h-48 rounded-md object-cover" />
           ) : (

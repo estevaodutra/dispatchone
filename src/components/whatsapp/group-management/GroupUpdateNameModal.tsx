@@ -6,16 +6,22 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Loader2, Pencil } from "lucide-react";
 
-interface GroupUpdateNameModalProps {
+export interface GroupUpdateNameModalProps {
   instanceId: string;
   groupId: string;
   currentName?: string;
   onSuccess?: () => void;
   children?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function GroupUpdateNameModal({ instanceId, groupId, currentName, onSuccess, children }: GroupUpdateNameModalProps) {
-  const [open, setOpen] = useState(false);
+export function GroupUpdateNameModal({ instanceId, groupId, currentName, onSuccess, children, open: controlledOpen, onOpenChange }: GroupUpdateNameModalProps) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => { if (!isControlled) setInternalOpen(v); onOpenChange?.(v); };
+
   const [name, setName] = useState(currentName || "");
   const [loading, setLoading] = useState(false);
 
@@ -27,12 +33,7 @@ export function GroupUpdateNameModal({ instanceId, groupId, currentName, onSucce
     setLoading(true);
     try {
       const { error } = await supabase.functions.invoke("zapi-proxy", {
-        body: {
-          instanceId,
-          endpoint: "/update-group-name",
-          method: "POST",
-          body: { phone: groupId, groupName: name },
-        },
+        body: { instanceId, endpoint: "/update-group-name", method: "POST", body: { phone: groupId, groupName: name } },
       });
       if (error) throw error;
       toast.success("Nome do grupo atualizado!");
@@ -47,13 +48,13 @@ export function GroupUpdateNameModal({ instanceId, groupId, currentName, onSucce
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children || <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-2" />Renomear</Button>}
-      </DialogTrigger>
+      {!isControlled && (
+        <DialogTrigger asChild>
+          {children || <Button variant="outline" size="sm"><Pencil className="h-4 w-4 mr-2" />Renomear</Button>}
+        </DialogTrigger>
+      )}
       <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Atualizar Nome do Grupo</DialogTitle>
-        </DialogHeader>
+        <DialogHeader><DialogTitle>Atualizar Nome do Grupo</DialogTitle></DialogHeader>
         <div>
           <label className="text-sm font-medium">Novo nome *</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Nome do grupo" />
