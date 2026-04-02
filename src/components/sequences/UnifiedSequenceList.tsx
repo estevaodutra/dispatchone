@@ -201,14 +201,18 @@ export function UnifiedSequenceList<T>({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {triggerTypes.map(trigger => (
-                      <SelectItem key={trigger.value} value={trigger.value}>
-                        <div className="flex items-center gap-2">
-                          <trigger.icon className="h-4 w-4" />
-                          {trigger.label}
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {triggerTypes.map(trigger => {
+                      const isUsed = usedTriggerTypes.has(trigger.value);
+                      return (
+                        <SelectItem key={trigger.value} value={trigger.value} disabled={isUsed}>
+                          <div className="flex items-center gap-2">
+                            <trigger.icon className="h-4 w-4" />
+                            {trigger.label}
+                            {isUsed && <span className="text-xs text-muted-foreground ml-1">(em uso)</span>}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               ) : (
