@@ -230,6 +230,7 @@ const getActionForNodeType = (nodeType: string): string => {
     poll: "message.send_poll",
     reaction: "message.send_reaction",
     media: "message.send_media",
+    group_create: "group.create",
     group_rename: "group.update_name",
     group_photo: "group.update_photo",
     group_description: "group.update_description",
@@ -243,7 +244,7 @@ const getActionForNodeType = (nodeType: string): string => {
 };
 
 const GROUP_MANAGEMENT_NODE_TYPES = [
-  "group_rename", "group_photo", "group_description",
+  "group_create", "group_rename", "group_photo", "group_description",
   "group_add_participant", "group_remove_participant",
   "group_promote_admin", "group_remove_admin", "group_settings",
 ];
@@ -673,23 +674,19 @@ Deno.serve(async (req) => {
           const action = getActionForNodeType(node.node_type);
           const formattedConfig = formatNodeConfig(node.config, node.node_type);
           
-          // Replace variables in group management config fields
-          const groupMgmtTextFields = [
-            "groupName", "groupDescription", "groupSubject",
-            "participants", "phone", "name", "text", "message",
-            "description", "title", "content"
-          ];
-          groupMgmtTextFields.forEach((field) => {
-            if (typeof formattedConfig[field] === "string") {
-              formattedConfig[field] = replaceVariables(formattedConfig[field] as string);
+          // Recursively replace variables in all config fields
+          const replaceDeep = (val: unknown): unknown => {
+            if (typeof val === "string") return replaceVariables(val);
+            if (Array.isArray(val)) return val.map(replaceDeep);
+            if (val && typeof val === "object") {
+              return Object.fromEntries(
+                Object.entries(val as Record<string, unknown>).map(([k, v]) => [k, replaceDeep(v)])
+              );
             }
-          });
-          // Also handle arrays (e.g., participants list)
-          if (Array.isArray(formattedConfig.participants)) {
-            formattedConfig.participants = formattedConfig.participants.map(
-              (p: unknown) => typeof p === "string" ? replaceVariables(p) : p
-            );
-          }
+            return val;
+          };
+          const resolvedConfig = replaceDeep(formattedConfig) as Record<string, unknown>;
+          Object.assign(formattedConfig, resolvedConfig);
           
           // Group management nodes operate on linked groups (using group_jid)
           for (const dest of destinations) {

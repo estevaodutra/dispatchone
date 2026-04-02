@@ -174,7 +174,14 @@ Deno.serve(async (req) => {
     const fieldMappings = triggerConfig.fieldMappings || [];
     const customFields = applyFieldMappings(payload, fieldMappings);
 
-    console.log(`[TriggerSequence] Applied ${fieldMappings.length} field mappings:`, customFields);
+    // Fallback: auto-map simple top-level payload keys that aren't already mapped
+    for (const [key, value] of Object.entries(payload)) {
+      if (!(key in customFields) && (typeof value === "string" || typeof value === "number" || typeof value === "boolean")) {
+        customFields[key] = String(value);
+      }
+    }
+
+    console.log(`[TriggerSequence] Applied ${fieldMappings.length} field mappings + fallback keys:`, customFields);
 
     // Check if payload contains destination phone for private sending
     const destinationPhone = extractField(payload, "destination.phone") || 
