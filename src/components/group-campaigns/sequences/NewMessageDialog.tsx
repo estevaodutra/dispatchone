@@ -13,7 +13,7 @@ import { format } from "date-fns";
 import {
   CalendarIcon, MessageSquare, Image as ImageIcon, Video, Music, FileText,
   BarChart3, MousePointerClick, List, Smile, MapPin, Contact, CalendarDays,
-  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus,
+  Pencil, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus, CircleDot,
 } from "lucide-react";
 
 interface NewMessageDialogProps {
@@ -49,6 +49,13 @@ const CATEGORIES = [
       { type: "location", label: "Localização", icon: MapPin },
       { type: "contact", label: "Contato", icon: Contact },
       { type: "event", label: "Evento", icon: CalendarDays },
+    ],
+  },
+  {
+    label: "Status",
+    items: [
+      { type: "status_image", label: "Status Imagem", icon: CircleDot },
+      { type: "status_video", label: "Status Vídeo", icon: CircleDot },
     ],
   },
   {

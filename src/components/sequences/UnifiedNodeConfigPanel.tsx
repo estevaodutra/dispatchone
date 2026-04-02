@@ -18,7 +18,7 @@ import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
-  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings,
+  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, CircleDot,
 } from "lucide-react";
 
 interface UnifiedNodeConfigPanelProps {
@@ -75,6 +75,8 @@ const NODE_TITLES: Record<string, { title: string; icon: React.ElementType }> = 
   group_promote_admin: { title: "Promover Admin", icon: ShieldPlus },
   group_remove_admin: { title: "Remover Admin", icon: ShieldMinus },
   group_settings: { title: "Configurações do Grupo", icon: Settings },
+  status_image: { title: "Status Imagem", icon: CircleDot },
+  status_video: { title: "Status Vídeo", icon: CircleDot },
 };
 
 const QUICK_DELAYS = [
@@ -87,7 +89,7 @@ const QUICK_DELAYS = [
 ];
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const SENDABLE_NODE_TYPES = ["message", "image", "video", "audio", "document", "sticker", "buttons", "list", "poll", "location", "contact", "event"];
+const SENDABLE_NODE_TYPES = ["message", "image", "video", "audio", "document", "sticker", "buttons", "list", "poll", "location", "contact", "event", "status_image", "status_video"];
 
 function NodeScheduleSection({
   config,
@@ -1396,6 +1398,44 @@ export function UnifiedNodeConfigPanel({
                 <Switch
                   checked={(node.config.locked as boolean) || false}
                   onCheckedChange={checked => updateConfig("locked", checked)}
+                />
+              </div>
+            </>
+          )}
+
+          {/* STATUS IMAGE */}
+          {node.nodeType === "status_image" && (
+            <>
+              <div className="space-y-2">
+                <Label>Mídia do Status</Label>
+                {renderMediaField("image", "https://exemplo.com/imagem.jpg")}
+              </div>
+              <div className="space-y-2">
+                <Label>Legenda (opcional)</Label>
+                <Textarea
+                  placeholder="Texto do status..."
+                  value={(node.config.caption as string) || ""}
+                  onChange={e => updateConfig("caption", e.target.value)}
+                  rows={2}
+                />
+              </div>
+            </>
+          )}
+
+          {/* STATUS VIDEO */}
+          {node.nodeType === "status_video" && (
+            <>
+              <div className="space-y-2">
+                <Label>Mídia do Status</Label>
+                {renderMediaField("video", "https://exemplo.com/video.mp4")}
+              </div>
+              <div className="space-y-2">
+                <Label>Legenda (opcional)</Label>
+                <Textarea
+                  placeholder="Texto do status..."
+                  value={(node.config.caption as string) || ""}
+                  onChange={e => updateConfig("caption", e.target.value)}
+                  rows={2}
                 />
               </div>
             </>

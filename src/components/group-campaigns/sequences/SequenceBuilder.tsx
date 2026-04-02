@@ -12,7 +12,7 @@ import {
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
-  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus,
+  Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus, CircleDot,
 } from "lucide-react";
 
 interface SequenceBuilderProps {
@@ -45,6 +45,10 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "condition", label: "Condição", icon: GitBranch, color: "bg-purple-500" },
     { type: "notify", label: "Notificar", icon: Bell, color: "bg-green-500" },
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
+  ]},
+  { id: "status", label: "Status", nodes: [
+    { type: "status_image", label: "Status Imagem", icon: CircleDot, color: "bg-emerald-500" },
+    { type: "status_video", label: "Status Vídeo", icon: CircleDot, color: "bg-cyan-500" },
   ]},
   { id: "group_management", label: "Gestão de Grupo", nodes: [
     { type: "group_create", label: "Criar Grupo", icon: Plus, color: "bg-teal-600" },
@@ -86,6 +90,8 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "group_promote_admin": return { phone: "" };
     case "group_remove_admin": return { phone: "" };
     case "group_settings": return { adminOnlyMessage: false, adminOnlyEditInfo: false, approvalMode: false, locked: false };
+    case "status_image": return { url: "", caption: "" };
+    case "status_video": return { url: "", caption: "" };
     default: return {};
   }
 };

@@ -217,6 +217,8 @@ const getActionForNodeType = (nodeType: string): string => {
     poll: "message.send_poll",
     reaction: "message.send_reaction",
     media: "message.send_media",
+    status_image: "status.send_image",
+    status_video: "status.send_video",
   };
   return actionMap[nodeType] || "message.send_text";
 };

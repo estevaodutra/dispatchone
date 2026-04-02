@@ -47,6 +47,8 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "group_promote_admin": return { phone: "" };
     case "group_remove_admin": return { phone: "" };
     case "group_settings": return { adminOnlyMessage: false, adminOnlyEditInfo: false, approvalMode: false, locked: false };
+    case "status_image": return { url: "", caption: "" };
+    case "status_video": return { url: "", caption: "" };
     default: return {};
   }
 };
