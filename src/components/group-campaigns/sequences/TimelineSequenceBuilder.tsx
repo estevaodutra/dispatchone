@@ -210,13 +210,22 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
   const handleExecuteNode = async (node: LocalNode) => {
     try {
       toast.info("Executando...");
-      const { error } = await supabase.functions.invoke("execute-message", {
+      const { data, error } = await supabase.functions.invoke("execute-message", {
         body: { campaignId: sequence.groupCampaignId, sequenceId: sequence.id, manualNodeIndex: node.nodeOrder },
       });
       if (error) throw error;
-      toast.success("Mensagem disparada com sucesso!");
-    } catch {
-      toast.error("Erro ao executar mensagem");
+      if (data?.error) throw new Error(data.error);
+      if (data?.success === false) throw new Error("Webhook retornou erro");
+
+      const failedCount = data?.nodesFailed || 0;
+      if (failedCount > 0) {
+        toast.warning(`Executado com ${failedCount} falha(s)`);
+      } else {
+        toast.success("Mensagem executada com sucesso!");
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao executar mensagem";
+      toast.error(msg);
     }
   };
 
