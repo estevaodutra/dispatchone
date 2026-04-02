@@ -46,6 +46,10 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "notify", label: "Notificar", icon: Bell, color: "bg-green-500" },
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
   ]},
+  { id: "status", label: "Status", nodes: [
+    { type: "status_image", label: "Status Imagem", icon: CircleDot, color: "bg-emerald-500" },
+    { type: "status_video", label: "Status Vídeo", icon: CircleDot, color: "bg-cyan-500" },
+  ]},
   { id: "group_management", label: "Gestão de Grupo", nodes: [
     { type: "group_create", label: "Criar Grupo", icon: Plus, color: "bg-teal-600" },
     { type: "group_rename", label: "Renomear Grupo", icon: Pencil, color: "bg-sky-600" },
