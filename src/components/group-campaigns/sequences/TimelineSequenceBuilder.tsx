@@ -207,6 +207,19 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
     }
   };
 
+  const handleExecuteNode = async (node: LocalNode) => {
+    try {
+      toast.info("Executando...");
+      const { error } = await supabase.functions.invoke("execute-message", {
+        body: { campaignId: sequence.groupCampaignId, sequenceId: sequence.id, manualNodeIndex: node.nodeOrder },
+      });
+      if (error) throw error;
+      toast.success("Mensagem disparada com sucesso!");
+    } catch {
+      toast.error("Erro ao executar mensagem");
+    }
+  };
+
   const getOptionAction = (node: LocalNode, index: number): PollActionConfig | null => {
     const optionActions = (node.config.optionActions as Record<string, PollActionConfig>) || {};
     return optionActions[String(index)] || null;

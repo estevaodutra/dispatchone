@@ -124,6 +124,7 @@ export function MessageTimeline({
                   onEdit={() => onEditNode(node)}
                   onDuplicate={() => onDuplicateNode(node)}
                   onTogglePause={() => onTogglePauseNode(node)}
+                  onExecute={onExecuteNode ? () => onExecuteNode(node) : undefined}
                   onMoveUp={() => onMoveNode(node, "up")}
                   onMoveDown={() => onMoveNode(node, "down")}
                   onDelete={() => onDeleteNode(node)}

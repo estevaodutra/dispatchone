@@ -140,6 +140,11 @@ export function MessageCard({
               {isPaused ? <Play className="mr-2 h-3.5 w-3.5" /> : <Pause className="mr-2 h-3.5 w-3.5" />}
               {isPaused ? "Ativar" : "Pausar"}
             </DropdownMenuItem>
+            {onExecute && (
+              <DropdownMenuItem onClick={onExecute} className="text-primary focus:text-primary">
+                <Zap className="mr-2 h-3.5 w-3.5" /> Executar agora
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             {!isFirst && <DropdownMenuItem onClick={onMoveUp}><ArrowUp className="mr-2 h-3.5 w-3.5" /> Mover para cima</DropdownMenuItem>}
             {!isLast && <DropdownMenuItem onClick={onMoveDown}><ArrowDown className="mr-2 h-3.5 w-3.5" /> Mover para baixo</DropdownMenuItem>}
