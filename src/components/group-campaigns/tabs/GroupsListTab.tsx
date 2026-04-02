@@ -45,6 +45,15 @@ interface GroupsListTabProps {
   campaignId?: string;
 }
 
+type GroupAction = 'rename' | 'photo' | 'description' | 'addParticipant' | 'removeParticipant' | 'promoteAdmin' | 'removeAdmin' | 'settings' | 'inviteLink';
+
+interface ActiveGroupAction {
+  groupJid: string;
+  instanceId: string;
+  groupName: string;
+  action: GroupAction;
+}
+
 export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const { t } = useLanguage();
   const { instances, isLoading: instancesLoading } = useInstances();
@@ -65,6 +74,7 @@ export function GroupsListTab({ campaignId }: GroupsListTabProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [hasFetched, setHasFetched] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeAction, setActiveAction] = useState<ActiveGroupAction | null>(null);
 
 
   const connectedInstances = instances?.filter(i => i.status === "connected") || [];
