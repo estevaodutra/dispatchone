@@ -910,6 +910,7 @@ Deno.serve(async (req) => {
             } else {
               nodesFailed++;
               console.log(`[ExecuteMessage] ❌ Node ${node.node_type} failed for ${dest.group_name}: HTTP ${response.status}`);
+              webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: dest.group_jid, status: "failed", data: responseData });
             }
           } catch (err) {
             nodesFailed++;
@@ -978,6 +979,7 @@ Deno.serve(async (req) => {
         nodesFailed,
         groupsProcessed: groups.length,
         totalTimeMs,
+        webhookResponses,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
