@@ -1,40 +1,39 @@
 
 
-## Plano: Retornar dados da resposta do webhook na resposta final
+## Plano: Adicionar nós de Status (Imagem e Vídeo) nas sequências
 
-### Problema
-O `execute-message` já aguarda a resposta do webhook e a salva em `provider_response` no log, mas **não retorna esses dados** na resposta final da função. O chamador (trigger-sequence, frontend) não recebe os dados como `invitationLink`.
+### Objetivo
+Adicionar dois novos tipos de nó — `status_image` e `status_video` — para postar status/stories no WhatsApp diretamente das sequências de campanha.
 
-### Alteração
+### Alterações
 
-**Arquivo: `supabase/functions/execute-message/index.ts`**
+**1. NewMessageDialog.tsx** — Nova categoria "Status" no seletor de nós
+- Adicionar categoria `{ label: "Status", items: [...] }` com `status_image` (ícone ImageIcon) e `status_video` (ícone Video)
+- Importar ícone `CircleDot` ou reutilizar existentes
 
-1. Criar um array `webhookResponses` no início do loop de nós para acumular as respostas
-2. No bloco de GROUP MANAGEMENT NODES (linha ~729), após parsear `responseData`, adicionar ao array
-3. No bloco de MESSAGE NODES (nós normais), fazer o mesmo
-4. Na resposta final (linha ~969), incluir `webhookResponses` no JSON retornado
+**2. UnifiedNodeConfigPanel.tsx** — Config panel para os novos nós
+- Adicionar em `NODE_TITLES`: `status_image: "Status Imagem"` e `status_video: "Status Vídeo"`
+- Adicionar em `SENDABLE_NODE_TYPES` os dois tipos
+- Adicionar seções de config: upload de mídia + legenda (caption) — similar a image/video mas sem `sendPrivate`/`viewOnce`
 
-```text
-Antes (resposta final):
-  { success, status, nodesProcessed, nodesFailed, groupsProcessed, totalTimeMs }
+**3. TimelineSequenceBuilder.tsx** — Default configs
+- Adicionar no `getDefaultConfig`:
+  - `status_image`: `{ url: "", caption: "" }`
+  - `status_video`: `{ url: "", caption: "" }`
 
-Depois:
-  { success, status, nodesProcessed, nodesFailed, groupsProcessed, totalTimeMs, webhookResponses }
-```
+**4. SequenceBuilder.tsx** — NODE_CATEGORIES + default configs
+- Adicionar os dois nós na categoria existente ou nova categoria "Status"
+- Adicionar no `getDefaultConfig` local
 
-Cada item em `webhookResponses` terá:
-```typescript
-{
-  nodeType: string,
-  nodeOrder: number,
-  destination: string,   // group_jid ou phone
-  status: "sent" | "failed",
-  data: responseData      // dados parseados do webhook
-}
-```
+**5. supabase/functions/execute-message/index.ts** — Backend
+- Adicionar em `getActionForNodeType`: `status_image: "status.send_image"` e `status_video: "status.send_video"`
+- Estes nós NÃO são group management, seguem o fluxo normal de mensagens
+
+**6. supabase/functions/process-scheduled-messages/index.ts** — Scheduled
+- Adicionar o mesmo mapeamento em `getActionForNodeType`
 
 ### Resultado
-O chamador recebe os dados completos do webhook (ex: `invitationLink`, `phone`) na resposta, permitindo encadear ações baseadas no retorno.
+Dois novos nós disponíveis no builder de sequências para postar imagem e vídeo no status do WhatsApp, com upload de mídia e legenda opcional.
 
-1 arquivo, ~20 linhas.
+6 arquivos, ~40 linhas adicionadas.
 
