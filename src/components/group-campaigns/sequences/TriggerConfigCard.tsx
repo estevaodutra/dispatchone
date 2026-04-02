@@ -46,7 +46,8 @@ interface TriggerConfigCardProps {
 const TRIGGER_TYPES = [
   { value: "member_join" as TriggerType, label: "Membro entrar", icon: Users, color: "bg-green-500" },
   { value: "member_leave" as TriggerType, label: "Membro sair", icon: LogOut, color: "bg-red-500" },
-  { value: "scheduled" as TriggerType, label: "Agendado", icon: Clock, color: "bg-orange-500" },
+  { value: "scheduled_recurring" as TriggerType, label: "Agendado recorrente", icon: Clock, color: "bg-orange-500" },
+  { value: "scheduled_once" as TriggerType, label: "Agendado pontual", icon: CalendarDays, color: "bg-yellow-500" },
   { value: "keyword" as TriggerType, label: "Palavra-chave", icon: Keyboard, color: "bg-purple-500" },
   { value: "webhook" as TriggerType, label: "Webhook externo", icon: Webhook, color: "bg-blue-500" },
   { value: "manual" as TriggerType, label: "Manual", icon: Play, color: "bg-slate-500" },
