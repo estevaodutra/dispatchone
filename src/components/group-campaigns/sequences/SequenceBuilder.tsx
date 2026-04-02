@@ -3,7 +3,7 @@ import { MessageSequence, useSequenceNodes } from "@/hooks/useSequences";
 import { UnifiedSequenceBuilder } from "@/components/sequences/UnifiedSequenceBuilder";
 import { UnifiedNodeConfigPanel } from "@/components/sequences/UnifiedNodeConfigPanel";
 import { LocalNode, NodeCategory } from "@/components/sequences/shared-types";
-import { TriggerConfigCard, TriggerType, TriggerConfig } from "./TriggerConfigCard";
+import { TriggerType, TriggerConfig } from "./TriggerConfigCard";
 import { MediaUploader } from "./MediaUploader";
 import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 import { toast } from "sonner";
@@ -140,15 +140,7 @@ export function SequenceBuilder({ sequence, onBack, onUpdate }: SequenceBuilderP
       sequenceId={sequence.id}
       nodeCategories={NODE_CATEGORIES}
       getDefaultConfig={getDefaultConfig}
-      renderTrigger={() => (
-        <TriggerConfigCard
-          triggerType={triggerType}
-          triggerConfig={triggerConfig}
-          onTriggerTypeChange={setTriggerType}
-          onTriggerConfigChange={setTriggerConfig}
-          sequenceId={sequence.id}
-        />
-      )}
+      renderTrigger={() => null}
       renderConfigPanel={(node, onUpdateConfig, onClose, onManualSend, isSendingManual) => (
         <UnifiedNodeConfigPanel
           node={node}
