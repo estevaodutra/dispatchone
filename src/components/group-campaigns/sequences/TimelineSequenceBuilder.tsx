@@ -5,7 +5,7 @@ import { LocalNode } from "@/components/sequences/shared-types";
 import { MessageTimeline } from "./MessageTimeline";
 import { NewMessageDialog } from "./NewMessageDialog";
 import { UnifiedNodeConfigPanel } from "@/components/sequences/UnifiedNodeConfigPanel";
-import { TriggerConfigCard, TriggerType, TriggerConfig } from "./TriggerConfigCard";
+import { TriggerType, TriggerConfig } from "./TriggerConfigCard";
 import { MediaUploader } from "./MediaUploader";
 import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 import { MessageStatus } from "./MessageCard";

@@ -3,7 +3,7 @@ import { MessageSequence, useSequenceNodes } from "@/hooks/useSequences";
 import { UnifiedSequenceBuilder } from "@/components/sequences/UnifiedSequenceBuilder";
 import { UnifiedNodeConfigPanel } from "@/components/sequences/UnifiedNodeConfigPanel";
 import { LocalNode, NodeCategory } from "@/components/sequences/shared-types";
-import { TriggerConfigCard, TriggerType, TriggerConfig } from "./TriggerConfigCard";
+import { TriggerType, TriggerConfig } from "./TriggerConfigCard";
 import { MediaUploader } from "./MediaUploader";
 import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel } from "./PollActionDialog";
 import { toast } from "sonner";
