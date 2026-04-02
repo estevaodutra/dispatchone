@@ -79,7 +79,7 @@ const DAYS_OF_WEEK = [
   { value: "6", label: "Sáb" },
 ];
 
-const SCHEDULE_TRIGGERS = ["scheduled_once", "scheduled_recurring", "manual"];
+
 
 export function NewMessageDialog({ open, onClose, onSave, triggerType }: NewMessageDialogProps) {
   const [step, setStep] = useState<1 | 2>(1);
