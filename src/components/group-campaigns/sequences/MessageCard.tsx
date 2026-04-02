@@ -8,7 +8,7 @@ import {
 import {
   MoreHorizontal, Pencil, Copy, Pause, Play, ArrowUp, ArrowDown, Trash2,
   MessageSquare, Image, Video, Music, FileText, Smile,
-  BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
+  BarChart3, MousePointerClick, List, MapPin, Contact, Calendar, Zap,
 } from "lucide-react";
 
 export type MessageStatus = "scheduled" | "today" | "sent" | "error" | "paused";
