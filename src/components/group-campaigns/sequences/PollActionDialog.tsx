@@ -48,7 +48,8 @@ export type PollActionType =
   | "remove_from_group"
   | "add_to_group"
   | "notify_admin"
-  | "call_webhook";
+  | "call_webhook"
+  | "add_to_list";
 
 export interface PollActionConfig {
   actionType: PollActionType;
