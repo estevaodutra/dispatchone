@@ -35,6 +35,7 @@ interface ExecutionListConfigDialogProps {
 
 const EVENT_OPTIONS = [
   { value: "group_join", label: "Entrada no grupo (group_join)" },
+  { value: "group_leave", label: "Saída do grupo (group_leave)" },
   { value: "message", label: "Mensagem recebida (message)" },
   { value: "poll_response", label: "Resposta de enquete (poll_response)" },
 ];
