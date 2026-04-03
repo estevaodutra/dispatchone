@@ -89,7 +89,14 @@ const QUICK_DELAYS = [
 ];
 
 const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-const SENDABLE_NODE_TYPES = ["message", "image", "video", "audio", "document", "sticker", "buttons", "list", "poll", "location", "contact", "event", "status_image", "status_video"];
+const SENDABLE_NODE_TYPES = [
+  "message", "image", "video", "audio", "document", "sticker",
+  "buttons", "list", "poll", "location", "contact", "event",
+  "status_image", "status_video",
+  "group_create", "group_rename", "group_photo", "group_description",
+  "group_add_participant", "group_remove_participant",
+  "group_promote_admin", "group_remove_admin", "group_settings",
+];
 
 function NodeScheduleSection({
   config,
