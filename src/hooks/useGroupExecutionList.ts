@@ -21,6 +21,9 @@ export interface GroupExecutionList {
   current_window_end: string | null;
   last_executed_at: string | null;
   is_active: boolean;
+  execution_schedule_type: "window_end" | "scheduled";
+  execution_scheduled_time: string | null;
+  execution_days_of_week: number[] | null;
   created_at: string;
   updated_at: string;
 }
