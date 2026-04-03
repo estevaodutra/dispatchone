@@ -1,0 +1,272 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+
+export interface GroupExecutionList {
+  id: string;
+  user_id: string;
+  campaign_id: string;
+  window_type: "fixed" | "duration";
+  window_start_time: string | null;
+  window_end_time: string | null;
+  window_duration_hours: number | null;
+  monitored_events: string[];
+  action_type: "webhook" | "message" | "call";
+  webhook_url: string | null;
+  message_template: string | null;
+  call_campaign_id: string | null;
+  current_cycle_id: string;
+  current_window_start: string | null;
+  current_window_end: string | null;
+  last_executed_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupExecutionLead {
+  id: string;
+  list_id: string;
+  cycle_id: string;
+  phone: string;
+  name: string | null;
+  origin_event: string | null;
+  origin_detail: string | null;
+  status: string;
+  executed_at: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+function calculateWindowTimes(config: {
+  window_type: "fixed" | "duration";
+  window_start_time?: string;
+  window_end_time?: string;
+  window_duration_hours?: number;
+}): { start: string; end: string } {
+  const now = new Date();
+
+  if (config.window_type === "duration") {
+    const hours = config.window_duration_hours || 6;
+    const end = new Date(now.getTime() + hours * 60 * 60 * 1000);
+    return { start: now.toISOString(), end: end.toISOString() };
+  }
+
+  // Fixed window
+  const startParts = (config.window_start_time || "08:00").split(":");
+  const endParts = (config.window_end_time || "18:00").split(":");
+  const startH = parseInt(startParts[0]);
+  const startM = parseInt(startParts[1] || "0");
+  const endH = parseInt(endParts[0]);
+  const endM = parseInt(endParts[1] || "0");
+
+  const windowStart = new Date(now);
+  windowStart.setHours(startH, startM, 0, 0);
+
+  const windowEnd = new Date(now);
+  windowEnd.setHours(endH, endM, 0, 0);
+
+  // If end < start, it's an overnight window
+  if (endH < startH || (endH === startH && endM <= startM)) {
+    windowEnd.setDate(windowEnd.getDate() + 1);
+  }
+
+  // If start time already passed today, use tomorrow
+  if (windowStart < now) {
+    // Check if we're still within the window
+    if (now < windowEnd) {
+      return { start: windowStart.toISOString(), end: windowEnd.toISOString() };
+    }
+    windowStart.setDate(windowStart.getDate() + 1);
+    windowEnd.setDate(windowEnd.getDate() + 1);
+  }
+
+  return { start: windowStart.toISOString(), end: windowEnd.toISOString() };
+}
+
+export function useGroupExecutionList(campaignId: string) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const queryKey = ["group-execution-list", campaignId];
+  const leadsKey = ["group-execution-leads", campaignId];
+
+  const { data: executionList, isLoading } = useQuery({
+    queryKey,
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("group_execution_lists")
+        .select("*")
+        .eq("campaign_id", campaignId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data as GroupExecutionList | null;
+    },
+    enabled: !!campaignId && !!user,
+  });
+
+  const { data: leads, isLoading: leadsLoading } = useQuery({
+    queryKey: leadsKey,
+    queryFn: async () => {
+      if (!executionList) return [];
+      const { data, error } = await (supabase as any)
+        .from("group_execution_leads")
+        .select("*")
+        .eq("list_id", executionList.id)
+        .eq("cycle_id", executionList.current_cycle_id)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      return (data || []) as GroupExecutionLead[];
+    },
+    enabled: !!executionList?.id && !!executionList?.current_cycle_id,
+  });
+
+  const createList = useMutation({
+    mutationFn: async (config: {
+      window_type: "fixed" | "duration";
+      window_start_time?: string;
+      window_end_time?: string;
+      window_duration_hours?: number;
+      monitored_events: string[];
+      action_type: "webhook" | "message" | "call";
+      webhook_url?: string;
+      message_template?: string;
+      call_campaign_id?: string;
+    }) => {
+      if (!user) throw new Error("Not authenticated");
+      const { start, end } = calculateWindowTimes(config);
+
+      const { data, error } = await (supabase as any)
+        .from("group_execution_lists")
+        .insert({
+          user_id: user.id,
+          campaign_id: campaignId,
+          window_type: config.window_type,
+          window_start_time: config.window_type === "fixed" ? config.window_start_time : null,
+          window_end_time: config.window_type === "fixed" ? config.window_end_time : null,
+          window_duration_hours: config.window_type === "duration" ? config.window_duration_hours : null,
+          monitored_events: config.monitored_events,
+          action_type: config.action_type,
+          webhook_url: config.action_type === "webhook" ? config.webhook_url : null,
+          message_template: config.action_type === "message" ? config.message_template : null,
+          call_campaign_id: config.action_type === "call" ? config.call_campaign_id : null,
+          current_window_start: start,
+          current_window_end: end,
+          is_active: true,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const updateList = useMutation({
+    mutationFn: async (params: {
+      id: string;
+      config: {
+        window_type: "fixed" | "duration";
+        window_start_time?: string;
+        window_end_time?: string;
+        window_duration_hours?: number;
+        monitored_events: string[];
+        action_type: "webhook" | "message" | "call";
+        webhook_url?: string;
+        message_template?: string;
+        call_campaign_id?: string;
+      };
+    }) => {
+      const { start, end } = calculateWindowTimes(params.config);
+
+      const { error } = await (supabase as any)
+        .from("group_execution_lists")
+        .update({
+          window_type: params.config.window_type,
+          window_start_time: params.config.window_type === "fixed" ? params.config.window_start_time : null,
+          window_end_time: params.config.window_type === "fixed" ? params.config.window_end_time : null,
+          window_duration_hours: params.config.window_type === "duration" ? params.config.window_duration_hours : null,
+          monitored_events: params.config.monitored_events,
+          action_type: params.config.action_type,
+          webhook_url: params.config.action_type === "webhook" ? params.config.webhook_url : null,
+          message_template: params.config.action_type === "message" ? params.config.message_template : null,
+          call_campaign_id: params.config.action_type === "call" ? params.config.call_campaign_id : null,
+          current_window_start: start,
+          current_window_end: end,
+          current_cycle_id: crypto.randomUUID(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", params.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: leadsKey });
+    },
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: async (params: { id: string; is_active: boolean }) => {
+      const updates: Record<string, any> = {
+        is_active: params.is_active,
+        updated_at: new Date().toISOString(),
+      };
+
+      // If activating, recalculate window
+      if (params.is_active && executionList) {
+        const { start, end } = calculateWindowTimes({
+          window_type: executionList.window_type as "fixed" | "duration",
+          window_start_time: executionList.window_start_time || undefined,
+          window_end_time: executionList.window_end_time || undefined,
+          window_duration_hours: executionList.window_duration_hours || undefined,
+        });
+        updates.current_window_start = start;
+        updates.current_window_end = end;
+        updates.current_cycle_id = crypto.randomUUID();
+      }
+
+      const { error } = await (supabase as any)
+        .from("group_execution_lists")
+        .update(updates)
+        .eq("id", params.id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: leadsKey });
+    },
+  });
+
+  const executeNow = useMutation({
+    mutationFn: async (listId: string) => {
+      const { data, error } = await supabase.functions.invoke("group-execution-processor", {
+        body: { list_id: listId },
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      queryClient.invalidateQueries({ queryKey: leadsKey });
+    },
+  });
+
+  return {
+    executionList,
+    isLoading,
+    leads: leads || [],
+    leadsLoading,
+    createList,
+    updateList,
+    toggleActive,
+    executeNow,
+  };
+}
