@@ -1212,6 +1212,9 @@ export type Database = {
           current_cycle_id: string | null
           current_window_end: string | null
           current_window_start: string | null
+          execution_days_of_week: number[] | null
+          execution_schedule_type: string
+          execution_scheduled_time: string | null
           id: string
           is_active: boolean | null
           last_executed_at: string | null
@@ -1234,6 +1237,9 @@ export type Database = {
           current_cycle_id?: string | null
           current_window_end?: string | null
           current_window_start?: string | null
+          execution_days_of_week?: number[] | null
+          execution_schedule_type?: string
+          execution_scheduled_time?: string | null
           id?: string
           is_active?: boolean | null
           last_executed_at?: string | null
@@ -1256,6 +1262,9 @@ export type Database = {
           current_cycle_id?: string | null
           current_window_end?: string | null
           current_window_start?: string | null
+          execution_days_of_week?: number[] | null
+          execution_schedule_type?: string
+          execution_scheduled_time?: string | null
           id?: string
           is_active?: boolean | null
           last_executed_at?: string | null

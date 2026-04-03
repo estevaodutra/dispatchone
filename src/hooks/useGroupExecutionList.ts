@@ -189,6 +189,9 @@ export function useGroupExecutionList(campaignId: string) {
         webhook_url?: string;
         message_template?: string;
         call_campaign_id?: string;
+        execution_schedule_type?: "window_end" | "scheduled";
+        execution_scheduled_time?: string;
+        execution_days_of_week?: number[];
       };
     }) => {
       const { start, end } = calculateWindowTimes(params.config);
@@ -210,6 +213,9 @@ export function useGroupExecutionList(campaignId: string) {
           current_window_end: end,
           current_cycle_id: crypto.randomUUID(),
           updated_at: new Date().toISOString(),
+          execution_schedule_type: params.config.execution_schedule_type || "window_end",
+          execution_scheduled_time: params.config.execution_schedule_type === "scheduled" ? params.config.execution_scheduled_time : null,
+          execution_days_of_week: params.config.execution_schedule_type === "scheduled" ? params.config.execution_days_of_week : null,
         })
         .eq("id", params.id);
 

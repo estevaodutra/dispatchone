@@ -92,7 +92,8 @@ Deno.serve(async (req) => {
     if (forcedListId) {
       query = query.eq("id", forcedListId);
     } else {
-      query = query.lte("current_window_end", new Date().toISOString());
+      // We fetch all active lists and filter in code for schedule logic
+      query = query;
     }
 
     const { data: lists, error: listError } = await query;
