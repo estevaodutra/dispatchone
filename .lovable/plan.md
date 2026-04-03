@@ -1,20 +1,27 @@
 
 
-## Plano: Corrigir crash no seletor de lista na ação "Adicionar a uma Lista"
+## Plano: Adicionar agendamento aos nós de gestão de grupo
 
 ### Problema
-Quando o usuário seleciona uma campanha no PollActionDialog com ação "Adicionar a uma Lista", a página crasha com o erro:
-> `A <Select.Item /> must have a value prop that is not an empty string`
-
-Causa: linha 159 renderiza `<SelectItem value="" disabled>` quando não há listas — Radix UI proíbe `value=""`.
+Os nós de gestão de grupo (`group_rename`, `group_photo`, `group_description`, `group_add_participant`, `group_remove_participant`, `group_promote_admin`, `group_remove_admin`, `group_settings`, `group_create`) não aparecem na seção de agendamento porque não estão incluídos no array `SENDABLE_NODE_TYPES`.
 
 ### Alteração
 
-**`src/components/group-campaigns/sequences/PollActionDialog.tsx`** — `AddToListConfig`:
+**`src/components/sequences/UnifiedNodeConfigPanel.tsx`** — linha 92:
 
-1. **Linha 159**: Trocar `<SelectItem value="" disabled>` por `<SelectItem value="__empty__" disabled>` (ou usar um `<p>` fora do `SelectContent`)
-2. **Linha 141**: Trocar `value={(config.listId as string) || ""}` por `value={(config.listId as string) || undefined}` para evitar que o Select tente resolver um valor vazio
+Adicionar todos os tipos de gestão de grupo ao array `SENDABLE_NODE_TYPES`:
+
+```typescript
+const SENDABLE_NODE_TYPES = [
+  "message", "image", "video", "audio", "document", "sticker", 
+  "buttons", "list", "poll", "location", "contact", "event", 
+  "status_image", "status_video",
+  "group_create", "group_rename", "group_photo", "group_description",
+  "group_add_participant", "group_remove_participant", 
+  "group_promote_admin", "group_remove_admin", "group_settings"
+];
+```
 
 ### Arquivos
-- `src/components/group-campaigns/sequences/PollActionDialog.tsx`
+- `src/components/sequences/UnifiedNodeConfigPanel.tsx`
 
