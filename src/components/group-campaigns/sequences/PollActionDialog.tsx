@@ -95,6 +95,82 @@ const MESSAGE_TYPES = [
   { value: "audio", label: "Áudio" },
 ];
 
+function AddToListConfig({
+  config,
+  updateConfig,
+  campaigns,
+}: {
+  config: Record<string, unknown>;
+  updateConfig: (key: string, value: unknown) => void;
+  campaigns: { id: string; name: string }[];
+}) {
+  const targetCampaignId = (config.campaignId as string) || "";
+  const { lists, isLoading: loadingLists } = useGroupExecutionList(targetCampaignId);
+
+  return (
+    <div className="space-y-4 pt-2">
+      <div className="space-y-2">
+        <Label>Campanha de destino</Label>
+        <Select
+          value={targetCampaignId}
+          onValueChange={(v) => {
+            updateConfig("campaignId", v);
+            const camp = campaigns.find((c) => c.id === v);
+            updateConfig("campaignName", camp?.name || "");
+            updateConfig("listId", "");
+            updateConfig("listName", "");
+          }}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione uma campanha" />
+          </SelectTrigger>
+          <SelectContent>
+            {campaigns.map((campaign) => (
+              <SelectItem key={campaign.id} value={campaign.id}>
+                {campaign.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {targetCampaignId && (
+        <div className="space-y-2">
+          <Label>Lista de destino</Label>
+          <Select
+            value={(config.listId as string) || ""}
+            onValueChange={(v) => {
+              updateConfig("listId", v);
+              const list = lists.find((l) => l.id === v);
+              updateConfig("listName", list?.name || "");
+            }}
+            disabled={loadingLists}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder={loadingLists ? "Carregando..." : "Selecione uma lista"} />
+            </SelectTrigger>
+            <SelectContent>
+              {lists.map((list) => (
+                <SelectItem key={list.id} value={list.id}>
+                  {list.name}
+                </SelectItem>
+              ))}
+              {lists.length === 0 && !loadingLists && (
+                <SelectItem value="" disabled>
+                  Nenhuma lista encontrada
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            O participante será adicionado à lista selecionada
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function PollActionDialog({
   open,
   onClose,
