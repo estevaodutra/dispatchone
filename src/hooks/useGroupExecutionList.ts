@@ -6,6 +6,7 @@ export interface GroupExecutionList {
   id: string;
   user_id: string;
   campaign_id: string;
+  name: string;
   window_type: "fixed" | "duration";
   window_start_time: string | null;
   window_end_time: string | null;
@@ -52,7 +53,6 @@ function calculateWindowTimes(config: {
     return { start: now.toISOString(), end: end.toISOString() };
   }
 
-  // Fixed window
   const startParts = (config.window_start_time || "08:00").split(":");
   const endParts = (config.window_end_time || "18:00").split(":");
   const startH = parseInt(startParts[0]);
@@ -66,14 +66,11 @@ function calculateWindowTimes(config: {
   const windowEnd = new Date(now);
   windowEnd.setHours(endH, endM, 0, 0);
 
-  // If end < start, it's an overnight window
   if (endH < startH || (endH === startH && endM <= startM)) {
     windowEnd.setDate(windowEnd.getDate() + 1);
   }
 
-  // If start time already passed today, use tomorrow
   if (windowStart < now) {
-    // Check if we're still within the window
     if (now < windowEnd) {
       return { start: windowStart.toISOString(), end: windowEnd.toISOString() };
     }
@@ -87,45 +84,45 @@ function calculateWindowTimes(config: {
 export function useGroupExecutionList(campaignId: string) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const queryKey = ["group-execution-list", campaignId];
-  const leadsKey = ["group-execution-leads", campaignId];
+  const queryKey = ["group-execution-lists", campaignId];
 
-  const { data: executionList, isLoading } = useQuery({
+  const { data: lists, isLoading } = useQuery({
     queryKey,
     queryFn: async () => {
       const { data, error } = await (supabase as any)
         .from("group_execution_lists")
         .select("*")
         .eq("campaign_id", campaignId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data as GroupExecutionList | null;
+      return (data || []) as GroupExecutionList[];
     },
     enabled: !!campaignId && !!user,
   });
 
-  const { data: leads, isLoading: leadsLoading } = useQuery({
-    queryKey: leadsKey,
-    queryFn: async () => {
-      if (!executionList) return [];
-      const { data, error } = await (supabase as any)
-        .from("group_execution_leads")
-        .select("*")
-        .eq("list_id", executionList.id)
-        .eq("cycle_id", executionList.current_cycle_id)
-        .order("created_at", { ascending: false });
+  const useListLeads = (listId: string | undefined, cycleId: string | undefined) => {
+    const leadsKey = ["group-execution-leads", listId, cycleId];
+    return useQuery({
+      queryKey: leadsKey,
+      queryFn: async () => {
+        const { data, error } = await (supabase as any)
+          .from("group_execution_leads")
+          .select("*")
+          .eq("list_id", listId)
+          .eq("cycle_id", cycleId)
+          .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      return (data || []) as GroupExecutionLead[];
-    },
-    enabled: !!executionList?.id && !!executionList?.current_cycle_id,
-  });
+        if (error) throw error;
+        return (data || []) as GroupExecutionLead[];
+      },
+      enabled: !!listId && !!cycleId,
+    });
+  };
 
   const createList = useMutation({
     mutationFn: async (config: {
+      name: string;
       window_type: "fixed" | "duration";
       window_start_time?: string;
       window_end_time?: string;
@@ -144,6 +141,7 @@ export function useGroupExecutionList(campaignId: string) {
         .insert({
           user_id: user.id,
           campaign_id: campaignId,
+          name: config.name,
           window_type: config.window_type,
           window_start_time: config.window_type === "fixed" ? config.window_start_time : null,
           window_end_time: config.window_type === "fixed" ? config.window_end_time : null,
@@ -172,6 +170,7 @@ export function useGroupExecutionList(campaignId: string) {
     mutationFn: async (params: {
       id: string;
       config: {
+        name: string;
         window_type: "fixed" | "duration";
         window_start_time?: string;
         window_end_time?: string;
@@ -188,6 +187,7 @@ export function useGroupExecutionList(campaignId: string) {
       const { error } = await (supabase as any)
         .from("group_execution_lists")
         .update({
+          name: params.config.name,
           window_type: params.config.window_type,
           window_start_time: params.config.window_type === "fixed" ? params.config.window_start_time : null,
           window_end_time: params.config.window_type === "fixed" ? params.config.window_end_time : null,
@@ -208,24 +208,22 @@ export function useGroupExecutionList(campaignId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: leadsKey });
     },
   });
 
   const toggleActive = useMutation({
-    mutationFn: async (params: { id: string; is_active: boolean }) => {
+    mutationFn: async (params: { id: string; is_active: boolean; list?: GroupExecutionList }) => {
       const updates: Record<string, any> = {
         is_active: params.is_active,
         updated_at: new Date().toISOString(),
       };
 
-      // If activating, recalculate window
-      if (params.is_active && executionList) {
+      if (params.is_active && params.list) {
         const { start, end } = calculateWindowTimes({
-          window_type: executionList.window_type as "fixed" | "duration",
-          window_start_time: executionList.window_start_time || undefined,
-          window_end_time: executionList.window_end_time || undefined,
-          window_duration_hours: executionList.window_duration_hours || undefined,
+          window_type: params.list.window_type as "fixed" | "duration",
+          window_start_time: params.list.window_start_time || undefined,
+          window_end_time: params.list.window_end_time || undefined,
+          window_duration_hours: params.list.window_duration_hours || undefined,
         });
         updates.current_window_start = start;
         updates.current_window_end = end;
@@ -241,7 +239,6 @@ export function useGroupExecutionList(campaignId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: leadsKey });
     },
   });
 
@@ -255,18 +252,30 @@ export function useGroupExecutionList(campaignId: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
-      queryClient.invalidateQueries({ queryKey: leadsKey });
+    },
+  });
+
+  const deleteList = useMutation({
+    mutationFn: async (listId: string) => {
+      const { error } = await (supabase as any)
+        .from("group_execution_lists")
+        .delete()
+        .eq("id", listId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
     },
   });
 
   return {
-    executionList,
+    lists: lists || [],
     isLoading,
-    leads: leads || [],
-    leadsLoading,
+    useListLeads,
     createList,
     updateList,
     toggleActive,
     executeNow,
+    deleteList,
   };
 }
