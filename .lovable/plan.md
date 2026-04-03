@@ -1,30 +1,38 @@
 
 
-## Plano: Adicionar ação "Adicionar a uma Lista" nas ações de enquete
+## Plano: Múltiplas Listas de Execução por Campanha
 
-### Objetivo
-Incluir um novo tipo de ação `add_to_list` no PollActionDialog, permitindo que ao votar em uma opção da enquete o participante seja adicionado automaticamente a uma Lista de Execução (`group_execution_lists`) do ciclo ativo.
+### Problema atual
+O hook `useGroupExecutionList` busca apenas uma lista (`.limit(1).maybeSingle()`) e a tab mostra uma única lista. O usuário precisa de várias listas por campanha (ex: uma para quem entrou, outra para respostas de enquete, outra para quem saiu).
+
+### Abordagem
+Refatorar para o padrão de lista + detalhe, similar a como Sequências funcionam (lista de cards → clique para ver detalhes/leads).
 
 ### Alterações
 
-**1. `src/components/group-campaigns/sequences/PollActionDialog.tsx`** — Frontend
-- Adicionar `"add_to_list"` ao tipo `PollActionType`
-- Adicionar entrada em `ACTION_TYPES`: `{ value: "add_to_list", label: "Adicionar a uma Lista", icon: ClipboardList, color: "text-emerald-500" }`
-- Importar `ClipboardList` do lucide-react
-- Adicionar seção de config condicional para `actionType === "add_to_list"`:
-  - Select para escolher a campanha (já existe `campaigns` do hook `useGroupCampaigns`)
-  - A lista ativa será resolvida no backend pela `campaign_id` — o frontend só precisa enviar `campaignId` no config
-  - Texto explicativo: "O participante será adicionado à lista de execução ativa desta campanha"
-- Atualizar `getActionIconColor` e `getActionLabel` (já cobertos pelo array `ACTION_TYPES`)
+**1. `src/hooks/useGroupExecutionList.ts`**
+- Renomear query para buscar **array** de listas: remover `.limit(1).maybeSingle()`, usar `.select("*")` retornando `GroupExecutionList[]`
+- Mover query de leads para aceitar um `listId` específico (não mais atrelado a uma única lista)
+- `createList` permanece igual
+- `updateList`, `toggleActive`, `executeNow` permanecem iguais (já recebem `id`)
+- Adicionar mutation `deleteList` para remover uma lista
+- Retornar `{ lists, isLoading, createList, updateList, toggleActive, executeNow, deleteList, getLeads }`
 
-**2. `supabase/functions/handle-poll-response/index.ts`** — Backend
-- Adicionar case `"add_to_list"` no switch de ações (~25 linhas):
-  - Ler `campaignId` do `actionConfig.config` (fallback para `typedPoll.campaign_id`)
-  - Buscar `group_execution_lists` ativa para essa campaign com `current_window_end > now()`
-  - Se encontrada: upsert em `group_execution_leads` com `list_id`, `cycle_id`, phone, name, `origin_event: "poll_response"`, `origin_detail: option_text`, `status: "pending"`, com `onConflict: "list_id,phone,cycle_id"` e `ignoreDuplicates: true`
-  - Retornar resultado com `{ addedToList: true, listId }` ou `{ error: "No active list found" }`
+**2. `src/components/group-campaigns/tabs/ExecutionListTab.tsx`** — Reescrever
+- **Tela principal (lista):** grid de cards, cada card mostra: nome/eventos monitorados, tipo janela, ação, status (ativo/pausado), badge com contagem de leads pendentes. Botão "Nova Lista" no topo.
+- **Tela de detalhe (ao clicar):** mostra os 4 cards de métricas, countdown, tabela de leads, botões Editar/Executar/Voltar — basicamente o conteúdo atual mas para a lista selecionada.
+- Adicionar state `selectedList: GroupExecutionList | null` para alternar entre lista e detalhe.
+
+**3. `src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx`**
+- Adicionar campo **"Nome"** (obrigatório) para identificar a lista (ex: "Leads de entrada", "Respostas de enquete").
+- Sem outras mudanças.
+
+**4. Migration — Adicionar coluna `name`**
+- `ALTER TABLE group_execution_lists ADD COLUMN name text NOT NULL DEFAULT 'Lista de Execução';`
 
 ### Arquivos
-- `src/components/group-campaigns/sequences/PollActionDialog.tsx` — ~20 linhas adicionadas
-- `supabase/functions/handle-poll-response/index.ts` — ~30 linhas adicionadas
+- Migration: adicionar coluna `name`
+- `src/hooks/useGroupExecutionList.ts` — refatorar para array + delete
+- `src/components/group-campaigns/tabs/ExecutionListTab.tsx` — reescrever com padrão lista/detalhe
+- `src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx` — adicionar campo nome
 
