@@ -321,6 +321,8 @@ Deno.serve(async (req) => {
         console.error("[webhook-inbound] Error processing execution list:", execListError);
       }
     }
+
+    return new Response(
       JSON.stringify({
         success: true,
         event_id: insertedEvent.id,
