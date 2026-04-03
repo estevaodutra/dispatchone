@@ -2,13 +2,14 @@ import { useState } from "react";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, Users, Shield, BarChart3, List, Workflow } from "lucide-react";
+import { ArrowLeft, Settings, Users, Shield, BarChart3, List, Workflow, ClipboardList } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { MembersTab } from "./tabs/MembersTab";
 import { ModerationTab } from "./tabs/ModerationTab";
 import { AnalyticsTab } from "./tabs/AnalyticsTab";
 import { GroupsListTab } from "./tabs/GroupsListTab";
 import { SequencesTab } from "./tabs/SequencesTab";
+import { ExecutionListTab } from "./tabs/ExecutionListTab";
 
 interface GroupCampaignDetailsProps {
   campaign: GroupCampaign;
