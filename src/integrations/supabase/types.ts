@@ -1217,6 +1217,7 @@ export type Database = {
           last_executed_at: string | null
           message_template: string | null
           monitored_events: string[]
+          name: string
           updated_at: string | null
           user_id: string
           webhook_url: string | null
@@ -1238,6 +1239,7 @@ export type Database = {
           last_executed_at?: string | null
           message_template?: string | null
           monitored_events?: string[]
+          name?: string
           updated_at?: string | null
           user_id: string
           webhook_url?: string | null
@@ -1259,6 +1261,7 @@ export type Database = {
           last_executed_at?: string | null
           message_template?: string | null
           monitored_events?: string[]
+          name?: string
           updated_at?: string | null
           user_id?: string
           webhook_url?: string | null
