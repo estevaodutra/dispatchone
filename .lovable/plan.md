@@ -1,79 +1,30 @@
 
 
-## Plano: Aba "Lista" nas Campanhas de Grupos
+## Plano: Adicionar ação "Adicionar a uma Lista" nas ações de enquete
 
-### Resumo
-Adicionar uma aba "Lista" dentro de GroupCampaignDetails que permite configurar janelas de tempo para acumular participantes de eventos do grupo e executar ações em lote (webhook, mensagem ou ligação) ao final de cada ciclo.
+### Objetivo
+Incluir um novo tipo de ação `add_to_list` no PollActionDialog, permitindo que ao votar em uma opção da enquete o participante seja adicionado automaticamente a uma Lista de Execução (`group_execution_lists`) do ciclo ativo.
 
-### 1. Migration — Criar tabelas
+### Alterações
 
-Criar `group_execution_lists` e `group_execution_leads` conforme a especificação, com:
-- `user_id` (não-nulo, para RLS) em ambas tabelas ao invés de `company_id` com FK para `companies`
-- RLS policies baseadas em `user_id = auth.uid()`
-- Índices em `campaign_id`, `current_window_end` e `(list_id, cycle_id, status)`
-- Constraint UNIQUE em `(list_id, phone, cycle_id)`
-- Validation trigger para `window_duration_hours >= 1` (em vez de CHECK com time)
+**1. `src/components/group-campaigns/sequences/PollActionDialog.tsx`** — Frontend
+- Adicionar `"add_to_list"` ao tipo `PollActionType`
+- Adicionar entrada em `ACTION_TYPES`: `{ value: "add_to_list", label: "Adicionar a uma Lista", icon: ClipboardList, color: "text-emerald-500" }`
+- Importar `ClipboardList` do lucide-react
+- Adicionar seção de config condicional para `actionType === "add_to_list"`:
+  - Select para escolher a campanha (já existe `campaigns` do hook `useGroupCampaigns`)
+  - A lista ativa será resolvida no backend pela `campaign_id` — o frontend só precisa enviar `campaignId` no config
+  - Texto explicativo: "O participante será adicionado à lista de execução ativa desta campanha"
+- Atualizar `getActionIconColor` e `getActionLabel` (já cobertos pelo array `ACTION_TYPES`)
 
-### 2. Edge Function — `group-execution-processor`
+**2. `supabase/functions/handle-poll-response/index.ts`** — Backend
+- Adicionar case `"add_to_list"` no switch de ações (~25 linhas):
+  - Ler `campaignId` do `actionConfig.config` (fallback para `typedPoll.campaign_id`)
+  - Buscar `group_execution_lists` ativa para essa campaign com `current_window_end > now()`
+  - Se encontrada: upsert em `group_execution_leads` com `list_id`, `cycle_id`, phone, name, `origin_event: "poll_response"`, `origin_detail: option_text`, `status: "pending"`, com `onConflict: "list_id,phone,cycle_id"` e `ignoreDuplicates: true`
+  - Retornar resultado com `{ addedToList: true, listId }` ou `{ error: "No active list found" }`
 
-Novo arquivo `supabase/functions/group-execution-processor/index.ts`:
-- Aceita `{ list_id? }` no body (execução manual) ou processa todas as listas com `current_window_end <= now()`
-- Para cada lista: busca leads pendentes do ciclo, executa ação por tipo (webhook POST, invoke zapi-proxy para mensagem, insert em call_queue para ligação)
-- Marca leads como `executed` ou `failed`
-- Calcula próxima janela e gera novo `cycle_id`
-- Lógica de janela noturna (end < start = dia seguinte)
-
-### 3. Modificar `webhook-inbound/index.ts`
-
-Após processar o evento, verificar se existe `group_execution_lists` ativa para o `campaign_id` com janela aberta. Se o `event_type` está nos `monitored_events`, fazer upsert em `group_execution_leads` com `ignoreDuplicates`.
-
-### 4. Hook — `useGroupExecutionList`
-
-Novo arquivo `src/hooks/useGroupExecutionList.ts`:
-- Query para buscar a lista ativa de uma campanha (single)
-- Query para buscar leads do ciclo atual
-- Mutations: criar/atualizar lista, toggle ativo, executar agora (invoke edge function)
-- Cálculo de `current_window_start/end` ao criar/ativar
-
-### 5. Componente — `ExecutionListTab`
-
-Novo arquivo `src/components/group-campaigns/tabs/ExecutionListTab.tsx`:
-- Estado vazio: ícone + texto + botão "Configurar Lista"
-- Estado ativo: 4 cards de métricas (leads no ciclo, countdown janela, tipo janela, ação configurada), badges de eventos monitorados, tabela de leads (preview 10), botões "Editar" e "Executar Agora"
-- Countdown com `setInterval` a cada 60s calculando diff de `current_window_end`
-
-### 6. Componente — `ExecutionListConfigDialog`
-
-Novo arquivo `src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx`:
-- Radio: tipo de janela (fixo/duração)
-- Campos condicionais (time inputs ou number input)
-- Checkboxes: eventos monitorados
-- Radio: tipo de ação (webhook/mensagem/ligação)
-- Campos condicionais por ação (URL, textarea com variáveis, select de campanha de ligação)
-- Validações: duração mínima 1h, pelo menos 1 evento, campo de ação preenchido
-
-### 7. Modal de confirmação — `ExecuteNowDialog`
-
-AlertDialog simples: "Executar para X leads? A janela atual será encerrada e uma nova começará."
-
-### 8. Integrar aba no `GroupCampaignDetails`
-
-- Adicionar tab "Lista" com ícone `ClipboardList` na TabsList (grid-cols-7)
-- Importar e renderizar `ExecutionListTab`
-- Exportar novos componentes no barrel file
-
-### Arquivos afetados
-- **Nova migration**: tabelas + RLS + índices
-- **Nova edge function**: `supabase/functions/group-execution-processor/index.ts`
-- **Editar**: `supabase/functions/webhook-inbound/index.ts` (~15 linhas)
-- **Novo hook**: `src/hooks/useGroupExecutionList.ts`
-- **Novos componentes**: `ExecutionListTab.tsx`, `ExecutionListConfigDialog.tsx`
-- **Editar**: `src/components/group-campaigns/GroupCampaignDetails.tsx` (adicionar aba)
-- **Editar**: `src/components/group-campaigns/index.ts` (export)
-
-### Detalhes técnicos
-- Tabelas usam `user_id` (não `company_id`) para compatibilidade com RLS existente no projeto
-- Edge function usa `SUPABASE_SERVICE_ROLE_KEY` para bypass RLS
-- Countdown frontend-only, sem polling ao backend
-- A execução via n8n (cron 5min) será configurada pelo usuário externamente; o endpoint já estará pronto
+### Arquivos
+- `src/components/group-campaigns/sequences/PollActionDialog.tsx` — ~20 linhas adicionadas
+- `supabase/functions/handle-poll-response/index.ts` — ~30 linhas adicionadas
 
