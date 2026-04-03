@@ -1150,6 +1150,125 @@ export type Database = {
           },
         ]
       }
+      group_execution_leads: {
+        Row: {
+          created_at: string | null
+          cycle_id: string
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          list_id: string
+          name: string | null
+          origin_detail: string | null
+          origin_event: string | null
+          phone: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          cycle_id: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          list_id: string
+          name?: string | null
+          origin_detail?: string | null
+          origin_event?: string | null
+          phone: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          cycle_id?: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          list_id?: string
+          name?: string | null
+          origin_detail?: string | null
+          origin_event?: string | null
+          phone?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_execution_leads_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "group_execution_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_execution_lists: {
+        Row: {
+          action_type: string
+          call_campaign_id: string | null
+          campaign_id: string
+          created_at: string | null
+          current_cycle_id: string | null
+          current_window_end: string | null
+          current_window_start: string | null
+          id: string
+          is_active: boolean | null
+          last_executed_at: string | null
+          message_template: string | null
+          monitored_events: string[]
+          updated_at: string | null
+          user_id: string
+          webhook_url: string | null
+          window_duration_hours: number | null
+          window_end_time: string | null
+          window_start_time: string | null
+          window_type: string
+        }
+        Insert: {
+          action_type?: string
+          call_campaign_id?: string | null
+          campaign_id: string
+          created_at?: string | null
+          current_cycle_id?: string | null
+          current_window_end?: string | null
+          current_window_start?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_executed_at?: string | null
+          message_template?: string | null
+          monitored_events?: string[]
+          updated_at?: string | null
+          user_id: string
+          webhook_url?: string | null
+          window_duration_hours?: number | null
+          window_end_time?: string | null
+          window_start_time?: string | null
+          window_type?: string
+        }
+        Update: {
+          action_type?: string
+          call_campaign_id?: string | null
+          campaign_id?: string
+          created_at?: string | null
+          current_cycle_id?: string | null
+          current_window_end?: string | null
+          current_window_start?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_executed_at?: string | null
+          message_template?: string | null
+          monitored_events?: string[]
+          updated_at?: string | null
+          user_id?: string
+          webhook_url?: string | null
+          window_duration_hours?: number | null
+          window_end_time?: string | null
+          window_start_time?: string | null
+          window_type?: string
+        }
+        Relationships: []
+      }
       group_member_history: {
         Row: {
           action: string

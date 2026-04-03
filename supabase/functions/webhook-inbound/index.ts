@@ -270,7 +270,57 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(
+    // ==========================================
+    // AUTO-ACCUMULATE LEADS for Group Execution Lists
+    // ==========================================
+    if (context.chatJid && context.senderPhone) {
+      try {
+        // Find group campaign by group_jid via campaign_groups
+        const { data: campaignGroup } = await supabase
+          .from("campaign_groups")
+          .select("campaign_id")
+          .eq("group_jid", context.chatJid)
+          .maybeSingle();
+
+        const campaignId = campaignGroup?.campaign_id || null;
+
+        if (campaignId) {
+          const { data: execList } = await supabase
+            .from("group_execution_lists")
+            .select("id, current_cycle_id, monitored_events, user_id")
+            .eq("campaign_id", campaignId)
+            .eq("is_active", true)
+            .gt("current_window_end", new Date().toISOString())
+            .maybeSingle();
+
+          if (execList && (execList.monitored_events as string[]).includes(classification.eventType)) {
+            const { error: upsertError } = await supabase
+              .from("group_execution_leads")
+              .upsert(
+                {
+                  list_id: execList.id,
+                  user_id: execList.user_id,
+                  cycle_id: execList.current_cycle_id,
+                  phone: context.senderPhone,
+                  name: context.senderName || null,
+                  origin_event: classification.eventType,
+                  origin_detail: context.chatName || null,
+                  status: "pending",
+                },
+                { onConflict: "list_id,phone,cycle_id", ignoreDuplicates: true }
+              );
+
+            if (upsertError) {
+              console.error("[webhook-inbound] Execution list upsert error:", upsertError);
+            } else {
+              console.log(`[webhook-inbound] Lead ${context.senderPhone} added to execution list ${execList.id}`);
+            }
+          }
+        }
+      } catch (execListError) {
+        console.error("[webhook-inbound] Error processing execution list:", execListError);
+      }
+    }
       JSON.stringify({
         success: true,
         event_id: insertedEvent.id,

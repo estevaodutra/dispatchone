@@ -77,3 +77,6 @@ verify_jwt = false
 
 [functions.pirate-process-join]
 verify_jwt = false
+
+[functions.group-execution-processor]
+verify_jwt = false
