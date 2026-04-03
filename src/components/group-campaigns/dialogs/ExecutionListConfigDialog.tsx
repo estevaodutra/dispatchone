@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
-import { Webhook, MessageSquare, Phone } from "lucide-react";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock } from "lucide-react";
 
 interface ExecutionListConfigDialogProps {
   open: boolean;
@@ -25,6 +25,9 @@ interface ExecutionListConfigDialogProps {
     webhook_url?: string;
     message_template?: string;
     call_campaign_id?: string;
+    execution_schedule_type?: "window_end" | "scheduled";
+    execution_scheduled_time?: string;
+    execution_days_of_week?: number[];
   }) => void;
   existing?: GroupExecutionList | null;
   isSaving?: boolean;
@@ -34,6 +37,16 @@ const EVENT_OPTIONS = [
   { value: "group_join", label: "Entrada no grupo (group_join)" },
   { value: "message", label: "Mensagem recebida (message)" },
   { value: "poll_response", label: "Resposta de enquete (poll_response)" },
+];
+
+const DAYS_OF_WEEK = [
+  { value: 0, label: "Dom" },
+  { value: 1, label: "Seg" },
+  { value: 2, label: "Ter" },
+  { value: 3, label: "Qua" },
+  { value: 4, label: "Qui" },
+  { value: 5, label: "Sex" },
+  { value: 6, label: "Sáb" },
 ];
 
 export function ExecutionListConfigDialog({
@@ -53,6 +66,9 @@ export function ExecutionListConfigDialog({
   const [webhookUrl, setWebhookUrl] = useState("");
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
+  const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled">("window_end");
+  const [execScheduledTime, setExecScheduledTime] = useState("10:00");
+  const [execDaysOfWeek, setExecDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
 
   const { campaigns: callCampaigns } = useCallCampaigns();
 
@@ -68,6 +84,9 @@ export function ExecutionListConfigDialog({
       setWebhookUrl(existing.webhook_url || "");
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
+      setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled") || "window_end");
+      setExecScheduledTime(existing.execution_scheduled_time || "10:00");
+      setExecDaysOfWeek(existing.execution_days_of_week || [1, 2, 3, 4, 5]);
     } else {
       setName("");
       setWindowType("fixed");
@@ -79,12 +98,21 @@ export function ExecutionListConfigDialog({
       setWebhookUrl("");
       setMessageTemplate("");
       setCallCampaignId("");
+      setExecScheduleType("window_end");
+      setExecScheduledTime("10:00");
+      setExecDaysOfWeek([1, 2, 3, 4, 5]);
     }
   }, [existing, open]);
 
   const toggleEvent = (event: string) => {
     setMonitoredEvents((prev) =>
       prev.includes(event) ? prev.filter((e) => e !== event) : [...prev, event]
+    );
+  };
+
+  const toggleDay = (day: number) => {
+    setExecDaysOfWeek((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()
     );
   };
 
@@ -95,6 +123,7 @@ export function ExecutionListConfigDialog({
     if (actionType === "webhook" && !webhookUrl.trim()) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
+    if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
   };
 
@@ -110,6 +139,9 @@ export function ExecutionListConfigDialog({
       webhook_url: actionType === "webhook" ? webhookUrl : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
+      execution_schedule_type: execScheduleType,
+      execution_scheduled_time: execScheduleType === "scheduled" ? execScheduledTime : undefined,
+      execution_days_of_week: execScheduleType === "scheduled" ? execDaysOfWeek : undefined,
     });
   };
 
@@ -247,6 +279,64 @@ export function ExecutionListConfigDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+          </div>
+
+          {/* Execution Schedule */}
+          <div className="space-y-3">
+            <Label className="text-sm font-semibold">Agendamento da Execução</Label>
+            <RadioGroup value={execScheduleType} onValueChange={(v) => setExecScheduleType(v as "window_end" | "scheduled")}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="window_end" id="es-window" />
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="es-window">Ao fim da janela</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="scheduled" id="es-scheduled" />
+                <CalendarClock className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="es-scheduled">Horário agendado</Label>
+              </div>
+            </RadioGroup>
+
+            {execScheduleType === "window_end" && (
+              <p className="text-xs text-muted-foreground">
+                Os leads serão processados automaticamente quando a janela de tempo encerrar.
+              </p>
+            )}
+
+            {execScheduleType === "scheduled" && (
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Horário de execução</Label>
+                  <Input
+                    type="time"
+                    value={execScheduledTime}
+                    onChange={(e) => setExecScheduledTime(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">Dias da semana</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS_OF_WEEK.map((day) => (
+                      <button
+                        key={day.value}
+                        type="button"
+                        onClick={() => toggleDay(day.value)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                          execDaysOfWeek.includes(day.value)
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-background text-muted-foreground border-border hover:border-primary/50"
+                        }`}
+                      >
+                        {day.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Os leads acumulados serão processados no horário agendado, nos dias selecionados.
+                  </p>
+                </div>
               </div>
             )}
           </div>
