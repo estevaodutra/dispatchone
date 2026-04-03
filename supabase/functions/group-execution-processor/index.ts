@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
       query = query;
     }
 
-    const { data: lists, error: listError } = await query;
+    const { data: allLists, error: listError } = await query;
 
     if (listError) {
       console.error("[group-execution-processor] Error fetching lists:", listError);
@@ -105,6 +105,33 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    // Filter lists based on schedule type
+    const now = new Date();
+    const lists = forcedListId
+      ? (allLists || [])
+      : (allLists || []).filter((list: ExecutionList) => {
+          if (list.execution_schedule_type === "scheduled") {
+            // Check if scheduled time has passed today and day of week matches
+            if (!list.execution_scheduled_time) return false;
+            const [h, m] = list.execution_scheduled_time.split(":").map(Number);
+            const scheduledToday = new Date(now);
+            scheduledToday.setHours(h, m, 0, 0);
+            if (now < scheduledToday) return false;
+            // Check day of week
+            if (list.execution_days_of_week && list.execution_days_of_week.length > 0) {
+              if (!list.execution_days_of_week.includes(now.getDay())) return false;
+            }
+            // Check if already executed after this scheduled time today
+            if (list.last_executed_at) {
+              const lastExec = new Date(list.last_executed_at);
+              if (lastExec >= scheduledToday) return false;
+            }
+            return true;
+          }
+          // Default: window_end — execute when window has ended
+          return list.current_window_end && new Date(list.current_window_end) <= now;
+        });
 
     if (!lists || lists.length === 0) {
       return new Response(JSON.stringify({ ok: true, processed: 0, message: "No lists ready" }), {
