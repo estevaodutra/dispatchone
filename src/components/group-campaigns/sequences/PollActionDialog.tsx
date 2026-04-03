@@ -156,7 +156,7 @@ function AddToListConfig({
                 </SelectItem>
               ))}
               {lists.length === 0 && !loadingLists && (
-                <SelectItem value="" disabled>
+                <SelectItem value="__empty__" disabled>
                   Nenhuma lista encontrada
                 </SelectItem>
               )}
