@@ -1,33 +1,38 @@
 
 
-## Plano: Corrigir ação "Adicionar a uma Lista" para usar a lista correta
+## Plan: Allow re-execution of poll actions after bug fix
 
-### Problema
-A ação `add_to_list` no `handle-poll-response` ignora o `listId` configurado na enquete. Em vez de adicionar o lead à lista de destino escolhida, ela busca qualquer lista ativa da campanha (linha 625-632). Resultado: um lead de `poll_response` cai numa lista que monitora `group_leave`.
+### Problem
+The `handle-poll-response` function has a deduplication check (line 133-150) that sees `action_executed = true` from the previous buggy execution (which added leads to the wrong list). Even after fixing `add_to_list` to use the correct `listId`, existing respondents are permanently blocked.
 
-### Alteração
+### Changes
 
-**`supabase/functions/handle-poll-response/index.ts`** — case `add_to_list` (~linha 619-670):
+#### 1. Database fix — Reset affected poll_response records
+Run a migration to reset `action_executed` to `false` for poll responses whose action was `add_to_list`, so they can be re-processed with the corrected logic.
 
-1. Ler `listId` da config: `const targetListId = actionConfig.config.listId as string | undefined;`
-2. Se `targetListId` existir, buscar diretamente por `id` em vez de buscar qualquer lista ativa:
-   ```typescript
-   let query = supabase
-     .from("group_execution_lists")
-     .select("id, current_cycle_id, user_id")
-     .eq("is_active", true)
-     .gt("current_window_end", new Date().toISOString());
+```sql
+UPDATE poll_responses 
+SET action_executed = false, 
+    action_result = jsonb_build_object('reset_reason', 'add_to_list_fix', 'reset_at', now()),
+    executed_at = NULL
+WHERE action_type = 'add_to_list' 
+  AND action_executed = true;
+```
 
-   if (targetListId) {
-     query = query.eq("id", targetListId);
-   } else {
-     query = query.eq("campaign_id", targetCampaignId);
-   }
+#### 2. Clean up wrongly added leads from the wrong list
+Remove leads that were incorrectly added to the `group_leave` list by the old buggy code (leads with `origin_event = 'poll_response'` in a list that only monitors `group_leave`).
 
-   const { data: activeList } = await query.limit(1).maybeSingle();
-   ```
-3. Manter o restante do fluxo (upsert) inalterado.
+```sql
+DELETE FROM group_execution_leads gel
+USING group_execution_lists gelist
+WHERE gel.list_id = gelist.id
+  AND gel.origin_event = 'poll_response'
+  AND NOT ('poll_response' = ANY(gelist.monitored_events));
+```
 
-### Arquivos
-- `supabase/functions/handle-poll-response/index.ts`
+### Files
+- Database migration only (2 SQL statements)
+
+### Result
+After the migration, the next poll_response webhook for these respondents will pass the dedup check and execute `add_to_list` using the correct `listId` from the config.
 
