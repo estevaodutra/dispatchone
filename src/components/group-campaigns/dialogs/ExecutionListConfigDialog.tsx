@@ -15,6 +15,7 @@ interface ExecutionListConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (config: {
+    name: string;
     window_type: "fixed" | "duration";
     window_start_time?: string;
     window_end_time?: string;
@@ -42,6 +43,7 @@ export function ExecutionListConfigDialog({
   existing,
   isSaving,
 }: ExecutionListConfigDialogProps) {
+  const [name, setName] = useState("");
   const [windowType, setWindowType] = useState<"fixed" | "duration">("fixed");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("18:00");
@@ -56,6 +58,7 @@ export function ExecutionListConfigDialog({
 
   useEffect(() => {
     if (existing) {
+      setName(existing.name || "");
       setWindowType(existing.window_type as "fixed" | "duration");
       setStartTime(existing.window_start_time?.slice(0, 5) || "08:00");
       setEndTime(existing.window_end_time?.slice(0, 5) || "18:00");
@@ -66,6 +69,7 @@ export function ExecutionListConfigDialog({
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
     } else {
+      setName("");
       setWindowType("fixed");
       setStartTime("08:00");
       setEndTime("18:00");
@@ -85,6 +89,7 @@ export function ExecutionListConfigDialog({
   };
 
   const isValid = () => {
+    if (!name.trim()) return false;
     if (monitoredEvents.length === 0) return false;
     if (windowType === "duration" && durationHours < 1) return false;
     if (actionType === "webhook" && !webhookUrl.trim()) return false;
@@ -95,6 +100,7 @@ export function ExecutionListConfigDialog({
 
   const handleSave = () => {
     onSave({
+      name: name.trim(),
       window_type: windowType,
       window_start_time: windowType === "fixed" ? startTime : undefined,
       window_end_time: windowType === "fixed" ? endTime : undefined,
@@ -112,11 +118,21 @@ export function ExecutionListConfigDialog({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {existing ? "Editar Lista de Execução" : "Configurar Lista de Execução"}
+            {existing ? "Editar Lista de Execução" : "Nova Lista de Execução"}
           </DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Name */}
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Nome da Lista *</Label>
+            <Input
+              placeholder="Ex: Leads de entrada, Respostas de enquete..."
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
           {/* Window Type */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Janela de Tempo</Label>
@@ -241,7 +257,7 @@ export function ExecutionListConfigDialog({
             Cancelar
           </Button>
           <Button onClick={handleSave} disabled={!isValid() || isSaving}>
-            {isSaving ? "Salvando..." : existing ? "Salvar Alterações" : "Salvar e Ativar Lista"}
+            {isSaving ? "Salvando..." : existing ? "Salvar Alterações" : "Criar Lista"}
           </Button>
         </DialogFooter>
       </DialogContent>
