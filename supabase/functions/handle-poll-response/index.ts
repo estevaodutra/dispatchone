@@ -618,16 +618,24 @@ Deno.serve(async (req) => {
 
         case "add_to_list": {
           const targetCampaignId = actionConfig.config.campaignId as string || typedPoll.campaign_id;
+          const targetListId = actionConfig.config.listId as string | undefined;
           
-          console.log(`[HandlePollResponse] Adding ${respondent.phone} to execution list for campaign ${targetCampaignId}`);
+          console.log(`[HandlePollResponse] Adding ${respondent.phone} to execution list${targetListId ? ` (listId=${targetListId})` : ` for campaign ${targetCampaignId}`}`);
 
           // Find active execution list with open window
-          const { data: activeList, error: listError } = await supabase
+          let listQuery = supabase
             .from("group_execution_lists")
             .select("id, current_cycle_id")
-            .eq("campaign_id", targetCampaignId)
             .eq("is_active", true)
-            .gt("current_window_end", new Date().toISOString())
+            .gt("current_window_end", new Date().toISOString());
+
+          if (targetListId) {
+            listQuery = listQuery.eq("id", targetListId);
+          } else {
+            listQuery = listQuery.eq("campaign_id", targetCampaignId);
+          }
+
+          const { data: activeList, error: listError } = await listQuery
             .limit(1)
             .maybeSingle();
 
