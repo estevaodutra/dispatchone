@@ -138,7 +138,7 @@ function AddToListConfig({
         <div className="space-y-2">
           <Label>Lista de destino</Label>
           <Select
-            value={(config.listId as string) || ""}
+            value={(config.listId as string) || undefined}
             onValueChange={(v) => {
               updateConfig("listId", v);
               const list = lists.find((l) => l.id === v);
