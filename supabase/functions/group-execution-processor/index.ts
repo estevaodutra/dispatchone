@@ -22,6 +22,9 @@ interface ExecutionList {
   current_window_start: string | null;
   current_window_end: string | null;
   is_active: boolean;
+  execution_schedule_type: string;
+  execution_scheduled_time: string | null;
+  execution_days_of_week: number[] | null;
 }
 
 interface ExecutionLead {
