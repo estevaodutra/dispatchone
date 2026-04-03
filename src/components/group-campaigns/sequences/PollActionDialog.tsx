@@ -634,6 +634,36 @@ export function PollActionDialog({
               </div>
             )}
 
+            {actionType === "add_to_list" && (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Campanha de destino</Label>
+                  <Select
+                    value={(config.campaignId as string) || ""}
+                    onValueChange={(v) => {
+                      updateConfig("campaignId", v);
+                      const camp = campaigns.find((c) => c.id === v);
+                      updateConfig("campaignName", camp?.name || "");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma campanha" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaigns.map((campaign) => (
+                        <SelectItem key={campaign.id} value={campaign.id}>
+                          {campaign.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    O participante será adicionado à lista de execução ativa desta campanha
+                  </p>
+                </div>
+              </div>
+            )}
+
             {actionType === "none" && (
               <div className="py-4 text-center text-muted-foreground">
                 <Ban className="h-12 w-12 mx-auto mb-2 opacity-50" />
