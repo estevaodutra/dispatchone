@@ -33,6 +33,7 @@ import {
   X,
   Plus,
   Webhook,
+  ClipboardList,
 } from "lucide-react";
 import { useSequences } from "@/hooks/useSequences";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
