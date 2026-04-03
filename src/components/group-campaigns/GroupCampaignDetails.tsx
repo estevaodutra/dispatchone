@@ -41,7 +41,7 @@ export function GroupCampaignDetails({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="config" className="gap-2">
             <Settings className="h-4 w-4" />
             <span className="hidden sm:inline">Configuração</span>
@@ -57,6 +57,10 @@ export function GroupCampaignDetails({
           <TabsTrigger value="sequences" className="gap-2">
             <Workflow className="h-4 w-4" />
             <span className="hidden sm:inline">Sequências</span>
+          </TabsTrigger>
+          <TabsTrigger value="execution-list" className="gap-2">
+            <ClipboardList className="h-4 w-4" />
+            <span className="hidden sm:inline">Lista</span>
           </TabsTrigger>
           <TabsTrigger value="moderation" className="gap-2">
             <Shield className="h-4 w-4" />
