@@ -88,6 +88,10 @@ export function GroupCampaignDetails({
           <SequencesTab campaignId={campaign.id} />
         </TabsContent>
 
+        <TabsContent value="execution-list" className="mt-6">
+          <ExecutionListTab campaignId={campaign.id} />
+        </TabsContent>
+
         <TabsContent value="moderation" className="mt-6">
           <ModerationTab campaignId={campaign.id} />
         </TabsContent>
