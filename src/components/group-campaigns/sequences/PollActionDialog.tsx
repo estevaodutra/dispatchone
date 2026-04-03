@@ -75,6 +75,7 @@ const ACTION_TYPES: { value: PollActionType; label: string; icon: React.ElementT
   { value: "add_to_group", label: "Adicionar em Outro Grupo", icon: UserPlus, color: "text-purple-500" },
   { value: "notify_admin", label: "Notificar Administrador", icon: Bell, color: "text-orange-500" },
   { value: "call_webhook", label: "Acionar Webhook", icon: Webhook, color: "text-cyan-500" },
+  { value: "add_to_list", label: "Adicionar a uma Lista", icon: ClipboardList, color: "text-emerald-500" },
 ];
 
 const DELAY_OPTIONS = [
