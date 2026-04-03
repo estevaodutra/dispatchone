@@ -33,6 +33,7 @@ import {
   X,
   Plus,
   Webhook,
+  ClipboardList,
 } from "lucide-react";
 import { useSequences } from "@/hooks/useSequences";
 import { useGroupCampaigns } from "@/hooks/useGroupCampaigns";
@@ -47,7 +48,8 @@ export type PollActionType =
   | "remove_from_group"
   | "add_to_group"
   | "notify_admin"
-  | "call_webhook";
+  | "call_webhook"
+  | "add_to_list";
 
 export interface PollActionConfig {
   actionType: PollActionType;
@@ -73,6 +75,7 @@ const ACTION_TYPES: { value: PollActionType; label: string; icon: React.ElementT
   { value: "add_to_group", label: "Adicionar em Outro Grupo", icon: UserPlus, color: "text-purple-500" },
   { value: "notify_admin", label: "Notificar Administrador", icon: Bell, color: "text-orange-500" },
   { value: "call_webhook", label: "Acionar Webhook", icon: Webhook, color: "text-cyan-500" },
+  { value: "add_to_list", label: "Adicionar a uma Lista", icon: ClipboardList, color: "text-emerald-500" },
 ];
 
 const DELAY_OPTIONS = [
@@ -626,6 +629,36 @@ export function PollActionDialog({
                   />
                   <p className="text-xs text-muted-foreground">
                     JSON com headers adicionais
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {actionType === "add_to_list" && (
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label>Campanha de destino</Label>
+                  <Select
+                    value={(config.campaignId as string) || ""}
+                    onValueChange={(v) => {
+                      updateConfig("campaignId", v);
+                      const camp = campaigns.find((c) => c.id === v);
+                      updateConfig("campaignName", camp?.name || "");
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione uma campanha" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {campaigns.map((campaign) => (
+                        <SelectItem key={campaign.id} value={campaign.id}>
+                          {campaign.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    O participante será adicionado à lista de execução ativa desta campanha
                   </p>
                 </div>
               </div>

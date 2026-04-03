@@ -616,6 +616,60 @@ Deno.serve(async (req) => {
           break;
         }
 
+        case "add_to_list": {
+          const targetCampaignId = actionConfig.config.campaignId as string || typedPoll.campaign_id;
+          
+          console.log(`[HandlePollResponse] Adding ${respondent.phone} to execution list for campaign ${targetCampaignId}`);
+
+          // Find active execution list with open window
+          const { data: activeList, error: listError } = await supabase
+            .from("group_execution_lists")
+            .select("id, current_cycle_id")
+            .eq("campaign_id", targetCampaignId)
+            .eq("is_active", true)
+            .gt("current_window_end", new Date().toISOString())
+            .limit(1)
+            .maybeSingle();
+
+          if (listError) {
+            console.error(`[HandlePollResponse] Error finding execution list:`, listError);
+            actionResult = { error: listError.message };
+            break;
+          }
+
+          if (!activeList || !activeList.current_cycle_id) {
+            actionResult = { error: "No active execution list found with open window" };
+            console.log(`[HandlePollResponse] No active list found for campaign ${targetCampaignId}`);
+            break;
+          }
+
+          const { error: upsertError } = await supabase
+            .from("group_execution_leads")
+            .upsert({
+              user_id: typedPoll.user_id,
+              list_id: activeList.id,
+              cycle_id: activeList.current_cycle_id,
+              phone: respondent.phone,
+              name: respondent.name || null,
+              origin_event: "poll_response",
+              origin_detail: response.option_text || typedPoll.options[response.option_index] || "",
+              status: "pending",
+            }, {
+              onConflict: "list_id,phone,cycle_id",
+              ignoreDuplicates: true,
+            });
+
+          if (upsertError) {
+            console.error(`[HandlePollResponse] Error upserting lead:`, upsertError);
+            actionResult = { error: upsertError.message };
+          } else {
+            actionResult = { addedToList: true, listId: activeList.id, cycleId: activeList.current_cycle_id };
+            actionSuccess = true;
+          }
+          console.log(`[HandlePollResponse] Add to list result: ${actionSuccess}`);
+          break;
+        }
+
         default:
           actionResult = { error: `Unknown action type: ${actionConfig.actionType}` };
       }
