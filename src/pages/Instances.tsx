@@ -422,30 +422,49 @@ export default function Instances() {
   const handleRefreshStatus = async () => {
     setIsRefreshing(true);
     try {
-      for (const instance of instances) {
-        if (!instance.idInstance || !instance.tokenInstance) continue;
+      const instancesPayload = instances
+        .filter(i => i.idInstance && i.tokenInstance)
+        .map(i => ({
+          id: i.id,
+          name: i.name,
+          external_instance_id: i.idInstance,
+          external_instance_token: i.tokenInstance,
+          current_status: mapFrontendStatusToDb(i.status),
+        }));
 
-        try {
-          const { data } = await supabase.functions.invoke("zapi-proxy", {
-            body: {
-              instanceId: instance.id,
-              endpoint: "/status",
-              method: "GET",
-            },
-          });
+      if (instancesPayload.length > 0) {
+        const { data: proxyData, error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
+          body: {
+            url: "https://n8n-n8n.nuwfic.easypanel.host/webhook/status_instances",
+            payload: { instances: instancesPayload },
+          },
+        });
 
-          const connected = data?.connected === true;
-          const newStatus = connected ? "connected" : "disconnected";
-          const currentDbStatus = mapFrontendStatusToDb(instance.status);
+        if (proxyError) {
+          console.error("Webhook error:", proxyError);
+        } else {
+          let results: any[] = [];
+          try {
+            const bodyData = typeof proxyData?.body === "string"
+              ? JSON.parse(proxyData.body)
+              : proxyData?.body || proxyData;
+            results = Array.isArray(bodyData) ? bodyData : bodyData?.instances || [];
+          } catch { /* ignore parse errors */ }
 
-          if (newStatus !== currentDbStatus) {
-            await updateInstance({
-              id: instance.id,
-              updates: { status: newStatus },
-            });
+          for (const result of results) {
+            if (result.id && result.status) {
+              const instance = instances.find(i => i.id === result.id);
+              if (instance) {
+                const currentDbStatus = mapFrontendStatusToDb(instance.status);
+                if (result.status !== currentDbStatus) {
+                  await updateInstance({
+                    id: result.id,
+                    updates: { status: result.status },
+                  });
+                }
+              }
+            }
           }
-        } catch (err) {
-          console.warn(`Failed to refresh status for ${instance.name}:`, err);
         }
       }
 
@@ -453,6 +472,13 @@ export default function Instances() {
       toast({
         title: t("instances.statusRefreshed"),
         description: t("instances.statusRefreshed"),
+      });
+    } catch (err) {
+      console.error("Failed to refresh statuses:", err);
+      toast({
+        title: "Erro",
+        description: "Falha ao atualizar status das instâncias.",
+        variant: "destructive",
       });
     } finally {
       setIsRefreshing(false);
