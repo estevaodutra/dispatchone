@@ -1,50 +1,39 @@
 
 
-## Plano: Adaptar parsing da resposta do webhook ao formato real
+## Plano: Agendar atualização automática de status a cada 3 horas
 
-### Problema
-O código atual espera que o webhook retorne objetos com `id` (nosso UUID interno) e `status` (string). Porém, o webhook retorna um formato diferente:
-- `id` = ID externo da Z-API (ex: `3F0565CB...`), não nosso UUID
-- `connected` = booleano (`true`/`false`), não string de status
-- Inclui `paymentStatus` e `due` (timestamp de expiração)
+### O que será feito
+Criar uma Edge Function dedicada (`refresh-instance-status`) que replica a lógica do botão "Atualizar Status" — busca todas as instâncias com credenciais, chama o webhook n8n, e atualiza o banco. Depois, agendar essa função via `pg_cron` para rodar a cada 3 horas.
 
-### Alteração
+### Alterações
 
-**`src/pages/Instances.tsx`** — bloco de parsing da resposta (linhas 454-467):
+#### 1. Nova Edge Function `supabase/functions/refresh-instance-status/index.ts`
 
-1. Fazer match pelo campo `id` da resposta com `idInstance` (external_instance_id) da instância local, em vez de comparar com nosso UUID
-2. Mapear `connected: true/false` → `"connected"/"disconnected"`
-3. Aproveitar `paymentStatus` e `due` para atualizar `payment_status` e `expiration_date` no banco
+- Busca todas as instâncias com `external_instance_id` e `external_instance_token` preenchidos
+- Envia POST para `https://n8n-n8n.nuwfic.easypanel.host/webhook/status_instances` com os dados
+- Processa a resposta (match por `id` externo, mapeia `connected` → status, salva `paymentStatus` e `due`)
+- Atualiza o banco diretamente (usa service role key, sem precisar de auth do usuário)
+- Também aciona a lógica de auto-registro/desconexão de `phone_numbers` (igual ao `instance-status`)
 
-```typescript
-for (const result of results) {
-  if (!result.id) continue;
-  
-  // Match by external instance ID, not our internal UUID
-  const instance = instances.find(i => i.idInstance === result.id);
-  if (!instance) continue;
-  
-  const newDbStatus = result.connected ? "connected" : "disconnected";
-  const currentDbStatus = mapFrontendStatusToDb(instance.status);
-  
-  const updates: Record<string, any> = {};
-  
-  if (newDbStatus !== currentDbStatus) {
-    updates.status = newDbStatus;
-  }
-  if (result.paymentStatus) {
-    updates.payment_status = result.paymentStatus;
-  }
-  if (result.due) {
-    updates.expiration_date = new Date(result.due).toISOString();
-  }
-  
-  if (Object.keys(updates).length > 0) {
-    await updateInstance({ id: instance.id, updates });
-  }
-}
+#### 2. Cron job via `pg_cron` + `pg_net`
+
+Habilitar as extensões e criar o agendamento:
+
+```sql
+SELECT cron.schedule(
+  'refresh-instance-status-every-3h',
+  '0 */3 * * *',
+  $$
+  SELECT net.http_post(
+    url := 'https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/refresh-instance-status',
+    headers := '{"Content-Type":"application/json","Authorization":"Bearer <anon_key>"}'::jsonb,
+    body := '{"source":"cron"}'::jsonb
+  ) AS request_id;
+  $$
+);
 ```
 
 ### Arquivos
-- `src/pages/Instances.tsx`
+- **Novo:** `supabase/functions/refresh-instance-status/index.ts`
+- **SQL insert** (cron job, não migration)
 
