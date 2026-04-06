@@ -1,39 +1,33 @@
 
 
-## Plano: Agendar atualização automática de status a cada 3 horas
+## Plano: Corrigir extração de senderPhone para votos de enquete
 
-### O que será feito
-Criar uma Edge Function dedicada (`refresh-instance-status`) que replica a lógica do botão "Atualizar Status" — busca todas as instâncias com credenciais, chama o webhook n8n, e atualiza o banco. Depois, agendar essa função via `pg_cron` para rodar a cada 3 horas.
+### Problema
+Quando um voto de enquete chega, o `extractZApiContext` não encontra o campo `participantPhone` do Z-API. Ele cai no fallback `chatJid.split("@")[0]`, que retorna o número do grupo (`120363427443466552-group`) em vez do telefone do votante (`5511961001546`).
 
-### Alterações
+O log confirma: `Lead 120363427443466552-group added to execution list`.
 
-#### 1. Nova Edge Function `supabase/functions/refresh-instance-status/index.ts`
+### Correção
 
-- Busca todas as instâncias com `external_instance_id` e `external_instance_token` preenchidos
-- Envia POST para `https://n8n-n8n.nuwfic.easypanel.host/webhook/status_instances` com os dados
-- Processa a resposta (match por `id` externo, mapeia `connected` → status, salva `paymentStatus` e `due`)
-- Atualiza o banco diretamente (usa service role key, sem precisar de auth do usuário)
-- Também aciona a lógica de auto-registro/desconexão de `phone_numbers` (igual ao `instance-status`)
+**`supabase/functions/_shared/event-classifier.ts`** — função `extractZApiContext`, bloco de extração de `senderPhone` (linhas 559-564):
 
-#### 2. Cron job via `pg_cron` + `pg_net`
+Adicionar `body?.participantPhone` à lista de fontes:
 
-Habilitar as extensões e criar o agendamento:
-
-```sql
-SELECT cron.schedule(
-  'refresh-instance-status-every-3h',
-  '0 */3 * * *',
-  $$
-  SELECT net.http_post(
-    url := 'https://btvzspqcnzcslkdtddwl.supabase.co/functions/v1/refresh-instance-status',
-    headers := '{"Content-Type":"application/json","Authorization":"Bearer <anon_key>"}'::jsonb,
-    body := '{"source":"cron"}'::jsonb
-  ) AS request_id;
-  $$
-);
+```typescript
+let senderPhone = (
+  sender?.phone ||
+  rawEvent.senderPhone ||
+  body?.senderPhone ||
+  body?.participantPhone ||    // ← Z-API poll votes use this field
+  rawEvent.participant as string
+) as string | null;
 ```
 
+### Impacto
+- Corrige a acumulação automática de leads na Lista de Execução para eventos `poll_response`
+- O auto-processamento de enquete (que já extrai `participantPhone` manualmente nas linhas 142-143 do webhook-inbound) não é afetado
+- Não quebra nenhum outro fluxo, pois é apenas mais uma fonte de fallback
+
 ### Arquivos
-- **Novo:** `supabase/functions/refresh-instance-status/index.ts`
-- **SQL insert** (cron job, não migration)
+- `supabase/functions/_shared/event-classifier.ts`
 
