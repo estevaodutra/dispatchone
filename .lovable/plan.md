@@ -1,106 +1,48 @@
 
 
-## Plano: Usar webhook externo para atualizar status das instâncias
+## Plano: Adaptar parsing da resposta do webhook ao formato real
 
 ### Problema
-A função `handleRefreshStatus` chama `zapi-proxy` que requer `Client-Token` não configurado. O usuário quer usar um webhook n8n dedicado.
-
-### Solução
-Substituir a chamada `zapi-proxy` por uma chamada ao `webhook-proxy` (já existente no projeto), enviando a lista de instâncias para o webhook `https://n8n-n8n.nuwfic.easypanel.host/webhook/status_instances` e aguardando a resposta com os status atualizados.
+O código atual espera que o webhook retorne objetos com `id` (nosso UUID interno) e `status` (string). Porém, o webhook retorna um formato diferente:
+- `id` = ID externo da Z-API (ex: `3F0565CB...`), não nosso UUID
+- `connected` = booleano (`true`/`false`), não string de status
+- Inclui `paymentStatus` e `due` (timestamp de expiração)
 
 ### Alteração
 
-**`src/pages/Instances.tsx`** — função `handleRefreshStatus` (linhas 422-460):
+**`src/pages/Instances.tsx`** — bloco de parsing da resposta (linhas 454-467):
 
-Substituir o loop que chama `zapi-proxy` por uma única chamada via `webhook-proxy`:
+1. Fazer match pelo campo `id` da resposta com `idInstance` (external_instance_id) da instância local, em vez de comparar com nosso UUID
+2. Mapear `connected: true/false` → `"connected"/"disconnected"`
+3. Aproveitar `paymentStatus` e `due` para atualizar `payment_status` e `expiration_date` no banco
 
 ```typescript
-const handleRefreshStatus = async () => {
-  setIsRefreshing(true);
-  try {
-    // Prepare payload with all instances that have credentials
-    const instancesPayload = instances
-      .filter(i => i.idInstance && i.tokenInstance)
-      .map(i => ({
-        id: i.id,
-        name: i.name,
-        external_instance_id: i.idInstance,
-        external_instance_token: i.tokenInstance,
-        current_status: mapFrontendStatusToDb(i.status),
-      }));
-
-    if (instancesPayload.length > 0) {
-      const { data: proxyData, error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
-        body: {
-          url: "https://n8n-n8n.nuwfic.easypanel.host/webhook/status_instances",
-          payload: { instances: instancesPayload },
-        },
-      });
-
-      if (proxyError) {
-        console.error("Webhook error:", proxyError);
-      } else {
-        // Parse response — webhook-proxy returns { success, status, body }
-        let results: any[] = [];
-        try {
-          const bodyData = typeof proxyData?.body === "string" 
-            ? JSON.parse(proxyData.body) 
-            : proxyData?.body || proxyData;
-          results = Array.isArray(bodyData) ? bodyData : bodyData?.instances || [];
-        } catch { /* ignore parse errors */ }
-
-        // Update each instance whose status changed
-        for (const result of results) {
-          if (result.id && result.status) {
-            const instance = instances.find(i => i.id === result.id);
-            if (instance) {
-              const currentDbStatus = mapFrontendStatusToDb(instance.status);
-              if (result.status !== currentDbStatus) {
-                await updateInstance({
-                  id: result.id,
-                  updates: { status: result.status },
-                });
-              }
-            }
-          }
-        }
-      }
-    }
-
-    await refetch();
-    toast({
-      title: t("instances.statusRefreshed"),
-      description: t("instances.statusRefreshed"),
-    });
-  } catch (err) {
-    console.error("Failed to refresh statuses:", err);
-    toast({
-      title: "Erro",
-      description: "Falha ao atualizar status das instâncias.",
-      variant: "destructive",
-    });
-  } finally {
-    setIsRefreshing(false);
+for (const result of results) {
+  if (!result.id) continue;
+  
+  // Match by external instance ID, not our internal UUID
+  const instance = instances.find(i => i.idInstance === result.id);
+  if (!instance) continue;
+  
+  const newDbStatus = result.connected ? "connected" : "disconnected";
+  const currentDbStatus = mapFrontendStatusToDb(instance.status);
+  
+  const updates: Record<string, any> = {};
+  
+  if (newDbStatus !== currentDbStatus) {
+    updates.status = newDbStatus;
   }
-};
-```
-
-### Expectativa do webhook n8n
-O webhook receberá um POST com:
-```json
-{
-  "instances": [
-    { "id": "uuid", "name": "...", "external_instance_id": "...", "external_instance_token": "...", "current_status": "connected" }
-  ]
+  if (result.paymentStatus) {
+    updates.payment_status = result.paymentStatus;
+  }
+  if (result.due) {
+    updates.expiration_date = new Date(result.due).toISOString();
+  }
+  
+  if (Object.keys(updates).length > 0) {
+    await updateInstance({ id: instance.id, updates });
+  }
 }
-```
-
-E deve retornar um array com os status atualizados:
-```json
-[
-  { "id": "uuid", "status": "connected" },
-  { "id": "uuid", "status": "disconnected" }
-]
 ```
 
 ### Arquivos
