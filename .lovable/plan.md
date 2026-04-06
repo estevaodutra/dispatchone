@@ -1,38 +1,64 @@
 
 
-## Plan: Allow re-execution of poll actions after bug fix
+## Plano: Fazer "Atualizar Status" consultar o status real da instância
 
-### Problem
-The `handle-poll-response` function has a deduplication check (line 133-150) that sees `action_executed = true` from the previous buggy execution (which added leads to the wrong list). Even after fixing `add_to_list` to use the correct `listId`, existing respondents are permanently blocked.
+### Problema
+O botão "Atualizar Status" apenas faz `refetch()` do banco de dados local, sem fazer nenhuma requisição externa ao provedor (Z-API) para verificar o status real da instância. O status no banco nunca muda, então o botão não tem efeito prático.
 
-### Changes
+### Solução
+Ao clicar em "Atualizar Status", para cada instância que tenha credenciais configuradas (`idInstance` + `tokenInstance`), enviar uma requisição via `zapi-proxy` para buscar o status real e atualizar o banco.
 
-#### 1. Database fix — Reset affected poll_response records
-Run a migration to reset `action_executed` to `false` for poll responses whose action was `add_to_list`, so they can be re-processed with the corrected logic.
+### Alterações
 
-```sql
-UPDATE poll_responses 
-SET action_executed = false, 
-    action_result = jsonb_build_object('reset_reason', 'add_to_list_fix', 'reset_at', now()),
-    executed_at = NULL
-WHERE action_type = 'add_to_list' 
-  AND action_executed = true;
+#### 1. `src/pages/Instances.tsx` — `handleRefreshStatus`
+
+Substituir a função atual que só faz `refetch()` por uma que:
+
+1. Itera sobre cada instância com credenciais configuradas
+2. Chama `zapi-proxy` com endpoint `/status` (ou equivalente do provedor) para obter o status real
+3. Se o status retornado diferir do banco, atualiza via `updateInstance`
+4. Ao final, faz `refetch()` e exibe toast
+
+```typescript
+const handleRefreshStatus = async () => {
+  setIsRefreshing(true);
+  try {
+    for (const instance of instances) {
+      if (!instance.idInstance || !instance.tokenInstance) continue;
+      
+      try {
+        const { data } = await supabase.functions.invoke("zapi-proxy", {
+          body: {
+            instanceId: instance.id,
+            endpoint: "/status",
+            method: "GET",
+          },
+        });
+        
+        // Map Z-API status to our status
+        const connected = data?.connected === true;
+        const newStatus = connected ? "connected" : "disconnected";
+        const currentDbStatus = mapFrontendStatusToDb(instance.status);
+        
+        if (newStatus !== currentDbStatus) {
+          await updateInstance({
+            id: instance.id,
+            updates: { status: newStatus },
+          });
+        }
+      } catch (err) {
+        console.warn(`Failed to refresh status for ${instance.name}:`, err);
+      }
+    }
+    
+    await refetch();
+    toast({ title: t("instances.statusRefreshed"), description: t("instances.statusRefreshed") });
+  } finally {
+    setIsRefreshing(false);
+  }
+};
 ```
 
-#### 2. Clean up wrongly added leads from the wrong list
-Remove leads that were incorrectly added to the `group_leave` list by the old buggy code (leads with `origin_event = 'poll_response'` in a list that only monitors `group_leave`).
-
-```sql
-DELETE FROM group_execution_leads gel
-USING group_execution_lists gelist
-WHERE gel.list_id = gelist.id
-  AND gel.origin_event = 'poll_response'
-  AND NOT ('poll_response' = ANY(gelist.monitored_events));
-```
-
-### Files
-- Database migration only (2 SQL statements)
-
-### Result
-After the migration, the next poll_response webhook for these respondents will pass the dedup check and execute `add_to_list` using the correct `listId` from the config.
+### Arquivos
+- `src/pages/Instances.tsx`
 
