@@ -560,6 +560,7 @@ function extractZApiContext(rawEvent: Record<string, unknown>): EventContext {
     sender?.phone ||
     rawEvent.senderPhone ||
     body?.senderPhone ||
+    body?.participantPhone ||    // Z-API poll votes use this field
     rawEvent.participant as string
   ) as string | null;
 
