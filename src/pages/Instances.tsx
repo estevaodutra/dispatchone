@@ -452,17 +452,29 @@ export default function Instances() {
           } catch { /* ignore parse errors */ }
 
           for (const result of results) {
-            if (result.id && result.status) {
-              const instance = instances.find(i => i.id === result.id);
-              if (instance) {
-                const currentDbStatus = mapFrontendStatusToDb(instance.status);
-                if (result.status !== currentDbStatus) {
-                  await updateInstance({
-                    id: result.id,
-                    updates: { status: result.status },
-                  });
-                }
-              }
+            if (!result.id) continue;
+
+            // Match by external instance ID (Z-API id), not our internal UUID
+            const instance = instances.find(i => i.idInstance === result.id);
+            if (!instance) continue;
+
+            const newDbStatus = result.connected ? "connected" : "disconnected";
+            const currentDbStatus = mapFrontendStatusToDb(instance.status);
+
+            const updates: Record<string, any> = {};
+
+            if (newDbStatus !== currentDbStatus) {
+              updates.status = newDbStatus;
+            }
+            if (result.paymentStatus) {
+              updates.payment_status = result.paymentStatus;
+            }
+            if (result.due) {
+              updates.expiration_date = new Date(result.due).toISOString();
+            }
+
+            if (Object.keys(updates).length > 0) {
+              await updateInstance({ id: instance.id, updates });
             }
           }
         }
