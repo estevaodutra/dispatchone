@@ -421,12 +421,42 @@ export default function Instances() {
   };
   const handleRefreshStatus = async () => {
     setIsRefreshing(true);
-    await refetch();
-    setIsRefreshing(false);
-    toast({
-      title: t("instances.statusRefreshed"),
-      description: t("instances.statusRefreshed")
-    });
+    try {
+      for (const instance of instances) {
+        if (!instance.idInstance || !instance.tokenInstance) continue;
+
+        try {
+          const { data } = await supabase.functions.invoke("zapi-proxy", {
+            body: {
+              instanceId: instance.id,
+              endpoint: "/status",
+              method: "GET",
+            },
+          });
+
+          const connected = data?.connected === true;
+          const newStatus = connected ? "connected" : "disconnected";
+          const currentDbStatus = mapFrontendStatusToDb(instance.status);
+
+          if (newStatus !== currentDbStatus) {
+            await updateInstance({
+              id: instance.id,
+              updates: { status: newStatus },
+            });
+          }
+        } catch (err) {
+          console.warn(`Failed to refresh status for ${instance.name}:`, err);
+        }
+      }
+
+      await refetch();
+      toast({
+        title: t("instances.statusRefreshed"),
+        description: t("instances.statusRefreshed"),
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
   };
   const handleConfigure = (instance: Instance) => {
     setSelectedInstance(instance);
