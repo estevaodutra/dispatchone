@@ -47,10 +47,12 @@ export function UnifiedSequenceList<T>({
   const [form, setForm] = useState({ name: "", description: "", triggerType: triggerTypes[0]?.value || "manual" });
 
   // Get trigger types already used by existing sequences
-  const usedTriggerTypes = new Set(sequences.map(seq => getSequenceItem(seq).triggerType));
+  const usedTriggerTypes = new Set(
+    sequences.map(seq => getSequenceItem(seq).triggerType).filter(t => t !== "webhook")
+  );
 
   const handleCreate = async () => {
-    if (usedTriggerTypes.has(form.triggerType)) {
+    if (form.triggerType !== "webhook" && usedTriggerTypes.has(form.triggerType)) {
       toast.error("Já existe uma sequência com este gatilho");
       return;
     }
