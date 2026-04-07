@@ -1,33 +1,36 @@
 
 
-## Plano: Corrigir extração de senderPhone para votos de enquete
+## Plano: Permitir múltiplas sequências com gatilho Webhook
 
 ### Problema
-Quando um voto de enquete chega, o `extractZApiContext` não encontra o campo `participantPhone` do Z-API. Ele cai no fallback `chatJid.split("@")[0]`, que retorna o número do grupo (`120363427443466552-group`) em vez do telefone do votante (`5511961001546`).
+Atualmente, o `UnifiedSequenceList` bloqueia a criação de uma segunda sequência com o mesmo tipo de gatilho (mostra "em uso" e impede a seleção). Para webhook, faz sentido permitir múltiplas sequências.
 
-O log confirma: `Lead 120363427443466552-group added to execution list`.
+### Alteração
 
-### Correção
+**`src/components/sequences/UnifiedSequenceList.tsx`**
 
-**`supabase/functions/_shared/event-classifier.ts`** — função `extractZApiContext`, bloco de extração de `senderPhone` (linhas 559-564):
+1. Alterar a lógica de `usedTriggerTypes` para excluir `"webhook"` do set de tipos bloqueados
+2. Remover a validação no `handleCreate` que impede criação quando o gatilho já existe — mas apenas para webhook
 
-Adicionar `body?.participantPhone` à lista de fontes:
-
+Trecho principal:
 ```typescript
-let senderPhone = (
-  sender?.phone ||
-  rawEvent.senderPhone ||
-  body?.senderPhone ||
-  body?.participantPhone ||    // ← Z-API poll votes use this field
-  rawEvent.participant as string
-) as string | null;
+// Antes
+const usedTriggerTypes = new Set(sequences.map(seq => getSequenceItem(seq).triggerType));
+
+// Depois — webhook pode repetir
+const usedTriggerTypes = new Set(
+  sequences.map(seq => getSequenceItem(seq).triggerType).filter(t => t !== "webhook")
+);
 ```
 
-### Impacto
-- Corrige a acumulação automática de leads na Lista de Execução para eventos `poll_response`
-- O auto-processamento de enquete (que já extrai `participantPhone` manualmente nas linhas 142-143 do webhook-inbound) não é afetado
-- Não quebra nenhum outro fluxo, pois é apenas mais uma fonte de fallback
+E no `handleCreate`:
+```typescript
+if (form.triggerType !== "webhook" && usedTriggerTypes.has(form.triggerType)) {
+  toast.error("Já existe uma sequência com este gatilho");
+  return;
+}
+```
 
 ### Arquivos
-- `supabase/functions/_shared/event-classifier.ts`
+- `src/components/sequences/UnifiedSequenceList.tsx`
 
