@@ -21,7 +21,7 @@ export interface GroupExecutionList {
   current_window_end: string | null;
   last_executed_at: string | null;
   is_active: boolean;
-  execution_schedule_type: "window_end" | "scheduled";
+  execution_schedule_type: "window_end" | "scheduled" | "immediate";
   execution_scheduled_time: string | null;
   execution_days_of_week: number[] | null;
   created_at: string;
@@ -135,7 +135,7 @@ export function useGroupExecutionList(campaignId: string) {
       webhook_url?: string;
       message_template?: string;
       call_campaign_id?: string;
-      execution_schedule_type?: "window_end" | "scheduled";
+      execution_schedule_type?: "window_end" | "scheduled" | "immediate";
       execution_scheduled_time?: string;
       execution_days_of_week?: number[];
     }) => {
@@ -189,7 +189,7 @@ export function useGroupExecutionList(campaignId: string) {
         webhook_url?: string;
         message_template?: string;
         call_campaign_id?: string;
-        execution_schedule_type?: "window_end" | "scheduled";
+        execution_schedule_type?: "window_end" | "scheduled" | "immediate";
         execution_scheduled_time?: string;
         execution_days_of_week?: number[];
       };
