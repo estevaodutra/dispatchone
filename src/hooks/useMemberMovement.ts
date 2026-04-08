@@ -37,7 +37,7 @@ export function useMemberMovement(campaignId: string | null, days: number = 7) {
         totalJoined: Number(row.total_joined) || 0,
         totalLeft: Number(row.total_left) || 0,
         netChange: Number(row.net_change) || 0,
-        dailyStats: (row.daily_stats as DailyStat[]) || [],
+        dailyStats: (row.daily_stats as unknown as DailyStat[]) || [],
       };
     },
     enabled: !!user && !!campaignId,

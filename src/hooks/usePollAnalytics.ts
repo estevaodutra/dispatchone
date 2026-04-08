@@ -58,7 +58,7 @@ export function usePollAnalytics(campaignId: string | null, totalMembers: number
           totalVotes: Number(row.total_votes) || 0,
           uniqueRespondents: Number(row.unique_respondents) || 0,
           responseRate: Number(row.response_rate) || 0,
-          optionsStats: (row.options_stats as PollOptionStat[]) || [],
+          optionsStats: (row.options_stats as unknown as PollOptionStat[]) || [],
         });
       }
 

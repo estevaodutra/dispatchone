@@ -44,7 +44,7 @@ export function AnalyticsTab({ campaignId }: AnalyticsTabProps) {
   const { members, stats, isLoading: isLoadingMembers } = useGroupMembers(campaignId);
   const { messages, isLoading: isLoadingMessages } = useGroupMessages(campaignId);
   const { logs, isLoading: isLoadingModeration } = useGroupModeration(campaignId);
-  const { data: pollsData, isLoading: isLoadingPolls } = usePollAnalytics(campaignId, stats.total);
+  const { data: pollsData } = usePollAnalytics(campaignId, stats.total);
 
   const [period, setPeriod] = useState(7);
   const [exportFormat, setExportFormat] = useState<"csv" | "json">("csv");
