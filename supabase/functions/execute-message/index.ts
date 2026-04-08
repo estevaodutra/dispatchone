@@ -241,6 +241,7 @@ const getActionForNodeType = (nodeType: string): string => {
     group_promote_admin: "group.promote_admin",
     group_remove_admin: "group.demote_admin",
     group_settings: "group.update_settings",
+    webhook_forward: "webhook.forward",
   };
   return actionMap[nodeType] || `message.send_${nodeType}`;
 };
