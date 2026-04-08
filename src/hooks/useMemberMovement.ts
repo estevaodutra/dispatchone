@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
 
 export interface DailyStat {
   date: string;
@@ -17,6 +18,32 @@ export interface MemberMovementStats {
 
 export function useMemberMovement(campaignId: string | null, days: number = 7) {
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!campaignId) return;
+
+    const channel = supabase
+      .channel(`member_history_rt_${campaignId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "group_member_history",
+          filter: `group_campaign_id=eq.${campaignId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["member_movement", campaignId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [campaignId, queryClient]);
 
   return useQuery({
     queryKey: ["member_movement", campaignId, days],
