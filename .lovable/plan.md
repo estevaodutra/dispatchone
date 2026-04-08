@@ -1,36 +1,29 @@
 
 
-## Plano: Permitir múltiplas sequências com gatilho Webhook
+## Plano: Pular agendamento para gatilhos de evento (member_join / member_leave)
 
 ### Problema
-Atualmente, o `UnifiedSequenceList` bloqueia a criação de uma segunda sequência com o mesmo tipo de gatilho (mostra "em uso" e impede a seleção). Para webhook, faz sentido permitir múltiplas sequências.
+Quando o gatilho da sequência é "membro entrar" ou "membro sair", o agendamento não faz sentido — a mensagem deve ser disparada imediatamente após o evento. Atualmente, apenas o gatilho "webhook" pula o passo de agendamento.
 
 ### Alteração
 
-**`src/components/sequences/UnifiedSequenceList.tsx`**
+**`src/components/group-campaigns/sequences/NewMessageDialog.tsx`** — função `handleSelectType` (linha 118-127):
 
-1. Alterar a lógica de `usedTriggerTypes` para excluir `"webhook"` do set de tipos bloqueados
-2. Remover a validação no `handleCreate` que impede criação quando o gatilho já existe — mas apenas para webhook
+Expandir a condição que pula o agendamento para incluir `member_join` e `member_leave`:
 
-Trecho principal:
 ```typescript
-// Antes
-const usedTriggerTypes = new Set(sequences.map(seq => getSequenceItem(seq).triggerType));
-
-// Depois — webhook pode repetir
-const usedTriggerTypes = new Set(
-  sequences.map(seq => getSequenceItem(seq).triggerType).filter(t => t !== "webhook")
-);
-```
-
-E no `handleCreate`:
-```typescript
-if (form.triggerType !== "webhook" && usedTriggerTypes.has(form.triggerType)) {
-  toast.error("Já existe uma sequência com este gatilho");
-  return;
-}
+const handleSelectType = (type: string) => {
+  setSelectedType(type);
+  if (triggerType === "webhook" || triggerType === "member_join" || triggerType === "member_leave") {
+    onSave(type, { enabled: false });
+    reset();
+    onClose();
+  } else {
+    setStep(2);
+  }
+};
 ```
 
 ### Arquivos
-- `src/components/sequences/UnifiedSequenceList.tsx`
+- `src/components/group-campaigns/sequences/NewMessageDialog.tsx`
 
