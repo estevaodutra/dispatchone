@@ -107,6 +107,7 @@ export const NODE_TYPE_TO_ACTION: Record<string, string> = {
   location: "message.send_location",
   contact: "message.send_contact",
   reaction: "message.send_reaction",
+  webhook_forward: "webhook.forward",
 };
 
 /**

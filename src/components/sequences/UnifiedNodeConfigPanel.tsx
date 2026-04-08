@@ -14,7 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  Plus, Trash2, Zap, Play,
+  Plus, Trash2, Zap, Play, Send,
   MessageSquare, Clock, GitBranch, Bell, Link2,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
@@ -66,6 +66,7 @@ const NODE_TITLES: Record<string, { title: string; icon: React.ElementType }> = 
   condition: { title: "Condição", icon: GitBranch },
   notify: { title: "Notificar", icon: Bell },
   webhook: { title: "Webhook", icon: Link2 },
+  webhook_forward: { title: "Enviar p/ Webhook", icon: Send },
   group_create: { title: "Criar Grupo", icon: Plus },
   group_rename: { title: "Renomear Grupo", icon: Pencil },
   group_photo: { title: "Alterar Foto", icon: ImageIcon },
@@ -1444,6 +1445,138 @@ export function UnifiedNodeConfigPanel({
                   onChange={e => updateConfig("caption", e.target.value)}
                   rows={2}
                 />
+              </div>
+            </>
+          )}
+
+          {/* WEBHOOK FORWARD */}
+          {node.nodeType === "webhook_forward" && (
+            <>
+              <div className="space-y-2">
+                <Label>URL do Webhook *</Label>
+                <Input
+                  type="url"
+                  placeholder="https://n8n.exemplo.com/webhook/..."
+                  value={(node.config.url as string) || ""}
+                  onChange={e => updateConfig("url", e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  O sistema enviará automaticamente todos os dados do lead e da campanha para esta URL
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Método</Label>
+                <Select value={(node.config.method as string) || "POST"} onValueChange={v => updateConfig("method", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="POST">POST</SelectItem>
+                    <SelectItem value="PUT">PUT</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Custom Headers */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label>Headers customizados</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2"
+                    onClick={() => {
+                      const headers = ((node.config.headers as Array<{key: string; value: string}>) || []);
+                      updateConfig("headers", [...headers, { key: "", value: "" }]);
+                    }}
+                  >
+                    <Plus className="h-3 w-3 mr-1" /> Header
+                  </Button>
+                </div>
+                {((node.config.headers as Array<{key: string; value: string}>) || []).map((header, idx) => (
+                  <div key={idx} className="flex gap-1">
+                    <Input
+                      placeholder="Chave"
+                      value={header.key}
+                      onChange={e => {
+                        const headers = [...((node.config.headers as Array<{key: string; value: string}>) || [])];
+                        headers[idx] = { ...headers[idx], key: e.target.value };
+                        updateConfig("headers", headers);
+                      }}
+                      className="flex-1 h-8 text-xs"
+                    />
+                    <Input
+                      placeholder="Valor"
+                      value={header.value}
+                      onChange={e => {
+                        const headers = [...((node.config.headers as Array<{key: string; value: string}>) || [])];
+                        headers[idx] = { ...headers[idx], value: e.target.value };
+                        updateConfig("headers", headers);
+                      }}
+                      className="flex-1 h-8 text-xs"
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => {
+                        const headers = ((node.config.headers as Array<{key: string; value: string}>) || []).filter((_, i) => i !== idx);
+                        updateConfig("headers", headers);
+                      }}
+                    >
+                      <Trash2 className="h-3 w-3 text-destructive" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label>Incluir dados da instância</Label>
+                  <p className="text-xs text-muted-foreground">Envia ID, nome e telefone da instância</p>
+                </div>
+                <Switch
+                  checked={(node.config.includeInstance as boolean) ?? true}
+                  onCheckedChange={checked => updateConfig("includeInstance", checked)}
+                />
+              </div>
+
+              {isGroup && (
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Incluir dados dos grupos</Label>
+                    <p className="text-xs text-muted-foreground">Envia lista de grupos vinculados</p>
+                  </div>
+                  <Switch
+                    checked={(node.config.includeGroups as boolean) ?? true}
+                    onCheckedChange={checked => updateConfig("includeGroups", checked)}
+                  />
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label>Payload adicional (JSON, opcional)</Label>
+                <Textarea
+                  placeholder={'{"chave": "valor"}'}
+                  value={(node.config.customPayload as string) || ""}
+                  onChange={e => updateConfig("customPayload", e.target.value)}
+                  rows={3}
+                  className="font-mono text-xs"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Será mesclado com o payload automático (lead, campanha, instância, etc.)
+                </p>
+              </div>
+
+              <div className="rounded-md bg-muted p-3 space-y-1">
+                <p className="text-xs font-medium">📦 Payload automático inclui:</p>
+                <ul className="text-xs text-muted-foreground space-y-0.5 list-disc list-inside">
+                  <li>Dados do lead (telefone, nome, JID, campos personalizados)</li>
+                  <li>Dados da campanha (ID, nome)</li>
+                  <li>Dados da sequência (ID, nome)</li>
+                  {isGroup ? <li>Dados dos grupos vinculados</li> : <li>Dados do contato</li>}
+                  <li>Timestamp do envio</li>
+                </ul>
               </div>
             </>
           )}
