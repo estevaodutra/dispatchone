@@ -1,47 +1,75 @@
 
 
-## Plano: Monitoramento em Tempo Real e Correção do Gatilho de Entrada
+## Plano: Exportar Membros para Webhook com Agendamento
 
-### Problemas Identificados
-
-1. **Sem atualização em tempo real**: As tabelas `group_members`, `group_member_history` e `group_execution_leads` não têm Realtime habilitado, então mudanças no backend não aparecem na interface sem refresh manual.
-
-2. **webhook-inbound não atualiza membros**: Quando um evento `group_join` ou `group_leave` chega, o `webhook-inbound` processa Campanhas Pirata e Listas de Execução, mas **não insere/atualiza** na tabela `group_members` nem registra na `group_member_history`. Ou seja, a aba Membros nunca reflete entradas/saídas automaticamente.
-
-3. **Listas de Execução com gatilho de entrada**: O acúmulo de leads funciona (insere em `group_execution_leads`), mas sem realtime a UI não atualiza. Além disso, se a janela expirou ou o `campaign_groups` não vincula o grupo, leads não são capturados.
+### Resumo
+Adicionar na aba Membros um botão "Exportar Webhook" que abre um dialog para configurar a URL do webhook, filtros de status e agendamento opcional (único ou recorrente). A exportação envia os membros como payload JSON via webhook-proxy.
 
 ### Alterações
 
-**Migration SQL (nova)**
-- Habilitar Realtime nas tabelas `group_members`, `group_member_history` e `group_execution_leads`
+**Nova tabela `member_export_schedules` (migration)**
 ```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE group_members;
-ALTER PUBLICATION supabase_realtime ADD TABLE group_member_history;
-ALTER PUBLICATION supabase_realtime ADD TABLE group_execution_leads;
+CREATE TABLE public.member_export_schedules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  group_campaign_id uuid NOT NULL,
+  webhook_url text NOT NULL,
+  status_filter text[] DEFAULT '{active}',
+  schedule_type text NOT NULL DEFAULT 'once', -- once, daily, weekly
+  schedule_time time DEFAULT '08:00',
+  schedule_day_of_week int, -- 0-6 for weekly
+  next_run_at timestamptz,
+  last_run_at timestamptz,
+  is_active boolean DEFAULT true,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE public.member_export_schedules ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users manage own exports" ON public.member_export_schedules
+  FOR ALL TO authenticated USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 ```
 
-**`supabase/functions/webhook-inbound/index.ts`**
-- No bloco de processamento de `group_join` (após o pirate-process-join), adicionar lógica para:
-  1. Buscar `campaign_groups` pelo `chatJid` para encontrar o `campaign_id`
-  2. Se encontrado, fazer `upsert` em `group_members` (phone, status=active, joined_at=now)
-  3. Inserir registro em `group_member_history` (action=join)
-- Adicionar bloco equivalente para `group_leave`:
-  1. Buscar campaign via `campaign_groups`
-  2. Atualizar `group_members` (status=left, left_at=now)
-  3. Inserir registro em `group_member_history` (action=leave)
+**Nova edge function `export-members-webhook/index.ts`**
+- Recebe `group_campaign_id`, `webhook_url`, `status_filter` (opcional)
+- Busca membros da tabela `group_members` com filtros aplicados
+- Envia POST para `webhook_url` com payload:
+  ```json
+  {
+    "action": "members.export",
+    "campaign_id": "...",
+    "exported_at": "ISO",
+    "total": 706,
+    "members": [{ "phone": "...", "name": "...", "status": "active", "is_admin": false, "joined_at": "..." }]
+  }
+  ```
+- Também chamada pelo cron para agendamentos ativos
 
-**`src/hooks/useGroupMembers.ts`**
-- Adicionar subscription Realtime na tabela `group_members` filtrado por `group_campaign_id`, invalidando a query key ao receber mudanças
+**Novo componente `ExportWebhookDialog.tsx`** em `src/components/group-campaigns/dialogs/`
+- Dialog com campos:
+  - URL do webhook (input text, obrigatório)
+  - Filtro de status (multi-select: Ativos, Removidos, Todos)
+  - Tipo de envio: "Agora" ou "Agendar"
+  - Se agendar: frequência (Diário, Semanal), horário, dia da semana (se semanal)
+- Botão "Exportar Agora" envia imediatamente via edge function
+- Botão "Salvar Agendamento" grava na tabela `member_export_schedules`
 
-**`src/hooks/useMemberMovement.ts`**
-- Adicionar subscription Realtime na tabela `group_member_history` filtrado por `group_campaign_id`, invalidando `member_movement` ao receber mudanças
+**`src/components/group-campaigns/tabs/MembersTab.tsx`**
+- Importar e adicionar botão "Exportar Webhook" (ícone Send/Webhook) na barra de ações, ao lado do Exportar CSV
+- Controlar estado `showExportWebhookDialog`
+- Renderizar `<ExportWebhookDialog>`
 
-**`src/hooks/useGroupExecutionList.ts`**
-- Adicionar subscription Realtime na tabela `group_execution_leads`, invalidando a query de leads do ciclo ao receber mudanças
+**Novo hook `useExportSchedules.ts`**
+- CRUD na tabela `member_export_schedules` filtrado por `group_campaign_id`
+- Listar agendamentos ativos no dialog para gerenciamento
 
-### Resultado
-- Membros aparecem/desaparecem automaticamente na aba Membros quando entram/saem do grupo
-- Contadores de Analytics (movimento) atualizam em tempo real
-- Leads das Listas de Execução aparecem na UI assim que são capturados
-- O gatilho `group_join` nas listas de execução já funciona (o webhook-inbound já acumula leads), agora a UI reflete isso
+**Cron job (pg_cron via SQL insert)**
+- Rodar a cada hora, chamando a edge function para processar agendamentos com `next_run_at <= now()`
+- A edge function atualiza `next_run_at` e `last_run_at` após execução
+
+### Fluxo do Usuário
+1. Clica "Exportar Webhook" na aba Membros
+2. Informa a URL do webhook destino
+3. Escolhe filtro de status (padrão: Ativos)
+4. Escolhe "Enviar agora" ou agenda para horário/frequência
+5. Se agora: membros são enviados imediatamente, toast de sucesso
+6. Se agendado: registro salvo, exportação automática no horário configurado
 
