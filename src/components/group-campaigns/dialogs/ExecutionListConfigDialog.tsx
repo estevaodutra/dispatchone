@@ -58,7 +58,7 @@ export function ExecutionListConfigDialog({
   isSaving,
 }: ExecutionListConfigDialogProps) {
   const [name, setName] = useState("");
-  const [windowType, setWindowType] = useState<"fixed" | "duration">("fixed");
+  const [windowType, setWindowType] = useState<"fixed" | "duration" | "fulltime">("fixed");
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("18:00");
   const [durationHours, setDurationHours] = useState(6);
@@ -76,7 +76,10 @@ export function ExecutionListConfigDialog({
   useEffect(() => {
     if (existing) {
       setName(existing.name || "");
-      setWindowType(existing.window_type as "fixed" | "duration");
+      const isFulltime = existing.window_type === "fixed" &&
+        existing.window_start_time?.slice(0, 5) === "00:00" &&
+        existing.window_end_time?.slice(0, 5) === "23:59";
+      setWindowType(isFulltime ? "fulltime" : (existing.window_type as "fixed" | "duration"));
       setStartTime(existing.window_start_time?.slice(0, 5) || "08:00");
       setEndTime(existing.window_end_time?.slice(0, 5) || "18:00");
       setDurationHours(existing.window_duration_hours || 6);
@@ -129,12 +132,14 @@ export function ExecutionListConfigDialog({
   };
 
   const handleSave = () => {
+    const isFulltime = windowType === "fulltime";
+    const mappedWindowType = isFulltime ? "fixed" : windowType;
     onSave({
       name: name.trim(),
-      window_type: windowType,
-      window_start_time: windowType === "fixed" ? startTime : undefined,
-      window_end_time: windowType === "fixed" ? endTime : undefined,
-      window_duration_hours: windowType === "duration" ? durationHours : undefined,
+      window_type: mappedWindowType as "fixed" | "duration",
+      window_start_time: isFulltime ? "00:00" : (mappedWindowType === "fixed" ? startTime : undefined),
+      window_end_time: isFulltime ? "23:59" : (mappedWindowType === "fixed" ? endTime : undefined),
+      window_duration_hours: mappedWindowType === "duration" ? durationHours : undefined,
       monitored_events: monitoredEvents,
       action_type: actionType,
       webhook_url: actionType === "webhook" ? webhookUrl : undefined,
@@ -169,7 +174,12 @@ export function ExecutionListConfigDialog({
           {/* Window Type */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Janela de Tempo</Label>
-            <RadioGroup value={windowType} onValueChange={(v) => setWindowType(v as "fixed" | "duration")}>
+            <RadioGroup value={windowType} onValueChange={(v) => setWindowType(v as "fixed" | "duration" | "fulltime")}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="fulltime" id="wt-fulltime" />
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="wt-fulltime">Tempo integral (24h)</Label>
+              </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="fixed" id="wt-fixed" />
                 <Label htmlFor="wt-fixed">Horário fixo</Label>
@@ -180,7 +190,13 @@ export function ExecutionListConfigDialog({
               </div>
             </RadioGroup>
 
-            {windowType === "fixed" ? (
+            {windowType === "fulltime" && (
+              <p className="text-xs text-muted-foreground">
+                Monitoramento contínuo 24 horas por dia, sem restrição de horário.
+              </p>
+            )}
+
+            {windowType === "fixed" && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-xs text-muted-foreground">Início</Label>
@@ -191,7 +207,9 @@ export function ExecutionListConfigDialog({
                   <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
                 </div>
               </div>
-            ) : (
+            )}
+
+            {windowType === "duration" && (
               <div>
                 <Label className="text-xs text-muted-foreground">Duração (horas)</Label>
                 <Input
