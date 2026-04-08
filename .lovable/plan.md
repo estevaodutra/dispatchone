@@ -1,21 +1,18 @@
 
 
-## Plano: Corrigir contagem na notificacao de importacao
+## Plano: Adicionar opcao "Tempo Integral" na Janela de Tempo
 
-### Problema
-O toast mostra "679 membro(s) importado(s)" (soma bruta dos 2 grupos antes de deduplicar), mas o banco tem 706 membros unicos. O `totalImported` soma `membersToInsert.length` de cada grupo, sem considerar que o upsert pode atualizar registros existentes em vez de insertar novos.
-
-### Solucao
-Alterar `addMembersBulk` no hook `useGroupMembers.ts` para retornar a contagem real de registros inseridos/atualizados pelo Supabase, e usar esse valor no toast em vez da contagem pre-upsert.
-
-**Alternativa mais simples**: deduplicar os membros no proprio `handleFetchMembers` antes de enviar ao bulk — acumular todos os membros dos grupos num Map por phone, e so depois chamar `addMembersBulk` uma vez. O toast mostrara a contagem de telefones unicos.
+### Resumo
+Adicionar uma terceira opcao de janela de tempo chamada "Tempo integral" (24h) nas listas de execucao. Quando selecionada, a janela cobre 00:00-23:59 sem necessidade de configurar horarios.
 
 ### Alteracoes
 
-**`src/components/group-campaigns/tabs/MembersTab.tsx`**
-- Acumular membros de todos os grupos num `Map<string, member>` (chave = phone) dentro do loop
-- Apos o loop, chamar `addMembersBulk` uma unica vez com os valores do Map
-- Mostrar no toast `uniqueMembers.size` em vez de `totalImported`
+**`src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx`**
+- Alterar tipo do `windowType` para aceitar `"fixed" | "duration" | "fulltime"`
+- Adicionar terceiro RadioGroupItem "Tempo integral" com icone Clock
+- Quando `fulltime` selecionado, nao mostrar campos de horario/duracao
+- No `handleSave`: se `windowType === "fulltime"`, enviar como `window_type: "fixed"` com `window_start_time: "00:00"` e `window_end_time: "23:59"` (reutiliza a logica existente sem precisar alterar banco ou backend)
+- No `useEffect` de carregamento do `existing`: detectar se start="00:00" e end="23:59" para pre-selecionar "fulltime"
 
-Nenhum outro arquivo precisa ser alterado.
+Nenhuma alteracao no banco de dados, hook ou edge function necessaria — o "fulltime" e mapeado para fixed 00:00-23:59.
 
