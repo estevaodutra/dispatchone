@@ -79,6 +79,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const [isFetchingMembers, setIsFetchingMembers] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [showExportWebhookDialog, setShowExportWebhookDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredMembers = members.filter((m) =>
