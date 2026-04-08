@@ -9,7 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
-import { Webhook, MessageSquare, Phone, Clock, CalendarClock } from "lucide-react";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap } from "lucide-react";
 
 interface ExecutionListConfigDialogProps {
   open: boolean;
@@ -25,7 +25,7 @@ interface ExecutionListConfigDialogProps {
     webhook_url?: string;
     message_template?: string;
     call_campaign_id?: string;
-    execution_schedule_type?: "window_end" | "scheduled";
+    execution_schedule_type?: "window_end" | "scheduled" | "immediate";
     execution_scheduled_time?: string;
     execution_days_of_week?: number[];
   }) => void;
@@ -67,7 +67,7 @@ export function ExecutionListConfigDialog({
   const [webhookUrl, setWebhookUrl] = useState("");
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
-  const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled">("window_end");
+  const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
   const [execScheduledTime, setExecScheduledTime] = useState("10:00");
   const [execDaysOfWeek, setExecDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
 
@@ -85,7 +85,7 @@ export function ExecutionListConfigDialog({
       setWebhookUrl(existing.webhook_url || "");
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
-      setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled") || "window_end");
+      setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
       setExecScheduledTime(existing.execution_scheduled_time || "10:00");
       setExecDaysOfWeek(existing.execution_days_of_week || [1, 2, 3, 4, 5]);
     } else {
@@ -287,7 +287,12 @@ export function ExecutionListConfigDialog({
           {/* Execution Schedule */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Agendamento da Execução</Label>
-            <RadioGroup value={execScheduleType} onValueChange={(v) => setExecScheduleType(v as "window_end" | "scheduled")}>
+            <RadioGroup value={execScheduleType} onValueChange={(v) => setExecScheduleType(v as "window_end" | "scheduled" | "immediate")}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="immediate" id="es-immediate" />
+                <Zap className="h-4 w-4 text-yellow-500" />
+                <Label htmlFor="es-immediate">Execução imediata</Label>
+              </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="window_end" id="es-window" />
                 <Clock className="h-4 w-4 text-muted-foreground" />
@@ -299,6 +304,12 @@ export function ExecutionListConfigDialog({
                 <Label htmlFor="es-scheduled">Horário agendado</Label>
               </div>
             </RadioGroup>
+
+            {execScheduleType === "immediate" && (
+              <p className="text-xs text-muted-foreground">
+                Cada lead será processado imediatamente ao ser capturado, sem aguardar janela ou horário.
+              </p>
+            )}
 
             {execScheduleType === "window_end" && (
               <p className="text-xs text-muted-foreground">

@@ -285,15 +285,22 @@ Deno.serve(async (req) => {
         const campaignId = campaignGroup?.campaign_id || null;
 
         if (campaignId) {
-          const { data: execList } = await supabase
+          // Fetch ALL active execution lists for this campaign that monitor this event
+          const { data: execLists } = await supabase
             .from("group_execution_lists")
-            .select("id, current_cycle_id, monitored_events, user_id")
+            .select("id, current_cycle_id, monitored_events, user_id, execution_schedule_type, current_window_end")
             .eq("campaign_id", campaignId)
-            .eq("is_active", true)
-            .gt("current_window_end", new Date().toISOString())
-            .maybeSingle();
+            .eq("is_active", true);
 
-          if (execList && (execList.monitored_events as string[]).includes(classification.eventType)) {
+          for (const execList of (execLists || [])) {
+            // Check if event is monitored
+            if (!(execList.monitored_events as string[]).includes(classification.eventType)) continue;
+
+            // For non-immediate lists, check window
+            if (execList.execution_schedule_type !== "immediate") {
+              if (!execList.current_window_end || new Date(execList.current_window_end) <= new Date()) continue;
+            }
+
             const { error: upsertError } = await supabase
               .from("group_execution_leads")
               .upsert(
@@ -312,8 +319,32 @@ Deno.serve(async (req) => {
 
             if (upsertError) {
               console.error("[webhook-inbound] Execution list upsert error:", upsertError);
-            } else {
-              console.log(`[webhook-inbound] Lead ${context.senderPhone} added to execution list ${execList.id}`);
+              continue;
+            }
+
+            console.log(`[webhook-inbound] Lead ${context.senderPhone} added to execution list ${execList.id}`);
+
+            // For immediate lists, trigger processor right away
+            if (execList.execution_schedule_type === "immediate") {
+              try {
+                const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+                const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+                const procResp = await fetch(
+                  `${supabaseUrl}/functions/v1/group-execution-processor`,
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${supabaseServiceKey}`,
+                    },
+                    body: JSON.stringify({ list_id: execList.id }),
+                  }
+                );
+                const procResult = await procResp.json();
+                console.log(`[webhook-inbound] Immediate execution result for list ${execList.id}:`, JSON.stringify(procResult));
+              } catch (procErr) {
+                console.error(`[webhook-inbound] Immediate execution error for list ${execList.id}:`, procErr);
+              }
             }
           }
         }
