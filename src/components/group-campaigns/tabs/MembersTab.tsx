@@ -123,7 +123,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
     }
 
     setIsFetchingMembers(true);
-    let totalImported = 0;
+    const uniqueMembers = new Map<string, { phone: string; name?: string; isAdmin: boolean }>();
 
     try {
       for (const group of linkedGroups) {
@@ -160,7 +160,6 @@ export function MembersTab({ campaignId }: MembersTabProps) {
 
         const data = await response.json();
         
-        // Resposta é um array de objetos de grupo, cada um com "participants"
         let membersList: any[] = [];
         if (Array.isArray(data)) {
           for (const item of data) {
@@ -174,22 +173,21 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           membersList = data.members;
         }
 
-        if (membersList.length > 0) {
-          const membersToInsert = membersList
-            .filter((m: any) => m.phone && !m.phone.includes("-group"))
-            .map((m: any) => ({
+        for (const m of membersList) {
+          if (m.phone && !m.phone.includes("-group")) {
+            const existing = uniqueMembers.get(m.phone);
+            uniqueMembers.set(m.phone, {
               phone: m.phone,
-              name: m.name || undefined,
-              isAdmin: m.isAdmin || m.isSuperAdmin || false,
-            }));
-
-          await addMembersBulk(membersToInsert);
-          totalImported += membersToInsert.length;
+              name: m.name || existing?.name || undefined,
+              isAdmin: m.isAdmin || m.isSuperAdmin || existing?.isAdmin || false,
+            });
+          }
         }
       }
 
-      if (totalImported > 0) {
-        toast.success(`${totalImported} membro(s) importado(s) com sucesso!`);
+      if (uniqueMembers.size > 0) {
+        await addMembersBulk(Array.from(uniqueMembers.values()));
+        toast.success(`${uniqueMembers.size} membro(s) importado(s) com sucesso!`);
       } else {
         toast.info("Nenhum membro novo encontrado.");
       }
