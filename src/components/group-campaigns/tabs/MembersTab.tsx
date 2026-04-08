@@ -56,6 +56,7 @@ import {
   UserX,
   Loader2,
   RefreshCw,
+  Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
