@@ -1,35 +1,30 @@
 
 
-## Plano: Exibir ciclo da janela (reabertura automática)
+## Plano: Adicionar opção "Execução Imediata" na Lista de Execução
 
-### Problema
-Quando a janela expira, o frontend mostra apenas "Expirada" sem indicar que ela reabrirá automaticamente no próximo horário configurado. O usuário precisa ver que a janela é cíclica.
+### Objetivo
+Incluir uma terceira opção de agendamento — "Execução imediata" — que processa cada lead assim que ele é capturado, sem aguardar o fim da janela ou um horário agendado.
 
 ### Alterações
 
-**`src/components/group-campaigns/tabs/ExecutionListTab.tsx`**
+**1. `src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx`**
+- Adicionar opção `immediate` no RadioGroup de "Agendamento da Execução" (ícone `Zap`, label "Execução imediata")
+- Atualizar tipo do state `execScheduleType` para incluir `"immediate"`
+- Adicionar texto descritivo: "Cada lead será processado imediatamente ao ser capturado."
+- Atualizar `onSave` para aceitar `execution_schedule_type: "immediate"`
 
-1. Atualizar o countdown para mostrar informação do próximo ciclo quando a janela expira:
-   - Para janela fixa: mostrar "Reabre às HH:MM" em vez de apenas "Expirada"
-   - Para janela de duração: mostrar "Próximo ciclo em Xh"
-2. Adicionar um indicador visual (badge ou texto) mostrando que a janela é cíclica (ex: ícone de refresh ao lado do label "Janela fecha em")
+**2. `src/hooks/useGroupExecutionList.ts`**
+- Atualizar o tipo `execution_schedule_type` na interface `GroupExecutionList` e nos parâmetros de `createList`/`updateList` para incluir `"immediate"`
 
-**Lógica do countdown atualizada:**
-```typescript
-// Quando diff <= 0 (janela expirada):
-if (list.window_type === "fixed" && list.window_start_time) {
-  setCountdown(`Reabre às ${list.window_start_time.slice(0, 5)}`);
-} else if (list.window_type === "duration") {
-  setCountdown(`Próximo ciclo: ${list.window_duration_hours}h`);
-} else {
-  setCountdown("Expirada");
-}
-```
+**3. `supabase/functions/group-execution-processor/index.ts`**
+- No filtro de listas prontas para execução, tratar `execution_schedule_type === "immediate"` — sempre incluir na execução (sem filtro de janela/horário)
 
-3. Alterar o label do card de "Janela fecha em" para refletir o estado:
-   - Janela aberta → "Janela fecha em"
-   - Janela expirada → "Próxima janela"
+**4. `supabase/functions/webhook-inbound/index.ts`** (ou função que captura eventos)
+- Quando um lead é inserido em uma lista com `execution_schedule_type === "immediate"`, invocar o `group-execution-processor` imediatamente passando `list_id`
 
 ### Arquivos
-- `src/components/group-campaigns/tabs/ExecutionListTab.tsx`
+- `src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx`
+- `src/hooks/useGroupExecutionList.ts`
+- `supabase/functions/group-execution-processor/index.ts`
+- Função de ingestão de eventos (webhook-inbound ou equivalente) — para trigger imediato
 
