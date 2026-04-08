@@ -769,6 +769,130 @@ Deno.serve(async (req) => {
           continue;
         }
 
+        // ============= WEBHOOK FORWARD NODES =============
+        if (node.node_type === "webhook_forward") {
+          const targetUrl = replaceVariables((node.config.url as string) || "");
+          const method = (node.config.method as string) || "POST";
+          const customHeaders = (node.config.headers as Array<{key: string; value: string}>) || [];
+          const includeInstance = (node.config.includeInstance as boolean) ?? true;
+          const includeGroups = (node.config.includeGroups as boolean) ?? true;
+          let customPayloadData = {};
+          
+          try {
+            const raw = (node.config.customPayload as string) || "";
+            if (raw.trim()) customPayloadData = JSON.parse(raw);
+          } catch { /* ignore invalid JSON */ }
+
+          if (!targetUrl) {
+            console.log(`[ExecuteMessage] ⚠️ webhook_forward: no URL configured, skipping`);
+            nodesProcessed++;
+            continue;
+          }
+
+          // Build automatic payload
+          const forwardPayload: Record<string, unknown> = {
+            event: "sequence.webhook_forward",
+            lead: triggerContext ? {
+              phone: triggerContext.respondentPhone,
+              name: triggerContext.respondentName,
+              jid: triggerContext.respondentJid,
+              customFields: triggerContext.customFields || {},
+            } : null,
+            campaign: {
+              id: typedCampaign.id,
+              name: typedCampaign.name,
+            },
+            sequence: {
+              id: effectiveSequenceId,
+            },
+            node: {
+              id: node.id,
+              type: node.node_type,
+              order: node.node_order,
+            },
+            timestamp: new Date().toISOString(),
+            ...customPayloadData,
+          };
+
+          if (includeInstance) {
+            forwardPayload.instance = {
+              id: instance.id,
+              name: instance.name,
+              phone: instance.phone || "",
+              provider: instance.provider,
+            };
+          }
+
+          if (includeGroups && groups.length > 0) {
+            forwardPayload.groups = groups.map(g => ({
+              jid: g.group_jid,
+              name: g.group_name,
+            }));
+          }
+
+          // Build headers
+          const fetchHeaders: Record<string, string> = { "Content-Type": "application/json" };
+          for (const h of customHeaders) {
+            if (h.key && h.value) fetchHeaders[h.key] = replaceVariables(h.value);
+          }
+
+          const sendStartTime = Date.now();
+
+          // Log entry
+          const { data: logEntry } = await supabase
+            .from("group_message_logs")
+            .insert({
+              user_id: userId, group_campaign_id: typedCampaign.id,
+              sequence_id: effectiveSequenceId, node_type: node.node_type,
+              node_order: node.node_order, instance_id: instance.id,
+              instance_name: instance.name, campaign_name: typedCampaign.name,
+              status: "sending", payload: forwardPayload,
+            })
+            .select().single();
+
+          try {
+            const response = await fetch(targetUrl, {
+              method,
+              headers: fetchHeaders,
+              body: JSON.stringify(forwardPayload),
+            });
+
+            const responseTimeMs = Date.now() - sendStartTime;
+            const responseText = await response.text();
+            let responseData;
+            try { responseData = JSON.parse(responseText); } catch { responseData = { raw: responseText }; }
+
+            if (logEntry?.id) {
+              await supabase.from("group_message_logs").update({
+                status: response.ok ? "sent" : "failed",
+                error_message: response.ok ? null : `HTTP ${response.status}`,
+                response_time_ms: responseTimeMs, provider_response: responseData,
+              }).eq("id", logEntry.id);
+            }
+
+            if (response.ok) {
+              console.log(`[ExecuteMessage] ✅ webhook_forward sent to ${targetUrl}`);
+              webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: targetUrl, status: "sent", data: responseData });
+            } else {
+              nodesFailed++;
+              console.log(`[ExecuteMessage] ❌ webhook_forward failed: HTTP ${response.status}`);
+              webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: targetUrl, status: "failed", data: responseData });
+            }
+          } catch (err) {
+            nodesFailed++;
+            if (logEntry?.id) {
+              await supabase.from("group_message_logs").update({
+                status: "failed", error_message: err instanceof Error ? err.message : "Unknown error",
+                response_time_ms: Date.now() - sendStartTime,
+              }).eq("id", logEntry.id);
+            }
+            console.error(`[ExecuteMessage] ❌ webhook_forward error:`, err);
+          }
+
+          nodesProcessed++;
+          continue;
+        }
+
         // Send this node to all destinations
         for (const dest of destinations) {
           const action = getActionForNodeType(node.node_type);
