@@ -9,7 +9,7 @@ import { PollActionDialog, PollActionConfig, getActionIconColor, getActionLabel 
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  MessageSquare, Clock, GitBranch, Bell, Link2,
+  MessageSquare, Clock, GitBranch, Bell, Link2, Send,
   Image, Video, Music, FileText, Smile,
   BarChart3, MousePointerClick, List, MapPin, Contact, Calendar,
   Pencil, ImageIcon, UserPlus, UserMinus, ShieldPlus, ShieldMinus, Settings, Plus, CircleDot,
@@ -45,6 +45,7 @@ const NODE_CATEGORIES: NodeCategory[] = [
     { type: "condition", label: "Condição", icon: GitBranch, color: "bg-purple-500" },
     { type: "notify", label: "Notificar", icon: Bell, color: "bg-green-500" },
     { type: "webhook", label: "Webhook", icon: Link2, color: "bg-rose-500" },
+    { type: "webhook_forward", label: "Enviar p/ Webhook", icon: Send, color: "bg-fuchsia-500" },
   ]},
   { id: "status", label: "Status", nodes: [
     { type: "status_image", label: "Status Imagem", icon: CircleDot, color: "bg-emerald-500" },
@@ -81,6 +82,7 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "condition": return { field: "member_count", operator: "greater_than", value: 0 };
     case "notify": return { message: "", notifyAdmins: true };
     case "webhook": return { url: "", method: "POST", body: "" };
+    case "webhook_forward": return { url: "", method: "POST", headers: [], includeInstance: true, includeGroups: true, customPayload: "" };
     case "group_create": return { groupName: "", phones: [""] };
     case "group_rename": return { newName: "" };
     case "group_photo": return { url: "" };

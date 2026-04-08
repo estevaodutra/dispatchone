@@ -8,7 +8,7 @@ import { DispatchTriggerConfigCard, DispatchTriggerType, DispatchTriggerConfig }
 import { MediaUploader } from "@/components/group-campaigns/sequences/MediaUploader";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { MessageSquare, Clock, Image, Video, Music, FileText, MousePointerClick, List as ListIcon } from "lucide-react";
+import { MessageSquare, Clock, Image, Video, Music, FileText, MousePointerClick, List as ListIcon, Send } from "lucide-react";
 
 interface DispatchSequenceBuilderProps {
   sequence: DispatchSequence;
@@ -32,6 +32,7 @@ const NODE_CATEGORIES: NodeCategory[] = [
   ]},
   { id: "flow", label: "Fluxo", nodes: [
     { type: "delay", label: "Delay", icon: Clock, color: "bg-amber-500" },
+    { type: "webhook_forward", label: "Enviar p/ Webhook", icon: Send, color: "bg-fuchsia-500" },
   ]},
 ];
 
@@ -45,6 +46,7 @@ const getDefaultConfig = (nodeType: string): Record<string, unknown> => {
     case "buttons": return { text: "", buttons: [{ id: "1", label: "" }] };
     case "list": return { title: "", buttonText: "Selecionar", body: "" };
     case "delay": return { minutes: 5, hours: 0, days: 0 };
+    case "webhook_forward": return { url: "", method: "POST", headers: [], includeInstance: true, includeGroups: false, customPayload: "" };
     default: return {};
   }
 };
