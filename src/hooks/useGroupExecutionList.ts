@@ -107,6 +107,32 @@ export function useGroupExecutionList(campaignId: string) {
 
   const useListLeads = (listId: string | undefined, cycleId: string | undefined) => {
     const leadsKey = ["group-execution-leads", listId, cycleId];
+
+    // Realtime subscription for execution leads
+    useEffect(() => {
+      if (!listId) return;
+
+      const channel = supabase
+        .channel(`exec_leads_rt_${listId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "group_execution_leads",
+            filter: `list_id=eq.${listId}`,
+          },
+          () => {
+            queryClient.invalidateQueries({ queryKey: leadsKey });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }, [listId, cycleId]);
+
     return useQuery({
       queryKey: leadsKey,
       queryFn: async () => {
