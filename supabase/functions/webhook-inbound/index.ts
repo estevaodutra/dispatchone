@@ -271,6 +271,73 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
+    // AUTO-SYNC GROUP MEMBERS on join/leave
+    // ==========================================
+    if (
+      (classification.eventType === "group_join" || classification.eventType === "group_leave") &&
+      context.chatJid &&
+      context.senderPhone &&
+      instance?.user_id
+    ) {
+      try {
+        // Find group_campaigns linked to this group_jid
+        const { data: groupCampaigns } = await supabase
+          .from("group_campaigns")
+          .select("id, user_id")
+          .eq("group_jid", context.chatJid)
+          .eq("user_id", instance.user_id);
+
+        for (const gc of (groupCampaigns || [])) {
+          if (classification.eventType === "group_join") {
+            // Upsert member as active
+            await supabase
+              .from("group_members")
+              .upsert(
+                {
+                  group_campaign_id: gc.id,
+                  user_id: gc.user_id,
+                  phone: context.senderPhone,
+                  name: context.senderName || null,
+                  status: "active",
+                  joined_at: new Date().toISOString(),
+                  left_at: null,
+                },
+                { onConflict: "group_campaign_id,phone" }
+              );
+
+            // Record history
+            await supabase.from("group_member_history").insert({
+              group_campaign_id: gc.id,
+              user_id: gc.user_id,
+              member_phone: context.senderPhone,
+              action: "join",
+            });
+
+            console.log(`[webhook-inbound] Member ${context.senderPhone} joined group campaign ${gc.id}`);
+          } else {
+            // group_leave: update status
+            await supabase
+              .from("group_members")
+              .update({ status: "left", left_at: new Date().toISOString() })
+              .eq("group_campaign_id", gc.id)
+              .eq("phone", context.senderPhone);
+
+            await supabase.from("group_member_history").insert({
+              group_campaign_id: gc.id,
+              user_id: gc.user_id,
+              member_phone: context.senderPhone,
+              action: "leave",
+            });
+
+            console.log(`[webhook-inbound] Member ${context.senderPhone} left group campaign ${gc.id}`);
+          }
+        }
+      } catch (memberSyncError) {
+        console.error("[webhook-inbound] Error syncing group members:", memberSyncError);
+      }
+    }
+
+    // ==========================================
     // AUTO-ACCUMULATE LEADS for Group Execution Lists
     // ==========================================
     if (context.chatJid && context.senderPhone) {

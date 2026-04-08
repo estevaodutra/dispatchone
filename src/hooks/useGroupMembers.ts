@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { useEffect } from "react";
 
 export interface GroupMember {
   id: string;
@@ -74,6 +75,31 @@ export function useGroupMembers(groupCampaignId: string | null) {
     enabled: !!user && !!groupCampaignId,
   });
 
+  // Realtime subscription
+  useEffect(() => {
+    if (!groupCampaignId) return;
+
+    const channel = supabase
+      .channel(`group_members_rt_${groupCampaignId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "group_members",
+          filter: `group_campaign_id=eq.${groupCampaignId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["group_members", groupCampaignId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [groupCampaignId, queryClient]);
+
   const addMemberMutation = useMutation({
     mutationFn: async (member: { phone: string; name?: string; isAdmin?: boolean }) => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -94,7 +120,6 @@ export function useGroupMembers(groupCampaignId: string | null) {
 
       if (error) throw error;
 
-      // Sync to leads table
       await supabase
         .from("leads")
         .upsert({
@@ -135,7 +160,6 @@ export function useGroupMembers(groupCampaignId: string | null) {
       const { error } = await supabase.from("group_members").upsert(records, { onConflict: "group_campaign_id,phone" });
       if (error) throw error;
 
-      // Sync to leads table
       const leadRecords = members.map((m) => ({
         user_id: user.id,
         phone: m.phone,
@@ -223,7 +247,6 @@ export function useGroupMembers(groupCampaignId: string | null) {
     },
   });
 
-  // Stats
   const stats = {
     total: members.length,
     active: members.filter((m) => m.status === "active").length,
