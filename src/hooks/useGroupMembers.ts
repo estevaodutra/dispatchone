@@ -82,13 +82,13 @@ export function useGroupMembers(groupCampaignId: string | null) {
 
       const { data, error } = await supabase
         .from("group_members")
-        .insert({
+        .upsert({
           user_id: user.id,
           group_campaign_id: groupCampaignId,
           phone: member.phone,
           name: member.name || null,
           is_admin: member.isAdmin || false,
-        })
+        }, { onConflict: "group_campaign_id,phone" })
         .select()
         .single();
 
@@ -132,7 +132,7 @@ export function useGroupMembers(groupCampaignId: string | null) {
         name: m.name || null,
       }));
 
-      const { error } = await supabase.from("group_members").insert(records);
+      const { error } = await supabase.from("group_members").upsert(records, { onConflict: "group_campaign_id,phone" });
       if (error) throw error;
 
       // Sync to leads table
