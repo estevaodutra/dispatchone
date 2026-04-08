@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2 } from "lucide-react";
+import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -51,15 +51,28 @@ function ExecutionListDetail({
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [countdown, setCountdown] = useState("");
+  const [windowExpired, setWindowExpired] = useState(false);
 
   useEffect(() => {
     if (!list.current_window_end || !list.is_active) {
       setCountdown("");
+      setWindowExpired(false);
       return;
     }
     const update = () => {
       const diff = new Date(list.current_window_end!).getTime() - Date.now();
-      if (diff <= 0) { setCountdown("Expirada"); return; }
+      if (diff <= 0) {
+        setWindowExpired(true);
+        if (list.window_type === "fixed" && list.window_start_time) {
+          setCountdown(`Reabre às ${list.window_start_time.slice(0, 5)}`);
+        } else if (list.window_type === "duration" && list.window_duration_hours) {
+          setCountdown(`Próximo ciclo: ${list.window_duration_hours}h`);
+        } else {
+          setCountdown("Aguardando próximo ciclo");
+        }
+        return;
+      }
+      setWindowExpired(false);
       const h = Math.floor(diff / 3600000);
       const m = Math.floor((diff % 3600000) / 60000);
       setCountdown(`${h}h ${m}min`);
@@ -67,7 +80,7 @@ function ExecutionListDetail({
     update();
     const iv = setInterval(update, 60000);
     return () => clearInterval(iv);
-  }, [list.current_window_end, list.is_active]);
+  }, [list.current_window_end, list.is_active, list.window_type, list.window_start_time, list.window_duration_hours]);
 
   const pendingLeads = useMemo(() => leads.filter((l) => l.status === "pending"), [leads]);
   const displayedLeads = showAll ? leads : leads.slice(0, 10);
@@ -115,8 +128,11 @@ function ExecutionListDetail({
           <div className="text-2xl font-bold">{pendingLeads.length}</div>
         </CardContent></Card>
         <Card><CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Clock className="h-4 w-4" />Janela fecha em</div>
-          <div className="text-2xl font-bold">{countdown || "—"}</div>
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+            {windowExpired ? <RefreshCw className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+            {windowExpired ? "Próxima janela" : "Janela fecha em"}
+          </div>
+          <div className={`text-2xl font-bold ${windowExpired ? "text-muted-foreground" : ""}`}>{countdown || "—"}</div>
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <div className="text-muted-foreground text-sm mb-1">Janela</div>
