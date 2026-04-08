@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useInstances } from "@/hooks/useInstances";
@@ -31,6 +31,16 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Plus,
   Search,
@@ -65,12 +75,46 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const [newMemberPhone, setNewMemberPhone] = useState("");
   const [newMemberName, setNewMemberName] = useState("");
   const [isFetchingMembers, setIsFetchingMembers] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredMembers = members.filter((m) =>
     m.phone.includes(searchTerm) ||
     m.name?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // Pagination
+  const totalItems = filteredMembers.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedMembers = filteredMembers.slice(startIndex, endIndex);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm]);
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value));
+    setCurrentPage(1);
+  };
+
+  const getVisiblePages = () => {
+    const pages: (number | "ellipsis")[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("ellipsis");
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("ellipsis");
+      if (totalPages > 1) pages.push(totalPages);
+    }
+    return pages;
+  };
 
   const handleFetchMembers = async () => {
     if (!linkedGroups.length) {
@@ -360,69 +404,130 @@ export function MembersTab({ campaignId }: MembersTabProps) {
               </p>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Telefone</TableHead>
-                  <TableHead>Nome</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Strikes</TableHead>
-                  <TableHead>Entrada</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredMembers.map((member) => (
-                  <TableRow key={member.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        {member.phone}
-                        {member.isAdmin && (
-                          <Shield className="h-4 w-4 text-primary" />
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>{member.name || "-"}</TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[member.status]}>
-                        {member.status === "active" && "Ativo"}
-                        {member.status === "removed" && "Removido"}
-                        {member.status === "left" && "Saiu"}
-                        {member.status === "muted" && "Silenciado"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {member.strikes > 0 ? (
-                        <Badge variant="destructive">{member.strikes}</Badge>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(new Date(member.joinedAt), "dd/MM/yy", { locale: ptBR })}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            className="text-destructive"
-                            onClick={() => removeMember(member.id)}
-                          >
-                            <UserMinus className="mr-2 h-4 w-4" />
-                            Remover
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Telefone</TableHead>
+                    <TableHead>Nome</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Strikes</TableHead>
+                    <TableHead>Entrada</TableHead>
+                    <TableHead className="w-12"></TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {paginatedMembers.map((member) => (
+                    <TableRow key={member.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {member.phone}
+                          {member.isAdmin && (
+                            <Shield className="h-4 w-4 text-primary" />
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>{member.name || "-"}</TableCell>
+                      <TableCell>
+                        <Badge className={statusColors[member.status]}>
+                          {member.status === "active" && "Ativo"}
+                          {member.status === "removed" && "Removido"}
+                          {member.status === "left" && "Saiu"}
+                          {member.status === "muted" && "Silenciado"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {member.strikes > 0 ? (
+                          <Badge variant="destructive">{member.strikes}</Badge>
+                        ) : (
+                          "-"
+                        )}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {format(new Date(member.joinedAt), "dd/MM/yy", { locale: ptBR })}
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => removeMember(member.id)}
+                            >
+                              <UserMinus className="mr-2 h-4 w-4" />
+                              Remover
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+
+              {totalPages > 1 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">Itens por página:</span>
+                    <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
+                      <SelectTrigger className="w-20 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[25, 50, 100].map((option) => (
+                          <SelectItem key={option} value={option.toString()}>
+                            {option}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-muted-foreground">
+                      ({startIndex + 1}-{endIndex} de {totalItems})
+                    </span>
+                  </div>
+
+                  <Pagination>
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+
+                      {getVisiblePages().map((page, index) =>
+                        page === "ellipsis" ? (
+                          <PaginationItem key={`ellipsis-${index}`}>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        ) : (
+                          <PaginationItem key={page}>
+                            <PaginationLink
+                              onClick={() => setCurrentPage(page)}
+                              isActive={currentPage === page}
+                              className="cursor-pointer"
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        )
+                      )}
+
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          className={currentPage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
