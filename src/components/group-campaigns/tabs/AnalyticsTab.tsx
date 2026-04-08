@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useGroupMembers } from "@/hooks/useGroupMembers";
 import { useGroupMessages } from "@/hooks/useGroupMessages";
 import { useGroupModeration } from "@/hooks/useGroupModeration";
+import { usePollAnalytics } from "@/hooks/usePollAnalytics";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,9 +19,6 @@ import {
   Shield,
   Download,
   TrendingUp,
-  Clock,
-  UserCheck,
-  AlertTriangle,
 } from "lucide-react";
 import {
   AreaChart,
@@ -34,6 +32,9 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { PeriodFilter } from "@/components/group-campaigns/analytics/PeriodFilter";
+import { MemberMovementCard } from "@/components/group-campaigns/analytics/MemberMovementCard";
+import { PollAnalyticsCard } from "@/components/group-campaigns/analytics/PollAnalyticsCard";
 
 interface AnalyticsTabProps {
   campaignId: string;
@@ -43,12 +44,14 @@ export function AnalyticsTab({ campaignId }: AnalyticsTabProps) {
   const { members, stats, isLoading: isLoadingMembers } = useGroupMembers(campaignId);
   const { messages, isLoading: isLoadingMessages } = useGroupMessages(campaignId);
   const { logs, isLoading: isLoadingModeration } = useGroupModeration(campaignId);
+  const { data: pollsData, isLoading: isLoadingPolls } = usePollAnalytics(campaignId, stats.total);
 
-  const [exportFormat, setExportFormat] = useState<"csv" | "json" | "xlsx">("csv");
+  const [period, setPeriod] = useState(7);
+  const [exportFormat, setExportFormat] = useState<"csv" | "json">("csv");
 
   const isLoading = isLoadingMembers || isLoadingMessages || isLoadingModeration;
 
-  // Mock data for charts (would be real data in production)
+  // Chart data (existing)
   const activityData = [
     { name: "Seg", mensagens: 45, membros: 120 },
     { name: "Ter", mensagens: 52, membros: 122 },
@@ -119,7 +122,7 @@ export function AnalyticsTab({ campaignId }: AnalyticsTabProps) {
       a.download = `${filename}.json`;
       a.click();
       URL.revokeObjectURL(url);
-    } else if (exportFormat === "csv") {
+    } else {
       if (!Array.isArray(data) || data.length === 0) return;
       const headers = Object.keys(data[0] as Record<string, unknown>);
       const csv = [
@@ -154,144 +157,154 @@ export function AnalyticsTab({ campaignId }: AnalyticsTabProps) {
 
   return (
     <div className="space-y-6">
-      {/* Stats Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total de Membros
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              <span className="text-2xl font-bold">{stats.total}</span>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Period Filter */}
+      <PeriodFilter value={period} onChange={setPeriod} />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Mensagens Configuradas
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-blue-500" />
-              <span className="text-2xl font-bold">{messages.length}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Moderações (24h)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-yellow-500" />
-              <span className="text-2xl font-bold">{logs.length}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Taxa de Retenção
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-green-500" />
-              <span className="text-2xl font-bold">
-                {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}%
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Activity Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Atividade Semanal</CardTitle>
-            <CardDescription>Mensagens e crescimento de membros.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <AreaChart data={activityData}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
-                <XAxis dataKey="name" className="text-xs" />
-                <YAxis className="text-xs" />
-                <Tooltip />
-                <Area
-                  type="monotone"
-                  dataKey="mensagens"
-                  stackId="1"
-                  stroke="hsl(var(--primary))"
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.3}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Member Status Pie */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Distribuição de Membros</CardTitle>
-            <CardDescription>Status atual dos membros do grupo.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {memberStatusData.length === 0 ? (
-              <div className="flex items-center justify-center h-[300px]">
-                <p className="text-muted-foreground">Sem dados para exibir</p>
+      {/* Visão Geral */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4">Visão Geral</h2>
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Total de Membros</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                <span className="text-2xl font-bold">{stats.total}</span>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={memberStatusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={60}
-                    outerRadius={100}
-                    paddingAngle={5}
-                    dataKey="value"
-                    label={({ name, value }) => `${name}: ${value}`}
-                  >
-                    {memberStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Mensagens Configuradas</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-blue-500" />
+                <span className="text-2xl font-bold">{messages.length}</span>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Moderações (24h)</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Shield className="h-5 w-5 text-yellow-500" />
+                <span className="text-2xl font-bold">{logs.length}</span>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">Taxa de Retenção</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-5 w-5 text-green-500" />
+                <span className="text-2xl font-bold">
+                  {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}%
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
 
-      {/* Top Members */}
+      {/* Movimento de Membros */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4">Movimento de Membros</h2>
+        <MemberMovementCard campaignId={campaignId} period={period} totalMembers={stats.total} />
+      </section>
+
+      {/* Analytics de Enquetes */}
+      {(pollsData && pollsData.length > 0) && (
+        <section>
+          <h2 className="text-lg font-semibold mb-4">Analytics de Enquetes</h2>
+          <div className="space-y-4">
+            {pollsData.map((poll) => (
+              <PollAnalyticsCard key={poll.pollMessageId} poll={poll} totalMembers={stats.total} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Engajamento (existing charts) */}
+      <section>
+        <h2 className="text-lg font-semibold mb-4">Engajamento</h2>
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Atividade Semanal</CardTitle>
+              <CardDescription>Mensagens e crescimento de membros.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ResponsiveContainer width="100%" height={300}>
+                <AreaChart data={activityData}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis dataKey="name" className="text-xs" />
+                  <YAxis className="text-xs" />
+                  <Tooltip />
+                  <Area
+                    type="monotone"
+                    dataKey="mensagens"
+                    stackId="1"
+                    stroke="hsl(var(--primary))"
+                    fill="hsl(var(--primary))"
+                    fillOpacity={0.3}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Distribuição de Membros</CardTitle>
+              <CardDescription>Status atual dos membros do grupo.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {memberStatusData.length === 0 ? (
+                <div className="flex items-center justify-center h-[300px]">
+                  <p className="text-muted-foreground">Sem dados para exibir</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={memberStatusData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={5}
+                      dataKey="value"
+                      label={({ name, value }) => `${name}: ${value}`}
+                    >
+                      {memberStatusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+
+      {/* Membros Mais Ativos */}
       <Card>
         <CardHeader>
           <CardTitle>Membros Mais Ativos</CardTitle>
-          <CardDescription>
-            Ranking por quantidade de mensagens enviadas.
-          </CardDescription>
+          <CardDescription>Ranking por quantidade de mensagens enviadas.</CardDescription>
         </CardHeader>
         <CardContent>
           {members.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              Nenhum membro no grupo ainda.
-            </p>
+            <p className="text-sm text-muted-foreground text-center py-8">Nenhum membro no grupo ainda.</p>
           ) : (
             <div className="space-y-4">
               {members
@@ -317,16 +330,14 @@ export function AnalyticsTab({ campaignId }: AnalyticsTabProps) {
         </CardContent>
       </Card>
 
-      {/* Export Section */}
+      {/* Exportar */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
             Exportar Dados
           </CardTitle>
-          <CardDescription>
-            Exporte relatórios e dados do grupo.
-          </CardDescription>
+          <CardDescription>Exporte relatórios e dados do grupo.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-4">
@@ -337,11 +348,9 @@ export function AnalyticsTab({ campaignId }: AnalyticsTabProps) {
               <SelectContent>
                 <SelectItem value="csv">CSV</SelectItem>
                 <SelectItem value="json">JSON</SelectItem>
-                <SelectItem value="xlsx" disabled>Excel (em breve)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-
           <div className="grid gap-2 md:grid-cols-4">
             <Button variant="outline" onClick={() => handleExport("members")}>
               <Users className="mr-2 h-4 w-4" />
