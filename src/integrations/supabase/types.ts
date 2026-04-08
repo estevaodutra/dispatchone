@@ -2797,6 +2797,24 @@ export type Database = {
           cnt: number
         }[]
       }
+      get_member_movement_stats: {
+        Args: { p_campaign_id: string; p_days?: number }
+        Returns: {
+          daily_stats: Json
+          net_change: number
+          total_joined: number
+          total_left: number
+        }[]
+      }
+      get_poll_analytics: {
+        Args: { p_poll_message_id: string; p_total_members?: number }
+        Returns: {
+          options_stats: Json
+          response_rate: number
+          total_votes: number
+          unique_respondents: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
