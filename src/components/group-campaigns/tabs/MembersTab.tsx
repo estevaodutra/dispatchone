@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
+import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useInstances } from "@/hooks/useInstances";
 import { buildGroupPayload } from "@/lib/webhook-utils";
