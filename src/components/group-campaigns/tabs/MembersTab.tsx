@@ -374,6 +374,10 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                 <Download className="mr-2 h-4 w-4" />
                 Exportar
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowExportWebhookDialog(true)}>
+                <Send className="mr-2 h-4 w-4" />
+                Exportar Webhook
+              </Button>
               <Button size="sm" onClick={() => setShowAddDialog(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Adicionar
