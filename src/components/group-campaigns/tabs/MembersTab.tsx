@@ -577,6 +577,13 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Export Webhook Dialog */}
+      <ExportWebhookDialog
+        open={showExportWebhookDialog}
+        onOpenChange={setShowExportWebhookDialog}
+        campaignId={campaignId}
+      />
     </div>
   );
 }
