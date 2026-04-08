@@ -1811,6 +1811,51 @@ export type Database = {
         }
         Relationships: []
       }
+      member_export_schedules: {
+        Row: {
+          created_at: string | null
+          group_campaign_id: string
+          id: string
+          is_active: boolean | null
+          last_run_at: string | null
+          next_run_at: string | null
+          schedule_day_of_week: number | null
+          schedule_time: string | null
+          schedule_type: string
+          status_filter: string[] | null
+          user_id: string
+          webhook_url: string
+        }
+        Insert: {
+          created_at?: string | null
+          group_campaign_id: string
+          id?: string
+          is_active?: boolean | null
+          last_run_at?: string | null
+          next_run_at?: string | null
+          schedule_day_of_week?: number | null
+          schedule_time?: string | null
+          schedule_type?: string
+          status_filter?: string[] | null
+          user_id: string
+          webhook_url: string
+        }
+        Update: {
+          created_at?: string | null
+          group_campaign_id?: string
+          id?: string
+          is_active?: boolean | null
+          last_run_at?: string | null
+          next_run_at?: string | null
+          schedule_day_of_week?: number | null
+          schedule_time?: string | null
+          schedule_type?: string
+          status_filter?: string[] | null
+          user_id?: string
+          webhook_url?: string
+        }
+        Relationships: []
+      }
       message_sequences: {
         Row: {
           active: boolean | null

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
+import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useInstances } from "@/hooks/useInstances";
 import { buildGroupPayload } from "@/lib/webhook-utils";
@@ -55,6 +56,7 @@ import {
   UserX,
   Loader2,
   RefreshCw,
+  Send,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -77,6 +79,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const [isFetchingMembers, setIsFetchingMembers] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [showExportWebhookDialog, setShowExportWebhookDialog] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const filteredMembers = members.filter((m) =>
@@ -371,6 +374,10 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                 <Download className="mr-2 h-4 w-4" />
                 Exportar
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowExportWebhookDialog(true)}>
+                <Send className="mr-2 h-4 w-4" />
+                Exportar Webhook
+              </Button>
               <Button size="sm" onClick={() => setShowAddDialog(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Adicionar
@@ -570,6 +577,13 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Export Webhook Dialog */}
+      <ExportWebhookDialog
+        open={showExportWebhookDialog}
+        onOpenChange={setShowExportWebhookDialog}
+        campaignId={campaignId}
+      />
     </div>
   );
 }
