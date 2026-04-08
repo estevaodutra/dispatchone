@@ -1,59 +1,35 @@
 
 
-## Plano: Novo nó "Enviar para Webhook" com dados do lead e campanha
+## Plano: Exibir ciclo da janela (reabertura automática)
 
-### Objetivo
-Adicionar um novo tipo de nó na sequência que envia automaticamente todas as informações do lead e da campanha para uma URL de webhook configurada pelo usuário. Diferente do nó "Webhook" atual (que envia um body customizado), este novo nó monta o payload automaticamente.
+### Problema
+Quando a janela expira, o frontend mostra apenas "Expirada" sem indicar que ela reabrirá automaticamente no próximo horário configurado. O usuário precisa ver que a janela é cíclica.
 
 ### Alterações
 
-**1. Frontend — Adicionar nó na categoria "Fluxo"**
+**`src/components/group-campaigns/tabs/ExecutionListTab.tsx`**
 
-`src/components/group-campaigns/sequences/SequenceBuilder.tsx`:
-- Adicionar tipo `webhook_forward` na categoria "Fluxo" (ícone `Send`/`Webhook`, label "Enviar p/ Webhook")
-- Adicionar default config: `{ url: "", method: "POST", headers: {}, includeInstance: true, includeGroups: true, customPayload: "" }`
+1. Atualizar o countdown para mostrar informação do próximo ciclo quando a janela expira:
+   - Para janela fixa: mostrar "Reabre às HH:MM" em vez de apenas "Expirada"
+   - Para janela de duração: mostrar "Próximo ciclo em Xh"
+2. Adicionar um indicador visual (badge ou texto) mostrando que a janela é cíclica (ex: ícone de refresh ao lado do label "Janela fecha em")
 
-`src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`:
-- Adicionar o mesmo nó na categoria equivalente
+**Lógica do countdown atualizada:**
+```typescript
+// Quando diff <= 0 (janela expirada):
+if (list.window_type === "fixed" && list.window_start_time) {
+  setCountdown(`Reabre às ${list.window_start_time.slice(0, 5)}`);
+} else if (list.window_type === "duration") {
+  setCountdown(`Próximo ciclo: ${list.window_duration_hours}h`);
+} else {
+  setCountdown("Expirada");
+}
+```
 
-**2. Frontend — Painel de configuração do nó**
-
-`src/components/sequences/UnifiedNodeConfigPanel.tsx`:
-- Adicionar entrada no `NODE_TITLES` para `webhook_forward`
-- Adicionar seção de configuração com:
-  - Campo URL (obrigatório)
-  - Headers customizados (chave/valor, opcional)
-  - Toggle "Incluir dados da instância"
-  - Toggle "Incluir dados dos grupos"
-  - Campo JSON adicional (opcional, para mesclar com o payload automático)
-- O payload automático conterá: dados do lead/contato (phone, name, jid, customFields), dados da campanha (id, name), dados da instância e grupos
-
-**3. Backend — Processar o nó no execute-message**
-
-`supabase/functions/execute-message/index.ts`:
-- Adicionar tratamento para `node_type === "webhook_forward"`
-- Montar payload automático com:
-  - `event: "sequence.webhook_forward"`
-  - `lead: { phone, name, jid, customFields }`
-  - `campaign: { id, name }`
-  - `instance: { id, name, phone, provider }`
-  - `groups: [{ jid, name }]`
-  - `sequence: { id, name }`
-  - `node: { id, type, order }`
-  - `timestamp`
-  - Merge com `customPayload` se fornecido
-- Fazer POST/GET para a URL configurada com os headers
-- Registrar resultado no log
-
-**4. Mapeamento de ação**
-
-`src/lib/webhook-utils.ts`:
-- Adicionar `webhook_forward: "webhook.forward"` no `NODE_TYPE_TO_ACTION`
+3. Alterar o label do card de "Janela fecha em" para refletir o estado:
+   - Janela aberta → "Janela fecha em"
+   - Janela expirada → "Próxima janela"
 
 ### Arquivos
-- `src/components/group-campaigns/sequences/SequenceBuilder.tsx`
-- `src/components/dispatch-campaigns/sequences/DispatchSequenceBuilder.tsx`
-- `src/components/sequences/UnifiedNodeConfigPanel.tsx`
-- `supabase/functions/execute-message/index.ts`
-- `src/lib/webhook-utils.ts`
+- `src/components/group-campaigns/tabs/ExecutionListTab.tsx`
 
