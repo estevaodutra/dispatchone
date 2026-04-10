@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from "react";
 import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
 import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
+import { AddToCampaignDialog, CampaignItem } from "@/components/leads/AddToCampaignDialog";
+import { useCallCampaigns } from "@/hooks/useCallCampaigns";
+import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useInstances } from "@/hooks/useInstances";
 import { buildGroupPayload } from "@/lib/webhook-utils";
@@ -57,6 +62,7 @@ import {
   Loader2,
   RefreshCw,
   Send,
+  UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
