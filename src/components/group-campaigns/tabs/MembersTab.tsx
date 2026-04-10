@@ -674,6 +674,18 @@ export function MembersTab({ campaignId }: MembersTabProps) {
         onOpenChange={setShowExportWebhookDialog}
         campaignId={campaignId}
       />
+
+      {/* Assign to Campaign Dialog */}
+      <AddToCampaignDialog
+        open={showAssignDialog}
+        onOpenChange={setShowAssignDialog}
+        selectedCount={stats.active}
+        campaigns={availableCampaigns}
+        onSubmit={handleAssignToCampaign}
+        isLoading={isAssigning}
+      />
     </div>
+  );
+}
   );
 }
