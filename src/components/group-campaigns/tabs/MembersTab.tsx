@@ -77,6 +77,9 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   
   const { linkedGroups } = useCampaignGroups(campaignId);
   const { instances } = useInstances();
+  const { campaigns: callCampaigns } = useCallCampaigns();
+  const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
+  const { user } = useAuth();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -86,7 +89,84 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [showExportWebhookDialog, setShowExportWebhookDialog] = useState(false);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const availableCampaigns: CampaignItem[] = [
+    ...(callCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "ligacao", status: c.status })),
+    ...(dispatchCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "despacho", status: c.status })),
+  ];
+
+  const handleAssignToCampaign = async (campaignId: string, campaignType: string, skipExisting: boolean) => {
+    if (!user) return;
+    setIsAssigning(true);
+    try {
+      const activeMembers = members.filter(m => m.status === "active");
+      if (activeMembers.length === 0) {
+        toast.error("Nenhum membro ativo para atribuir.");
+        return;
+      }
+
+      if (campaignType === "ligacao") {
+        const records = activeMembers.map(m => ({
+          user_id: user.id,
+          campaign_id: campaignId,
+          phone: m.phone,
+          name: m.name || null,
+          status: "pending",
+        }));
+
+        const { error } = await supabase
+          .from("call_leads")
+          .upsert(records, { onConflict: "phone,campaign_id", ignoreDuplicates: skipExisting });
+
+        if (error) throw error;
+      } else if (campaignType === "despacho") {
+        // Ensure leads exist
+        const leadRecords = activeMembers.map(m => ({
+          user_id: user.id,
+          phone: m.phone,
+          name: m.name || null,
+          status: "active",
+        }));
+
+        await supabase
+          .from("leads")
+          .upsert(leadRecords, { onConflict: "phone,user_id", ignoreDuplicates: false });
+
+        // Fetch lead IDs
+        const { data: leads } = await supabase
+          .from("leads")
+          .select("id, phone")
+          .eq("user_id", user.id)
+          .in("phone", activeMembers.map(m => m.phone));
+
+        if (leads && leads.length > 0) {
+          const contactRecords = leads.map(l => ({
+            user_id: user.id,
+            campaign_id: campaignId,
+            lead_id: l.id,
+            status: "active",
+          }));
+
+          const { error } = await supabase
+            .from("dispatch_campaign_contacts")
+            .upsert(contactRecords, { onConflict: "campaign_id,lead_id", ignoreDuplicates: skipExisting });
+
+          if (error) throw error;
+        }
+      }
+
+      toast.success(`${activeMembers.length} membro(s) atribuído(s) à campanha!`);
+      setShowAssignDialog(false);
+    } catch (error: any) {
+      console.error("Erro ao atribuir membros:", error);
+      toast.error(error.message || "Erro ao atribuir membros.");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   const filteredMembers = members.filter((m) =>
     m.phone.includes(searchTerm) ||
