@@ -686,5 +686,5 @@ export function MembersTab({ campaignId }: MembersTabProps) {
       />
     </div>
   );
-
+}
 
