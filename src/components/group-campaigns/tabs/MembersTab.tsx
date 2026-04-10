@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
+import { useGroupMembers } from "@/hooks/useGroupMembers";
 import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
 import { AddToCampaignDialog, CampaignItem } from "@/components/leads/AddToCampaignDialog";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
