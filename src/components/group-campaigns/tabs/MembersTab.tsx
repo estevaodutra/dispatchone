@@ -1,6 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
+import { useGroupMembers } from "@/hooks/useGroupMembers";
 import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
+import { AddToCampaignDialog, CampaignItem } from "@/components/leads/AddToCampaignDialog";
+import { useCallCampaigns } from "@/hooks/useCallCampaigns";
+import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { useCampaignGroups } from "@/hooks/useCampaignGroups";
 import { useInstances } from "@/hooks/useInstances";
 import { buildGroupPayload } from "@/lib/webhook-utils";
@@ -57,6 +62,7 @@ import {
   Loader2,
   RefreshCw,
   Send,
+  UserPlus,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -71,6 +77,9 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   
   const { linkedGroups } = useCampaignGroups(campaignId);
   const { instances } = useInstances();
+  const { campaigns: callCampaigns } = useCallCampaigns();
+  const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
+  const { user } = useAuth();
   
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -80,7 +89,98 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
   const [showExportWebhookDialog, setShowExportWebhookDialog] = useState(false);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const availableCampaigns: CampaignItem[] = [
+    ...(callCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "ligacao", status: c.status })),
+    ...(dispatchCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "despacho", status: c.status })),
+  ];
+
+  const handleAssignToCampaign = async (campaignId: string, campaignType: string, skipExisting: boolean) => {
+    if (!user) return;
+    setIsAssigning(true);
+    try {
+      const activeMembers = members.filter(m => m.status === "active");
+      if (activeMembers.length === 0) {
+        toast.error("Nenhum membro ativo para atribuir.");
+        return;
+      }
+
+      if (campaignType === "ligacao") {
+        const records = activeMembers.map(m => ({
+          user_id: user.id,
+          campaign_id: campaignId,
+          phone: m.phone,
+          name: m.name || null,
+          status: "pending",
+        }));
+
+        const { error } = await supabase
+          .from("call_leads")
+          .upsert(records, { onConflict: "phone,campaign_id", ignoreDuplicates: skipExisting });
+
+        if (error) throw error;
+      } else if (campaignType === "despacho") {
+        // Ensure leads exist
+        const leadRecords = activeMembers.map(m => ({
+          user_id: user.id,
+          phone: m.phone,
+          name: m.name || null,
+          status: "active",
+        }));
+
+        await supabase
+          .from("leads")
+          .upsert(leadRecords, { onConflict: "phone,user_id", ignoreDuplicates: false });
+
+        // Fetch lead IDs
+        const { data: leads } = await supabase
+          .from("leads")
+          .select("id, phone")
+          .eq("user_id", user.id)
+          .in("phone", activeMembers.map(m => m.phone));
+
+        if (leads && leads.length > 0) {
+          // Get existing contacts to filter duplicates if needed
+          let existingLeadIds = new Set<string>();
+          if (skipExisting) {
+            const { data: existing } = await supabase
+              .from("dispatch_campaign_contacts")
+              .select("lead_id")
+              .eq("campaign_id", campaignId);
+            existingLeadIds = new Set((existing || []).map(e => e.lead_id).filter(Boolean) as string[]);
+          }
+
+          const contactRecords = leads
+            .filter(l => !skipExisting || !existingLeadIds.has(l.id))
+            .map(l => ({
+              user_id: user.id,
+              campaign_id: campaignId,
+              lead_id: l.id,
+              status: "active",
+            }));
+
+          if (contactRecords.length > 0) {
+            const { error } = await supabase
+              .from("dispatch_campaign_contacts")
+              .insert(contactRecords);
+
+            if (error) throw error;
+          }
+        }
+      }
+
+      toast.success(`${activeMembers.length} membro(s) atribuído(s) à campanha!`);
+      setShowAssignDialog(false);
+    } catch (error: any) {
+      console.error("Erro ao atribuir membros:", error);
+      toast.error(error.message || "Erro ao atribuir membros.");
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   const filteredMembers = members.filter((m) =>
     m.phone.includes(searchTerm) ||
@@ -374,6 +474,10 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                 <Download className="mr-2 h-4 w-4" />
                 Exportar
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setShowAssignDialog(true)}>
+                <UserPlus className="mr-2 h-4 w-4" />
+                Atribuir a Campanha
+              </Button>
               <Button variant="outline" size="sm" onClick={() => setShowExportWebhookDialog(true)}>
                 <Send className="mr-2 h-4 w-4" />
                 Exportar Webhook
@@ -584,6 +688,17 @@ export function MembersTab({ campaignId }: MembersTabProps) {
         onOpenChange={setShowExportWebhookDialog}
         campaignId={campaignId}
       />
+
+      {/* Assign to Campaign Dialog */}
+      <AddToCampaignDialog
+        open={showAssignDialog}
+        onOpenChange={setShowAssignDialog}
+        selectedCount={stats.active}
+        campaigns={availableCampaigns}
+        onSubmit={handleAssignToCampaign}
+        isLoading={isAssigning}
+      />
     </div>
   );
 }
+
