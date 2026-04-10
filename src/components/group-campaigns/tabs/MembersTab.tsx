@@ -143,18 +143,32 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           .in("phone", activeMembers.map(m => m.phone));
 
         if (leads && leads.length > 0) {
-          const contactRecords = leads.map(l => ({
-            user_id: user.id,
-            campaign_id: campaignId,
-            lead_id: l.id,
-            status: "active",
-          }));
+          // Get existing contacts to filter duplicates if needed
+          let existingLeadIds = new Set<string>();
+          if (skipExisting) {
+            const { data: existing } = await supabase
+              .from("dispatch_campaign_contacts")
+              .select("lead_id")
+              .eq("campaign_id", campaignId);
+            existingLeadIds = new Set((existing || []).map(e => e.lead_id).filter(Boolean) as string[]);
+          }
 
-          const { error } = await supabase
-            .from("dispatch_campaign_contacts")
-            .upsert(contactRecords, { onConflict: "campaign_id,lead_id", ignoreDuplicates: skipExisting });
+          const contactRecords = leads
+            .filter(l => !skipExisting || !existingLeadIds.has(l.id))
+            .map(l => ({
+              user_id: user.id,
+              campaign_id: campaignId,
+              lead_id: l.id,
+              status: "active",
+            }));
 
-          if (error) throw error;
+          if (contactRecords.length > 0) {
+            const { error } = await supabase
+              .from("dispatch_campaign_contacts")
+              .insert(contactRecords);
+
+            if (error) throw error;
+          }
         }
       }
 
