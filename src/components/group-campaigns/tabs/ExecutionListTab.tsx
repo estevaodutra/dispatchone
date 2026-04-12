@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw } from "lucide-react";
+import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -33,6 +33,10 @@ const ACTION_LABELS: Record<string, string> = {
   call: "Ligação",
 };
 
+function isFulltime(list: GroupExecutionList): boolean {
+  return list.window_type === "fixed" && list.window_start_time?.slice(0, 5) === "00:00" && list.window_end_time?.slice(0, 5) === "23:59";
+}
+
 // ── Detail view for a single list ──
 function ExecutionListDetail({
   list,
@@ -52,6 +56,7 @@ function ExecutionListDetail({
   const [showAll, setShowAll] = useState(false);
   const [countdown, setCountdown] = useState("");
   const [windowExpired, setWindowExpired] = useState(false);
+  const fulltime = isFulltime(list);
 
   useEffect(() => {
     if (!list.current_window_end || !list.is_active) {
@@ -122,21 +127,32 @@ function ExecutionListDetail({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className={`grid grid-cols-2 ${fulltime ? "md:grid-cols-3" : "md:grid-cols-4"} gap-3`}>
         <Card><CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Users className="h-4 w-4" />Leads no ciclo</div>
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Users className="h-4 w-4" />{fulltime ? "Total de leads" : "Leads no ciclo"}</div>
           <div className="text-2xl font-bold">{pendingLeads.length}</div>
         </CardContent></Card>
+        {!fulltime && (
+          <Card><CardContent className="p-4">
+            <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
+              {windowExpired ? <RefreshCw className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+              {windowExpired ? "Próxima janela" : "Janela fecha em"}
+            </div>
+            <div className={`text-2xl font-bold ${windowExpired ? "text-muted-foreground" : ""}`}>{countdown || "—"}</div>
+          </CardContent></Card>
+        )}
         <Card><CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1">
-            {windowExpired ? <RefreshCw className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
-            {windowExpired ? "Próxima janela" : "Janela fecha em"}
-          </div>
-          <div className={`text-2xl font-bold ${windowExpired ? "text-muted-foreground" : ""}`}>{countdown || "—"}</div>
-        </CardContent></Card>
-        <Card><CardContent className="p-4">
-          <div className="text-muted-foreground text-sm mb-1">Janela</div>
-          <div className="text-sm font-medium">{windowLabel}</div>
+          {fulltime ? (
+            <>
+              <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Infinity className="h-4 w-4" />Modo</div>
+              <div className="text-sm font-medium">Cumulativo (24h)</div>
+            </>
+          ) : (
+            <>
+              <div className="text-muted-foreground text-sm mb-1">Janela</div>
+              <div className="text-sm font-medium">{windowLabel}</div>
+            </>
+          )}
         </CardContent></Card>
         <Card><CardContent className="p-4">
           <div className="text-muted-foreground text-sm mb-1">Ação configurada</div>
