@@ -174,19 +174,35 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Calculate next window and new cycle
-      const { nextStart, nextEnd } = calculateNextWindow(list);
+      // Check if fulltime (24h) — cumulative mode: keep same cycle
+      const isFulltimeList =
+        list.window_type === "fixed" &&
+        (list.window_start_time || "").startsWith("00:00") &&
+        (list.window_end_time || "").startsWith("23:59");
 
-      await supabase
-        .from("group_execution_lists")
-        .update({
-          last_executed_at: new Date().toISOString(),
-          current_cycle_id: crypto.randomUUID(),
-          current_window_start: nextStart,
-          current_window_end: nextEnd,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", list.id);
+      if (isFulltimeList) {
+        // Cumulative: only update last_executed_at, keep cycle_id
+        await supabase
+          .from("group_execution_lists")
+          .update({
+            last_executed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", list.id);
+      } else {
+        // Normal: new cycle + new window
+        const { nextStart, nextEnd } = calculateNextWindow(list);
+        await supabase
+          .from("group_execution_lists")
+          .update({
+            last_executed_at: new Date().toISOString(),
+            current_cycle_id: crypto.randomUUID(),
+            current_window_start: nextStart,
+            current_window_end: nextEnd,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", list.id);
+      }
 
       results.push({ list_id: list.id, leads_processed: processed, errors });
       console.log(`[group-execution-processor] List ${list.id}: ${processed} executed, ${errors} failed`);
