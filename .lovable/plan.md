@@ -1,27 +1,29 @@
 
 
-## Plano: Atribuir Membros a Campanhas de Ligação ou Despacho
+## Plano: Lista 24h — Sem card "Janela" e Modo Cumulativo
 
-### Resumo
-Adicionar um botão "Atribuir a Campanha" na aba Membros que abre um dialog para selecionar uma campanha de ligação ou despacho e inserir os membros ativos (filtrados) como leads nessa campanha.
+### Problema
+Listas configuradas como "Tempo Integral (24h)" mostram um card de "Janela" (00:00 → 23:59) e "Janela fecha em" que não fazem sentido, já que a janela está sempre aberta. Além disso, ao executar, o ciclo é resetado gerando um novo `cycle_id`, o que limpa os leads acumulados. Para listas 24h, o comportamento correto é cumulativo: leads são acumulados indefinidamente e só saem quando executados.
+
+### Detecção de Fulltime
+Uma lista é "fulltime" quando `window_type === "fixed"` e `window_start_time` é `"00:00"` e `window_end_time` é `"23:59"`. Essa verificação já existe no dialog de config.
 
 ### Alterações
 
-**`src/components/group-campaigns/tabs/MembersTab.tsx`**
-- Importar `useCallCampaigns`, `useDispatchCampaigns` e o `AddToCampaignDialog` existente (de `src/components/leads/`)
-- Adicionar estado `showAssignDialog` e botão "Atribuir a Campanha" (ícone `UserPlus`) na barra de ações
-- Implementar `handleAssignToCampaign(campaignId, campaignType, skipExisting)`:
-  - Para `ligacao`: upsert dos membros filtrados (ativos) em `call_leads` com `onConflict: "phone,campaign_id"`
-  - Para `despacho`: primeiro garantir que existam em `leads` (upsert por phone), depois inserir em `dispatch_campaign_contacts` com `onConflict: "campaign_id,lead_id"`
-- Montar a lista de campanhas disponíveis combinando `callCampaigns` (type=ligacao) e `dispatchCampaigns` (type=despacho) no formato `CampaignItem[]`
-- Renderizar `<AddToCampaignDialog>` reutilizando o componente existente
+**`src/components/group-campaigns/tabs/ExecutionListTab.tsx`**
 
-### Fluxo do Usuário
-1. Clica "Atribuir a Campanha" na aba Membros
-2. Escolhe tipo (Ligação ou Despacho)
-3. Seleciona a campanha destino
-4. Opção de pular membros já existentes na campanha
-5. Confirma — membros ativos são inseridos como leads na campanha selecionada
+1. Adicionar helper `isFulltime(list)` que detecta lista 24h
+2. No grid de métricas do `ExecutionListDetail`:
+   - Esconder o card "Janela fecha em" (countdown) para listas fulltime
+   - Substituir o card "Janela" por "Modo: Cumulativo" (ícone Infinity ou similar)
+   - Manter cards "Leads no ciclo" e "Ação configurada"
+3. Ajustar label: se fulltime, mostrar "Total de leads" em vez de "Leads no ciclo"
 
-Nenhuma alteração no banco de dados necessária — reutiliza tabelas e componentes existentes.
+**`supabase/functions/group-execution-processor/index.ts`**
+
+1. Após executar os leads, verificar se a lista é fulltime (start=00:00, end=23:59)
+2. Se fulltime: **não** gerar novo `cycle_id` — manter o mesmo ciclo, apenas atualizar `last_executed_at`
+3. Se não fulltime: comportamento atual (novo ciclo + nova janela)
+
+Isso garante que listas com janela específica resetam o ciclo normalmente, enquanto listas 24h acumulam leads continuamente.
 
