@@ -345,9 +345,11 @@ export function ExecutionListTab({ campaignId }: ExecutionListTabProps) {
                       <span>{ACTION_LABELS[list.action_type]}</span>
                       <span>·</span>
                       <span>
-                        {list.window_type === "fixed"
-                          ? `${list.window_start_time?.slice(0, 5) || "?"} → ${list.window_end_time?.slice(0, 5) || "?"}`
-                          : `${list.window_duration_hours}h`}
+                        {isFulltime(list)
+                          ? "24h · Cumulativo"
+                          : list.window_type === "fixed"
+                            ? `${list.window_start_time?.slice(0, 5) || "?"} → ${list.window_end_time?.slice(0, 5) || "?"}`
+                            : `${list.window_duration_hours}h`}
                       </span>
                     </div>
                   </div>
