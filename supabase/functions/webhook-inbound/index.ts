@@ -355,7 +355,7 @@ Deno.serve(async (req) => {
           // Fetch ALL active execution lists for this campaign that monitor this event
           const { data: execLists } = await supabase
             .from("group_execution_lists")
-            .select("id, current_cycle_id, monitored_events, user_id, execution_schedule_type, current_window_end")
+            .select("id, current_cycle_id, monitored_events, user_id, execution_schedule_type, current_window_end, window_type, window_start_time, window_end_time")
             .eq("campaign_id", campaignId)
             .eq("is_active", true);
 
@@ -363,8 +363,13 @@ Deno.serve(async (req) => {
             // Check if event is monitored
             if (!(execList.monitored_events as string[]).includes(classification.eventType)) continue;
 
-            // For non-immediate lists, check window
-            if (execList.execution_schedule_type !== "immediate") {
+            // Detect fulltime (24h) lists — always open, skip window check
+            const isFulltime = execList.window_type === "fixed" &&
+              String(execList.window_start_time || "").startsWith("00:00") &&
+              String(execList.window_end_time || "").startsWith("23:59");
+
+            // For non-immediate, non-fulltime lists, check window
+            if (execList.execution_schedule_type !== "immediate" && !isFulltime) {
               if (!execList.current_window_end || new Date(execList.current_window_end) <= new Date()) continue;
             }
 
