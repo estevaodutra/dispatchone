@@ -280,12 +280,22 @@ Deno.serve(async (req) => {
       instance?.user_id
     ) {
       try {
-        // Find group_campaigns linked to this group_jid
-        const { data: groupCampaigns } = await supabase
-          .from("group_campaigns")
-          .select("id, user_id, instance_id")
-          .eq("group_jid", context.chatJid)
-          .eq("user_id", instance.user_id);
+        // Find group_campaigns linked to this group_jid via campaign_groups junction table
+        const { data: linkedCampaigns } = await supabase
+          .from("campaign_groups")
+          .select("campaign_id")
+          .eq("group_jid", context.chatJid);
+
+        const campaignIds = (linkedCampaigns || []).map((c: { campaign_id: string }) => c.campaign_id);
+        console.log(`[webhook-inbound] Found ${campaignIds.length} linked campaigns for group ${context.chatJid}`);
+
+        const { data: groupCampaigns } = campaignIds.length > 0
+          ? await supabase
+              .from("group_campaigns")
+              .select("id, user_id, instance_id")
+              .in("id", campaignIds)
+              .eq("user_id", instance.user_id)
+          : { data: [] as { id: string; user_id: string; instance_id: string | null }[] };
 
         // Detect if senderPhone is a LID (not a real phone)
         const rawBody = rawEvent.body as Record<string, unknown> | undefined;
