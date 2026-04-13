@@ -1,6 +1,8 @@
-import { useState, useRef, useEffect } from "react";
-import { useGroupMembers } from "@/hooks/useGroupMembers";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
 import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
+import { ExecuteSequenceDialog } from "@/components/group-campaigns/dialogs/ExecuteSequenceDialog";
+import { ExecuteListDialog } from "@/components/group-campaigns/dialogs/ExecuteListDialog";
 import { AddToCampaignDialog, CampaignItem } from "@/components/leads/AddToCampaignDialog";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { useDispatchCampaigns } from "@/hooks/useDispatchCampaigns";
@@ -13,58 +15,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
+  Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Plus,
-  Search,
-  MoreVertical,
-  Upload,
-  Download,
-  UserMinus,
-  Shield,
-  AlertTriangle,
-  Users,
-  UserCheck,
-  UserX,
-  Loader2,
-  RefreshCw,
-  Send,
-  UserPlus,
+  Plus, Search, MoreVertical, Upload, Download, UserMinus, Shield, AlertTriangle,
+  Users, UserCheck, UserX, Loader2, RefreshCw, Send, UserPlus, Play, X, ListOrdered, FileText,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { toast } from "sonner";
 
@@ -74,13 +45,13 @@ interface MembersTabProps {
 
 export function MembersTab({ campaignId }: MembersTabProps) {
   const { members, stats, isLoading, addMember, addMembersBulk, removeMember, isAdding } = useGroupMembers(campaignId);
-  
+
   const { linkedGroups } = useCampaignGroups(campaignId);
   const { instances } = useInstances();
   const { campaigns: callCampaigns } = useCallCampaigns();
   const { campaigns: dispatchCampaigns } = useDispatchCampaigns();
   const { user } = useAuth();
-  
+
   const [searchTerm, setSearchTerm] = useState("");
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [newMemberPhone, setNewMemberPhone] = useState("");
@@ -93,10 +64,94 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const [isAssigning, setIsAssigning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // New states
+  const [periodFilter, setPeriodFilter] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showExecuteSequenceDialog, setShowExecuteSequenceDialog] = useState(false);
+  const [showExecuteListDialog, setShowExecuteListDialog] = useState(false);
+
   const availableCampaigns: CampaignItem[] = [
     ...(callCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "ligacao", status: c.status })),
     ...(dispatchCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "despacho", status: c.status })),
   ];
+
+  // Filter by search + period
+  const filteredMembers = useMemo(() => {
+    let result = members.filter((m) =>
+      m.phone.includes(searchTerm) ||
+      m.name?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (periodFilter) {
+      const threshold = subDays(new Date(), periodFilter);
+      result = result.filter((m) => new Date(m.joinedAt) >= threshold);
+    }
+
+    return result;
+  }, [members, searchTerm, periodFilter]);
+
+  // Pagination
+  const totalItems = filteredMembers.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+  const paginatedMembers = filteredMembers.slice(startIndex, endIndex);
+
+  // Selection helpers
+  const selectedMembers = useMemo(
+    () => filteredMembers.filter((m) => selectedIds.has(m.id)),
+    [filteredMembers, selectedIds]
+  );
+
+  const allPageSelected = paginatedMembers.length > 0 && paginatedMembers.every((m) => selectedIds.has(m.id));
+  const someSelected = selectedIds.size > 0;
+
+  const toggleSelectAll = () => {
+    if (allPageSelected) {
+      const newSet = new Set(selectedIds);
+      paginatedMembers.forEach((m) => newSet.delete(m.id));
+      setSelectedIds(newSet);
+    } else {
+      const newSet = new Set(selectedIds);
+      paginatedMembers.forEach((m) => newSet.add(m.id));
+      setSelectedIds(newSet);
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    const newSet = new Set(selectedIds);
+    if (newSet.has(id)) newSet.delete(id); else newSet.add(id);
+    setSelectedIds(newSet);
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedIds(new Set(filteredMembers.map((m) => m.id)));
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, periodFilter]);
+
+  const handleItemsPerPageChange = (value: string) => {
+    setItemsPerPage(Number(value));
+    setCurrentPage(1);
+  };
+
+  const getVisiblePages = () => {
+    const pages: (number | "ellipsis")[] = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (currentPage > 3) pages.push("ellipsis");
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (currentPage < totalPages - 2) pages.push("ellipsis");
+      if (totalPages > 1) pages.push(totalPages);
+    }
+    return pages;
+  };
 
   const handleAssignToCampaign = async (campaignId: string, campaignType: string, skipExisting: boolean) => {
     if (!user) return;
@@ -123,7 +178,6 @@ export function MembersTab({ campaignId }: MembersTabProps) {
 
         if (error) throw error;
       } else if (campaignType === "despacho") {
-        // Ensure leads exist
         const leadRecords = activeMembers.map(m => ({
           user_id: user.id,
           phone: m.phone,
@@ -135,7 +189,6 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           .from("leads")
           .upsert(leadRecords, { onConflict: "phone,user_id", ignoreDuplicates: false });
 
-        // Fetch lead IDs
         const { data: leads } = await supabase
           .from("leads")
           .select("id, phone")
@@ -143,7 +196,6 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           .in("phone", activeMembers.map(m => m.phone));
 
         if (leads && leads.length > 0) {
-          // Get existing contacts to filter duplicates if needed
           let existingLeadIds = new Set<string>();
           if (skipExisting) {
             const { data: existing } = await supabase
@@ -180,43 +232,6 @@ export function MembersTab({ campaignId }: MembersTabProps) {
     } finally {
       setIsAssigning(false);
     }
-  };
-
-  const filteredMembers = members.filter((m) =>
-    m.phone.includes(searchTerm) ||
-    m.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Pagination
-  const totalItems = filteredMembers.length;
-  const totalPages = Math.ceil(totalItems / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
-  const paginatedMembers = filteredMembers.slice(startIndex, endIndex);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm]);
-
-  const handleItemsPerPageChange = (value: string) => {
-    setItemsPerPage(Number(value));
-    setCurrentPage(1);
-  };
-
-  const getVisiblePages = () => {
-    const pages: (number | "ellipsis")[] = [];
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      pages.push(1);
-      if (currentPage > 3) pages.push("ellipsis");
-      const start = Math.max(2, currentPage - 1);
-      const end = Math.min(totalPages - 1, currentPage + 1);
-      for (let i = start; i <= end; i++) pages.push(i);
-      if (currentPage < totalPages - 2) pages.push("ellipsis");
-      if (totalPages > 1) pages.push(totalPages);
-    }
-    return pages;
   };
 
   const handleFetchMembers = async () => {
@@ -262,7 +277,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
         }
 
         const data = await response.json();
-        
+
         let membersList: any[] = [];
         if (Array.isArray(data)) {
           for (const item of data) {
@@ -317,7 +332,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
     reader.onload = async (e) => {
       const text = e.target?.result as string;
       const lines = text.split("\n").filter(Boolean);
-      
+
       const membersToAdd = lines.slice(1).map((line) => {
         const [phone, name] = line.split(",").map((s) => s.trim().replace(/"/g, ""));
         return { phone, name };
@@ -328,8 +343,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
       }
     };
     reader.readAsText(file);
-    
-    // Reset input
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -356,12 +370,27 @@ export function MembersTab({ campaignId }: MembersTabProps) {
     URL.revokeObjectURL(url);
   };
 
+  const handleRemoveSelected = async () => {
+    for (const id of selectedIds) {
+      await removeMember(id);
+    }
+    clearSelection();
+    toast.success(`${selectedIds.size} membro(s) removido(s).`);
+  };
+
   const statusColors: Record<string, string> = {
     active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
     removed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
     left: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
     muted: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   };
+
+  const periodOptions = [
+    { days: 7, label: "7 dias" },
+    { days: 14, label: "14 dias" },
+    { days: 30, label: "30 dias" },
+    { days: null as number | null, label: "Todos" },
+  ];
 
   if (isLoading) {
     return (
@@ -380,9 +409,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total de Membros
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total de Membros</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -391,12 +418,9 @@ export function MembersTab({ campaignId }: MembersTabProps) {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Ativos
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Ativos</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -405,12 +429,9 @@ export function MembersTab({ campaignId }: MembersTabProps) {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Removidos
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Removidos</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -419,12 +440,9 @@ export function MembersTab({ campaignId }: MembersTabProps) {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Com Strikes
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Com Strikes</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -441,58 +459,36 @@ export function MembersTab({ campaignId }: MembersTabProps) {
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Lista de Membros</CardTitle>
-              <CardDescription>
-                Gerencie os membros do grupo.
-              </CardDescription>
+              <CardDescription>Gerencie os membros do grupo.</CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleFetchMembers}
-                disabled={isFetchingMembers || !linkedGroups.length}
-              >
-                {isFetchingMembers ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button variant="outline" size="sm" onClick={handleFetchMembers} disabled={isFetchingMembers || !linkedGroups.length}>
+                {isFetchingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                 Listar Membros
               </Button>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                className="hidden"
-                onChange={handleImportCSV}
-              />
+              <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
-                <Upload className="mr-2 h-4 w-4" />
-                Importar CSV
+                <Upload className="mr-2 h-4 w-4" /> Importar CSV
               </Button>
               <Button variant="outline" size="sm" onClick={handleExport} disabled={members.length === 0}>
-                <Download className="mr-2 h-4 w-4" />
-                Exportar
+                <Download className="mr-2 h-4 w-4" /> Exportar
               </Button>
               <Button variant="outline" size="sm" onClick={() => setShowAssignDialog(true)}>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Atribuir a Campanha
+                <UserPlus className="mr-2 h-4 w-4" /> Atribuir a Campanha
               </Button>
               <Button variant="outline" size="sm" onClick={() => setShowExportWebhookDialog(true)}>
-                <Send className="mr-2 h-4 w-4" />
-                Exportar Webhook
+                <Send className="mr-2 h-4 w-4" /> Exportar Webhook
               </Button>
               <Button size="sm" onClick={() => setShowAddDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                Adicionar
+                <Plus className="mr-2 h-4 w-4" /> Adicionar
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
-          {/* Search */}
-          <div className="mb-4">
-            <div className="relative max-w-sm">
+          {/* Search + Period Filter */}
+          <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+            <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Buscar por telefone ou nome..."
@@ -501,22 +497,77 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                 className="pl-10"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">Entrada:</span>
+              {periodOptions.map((p) => (
+                <Button
+                  key={String(p.days)}
+                  size="sm"
+                  variant={periodFilter === p.days ? "default" : "outline"}
+                  onClick={() => setPeriodFilter(p.days)}
+                  className="h-8 text-xs"
+                >
+                  {p.label}
+                </Button>
+              ))}
+            </div>
           </div>
+
+          {/* Selection Bar */}
+          {someSelected && (
+            <div className="sticky top-0 z-10 bg-primary text-primary-foreground rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">☑️ {selectedIds.size} selecionados</span>
+                {selectedIds.size < filteredMembers.length && (
+                  <Button size="sm" variant="secondary" onClick={selectAllFiltered} className="text-xs h-7">
+                    Selecionar todos os {filteredMembers.length}
+                  </Button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button size="sm" variant="secondary" className="gap-1">
+                      <Play className="h-3.5 w-3.5" /> Executar
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent>
+                    <DropdownMenuItem onClick={() => setShowExecuteSequenceDialog(true)}>
+                      <ListOrdered className="mr-2 h-4 w-4" /> Executar Sequência
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setShowExecuteListDialog(true)}>
+                      <FileText className="mr-2 h-4 w-4" /> Executar Lista
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button size="sm" variant="destructive" onClick={handleRemoveSelected} className="gap-1">
+                  <UserMinus className="h-3.5 w-3.5" /> Remover
+                </Button>
+                <Button size="sm" variant="ghost" onClick={clearSelection} className="text-primary-foreground hover:text-primary-foreground/80">
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Table */}
           {filteredMembers.length === 0 ? (
             <div className="text-center py-12">
               <Users className="mx-auto h-12 w-12 text-muted-foreground" />
               <h3 className="mt-4 text-lg font-medium">Nenhum membro</h3>
-              <p className="text-muted-foreground">
-                Adicione membros manualmente ou importe de um arquivo CSV.
-              </p>
+              <p className="text-muted-foreground">Adicione membros manualmente ou importe de um arquivo CSV.</p>
             </div>
           ) : (
             <>
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={allPageSelected}
+                        onCheckedChange={toggleSelectAll}
+                      />
+                    </TableHead>
                     <TableHead>Telefone</TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Status</TableHead>
@@ -527,13 +578,17 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                 </TableHeader>
                 <TableBody>
                   {paginatedMembers.map((member) => (
-                    <TableRow key={member.id}>
+                    <TableRow key={member.id} className={selectedIds.has(member.id) ? "bg-primary/5" : ""}>
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedIds.has(member.id)}
+                          onCheckedChange={() => toggleOne(member.id)}
+                        />
+                      </TableCell>
                       <TableCell className="font-medium">
                         <div className="flex items-center gap-2">
                           {member.phone}
-                          {member.isAdmin && (
-                            <Shield className="h-4 w-4 text-primary" />
-                          )}
+                          {member.isAdmin && <Shield className="h-4 w-4 text-primary" />}
                         </div>
                       </TableCell>
                       <TableCell>{member.name || "-"}</TableCell>
@@ -546,11 +601,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {member.strikes > 0 ? (
-                          <Badge variant="destructive">{member.strikes}</Badge>
-                        ) : (
-                          "-"
-                        )}
+                        {member.strikes > 0 ? <Badge variant="destructive">{member.strikes}</Badge> : "-"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {format(new Date(member.joinedAt), "dd/MM/yy", { locale: ptBR })}
@@ -563,12 +614,8 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="text-destructive"
-                              onClick={() => removeMember(member.id)}
-                            >
-                              <UserMinus className="mr-2 h-4 w-4" />
-                              Remover
+                            <DropdownMenuItem className="text-destructive" onClick={() => removeMember(member.id)}>
+                              <UserMinus className="mr-2 h-4 w-4" /> Remover
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -583,20 +630,14 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                   <div className="flex items-center gap-2 text-sm">
                     <span className="text-muted-foreground">Itens por página:</span>
                     <Select value={itemsPerPage.toString()} onValueChange={handleItemsPerPageChange}>
-                      <SelectTrigger className="w-20 h-8">
-                        <SelectValue />
-                      </SelectTrigger>
+                      <SelectTrigger className="w-20 h-8"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {[25, 50, 100].map((option) => (
-                          <SelectItem key={option} value={option.toString()}>
-                            {option}
-                          </SelectItem>
+                          <SelectItem key={option} value={option.toString()}>{option}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    <span className="text-muted-foreground">
-                      ({startIndex + 1}-{endIndex} de {totalItems})
-                    </span>
+                    <span className="text-muted-foreground">({startIndex + 1}-{endIndex} de {totalItems})</span>
                   </div>
 
                   <Pagination>
@@ -607,25 +648,17 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                           className={currentPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
                         />
                       </PaginationItem>
-
                       {getVisiblePages().map((page, index) =>
                         page === "ellipsis" ? (
-                          <PaginationItem key={`ellipsis-${index}`}>
-                            <PaginationEllipsis />
-                          </PaginationItem>
+                          <PaginationItem key={`ellipsis-${index}`}><PaginationEllipsis /></PaginationItem>
                         ) : (
                           <PaginationItem key={page}>
-                            <PaginationLink
-                              onClick={() => setCurrentPage(page)}
-                              isActive={currentPage === page}
-                              className="cursor-pointer"
-                            >
+                            <PaginationLink onClick={() => setCurrentPage(page)} isActive={currentPage === page} className="cursor-pointer">
                               {page}
                             </PaginationLink>
                           </PaginationItem>
                         )
                       )}
-
                       <PaginationItem>
                         <PaginationNext
                           onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
@@ -646,34 +679,20 @@ export function MembersTab({ campaignId }: MembersTabProps) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Adicionar Membro</DialogTitle>
-            <DialogDescription>
-              Adicione um novo membro ao grupo manualmente.
-            </DialogDescription>
+            <DialogDescription>Adicione um novo membro ao grupo manualmente.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="phone">Telefone *</Label>
-              <Input
-                id="phone"
-                placeholder="5511999999999"
-                value={newMemberPhone}
-                onChange={(e) => setNewMemberPhone(e.target.value)}
-              />
+              <Input id="phone" placeholder="5511999999999" value={newMemberPhone} onChange={(e) => setNewMemberPhone(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="name">Nome (opcional)</Label>
-              <Input
-                id="name"
-                placeholder="Nome do contato"
-                value={newMemberName}
-                onChange={(e) => setNewMemberName(e.target.value)}
-              />
+              <Input id="name" placeholder="Nome do contato" value={newMemberName} onChange={(e) => setNewMemberName(e.target.value)} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-              Cancelar
-            </Button>
+            <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancelar</Button>
             <Button onClick={handleAddMember} disabled={!newMemberPhone || isAdding}>
               {isAdding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Adicionar
@@ -683,11 +702,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
       </Dialog>
 
       {/* Export Webhook Dialog */}
-      <ExportWebhookDialog
-        open={showExportWebhookDialog}
-        onOpenChange={setShowExportWebhookDialog}
-        campaignId={campaignId}
-      />
+      <ExportWebhookDialog open={showExportWebhookDialog} onOpenChange={setShowExportWebhookDialog} campaignId={campaignId} />
 
       {/* Assign to Campaign Dialog */}
       <AddToCampaignDialog
@@ -698,7 +713,22 @@ export function MembersTab({ campaignId }: MembersTabProps) {
         onSubmit={handleAssignToCampaign}
         isLoading={isAssigning}
       />
+
+      {/* Execute Sequence Dialog */}
+      <ExecuteSequenceDialog
+        open={showExecuteSequenceDialog}
+        onOpenChange={setShowExecuteSequenceDialog}
+        selectedMembers={selectedMembers}
+        campaignId={campaignId}
+      />
+
+      {/* Execute List Dialog */}
+      <ExecuteListDialog
+        open={showExecuteListDialog}
+        onOpenChange={setShowExecuteListDialog}
+        selectedMembers={selectedMembers}
+        campaignId={campaignId}
+      />
     </div>
   );
 }
-
