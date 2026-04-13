@@ -24,6 +24,8 @@ interface ExecuteMessageRequest {
   startFromNodeIndex?: number;
   // For manual single-node execution
   manualNodeIndex?: number;
+  // For private targeting (bulk execution from members tab)
+  targetPhones?: string[];
 }
 
 interface TriggerContext {
@@ -597,14 +599,21 @@ Deno.serve(async (req) => {
         return result;
       };
 
-      // Determine destinations based on sendToPrivate flag
-      const destinations: DestinationData[] = sendToPrivate && triggerContext
-        ? [{ 
-            group_jid: triggerContext.respondentJid, 
-            group_name: triggerContext.respondentName || triggerContext.respondentPhone,
-            isPrivate: true
-          }]
-        : groups.map(g => ({ group_jid: g.group_jid, group_name: g.group_name, isPrivate: false }));
+      // Determine destinations based on targetPhones or sendToPrivate flag
+      const targetPhones = body.targetPhones;
+      const destinations: DestinationData[] = targetPhones && targetPhones.length > 0
+        ? targetPhones.map((phone: string) => ({
+            group_jid: `${phone}@s.whatsapp.net`,
+            group_name: phone,
+            isPrivate: true,
+          }))
+        : sendToPrivate && triggerContext
+          ? [{ 
+              group_jid: triggerContext.respondentJid, 
+              group_name: triggerContext.respondentName || triggerContext.respondentPhone,
+              isPrivate: true
+            }]
+          : groups.map(g => ({ group_jid: g.group_jid, group_name: g.group_name, isPrivate: false }));
 
       // Determine starting node index
       const startNodeIndex = isResumedExecution && startFromNodeIndex !== undefined ? startFromNodeIndex : 0;
