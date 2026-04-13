@@ -237,8 +237,8 @@ Deno.serve(async (req) => {
         const notifParams = rawBody?.notificationParameters as string[] | undefined;
         const participantRaw = notifParams?.[0] || null;
         const isLid = participantRaw?.includes("@lid");
-        const connectedPhone = rawBody?.connectedPhone as string | undefined;
-        const phoneToSend = connectedPhone || context.senderPhone;
+        // Use senderPhone from context (now correctly extracted from LID/notifParams)
+        const phoneToSend = context.senderPhone;
 
         console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${isLid ? participantRaw : "none"}, connectedPhone=${connectedPhone || "none"}`);
 
