@@ -283,9 +283,46 @@ Deno.serve(async (req) => {
         // Find group_campaigns linked to this group_jid
         const { data: groupCampaigns } = await supabase
           .from("group_campaigns")
-          .select("id, user_id")
+          .select("id, user_id, instance_id")
           .eq("group_jid", context.chatJid)
           .eq("user_id", instance.user_id);
+
+        // Detect if senderPhone is a LID (not a real phone)
+        const rawBody = rawEvent.body as Record<string, unknown> | undefined;
+        const notifParams = rawBody?.notificationParameters as string[] | undefined;
+        const participantRaw = notifParams?.[0] || null;
+        const isLid = participantRaw?.includes("@lid");
+        let resolvedPhone = context.senderPhone;
+
+        // Try to resolve LID to real phone via Z-API
+        if (isLid && instance?.id) {
+          try {
+            const { data: inst } = await supabase
+              .from("instances")
+              .select("external_instance_id, external_instance_token")
+              .eq("id", instance.id)
+              .single();
+
+            if (inst?.external_instance_id && inst?.external_instance_token) {
+              const zapiUrl = `https://api.z-api.io/instances/${inst.external_instance_id}/token/${inst.external_instance_token}/group-participants/${context.chatJid}`;
+              const partResp = await fetch(zapiUrl);
+              if (partResp.ok) {
+                const participants = await partResp.json() as Array<{ phone?: string; name?: string; id?: string }>;
+                const lidNumeric = participantRaw!.split("@")[0];
+                // Search by LID match in participant id
+                const matched = participants.find(p =>
+                  p.id?.includes(lidNumeric) || p.phone === lidNumeric
+                );
+                if (matched?.phone) {
+                  resolvedPhone = matched.phone;
+                  console.log(`[webhook-inbound] Resolved LID ${lidNumeric} -> phone ${resolvedPhone}`);
+                }
+              }
+            }
+          } catch (lidErr) {
+            console.error("[webhook-inbound] LID resolution error:", lidErr);
+          }
+        }
 
         for (const gc of (groupCampaigns || [])) {
           if (classification.eventType === "group_join") {
@@ -296,7 +333,7 @@ Deno.serve(async (req) => {
                 {
                   group_campaign_id: gc.id,
                   user_id: gc.user_id,
-                  phone: context.senderPhone,
+                  phone: resolvedPhone,
                   name: context.senderName || null,
                   status: "active",
                   joined_at: new Date().toISOString(),
@@ -309,28 +346,33 @@ Deno.serve(async (req) => {
             await supabase.from("group_member_history").insert({
               group_campaign_id: gc.id,
               user_id: gc.user_id,
-              member_phone: context.senderPhone,
+              member_phone: resolvedPhone,
               action: "join",
             });
 
-            console.log(`[webhook-inbound] Member ${context.senderPhone} joined group campaign ${gc.id}`);
+            console.log(`[webhook-inbound] Member ${resolvedPhone} joined group campaign ${gc.id}`);
           } else {
             // group_leave: update status
             await supabase
               .from("group_members")
               .update({ status: "left", left_at: new Date().toISOString() })
               .eq("group_campaign_id", gc.id)
-              .eq("phone", context.senderPhone);
+              .eq("phone", resolvedPhone);
 
             await supabase.from("group_member_history").insert({
               group_campaign_id: gc.id,
               user_id: gc.user_id,
-              member_phone: context.senderPhone,
+              member_phone: resolvedPhone,
               action: "leave",
             });
 
-            console.log(`[webhook-inbound] Member ${context.senderPhone} left group campaign ${gc.id}`);
+            console.log(`[webhook-inbound] Member ${resolvedPhone} left group campaign ${gc.id}`);
           }
+        }
+
+        // Update context.senderPhone with resolved phone for execution lists below
+        if (resolvedPhone !== context.senderPhone) {
+          context.senderPhone = resolvedPhone;
         }
       } catch (memberSyncError) {
         console.error("[webhook-inbound] Error syncing group members:", memberSyncError);
