@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
+import { useGroupMembers } from "@/hooks/useGroupMembers";
 import { ExportWebhookDialog } from "@/components/group-campaigns/dialogs/ExportWebhookDialog";
 import { ExecuteSequenceDialog } from "@/components/group-campaigns/dialogs/ExecuteSequenceDialog";
 import { ExecuteListDialog } from "@/components/group-campaigns/dialogs/ExecuteListDialog";
@@ -20,7 +20,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
