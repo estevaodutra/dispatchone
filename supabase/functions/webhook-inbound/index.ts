@@ -231,16 +231,12 @@ Deno.serve(async (req) => {
     // ==========================================
     // AUTO-PROCESS GROUP JOIN for Pirate Campaigns
     // ==========================================
-    if (classification.eventType === "group_join" && context.chatJid && context.senderPhone) {
+    if (classification.eventType === "group_join" && context.chatJid && (context.senderPhone || context.senderLid)) {
       try {
-        const rawBody = rawEvent.body as Record<string, unknown> | undefined;
-        const notifParams = rawBody?.notificationParameters as string[] | undefined;
-        const participantRaw = notifParams?.[0] || null;
-        const isLid = participantRaw?.includes("@lid");
-        // Use senderPhone from context (now correctly extracted from LID/notifParams)
-        const phoneToSend = context.senderPhone;
+        const phoneToSend = context.senderPhone || null;
+        const lidToSend = context.senderLid || null;
 
-        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${isLid ? participantRaw : "none"}, connectedPhone=${connectedPhone || "none"}`);
+        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${lidToSend}, connectedPhone=${connectedPhone || "none"}`);
 
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -256,7 +252,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               group_jid: context.chatJid,
               phone: phoneToSend,
-              lid: isLid ? participantRaw : null,
+              lid: lidToSend,
               instance_id: instance?.id || null,
               raw_event: rawEvent,
             }),
@@ -276,7 +272,7 @@ Deno.serve(async (req) => {
     if (
       (classification.eventType === "group_join" || classification.eventType === "group_leave") &&
       context.chatJid &&
-      context.senderPhone &&
+      (context.senderPhone || context.senderLid) &&
       instance?.user_id
     ) {
       try {
@@ -297,15 +293,12 @@ Deno.serve(async (req) => {
               .eq("user_id", instance.user_id)
           : { data: [] as { id: string; user_id: string; instance_id: string | null }[] };
 
-        // Detect if senderPhone is a LID (not a real phone)
-        const rawBody = rawEvent.body as Record<string, unknown> | undefined;
-        const notifParams = rawBody?.notificationParameters as string[] | undefined;
-        const participantRaw = notifParams?.[0] || null;
-        const isLid = participantRaw?.includes("@lid");
+        // Use senderLid from context (already separated by event-classifier)
+        const hasLid = !!context.senderLid;
         let resolvedPhone = context.senderPhone;
 
         // Try to resolve LID to real phone via Z-API
-        if (isLid && instance?.id) {
+        if (hasLid && !resolvedPhone && instance?.id) {
           try {
             const { data: inst } = await supabase
               .from("instances")
@@ -318,7 +311,7 @@ Deno.serve(async (req) => {
               const partResp = await fetch(zapiUrl);
               if (partResp.ok) {
                 const participants = await partResp.json() as Array<{ phone?: string; name?: string; id?: string }>;
-                const lidNumeric = participantRaw!.split("@")[0];
+                const lidNumeric = context.senderLid!.split("@")[0];
                 // Search by LID match in participant id
                 const matched = participants.find(p =>
                   p.id?.includes(lidNumeric) || p.phone === lidNumeric
@@ -336,53 +329,69 @@ Deno.serve(async (req) => {
 
         for (const gc of (groupCampaigns || [])) {
           if (classification.eventType === "group_join") {
-            // Upsert member as active
+            // Build upsert record — phone may be null when only LID is available
+            const memberRecord: Record<string, unknown> = {
+              group_campaign_id: gc.id,
+              user_id: gc.user_id,
+              name: context.senderName || null,
+              status: "active",
+              joined_at: new Date().toISOString(),
+              left_at: null,
+            };
+
+            if (resolvedPhone) {
+              memberRecord.phone = resolvedPhone;
+              memberRecord.lid = context.senderLid || null;
+            } else {
+              // Only LID available, no phone
+              memberRecord.phone = null;
+              memberRecord.lid = context.senderLid;
+            }
+
+            // Use appropriate conflict key
+            const onConflict = resolvedPhone ? "group_campaign_id,phone" : "group_campaign_id,lid";
             await supabase
               .from("group_members")
-              .upsert(
-                {
-                  group_campaign_id: gc.id,
-                  user_id: gc.user_id,
-                  phone: resolvedPhone,
-                  lid: isLid ? participantRaw : null,
-                  name: context.senderName || null,
-                  status: "active",
-                  joined_at: new Date().toISOString(),
-                  left_at: null,
-                },
-                { onConflict: "group_campaign_id,phone" }
-              );
+              .upsert(memberRecord, { onConflict });
 
             // Record history
             await supabase.from("group_member_history").insert({
               group_campaign_id: gc.id,
               user_id: gc.user_id,
-              member_phone: resolvedPhone,
+              member_phone: resolvedPhone || context.senderLid || "unknown",
               action: "join",
             });
 
-            console.log(`[webhook-inbound] Member ${resolvedPhone} joined group campaign ${gc.id}`);
+            console.log(`[webhook-inbound] Member ${resolvedPhone || context.senderLid} joined group campaign ${gc.id}`);
           } else {
-            // group_leave: update status
-            await supabase
-              .from("group_members")
-              .update({ status: "left", left_at: new Date().toISOString() })
-              .eq("group_campaign_id", gc.id)
-              .eq("phone", resolvedPhone);
+            // group_leave: update status — match by phone or lid
+            if (resolvedPhone) {
+              await supabase
+                .from("group_members")
+                .update({ status: "left", left_at: new Date().toISOString() })
+                .eq("group_campaign_id", gc.id)
+                .eq("phone", resolvedPhone);
+            } else if (context.senderLid) {
+              await supabase
+                .from("group_members")
+                .update({ status: "left", left_at: new Date().toISOString() })
+                .eq("group_campaign_id", gc.id)
+                .eq("lid", context.senderLid);
+            }
 
             await supabase.from("group_member_history").insert({
               group_campaign_id: gc.id,
               user_id: gc.user_id,
-              member_phone: resolvedPhone,
+              member_phone: resolvedPhone || context.senderLid || "unknown",
               action: "leave",
             });
 
-            console.log(`[webhook-inbound] Member ${resolvedPhone} left group campaign ${gc.id}`);
+            console.log(`[webhook-inbound] Member ${resolvedPhone || context.senderLid} left group campaign ${gc.id}`);
           }
         }
 
         // Update context.senderPhone with resolved phone for execution lists below
-        if (resolvedPhone !== context.senderPhone) {
+        if (resolvedPhone && resolvedPhone !== context.senderPhone) {
           context.senderPhone = resolvedPhone;
         }
       } catch (memberSyncError) {
@@ -393,7 +402,7 @@ Deno.serve(async (req) => {
     // ==========================================
     // AUTO-ACCUMULATE LEADS for Group Execution Lists
     // ==========================================
-    if (context.chatJid && context.senderPhone) {
+    if (context.chatJid && (context.senderPhone || context.senderLid)) {
       try {
         // Find group campaign by group_jid via campaign_groups
         const { data: campaignGroup } = await supabase
@@ -426,6 +435,10 @@ Deno.serve(async (req) => {
               if (!execList.current_window_end || new Date(execList.current_window_end) <= new Date()) continue;
             }
 
+            // Use phone if available, otherwise use LID numeric as fallback identifier
+            const execPhone = context.senderPhone || (context.senderLid ? context.senderLid.split("@")[0] : null);
+            if (!execPhone) continue;
+
             const { error: upsertError } = await supabase
               .from("group_execution_leads")
               .upsert(
@@ -433,7 +446,7 @@ Deno.serve(async (req) => {
                   list_id: execList.id,
                   user_id: execList.user_id,
                   cycle_id: execList.current_cycle_id,
-                  phone: context.senderPhone,
+                  phone: execPhone,
                   name: context.senderName || null,
                   origin_event: classification.eventType,
                   origin_detail: context.chatName || null,
