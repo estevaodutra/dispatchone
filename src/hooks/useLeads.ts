@@ -7,6 +7,7 @@ export interface Lead {
   user_id: string;
   name: string | null;
   phone: string;
+  lid: string | null;
   email: string | null;
   tags: string[];
   custom_fields: Record<string, string | number | boolean | null>;
@@ -61,7 +62,7 @@ export function useLeads(filters: LeadFilters = {}) {
         .order("created_at", { ascending: false });
 
       if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`);
+        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,lid.ilike.%${filters.search}%`);
       }
       if (filters.status && filters.status !== "all") {
         query = query.eq("status", filters.status);
