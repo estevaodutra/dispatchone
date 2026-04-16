@@ -63,12 +63,12 @@ Deno.serve(async (req) => {
 
     console.log(`[sync] ${dbPhoneMap.size} active members in DB`);
 
-    // 3. Normalize groupJid and POST to n8n with group.members action
-    const zapiGroupJid = groupJid.includes("-group")
-      ? groupJid.replace("-group", "@g.us")
+    // 3. Normalize groupJid to "-group" format (n8n expects this format, not @g.us)
+    const zapiGroupJid = groupJid.includes("@g.us")
+      ? groupJid.replace("@g.us", "-group")
       : groupJid;
 
-    const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/groups";
+    const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent";
 
     const n8nResp = await fetch(n8nUrl, {
       method: "POST",
@@ -98,7 +98,18 @@ Deno.serve(async (req) => {
     }
 
     // 4. Parse n8n response (supports array or object with participants/members)
-    const raw = await n8nResp.json();
+    const rawText = await n8nResp.text();
+    console.log(`[sync] n8n raw response (${rawText.length} chars): ${rawText.slice(0, 500)}`);
+
+    let raw: any = null;
+    if (rawText.trim().length > 0) {
+      try {
+        raw = JSON.parse(rawText);
+      } catch (e) {
+        console.error("[sync] Failed to parse n8n JSON:", e);
+      }
+    }
+
     let participants: N8nParticipant[] = [];
 
     if (Array.isArray(raw)) {

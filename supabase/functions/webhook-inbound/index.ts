@@ -269,10 +269,10 @@ Deno.serve(async (req) => {
     // ==========================================
     // AUTO-SYNC GROUP MEMBERS on join/leave via full list comparison
     // ==========================================
+    console.log(`[webhook-inbound] group event check: type=${classification.eventType}, jid=${context.chatJid}, phone=${context.senderPhone}, lid=${context.senderLid}, userId=${instance?.user_id}`);
     if (
       (classification.eventType === "group_join" || classification.eventType === "group_leave") &&
       context.chatJid &&
-      (context.senderPhone || context.senderLid) &&
       instance?.user_id
     ) {
       try {
