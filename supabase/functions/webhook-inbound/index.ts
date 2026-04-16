@@ -236,7 +236,7 @@ Deno.serve(async (req) => {
         const phoneToSend = context.senderPhone || null;
         const lidToSend = context.senderLid || null;
 
-        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${lidToSend}, connectedPhone=${connectedPhone || "none"}`);
+        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${lidToSend}`);
 
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
