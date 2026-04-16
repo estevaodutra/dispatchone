@@ -23,6 +23,7 @@ export interface EventContext {
   chatType: string | null;
   chatName: string | null;
   senderPhone: string | null;
+  senderLid: string | null;
   senderName: string | null;
   messageId: string | null;
   eventTimestamp: string | null;
@@ -569,15 +570,22 @@ function extractZApiContext(rawEvent: Record<string, unknown>): EventContext {
   }
 
   // For group participant notifications, extract participant identifier
+  let senderLid: string | null = null;
   const notification = body?.notification as string | undefined;
   if (notification?.startsWith("GROUP_PARTICIPANT")) {
     const notifParams = body?.notificationParameters as string[] | undefined;
     const participantRaw = notifParams?.[0]; // e.g. "212055487447252@lid" or "5511999999999@s.whatsapp.net"
     if (participantRaw) {
-      // Extract numeric part before @ as unique identifier
-      const numericId = participantRaw.split("@")[0];
-      if (numericId) {
-        senderPhone = numericId;
+      if (participantRaw.includes("@lid")) {
+        // This is a LID, NOT a phone number
+        senderLid = participantRaw;
+        senderPhone = null; // Do NOT put LID in senderPhone
+      } else {
+        // Extract phone number (e.g. from @s.whatsapp.net)
+        const numericId = participantRaw.split("@")[0];
+        if (numericId) {
+          senderPhone = numericId;
+        }
       }
     } else {
       // Fallback to connectedPhone only if no notificationParameters
@@ -650,6 +658,7 @@ function extractZApiContext(rawEvent: Record<string, unknown>): EventContext {
     chatType: isGroup ? "group" : "private",
     chatName,
     senderPhone,
+    senderLid: senderLid ?? null,
     senderName,
     messageId,
     eventTimestamp,
