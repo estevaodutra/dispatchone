@@ -63,9 +63,9 @@ Deno.serve(async (req) => {
 
     console.log(`[sync] ${dbPhoneMap.size} active members in DB`);
 
-    // 3. Normalize groupJid and POST to n8n with group.members action
-    const zapiGroupJid = groupJid.includes("-group")
-      ? groupJid.replace("-group", "@g.us")
+    // 3. Normalize groupJid to "-group" format (n8n expects this format, not @g.us)
+    const zapiGroupJid = groupJid.includes("@g.us")
+      ? groupJid.replace("@g.us", "-group")
       : groupJid;
 
     const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent";
