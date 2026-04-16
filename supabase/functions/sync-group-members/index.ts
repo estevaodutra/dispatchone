@@ -79,9 +79,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const metadata = await zapiResp.json();
+    const metadata = await n8nResp.json();
     const participants: ZAPIParticipant[] = metadata.participants || [];
-    console.log(`[sync-group-members] Z-API returned ${participants.length} participants`);
+    console.log(`[sync-group-members] n8n returned ${participants.length} participants`);
 
     // 3. Extract valid phone numbers from Z-API participants
     const zapiMembers = new Map<string, ZAPIParticipant>();
