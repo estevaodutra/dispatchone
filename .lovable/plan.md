@@ -1,73 +1,39 @@
 
 
-## Plano: Simplificar sync-group-members usando "group.members"
+## Diagnóstico
 
-### Abordagem
+A tabela `webhook_events` confirma que **44 eventos `group_join` chegaram** corretamente nas últimas 3 horas, todos com classificação correta, `instance_id`, `user_id` e `chat_jid` preenchidos. O grupo `120363408661213011-group` (campanha "Jonathan") tem campaign_groups vinculado corretamente.
 
-Ao receber evento `group_join` ou `group_leave`, a função `sync-group-members` vai:
+**MAS** os logs do `webhook-inbound` mostram que NENHUMA das `console.log` dos blocos "Detected group_join" (linha 239) ou "Found N linked campaigns" (linha 286) foi executada. E os logs do `sync-group-members` estão **completamente vazios**.
 
-1. Buscar credenciais da instância no DB
-2. Buscar membros ativos atuais da campanha no DB
-3. POST ao n8n `https://n8n-n8n.nuwfic.easypanel.host/webhook/groups` com `action: "group.members"` (mesmo payload que a aba Membros já usa)
-4. Receber a lista completa de participantes do grupo (com telefones reais)
-5. Cruzar localmente: quem está na resposta mas não no DB = **entrou**; quem está no DB mas não na resposta = **saiu**
-6. Salvar normalmente em `group_members`, `leads`, `group_member_history`
+Isto significa que a **versão deployada do `webhook-inbound` não está executando o bloco de auto-sync** — provavelmente um problema de deploy ou o bloco foi adicionado mas a edge function não foi redeployada.
 
-### Payload enviado ao n8n
+Adicionalmente, eventos `GROUP_PARTICIPANT_INVITE` (entrada por link) trazem o **LID** em `notificationParameters[0]` e `phone = JID do grupo`. O `extractContext` extrai `senderLid` corretamente e zera `senderPhone`, mas a condição atual no `webhook-inbound` (`context.senderPhone || context.senderLid`) deveria funcionar — confirmando que o problema é apenas o deploy.
 
-Usa o mesmo formato `buildGroupPayload` que o frontend já usa:
+## Solução
 
-```json
-{
-  "action": "group.members",
-  "instance": {
-    "id": "instance-uuid",
-    "name": "Instance Name",
-    "externalId": "EXTERNAL_ID",
-    "externalToken": "EXTERNAL_TOKEN"
-  },
-  "campaign": { "id": "campaign-uuid" },
-  "group": { "jid": "120363408661213011@g.us" }
-}
+### 1. Forçar redeploy do `webhook-inbound`
+A versão em produção não está executando o bloco de auto-sync. Vou redeployar para garantir que o código atual (com o bloco AUTO-SYNC GROUP MEMBERS na linha 269-340) entre em vigor.
+
+### 2. Adicionar logs de diagnóstico extras
+Adicionar `console.log` antes da condição da linha 272-277 para confirmar quando a função é/não é chamada e por quê:
+```typescript
+console.log(`[webhook-inbound] group event check: type=${classification.eventType}, jid=${context.chatJid}, phone=${context.senderPhone}, lid=${context.senderLid}, userId=${instance?.user_id}`);
 ```
 
-### Resposta esperada do n8n (já funciona assim)
+### 3. Reprocessar os eventos `group_join` que ficaram sem sync
+Após confirmar que o auto-sync está ativo, disparar manualmente um `sync-group-members` para a campanha Jonathan (`261d7ef9-51ea-4ed0-a574-b1a34d8f10e3`) com o JID `120363408661213011-group` para popular os ~10+ membros que entraram via link nas últimas horas.
 
-Array ou objeto com `participants`:
-```json
-[{
-  "participants": [
-    { "phone": "5511999887766", "name": "João", "isAdmin": true },
-    { "phone": "5521988776655", "name": "Maria", "isAdmin": false }
-  ]
-}]
+### 4. (Bônus de robustez) Disparar sync mesmo sem phone/lid
+Para entradas via link onde nem `senderPhone` nem `senderLid` foram extraídos por algum motivo, ainda vale chamar o sync — basta haver `chatJid` e `instance.user_id`. Vou afrouxar a condição para:
+```typescript
+if ((eventType === "group_join" || eventType === "group_leave") && context.chatJid && instance?.user_id)
 ```
+Removendo o requisito `(senderPhone || senderLid)`, já que o sync recupera todos os participantes do n8n e faz o diff completo independente de quem disparou o evento.
 
-### Diff local (feito no Edge Function)
+## Arquivos alterados
 
-```text
-membros n8n (por phone)  vs  membros DB ativos (por phone)
-─────────────────────────────────────────────────────────
-no n8n mas NÃO no DB  →  entered (upsert group_members + leads + history "join")
-no DB mas NÃO no n8n  →  left (update status="left" + history "leave")
-```
-
-### Alteração
-
-**`supabase/functions/sync-group-members/index.ts`**
-
-- Remover a action `group.sync` e interfaces `N8nSyncResponse`
-- Buscar dados adicionais da instância (`name`, `provider`) para montar o payload
-- POST com `action: "group.members"` + dados da instância + group JID
-- Parsear resposta (mesmo parser do frontend: suporta array com `participants`, objeto com `participants` ou `members`)
-- Criar sets de phones do n8n vs DB
-- `entered` = phones no n8n que não estão no DB → upsert
-- `left` = phones no DB que não estão no n8n → marcar como saiu
-- Manter lógica de `senderLid` resolution e batch inserts
-
-### Vantagem
-
-- Reutiliza o mesmo workflow n8n que já funciona na aba Membros
-- Zero lógica nova no n8n — não precisa configurar nada
-- Diff é simples e confiável, feito no Supabase
+- `supabase/functions/webhook-inbound/index.ts` — afrouxar condição (linhas 272-277), adicionar log de diagnóstico
+- Redeploy de `webhook-inbound` e `sync-group-members`
+- Disparo manual do sync para a campanha Jonathan via `supabase.functions.invoke`
 
