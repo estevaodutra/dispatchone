@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
       ? groupJid.replace("-group", "@g.us")
       : groupJid;
 
-    const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/groups";
+    const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/events_sent";
 
     const n8nResp = await fetch(n8nUrl, {
       method: "POST",
