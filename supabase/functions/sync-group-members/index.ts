@@ -52,12 +52,21 @@ Deno.serve(async (req) => {
     }
 
     // 2. Call Z-API to get group metadata with full participant list
-    const zapiUrl = `https://api.z-api.io/instances/${inst.external_instance_id}/token/${inst.external_instance_token}/group-metadata/${groupJid}`;
-    console.log(`[sync-group-members] Calling Z-API: GET /group-metadata/${groupJid}`);
+    // Convert groupJid from internal format (-group) to Z-API format (@g.us)
+    const zapiGroupJid = groupJid.includes("-group")
+      ? groupJid.replace("-group", "@g.us")
+      : groupJid;
 
+    const zapiUrl = `https://api.z-api.io/instances/${inst.external_instance_id}/token/${inst.external_instance_token}/group-metadata/${zapiGroupJid}`;
+    console.log(`[sync-group-members] Calling Z-API: GET /group-metadata/${zapiGroupJid}`);
+
+    const clientToken = Deno.env.get("ZAPI_CLIENT_TOKEN") || "";
     const zapiResp = await fetch(zapiUrl, {
       method: "GET",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Client-Token": clientToken,
+      },
     });
 
     if (!zapiResp.ok) {
