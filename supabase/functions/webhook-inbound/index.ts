@@ -231,16 +231,12 @@ Deno.serve(async (req) => {
     // ==========================================
     // AUTO-PROCESS GROUP JOIN for Pirate Campaigns
     // ==========================================
-    if (classification.eventType === "group_join" && context.chatJid && context.senderPhone) {
+    if (classification.eventType === "group_join" && context.chatJid && (context.senderPhone || context.senderLid)) {
       try {
-        const rawBody = rawEvent.body as Record<string, unknown> | undefined;
-        const notifParams = rawBody?.notificationParameters as string[] | undefined;
-        const participantRaw = notifParams?.[0] || null;
-        const isLid = participantRaw?.includes("@lid");
-        // Use senderPhone from context (now correctly extracted from LID/notifParams)
-        const phoneToSend = context.senderPhone;
+        const phoneToSend = context.senderPhone || null;
+        const lidToSend = context.senderLid || null;
 
-        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${isLid ? participantRaw : "none"}, connectedPhone=${connectedPhone || "none"}`);
+        console.log(`[webhook-inbound] Detected group_join: group=${context.chatJid}, phone=${phoneToSend}, lid=${lidToSend}, connectedPhone=${connectedPhone || "none"}`);
 
         const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -256,7 +252,7 @@ Deno.serve(async (req) => {
             body: JSON.stringify({
               group_jid: context.chatJid,
               phone: phoneToSend,
-              lid: isLid ? participantRaw : null,
+              lid: lidToSend,
               instance_id: instance?.id || null,
               raw_event: rawEvent,
             }),
@@ -276,7 +272,7 @@ Deno.serve(async (req) => {
     if (
       (classification.eventType === "group_join" || classification.eventType === "group_leave") &&
       context.chatJid &&
-      context.senderPhone &&
+      (context.senderPhone || context.senderLid) &&
       instance?.user_id
     ) {
       try {
