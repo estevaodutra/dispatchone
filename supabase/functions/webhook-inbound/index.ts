@@ -364,26 +364,34 @@ Deno.serve(async (req) => {
 
             console.log(`[webhook-inbound] Member ${resolvedPhone || context.senderLid} joined group campaign ${gc.id}`);
           } else {
-            // group_leave: update status
-            await supabase
-              .from("group_members")
-              .update({ status: "left", left_at: new Date().toISOString() })
-              .eq("group_campaign_id", gc.id)
-              .eq("phone", resolvedPhone);
+            // group_leave: update status — match by phone or lid
+            if (resolvedPhone) {
+              await supabase
+                .from("group_members")
+                .update({ status: "left", left_at: new Date().toISOString() })
+                .eq("group_campaign_id", gc.id)
+                .eq("phone", resolvedPhone);
+            } else if (context.senderLid) {
+              await supabase
+                .from("group_members")
+                .update({ status: "left", left_at: new Date().toISOString() })
+                .eq("group_campaign_id", gc.id)
+                .eq("lid", context.senderLid);
+            }
 
             await supabase.from("group_member_history").insert({
               group_campaign_id: gc.id,
               user_id: gc.user_id,
-              member_phone: resolvedPhone,
+              member_phone: resolvedPhone || context.senderLid || "unknown",
               action: "leave",
             });
 
-            console.log(`[webhook-inbound] Member ${resolvedPhone} left group campaign ${gc.id}`);
+            console.log(`[webhook-inbound] Member ${resolvedPhone || context.senderLid} left group campaign ${gc.id}`);
           }
         }
 
         // Update context.senderPhone with resolved phone for execution lists below
-        if (resolvedPhone !== context.senderPhone) {
+        if (resolvedPhone && resolvedPhone !== context.senderPhone) {
           context.senderPhone = resolvedPhone;
         }
       } catch (memberSyncError) {
@@ -394,7 +402,7 @@ Deno.serve(async (req) => {
     // ==========================================
     // AUTO-ACCUMULATE LEADS for Group Execution Lists
     // ==========================================
-    if (context.chatJid && context.senderPhone) {
+    if (context.chatJid && (context.senderPhone || context.senderLid)) {
       try {
         // Find group campaign by group_jid via campaign_groups
         const { data: campaignGroup } = await supabase
