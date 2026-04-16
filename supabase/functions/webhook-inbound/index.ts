@@ -435,6 +435,10 @@ Deno.serve(async (req) => {
               if (!execList.current_window_end || new Date(execList.current_window_end) <= new Date()) continue;
             }
 
+            // Use phone if available, otherwise use LID numeric as fallback identifier
+            const execPhone = context.senderPhone || (context.senderLid ? context.senderLid.split("@")[0] : null);
+            if (!execPhone) continue;
+
             const { error: upsertError } = await supabase
               .from("group_execution_leads")
               .upsert(
@@ -442,7 +446,7 @@ Deno.serve(async (req) => {
                   list_id: execList.id,
                   user_id: execList.user_id,
                   cycle_id: execList.current_cycle_id,
-                  phone: context.senderPhone,
+                  phone: execPhone,
                   name: context.senderName || null,
                   origin_event: classification.eventType,
                   origin_detail: context.chatName || null,
