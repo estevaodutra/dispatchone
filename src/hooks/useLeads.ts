@@ -135,13 +135,14 @@ export function useLeads(filters: LeadFilters = {}) {
   });
 
   const createLead = useMutation({
-    mutationFn: async (lead: { name?: string; phone: string; email?: string; tags?: string[] }) => {
+    mutationFn: async (lead: { name?: string; phone: string; email?: string; lid?: string; tags?: string[] }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase.from("leads").insert({
         user_id: user.id,
         name: lead.name || null,
         phone: lead.phone,
+        lid: lead.lid || null,
         email: lead.email || null,
         tags: lead.tags || [],
         source_type: "manual",
@@ -339,7 +340,7 @@ export function useLeads(filters: LeadFilters = {}) {
 
   const importLeads = useMutation({
     mutationFn: async ({ leads, updateExisting, defaultTags, defaultCampaignId, defaultCampaignType }: {
-      leads: { name?: string; phone: string; email?: string; tags?: string[]; campaignId?: string; campaignType?: string }[];
+      leads: { name?: string; phone: string; email?: string; lid?: string; tags?: string[]; campaignId?: string; campaignType?: string }[];
       updateExisting: boolean;
       defaultTags: string[];
       defaultCampaignId?: string;
@@ -361,6 +362,7 @@ export function useLeads(filters: LeadFilters = {}) {
           user_id: user.id,
           name: lead.name || null,
           phone: lead.phone,
+          lid: lead.lid || null,
           email: lead.email || null,
           tags,
           source_type: "import_csv",

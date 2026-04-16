@@ -18,6 +18,7 @@ export function EditLeadDialog({ lead, onOpenChange, onSubmit, isLoading }: Edit
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [lid, setLid] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
@@ -26,13 +27,14 @@ export function EditLeadDialog({ lead, onOpenChange, onSubmit, isLoading }: Edit
       setName(lead.name || "");
       setPhone(lead.phone);
       setEmail(lead.email || "");
+      setLid((lead as any).lid || "");
       setTags(lead.tags || []);
     }
   }, [lead]);
 
   const handleSubmit = () => {
     if (!lead) return;
-    onSubmit({ id: lead.id, name: name || null, phone, email: email || null, tags });
+    onSubmit({ id: lead.id, name: name || null, phone, email: email || null, lid: lid || null, tags } as any);
   };
 
   const addTag = () => {
@@ -60,6 +62,10 @@ export function EditLeadDialog({ lead, onOpenChange, onSubmit, isLoading }: Edit
           <div>
             <Label>Email</Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div>
+            <Label>LID</Label>
+            <Input value={lid} onChange={(e) => setLid(e.target.value)} placeholder="123456789@lid (opcional)" />
           </div>
           <div>
             <Label>Tags</Label>

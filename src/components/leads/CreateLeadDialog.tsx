@@ -9,7 +9,7 @@ import { X } from "lucide-react";
 interface CreateLeadDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (lead: { name?: string; phone: string; email?: string; tags?: string[] }) => void;
+  onSubmit: (lead: { name?: string; phone: string; email?: string; lid?: string; tags?: string[] }) => void;
   isLoading?: boolean;
 }
 
@@ -17,13 +17,14 @@ export function CreateLeadDialog({ open, onOpenChange, onSubmit, isLoading }: Cr
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [lid, setLid] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
 
   const handleSubmit = () => {
     if (!phone.trim()) return;
-    onSubmit({ name: name || undefined, phone: phone.trim(), email: email || undefined, tags });
-    setName(""); setPhone(""); setEmail(""); setTags([]); setTagInput("");
+    onSubmit({ name: name || undefined, phone: phone.trim(), email: email || undefined, lid: lid || undefined, tags });
+    setName(""); setPhone(""); setEmail(""); setLid(""); setTags([]); setTagInput("");
   };
 
   const addTag = () => {
@@ -53,6 +54,10 @@ export function CreateLeadDialog({ open, onOpenChange, onSubmit, isLoading }: Cr
           <div>
             <Label>Email</Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@exemplo.com" />
+          </div>
+          <div>
+            <Label>LID</Label>
+            <Input value={lid} onChange={(e) => setLid(e.target.value)} placeholder="123456789@lid (opcional)" />
           </div>
           <div>
             <Label>Tags</Label>
