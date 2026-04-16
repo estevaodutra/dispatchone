@@ -1328,6 +1328,7 @@ export type Database = {
           last_message_at: string | null
           last_strike_at: string | null
           left_at: string | null
+          lid: string | null
           message_count: number | null
           name: string | null
           phone: string
@@ -1345,6 +1346,7 @@ export type Database = {
           last_message_at?: string | null
           last_strike_at?: string | null
           left_at?: string | null
+          lid?: string | null
           message_count?: number | null
           name?: string | null
           phone: string
@@ -1362,6 +1364,7 @@ export type Database = {
           last_message_at?: string | null
           last_strike_at?: string | null
           left_at?: string | null
+          lid?: string | null
           message_count?: number | null
           name?: string | null
           phone?: string
@@ -1751,6 +1754,7 @@ export type Database = {
           email: string | null
           id: string
           last_contact_at: string | null
+          lid: string | null
           name: string | null
           phone: string
           source_campaign_id: string | null
@@ -1773,6 +1777,7 @@ export type Database = {
           email?: string | null
           id?: string
           last_contact_at?: string | null
+          lid?: string | null
           name?: string | null
           phone: string
           source_campaign_id?: string | null
@@ -1795,6 +1800,7 @@ export type Database = {
           email?: string | null
           id?: string
           last_contact_at?: string | null
+          lid?: string | null
           name?: string | null
           phone?: string
           source_campaign_id?: string | null
