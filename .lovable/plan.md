@@ -1,31 +1,79 @@
 
 
-## Plano: Corrigir sync-group-members para Z-API
+## Plano: Delegar chamada Z-API ao n8n webhook
 
-### Problema
-Dois bugs impedem o `sync-group-members` de funcionar:
+### O que muda
 
-1. **Client-Token ausente** — Z-API retorna `400: "your client-token is not configured"` porque a função não envia o header `Client-Token`
-2. **Formato do Group JID** — O sistema armazena `120363427443466552-group` mas Z-API espera `120363427443466552@g.us`
+A função `sync-group-members` vai substituir a chamada direta à Z-API (linhas 54-79) por um POST ao webhook do n8n `https://n8n-n8n.nuwfic.easypanel.host/webhook/groups`, enviando os dados da instância e do grupo. O n8n faz a chamada Z-API e retorna a lista de participantes.
 
-### Alterações
+### Payload que o sync-group-members vai enviar ao n8n
 
-**1. `supabase/functions/sync-group-members/index.ts`**
+```json
+{
+  "action": "group.metadata",
+  "instanceId": "INSTANCE_EXTERNAL_ID",
+  "instanceToken": "INSTANCE_EXTERNAL_TOKEN",
+  "groupJid": "120363427443466552@g.us"
+}
+```
 
-- Adicionar header `Client-Token: Deno.env.get("ZAPI_CLIENT_TOKEN") || ""` na chamada Z-API (linha 58-61)
-- Converter o `groupJid` de formato `-group` para `@g.us` antes de chamar Z-API:
+### Resposta que o n8n DEVE retornar
+
+O n8n precisa retornar um JSON com um array `participants`. Cada participante deve ter pelo menos `phone` (telefone real). Campos opcionais: `id`, `name`, `short`, `isAdmin`, `isSuperAdmin`.
+
+```json
+{
+  "participants": [
+    {
+      "phone": "5511999887766",
+      "id": "5511999887766@c.us",
+      "name": "João Silva",
+      "short": "João",
+      "isAdmin": true,
+      "isSuperAdmin": false
+    },
+    {
+      "phone": "5521988776655",
+      "id": "5521988776655@c.us",
+      "name": "Maria",
+      "short": "Maria",
+      "isAdmin": false,
+      "isSuperAdmin": false
+    }
+  ]
+}
+```
+
+Esse é exatamente o formato que a Z-API retorna no endpoint `GET /group-metadata/{groupJid}`. Basta o n8n fazer o proxy e retornar o JSON da Z-API diretamente.
+
+### Alteração no código
+
+**`supabase/functions/sync-group-members/index.ts`**
+
+- Remover a chamada direta à Z-API (linhas 54-79) e o `ZAPI_CLIENT_TOKEN`
+- Substituir por:
   ```typescript
-  const zapiGroupJid = groupJid.replace("-group", "@g.us");
+  const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/groups";
+  const zapiGroupJid = groupJid.includes("-group")
+    ? groupJid.replace("-group", "@g.us")
+    : groupJid;
+
+  const n8nResp = await fetch(n8nUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "group.metadata",
+      instanceId: inst.external_instance_id,
+      instanceToken: inst.external_instance_token,
+      groupJid: zapiGroupJid,
+    }),
+  });
   ```
+- O resto da lógica (parsing de `participants`, comparação com DB, upserts) permanece idêntico
 
-**2. Verificar secret `ZAPI_CLIENT_TOKEN`**
+### Resumo para configurar no n8n
 
-- Confirmar se o secret existe no Supabase. Se não existir, solicitar ao usuário que forneça o valor do Client-Token da Z-API
-
-**3. Simular novamente** após o fix para validar que o sync funciona corretamente com o último evento de join da campanha "Captação"
-
-### Resultado
-- A chamada Z-API para `group-metadata` funciona com autenticação correta
-- Group JIDs são convertidos automaticamente para o formato esperado pela Z-API
-- O sync compara membros e salva com telefones reais
+1. Webhook trigger em `/webhook/groups`
+2. Quando `action === "group.metadata"`: chamar Z-API `GET https://api.z-api.io/instances/{instanceId}/token/{instanceToken}/group-metadata/{groupJid}` com header `Client-Token`
+3. Retornar o JSON da Z-API como resposta do webhook (o campo `participants` é obrigatório)
 
