@@ -569,6 +569,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                       />
                     </TableHead>
                     <TableHead>Telefone</TableHead>
+                    <TableHead>LID</TableHead>
                     <TableHead>Nome</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Strikes</TableHead>
@@ -590,6 +591,19 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                           {member.phone}
                           {member.isAdmin && <Shield className="h-4 w-4 text-primary" />}
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        {member.lid ? (
+                          <span
+                            className="text-xs font-mono text-muted-foreground cursor-pointer hover:text-foreground"
+                            title={member.lid}
+                            onClick={() => { navigator.clipboard.writeText(member.lid!); toast.success("LID copiado!"); }}
+                          >
+                            {member.lid.length > 16 ? `${member.lid.slice(0, 10)}...@lid` : member.lid}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>{member.name || "-"}</TableCell>
                       <TableCell>
