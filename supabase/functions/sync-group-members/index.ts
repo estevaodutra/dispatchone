@@ -5,13 +5,19 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface ZAPIParticipant {
-  phone?: string;
-  id?: string;
+interface N8nEnteredMember {
+  phone: string;
   name?: string;
-  short?: string;
   isAdmin?: boolean;
-  isSuperAdmin?: boolean;
+}
+
+interface N8nLeftMember {
+  phone: string;
+}
+
+interface N8nSyncResponse {
+  entered: N8nEnteredMember[];
+  left: N8nLeftMember[];
 }
 
 Deno.serve(async (req) => {
@@ -44,128 +50,90 @@ Deno.serve(async (req) => {
       .single();
 
     if (instErr || !inst?.external_instance_id || !inst?.external_instance_token) {
-      console.error("[sync-group-members] Instance not found or missing credentials:", instErr);
+      console.error("[sync-group-members] Instance not found:", instErr);
       return new Response(
         JSON.stringify({ success: false, error: "Instance credentials not found" }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // 2. Call n8n webhook to get group metadata (n8n proxies Z-API)
+    // 2. Fetch current active members from DB
+    const { data: dbMembers } = await supabase
+      .from("group_members")
+      .select("id, phone, name, status")
+      .eq("group_campaign_id", campaignId)
+      .eq("status", "active");
+
+    const currentMembers = (dbMembers || [])
+      .filter((m: any) => m.phone)
+      .map((m: any) => ({ phone: m.phone, name: m.name || null, status: m.status }));
+
+    console.log(`[sync-group-members] ${currentMembers.length} active members in DB`);
+
+    // 3. Normalize groupJid and POST to n8n for triage
     const zapiGroupJid = groupJid.includes("-group")
       ? groupJid.replace("-group", "@g.us")
       : groupJid;
 
     const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/groups";
-    console.log(`[sync-group-members] Calling n8n webhook for group metadata: ${zapiGroupJid}`);
+    console.log(`[sync-group-members] Sending ${currentMembers.length} members to n8n for triage`);
 
     const n8nResp = await fetch(n8nUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: "group.metadata",
+        action: "group.sync",
         instanceId: inst.external_instance_id,
         instanceToken: inst.external_instance_token,
         groupJid: zapiGroupJid,
+        campaignId,
+        currentMembers,
       }),
     });
 
     if (!n8nResp.ok) {
       const errText = await n8nResp.text();
-      console.error(`[sync-group-members] n8n webhook error ${n8nResp.status}: ${errText}`);
+      console.error(`[sync-group-members] n8n error ${n8nResp.status}: ${errText}`);
       return new Response(
-        JSON.stringify({ success: false, error: `n8n webhook error: ${n8nResp.status}` }),
+        JSON.stringify({ success: false, error: `n8n error: ${n8nResp.status}` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const metadata = await n8nResp.json();
-    const participants: ZAPIParticipant[] = metadata.participants || [];
-    console.log(`[sync-group-members] n8n returned ${participants.length} participants`);
+    const result: N8nSyncResponse = await n8nResp.json();
+    const entered = result.entered || [];
+    const left = result.left || [];
 
-    // 3. Extract valid phone numbers from Z-API participants
-    const zapiMembers = new Map<string, ZAPIParticipant>();
-    for (const p of participants) {
-      const rawPhone = p.phone || (p.id ? p.id.split("@")[0] : null);
-      if (!rawPhone) continue;
-      const cleanPhone = rawPhone.replace(/\D/g, "");
-      // Skip if it looks like a LID (not a real phone) or too short
-      if (cleanPhone.length < 8) continue;
-      // Skip LIDs that snuck in
-      if (p.id?.includes("@lid")) continue;
-      zapiMembers.set(cleanPhone, p);
-    }
+    console.log(`[sync-group-members] n8n returned: entered=${entered.length}, left=${left.length}`);
 
-    console.log(`[sync-group-members] ${zapiMembers.size} valid phone numbers extracted`);
-
-    // 4. Fetch current active members from DB
-    const { data: dbMembers } = await supabase
-      .from("group_members")
-      .select("id, phone, lid, status")
-      .eq("group_campaign_id", campaignId)
-      .eq("status", "active");
-
-    const dbPhones = new Map<string, { id: string; phone: string | null; lid: string | null }>();
-    for (const m of (dbMembers || [])) {
-      if (m.phone) {
-        dbPhones.set(m.phone, { id: m.id, phone: m.phone, lid: m.lid });
-      }
-    }
-
-    console.log(`[sync-group-members] ${dbPhones.size} active members with phone in DB`);
-
-    // 5. Compare: find who entered and who left
-    const entered: string[] = [];
-    const left: string[] = [];
-
-    for (const phone of zapiMembers.keys()) {
-      if (!dbPhones.has(phone)) {
-        entered.push(phone);
-      }
-    }
-
-    for (const phone of dbPhones.keys()) {
-      if (!zapiMembers.has(phone)) {
-        left.push(phone);
-      }
-    }
-
-    console.log(`[sync-group-members] Entered: ${entered.length}, Left: ${left.length}`);
-
-    // 6. Process new members (entered)
+    // 4. Process new members (entered)
     if (entered.length > 0) {
-      const newMemberRecords = entered.map((phone) => {
-        const p = zapiMembers.get(phone)!;
-        return {
-          group_campaign_id: campaignId,
-          user_id: userId,
-          phone: phone,
-          lid: null as string | null,
-          name: p.name || p.short || null,
-          is_admin: p.isAdmin || p.isSuperAdmin || false,
-          status: "active",
-          joined_at: new Date().toISOString(),
-          left_at: null as string | null,
-        };
-      });
+      const newMemberRecords = entered.map((p) => ({
+        group_campaign_id: campaignId,
+        user_id: userId,
+        phone: p.phone,
+        lid: null as string | null,
+        name: p.name || null,
+        is_admin: p.isAdmin || false,
+        status: "active",
+        joined_at: new Date().toISOString(),
+        left_at: null as string | null,
+      }));
 
-      // Batch upsert in chunks of 100
       for (let i = 0; i < newMemberRecords.length; i += 100) {
         const chunk = newMemberRecords.slice(i, i + 100);
         const { error: upsertErr } = await supabase
           .from("group_members")
           .upsert(chunk, { onConflict: "group_campaign_id,phone" });
-
         if (upsertErr) {
           console.error(`[sync-group-members] Upsert members error (chunk ${i}):`, upsertErr);
         }
       }
 
-      // Record history
-      const historyRecords = entered.map((phone) => ({
+      const historyRecords = entered.map((p) => ({
         group_campaign_id: campaignId,
         user_id: userId,
-        member_phone: phone,
+        member_phone: p.phone,
         action: "join",
       }));
 
@@ -173,18 +141,14 @@ Deno.serve(async (req) => {
         await supabase.from("group_member_history").insert(historyRecords.slice(i, i + 100));
       }
 
-      // Upsert leads
-      const leadRecords = entered.map((phone) => {
-        const p = zapiMembers.get(phone)!;
-        return {
-          user_id: userId,
-          phone: phone,
-          name: p.name || p.short || null,
-          active_campaign_id: campaignId,
-          active_campaign_type: "grupos",
-          status: "active",
-        };
-      });
+      const leadRecords = entered.map((p) => ({
+        user_id: userId,
+        phone: p.phone,
+        name: p.name || null,
+        active_campaign_id: campaignId,
+        active_campaign_type: "grupos",
+        status: "active",
+      }));
 
       for (let i = 0; i < leadRecords.length; i += 100) {
         await supabase
@@ -193,13 +157,13 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 7. Process members who left
+    // 5. Process members who left
     if (left.length > 0) {
       const now = new Date().toISOString();
+      const leftPhones = left.map((p) => p.phone);
 
-      // Update status in chunks
-      for (let i = 0; i < left.length; i += 100) {
-        const chunk = left.slice(i, i + 100);
+      for (let i = 0; i < leftPhones.length; i += 100) {
+        const chunk = leftPhones.slice(i, i + 100);
         await supabase
           .from("group_members")
           .update({ status: "left", left_at: now })
@@ -207,11 +171,10 @@ Deno.serve(async (req) => {
           .in("phone", chunk);
       }
 
-      // Record history
-      const leaveHistory = left.map((phone) => ({
+      const leaveHistory = left.map((p) => ({
         group_campaign_id: campaignId,
         user_id: userId,
-        member_phone: phone,
+        member_phone: p.phone,
         action: "leave",
       }));
 
@@ -220,24 +183,17 @@ Deno.serve(async (req) => {
       }
     }
 
-    // 8. Try to resolve senderLid if provided — return the resolved phone for downstream use
+    // 6. Try to resolve senderLid if provided
     let resolvedPhone: string | null = null;
-    if (senderLid) {
-      const lidNumeric = senderLid.split("@")[0];
-      // Check if any participant matches this LID
-      // Z-API metadata doesn't directly map LIDs, but we can check if the diff gives us a clue
-      // If exactly one person entered, it's likely the person who triggered the event
-      if (entered.length === 1) {
-        resolvedPhone = entered[0];
-        console.log(`[sync-group-members] Resolved LID ${senderLid} -> phone ${resolvedPhone} (single new member)`);
+    if (senderLid && entered.length === 1) {
+      resolvedPhone = entered[0].phone;
+      console.log(`[sync-group-members] Resolved LID ${senderLid} -> phone ${resolvedPhone}`);
 
-        // Update the LID on the member record
-        await supabase
-          .from("group_members")
-          .update({ lid: senderLid })
-          .eq("group_campaign_id", campaignId)
-          .eq("phone", resolvedPhone);
-      }
+      await supabase
+        .from("group_members")
+        .update({ lid: senderLid })
+        .eq("group_campaign_id", campaignId)
+        .eq("phone", resolvedPhone);
     }
 
     return new Response(
@@ -245,7 +201,7 @@ Deno.serve(async (req) => {
         success: true,
         entered: entered.length,
         left: left.length,
-        total: zapiMembers.size,
+        total: currentMembers.length + entered.length - left.length,
         resolvedPhone,
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
