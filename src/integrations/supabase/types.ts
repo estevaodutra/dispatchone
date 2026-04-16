@@ -1331,7 +1331,7 @@ export type Database = {
           lid: string | null
           message_count: number | null
           name: string | null
-          phone: string
+          phone: string | null
           profile_photo: string | null
           status: string | null
           strikes: number | null
@@ -1349,7 +1349,7 @@ export type Database = {
           lid?: string | null
           message_count?: number | null
           name?: string | null
-          phone: string
+          phone?: string | null
           profile_photo?: string | null
           status?: string | null
           strikes?: number | null
@@ -1367,7 +1367,7 @@ export type Database = {
           lid?: string | null
           message_count?: number | null
           name?: string | null
-          phone?: string
+          phone?: string | null
           profile_photo?: string | null
           status?: string | null
           strikes?: number | null
@@ -1756,7 +1756,7 @@ export type Database = {
           last_contact_at: string | null
           lid: string | null
           name: string | null
-          phone: string
+          phone: string | null
           source_campaign_id: string | null
           source_group_id: string | null
           source_group_name: string | null
@@ -1779,7 +1779,7 @@ export type Database = {
           last_contact_at?: string | null
           lid?: string | null
           name?: string | null
-          phone: string
+          phone?: string | null
           source_campaign_id?: string | null
           source_group_id?: string | null
           source_group_name?: string | null
@@ -1802,7 +1802,7 @@ export type Database = {
           last_contact_at?: string | null
           lid?: string | null
           name?: string | null
-          phone?: string
+          phone?: string | null
           source_campaign_id?: string | null
           source_group_id?: string | null
           source_group_name?: string | null
