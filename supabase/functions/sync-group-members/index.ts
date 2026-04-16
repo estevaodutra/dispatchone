@@ -51,36 +51,37 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 2. Call Z-API to get group metadata with full participant list
-    // Convert groupJid from internal format (-group) to Z-API format (@g.us)
+    // 2. Call n8n webhook to get group metadata (n8n proxies Z-API)
     const zapiGroupJid = groupJid.includes("-group")
       ? groupJid.replace("-group", "@g.us")
       : groupJid;
 
-    const zapiUrl = `https://api.z-api.io/instances/${inst.external_instance_id}/token/${inst.external_instance_token}/group-metadata/${zapiGroupJid}`;
-    console.log(`[sync-group-members] Calling Z-API: GET /group-metadata/${zapiGroupJid}`);
+    const n8nUrl = "https://n8n-n8n.nuwfic.easypanel.host/webhook/groups";
+    console.log(`[sync-group-members] Calling n8n webhook for group metadata: ${zapiGroupJid}`);
 
-    const clientToken = Deno.env.get("ZAPI_CLIENT_TOKEN") || "";
-    const zapiResp = await fetch(zapiUrl, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        "Client-Token": clientToken,
-      },
+    const n8nResp = await fetch(n8nUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "group.metadata",
+        instanceId: inst.external_instance_id,
+        instanceToken: inst.external_instance_token,
+        groupJid: zapiGroupJid,
+      }),
     });
 
-    if (!zapiResp.ok) {
-      const errText = await zapiResp.text();
-      console.error(`[sync-group-members] Z-API error ${zapiResp.status}: ${errText}`);
+    if (!n8nResp.ok) {
+      const errText = await n8nResp.text();
+      console.error(`[sync-group-members] n8n webhook error ${n8nResp.status}: ${errText}`);
       return new Response(
-        JSON.stringify({ success: false, error: `Z-API error: ${zapiResp.status}` }),
+        JSON.stringify({ success: false, error: `n8n webhook error: ${n8nResp.status}` }),
         { status: 502, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const metadata = await zapiResp.json();
+    const metadata = await n8nResp.json();
     const participants: ZAPIParticipant[] = metadata.participants || [];
-    console.log(`[sync-group-members] Z-API returned ${participants.length} participants`);
+    console.log(`[sync-group-members] n8n returned ${participants.length} participants`);
 
     // 3. Extract valid phone numbers from Z-API participants
     const zapiMembers = new Map<string, ZAPIParticipant>();
