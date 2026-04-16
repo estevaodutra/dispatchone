@@ -29,7 +29,7 @@ interface ImportLeadsDialogProps {
   campaigns?: CampaignOption[];
 }
 
-type MappingField = "ignore" | "name" | "phone" | "email" | "tags" | "campaign";
+type MappingField = "ignore" | "name" | "phone" | "email" | "tags" | "campaign" | "lid";
 
 export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, campaigns = [] }: ImportLeadsDialogProps) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,6 +96,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, cam
       else if (lower.includes("email") || lower.includes("e-mail")) autoMapping[i] = "email";
       else if (lower.includes("tag") || lower.includes("categoria")) autoMapping[i] = "tags";
       else if (lower.includes("campanha") || lower.includes("campaign")) autoMapping[i] = "campaign";
+      else if (lower === "lid" || lower.includes("label_id") || lower.includes("@lid")) autoMapping[i] = "lid";
       else autoMapping[i] = "ignore";
     });
     setMapping(autoMapping);
@@ -118,13 +119,14 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, cam
 
     const leads = rows
       .map((row) => {
-        const lead: { name?: string; phone: string; email?: string; tags?: string[]; campaignId?: string; campaignType?: string } = { phone: "" };
+        const lead: { name?: string; phone: string; email?: string; lid?: string; tags?: string[]; campaignId?: string; campaignType?: string } = { phone: "" };
         Object.entries(mapping).forEach(([idx, field]) => {
           const val = row[Number(idx)]?.trim();
           if (!val) return;
           if (field === "phone") lead.phone = val;
           else if (field === "name") lead.name = val;
           else if (field === "email") lead.email = val;
+          else if (field === "lid") lead.lid = val;
           else if (field === "tags") lead.tags = val.split(/[;,]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
           else if (field === "campaign") {
             const matched = findCampaignByName(val);
@@ -217,6 +219,7 @@ export function ImportLeadsDialog({ open, onOpenChange, onImport, isLoading, cam
                         <SelectItem value="name">Nome</SelectItem>
                         <SelectItem value="phone">Telefone</SelectItem>
                         <SelectItem value="email">Email</SelectItem>
+                        <SelectItem value="lid">LID</SelectItem>
                         <SelectItem value="tags">Tag</SelectItem>
                         <SelectItem value="campaign">Campanha</SelectItem>
                       </SelectContent>

@@ -7,6 +7,7 @@ export interface Lead {
   user_id: string;
   name: string | null;
   phone: string;
+  lid: string | null;
   email: string | null;
   tags: string[];
   custom_fields: Record<string, string | number | boolean | null>;
@@ -61,7 +62,7 @@ export function useLeads(filters: LeadFilters = {}) {
         .order("created_at", { ascending: false });
 
       if (filters.search) {
-        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%`);
+        query = query.or(`name.ilike.%${filters.search}%,phone.ilike.%${filters.search}%,lid.ilike.%${filters.search}%`);
       }
       if (filters.status && filters.status !== "all") {
         query = query.eq("status", filters.status);
@@ -134,13 +135,14 @@ export function useLeads(filters: LeadFilters = {}) {
   });
 
   const createLead = useMutation({
-    mutationFn: async (lead: { name?: string; phone: string; email?: string; tags?: string[] }) => {
+    mutationFn: async (lead: { name?: string; phone: string; email?: string; lid?: string; tags?: string[] }) => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
       const { data, error } = await supabase.from("leads").insert({
         user_id: user.id,
         name: lead.name || null,
         phone: lead.phone,
+        lid: lead.lid || null,
         email: lead.email || null,
         tags: lead.tags || [],
         source_type: "manual",
@@ -338,7 +340,7 @@ export function useLeads(filters: LeadFilters = {}) {
 
   const importLeads = useMutation({
     mutationFn: async ({ leads, updateExisting, defaultTags, defaultCampaignId, defaultCampaignType }: {
-      leads: { name?: string; phone: string; email?: string; tags?: string[]; campaignId?: string; campaignType?: string }[];
+      leads: { name?: string; phone: string; email?: string; lid?: string; tags?: string[]; campaignId?: string; campaignType?: string }[];
       updateExisting: boolean;
       defaultTags: string[];
       defaultCampaignId?: string;
@@ -360,6 +362,7 @@ export function useLeads(filters: LeadFilters = {}) {
           user_id: user.id,
           name: lead.name || null,
           phone: lead.phone,
+          lid: lead.lid || null,
           email: lead.email || null,
           tags,
           source_type: "import_csv",

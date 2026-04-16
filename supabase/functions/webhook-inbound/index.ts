@@ -344,6 +344,7 @@ Deno.serve(async (req) => {
                   group_campaign_id: gc.id,
                   user_id: gc.user_id,
                   phone: resolvedPhone,
+                  lid: isLid ? participantRaw : null,
                   name: context.senderName || null,
                   status: "active",
                   joined_at: new Date().toISOString(),

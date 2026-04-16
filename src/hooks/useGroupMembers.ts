@@ -8,6 +8,7 @@ export interface GroupMember {
   id: string;
   groupCampaignId: string;
   phone: string;
+  lid: string | null;
   name: string | null;
   profilePhoto: string | null;
   status: "active" | "removed" | "left" | "muted";
@@ -25,6 +26,7 @@ interface DbGroupMember {
   group_campaign_id: string;
   user_id: string;
   phone: string;
+  lid: string | null;
   name: string | null;
   profile_photo: string | null;
   status: string | null;
@@ -41,6 +43,7 @@ const transformDbToFrontend = (db: DbGroupMember): GroupMember => ({
   id: db.id,
   groupCampaignId: db.group_campaign_id,
   phone: db.phone,
+  lid: db.lid || null,
   name: db.name,
   profilePhoto: db.profile_photo,
   status: (db.status as GroupMember["status"]) || "active",

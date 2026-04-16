@@ -386,6 +386,7 @@ export default function Leads() {
               </TableHead>
               <TableHead>Nome</TableHead>
               <TableHead>Telefone</TableHead>
+              <TableHead>LID</TableHead>
               <TableHead>Origem</TableHead>
               <TableHead>Tipo</TableHead>
               <TableHead>Grupo</TableHead>
@@ -395,9 +396,9 @@ export default function Leads() {
           </TableHeader>
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Carregando...</TableCell></TableRow>
             ) : leads.length === 0 ? (
-              <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground">Nenhum lead encontrado.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="text-center py-8 text-muted-foreground">Nenhum lead encontrado.</TableCell></TableRow>
             ) : (
               leads.map((lead) => {
                 const typeBadge = lead.active_campaign_type ? TYPE_BADGES[lead.active_campaign_type] : null;
@@ -415,6 +416,19 @@ export default function Leads() {
                       </div>
                     </TableCell>
                     <TableCell className="text-muted-foreground">{formatPhone(lead.phone)}</TableCell>
+                    <TableCell>
+                      {lead.lid ? (
+                        <span
+                          className="text-xs font-mono text-muted-foreground cursor-pointer hover:text-foreground"
+                          title={lead.lid}
+                          onClick={() => { navigator.clipboard.writeText(lead.lid!); toast.success("LID copiado!"); }}
+                        >
+                          {lead.lid.length > 16 ? `${lead.lid.slice(0, 10)}...@lid` : lead.lid}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <span className="text-sm text-muted-foreground">
                         {lead.source_name || SOURCE_LABELS[lead.source_type || ""] || "—"}
