@@ -1,62 +1,73 @@
 
 
-## Plano: Delegar triagem de membros ao n8n
+## Plano: Simplificar sync-group-members usando "group.members"
 
-### Mudança de abordagem
+### Abordagem
 
-Ao invés de chamar n8n para obter metadata e fazer o diff no Supabase, a nova lógica é:
+Ao receber evento `group_join` ou `group_leave`, a função `sync-group-members` vai:
 
-1. Quando `webhook-inbound` recebe evento `group_join`, chama `sync-group-members`
-2. `sync-group-members` busca os leads atuais da campanha no banco e envia tudo ao n8n
-3. O n8n faz a triagem (chama Z-API, compara, resolve LIDs) e retorna os leads atualizados
-4. `sync-group-members` apenas salva o resultado no banco
+1. Buscar credenciais da instância no DB
+2. Buscar membros ativos atuais da campanha no DB
+3. POST ao n8n `https://n8n-n8n.nuwfic.easypanel.host/webhook/groups` com `action: "group.members"` (mesmo payload que a aba Membros já usa)
+4. Receber a lista completa de participantes do grupo (com telefones reais)
+5. Cruzar localmente: quem está na resposta mas não no DB = **entrou**; quem está no DB mas não na resposta = **saiu**
+6. Salvar normalmente em `group_members`, `leads`, `group_member_history`
 
-### Payload que o sync-group-members vai enviar ao n8n
+### Payload enviado ao n8n
 
-```json
-{
-  "action": "group.sync",
-  "instanceId": "EXTERNAL_INSTANCE_ID",
-  "instanceToken": "EXTERNAL_TOKEN",
-  "groupJid": "120363427443466552@g.us",
-  "campaignId": "uuid-da-campanha",
-  "currentMembers": [
-    { "phone": "5511999887766", "name": "João", "status": "active" },
-    { "phone": "5521988776655", "name": "Maria", "status": "active" }
-  ]
-}
-```
-
-### Resposta que o n8n DEVE retornar
+Usa o mesmo formato `buildGroupPayload` que o frontend já usa:
 
 ```json
 {
-  "entered": [
-    { "phone": "5531977665544", "name": "Carlos", "isAdmin": false }
-  ],
-  "left": [
-    { "phone": "5521988776655" }
-  ]
+  "action": "group.members",
+  "instance": {
+    "id": "instance-uuid",
+    "name": "Instance Name",
+    "externalId": "EXTERNAL_ID",
+    "externalToken": "EXTERNAL_TOKEN"
+  },
+  "campaign": { "id": "campaign-uuid" },
+  "group": { "jid": "120363408661213011@g.us" }
 }
 ```
 
-- `entered`: novos membros que não estavam em `currentMembers` (com telefone real resolvido)
-- `left`: membros que estavam em `currentMembers` mas não estão mais no grupo
+### Resposta esperada do n8n (já funciona assim)
 
-### Alteração no código
+Array ou objeto com `participants`:
+```json
+[{
+  "participants": [
+    { "phone": "5511999887766", "name": "João", "isAdmin": true },
+    { "phone": "5521988776655", "name": "Maria", "isAdmin": false }
+  ]
+}]
+```
+
+### Diff local (feito no Edge Function)
+
+```text
+membros n8n (por phone)  vs  membros DB ativos (por phone)
+─────────────────────────────────────────────────────────
+no n8n mas NÃO no DB  →  entered (upsert group_members + leads + history "join")
+no DB mas NÃO no n8n  →  left (update status="left" + history "leave")
+```
+
+### Alteração
 
 **`supabase/functions/sync-group-members/index.ts`**
 
-- Buscar membros ativos da campanha no DB (já faz isso)
-- Enviar POST ao n8n `https://n8n-n8n.nuwfic.easypanel.host/webhook/groups` com `action: "group.sync"`, credenciais da instância, groupJid, e `currentMembers`
-- Receber resposta com `entered[]` e `left[]`
-- Processar `entered`: upsert em `group_members`, `leads`, e `group_member_history`
-- Processar `left`: marcar como `left` em `group_members` e registrar em `group_member_history`
-- Remover toda a lógica de diff local (comparação de mapas) — o n8n faz isso agora
+- Remover a action `group.sync` e interfaces `N8nSyncResponse`
+- Buscar dados adicionais da instância (`name`, `provider`) para montar o payload
+- POST com `action: "group.members"` + dados da instância + group JID
+- Parsear resposta (mesmo parser do frontend: suporta array com `participants`, objeto com `participants` ou `members`)
+- Criar sets de phones do n8n vs DB
+- `entered` = phones no n8n que não estão no DB → upsert
+- `left` = phones no DB que não estão no n8n → marcar como saiu
+- Manter lógica de `senderLid` resolution e batch inserts
 
-### O que NÃO muda
+### Vantagem
 
-- `webhook-inbound` continua chamando `sync-group-members` da mesma forma
-- A estrutura de upsert em `group_members`, `leads` e `group_member_history` permanece
-- Resolução de `senderLid` ainda tenta mapear se `entered` tem exatamente 1 membro
+- Reutiliza o mesmo workflow n8n que já funciona na aba Membros
+- Zero lógica nova no n8n — não precisa configurar nada
+- Diff é simples e confiável, feito no Supabase
 
