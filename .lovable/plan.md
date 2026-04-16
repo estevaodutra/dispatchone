@@ -1,53 +1,54 @@
 
 
-## Plano: Corrigir Separação de Phone e LID
+## Plano: Sync de Membros via Comparação de Lista do Grupo
 
-### Problema Raiz
-
-O event-classifier (linha 580) extrai o número antes do `@` de `notificationParameters[0]` e salva como `senderPhone`, mesmo quando é um LID. O webhook-inbound tenta resolver o LID via Z-API, mas quando falha, salva o número LID como `phone` na tabela.
+### Problema
+Eventos de entrada/saída trazem `@lid` ao invés do telefone real. A resolução individual via Z-API falha frequentemente. A solução é buscar a lista completa de participantes do grupo e comparar com o banco.
 
 ### Alterações
 
-**1. `supabase/functions/_shared/event-classifier.ts`**
+**1. Nova Edge Function: `supabase/functions/sync-group-members/index.ts`**
 
-- Adicionar campo `senderLid: string | null` na interface `EventContext`
-- No bloco de extração GROUP_PARTICIPANT (linhas 571-589): se `participantRaw` contém `@lid`, salvar o valor completo em `senderLid` e manter `senderPhone` como `null` (ao invés de extrair o número)
-- Se `participantRaw` contém `@s.whatsapp.net`, extrair número normalmente em `senderPhone`
+- Recebe: `groupJid`, `campaignId`, `instanceId`, `userId`, `trigger` (join/leave), `senderLid` (opcional)
+- Busca credenciais da instância (`external_instance_id`, `external_instance_token`)
+- Chama Z-API: `GET /group-metadata/{groupJid}` para obter lista completa de participantes com telefones reais
+- Busca membros ativos atuais do banco (`group_members` WHERE `group_campaign_id` AND `status = 'active'`)
+- Compara: novos = estão na Z-API mas não no banco; saíram = estão no banco mas não na Z-API
+- Para novos: upsert em `group_members` com phone real + nome + isAdmin; insert em `group_member_history` (action: join); upsert em `leads`
+- Para saídos: update status='left' + left_at; insert em `group_member_history` (action: leave)
+- Retorna `{ success, entered, left, total }`
 
-**2. `supabase/functions/webhook-inbound/index.ts`**
+**2. Atualizar `supabase/functions/webhook-inbound/index.ts`**
 
-- **Pirate section** (linha 234): ajustar condição para aceitar `context.senderPhone || context.senderLid`; enviar LID correto para pirate-process-join
-- **Member sync section** (linha 276): ajustar condição para `context.senderPhone || context.senderLid`
-  - Quando `senderLid` presente e sem phone resolvido: salvar `phone: null`, `lid: senderLid` no upsert de `group_members`
-  - Ajustar `onConflict` para usar `group_campaign_id,lid` quando phone é null
-  - Na tentativa de resolução Z-API: se resolver, salvar tanto phone quanto lid
-- **Execution lists section** (linha 396): aceitar `senderLid` como identificador quando phone não disponível; salvar phone do lead como LID numeric quando necessário
+- Na seção "AUTO-SYNC GROUP MEMBERS" (linhas 272-400): substituir toda a lógica de resolução individual LID→phone por uma chamada à nova function `sync-group-members`
+- Quando `group_join` ou `group_leave` é detectado e há campanhas vinculadas:
+  - Para cada campanha, invocar `sync-group-members` com os dados necessários
+  - Remover o bloco de resolução Z-API individual (linhas 300-328)
+  - Remover o loop manual de upsert/update de membros (linhas 330-391)
+- Manter o contexto `senderPhone` atualizado para a seção de execution lists abaixo (sync-group-members pode retornar o phone resolvido)
 
 **3. Migration SQL**
 
-- `ALTER TABLE leads ALTER COLUMN phone DROP NOT NULL` (permitir phone null quando tem LID)
-- `ALTER TABLE group_members ALTER COLUMN phone DROP NOT NULL`
-- Adicionar check constraint: `phone IS NOT NULL OR lid IS NOT NULL` em ambas tabelas
-- Migrar dados existentes: `UPDATE leads SET lid = phone, phone = NULL WHERE phone LIKE '%@lid%'` (e similar para `group_members` com números que são LIDs sem o sufixo `@lid`)
-- Criar unique index parcial em `leads(lid, active_campaign_id) WHERE lid IS NOT NULL`
+- Criar unique index parcial em `group_members(group_campaign_id, lid) WHERE lid IS NOT NULL` para suportar upsert por LID quando phone não disponível como fallback
+- O `group_members_campaign_phone_unique` já existe mas permite NULL phone — precisamos garantir que o sync não crie duplicatas
 
-**4. `src/hooks/useLeads.ts`**
+**4. `supabase/config.toml`**
 
-- Ajustar busca para funcionar com phone nullable (buscar por `lid` quando phone é null)
+- Adicionar `[functions.sync-group-members]` com `verify_jwt = false`
 
-**5. `src/hooks/useGroupMembers.ts`**
+### Detalhes Técnicos
 
-- Ajustar `onConflict` no upsert para considerar lid quando phone é null
+**Z-API Endpoint**: `GET /group-metadata/{groupJid}` retorna `{ participants: [{ phone, id, name, short, isAdmin, isSuperAdmin }] }`
 
-**6. UI: `src/pages/Leads.tsx` e `MembersTab.tsx`**
+**Comparação**: Usa `phone` como chave. Membros com phone no banco que não estão na lista da Z-API = saíram. Phones na Z-API que não estão no banco = entraram.
 
-- Mostrar LID quando phone é null (exibir o identificador disponível)
+**Fallback**: Se a chamada Z-API falhar, o sync retorna erro e o webhook-inbound faz log mas não bloqueia o fluxo.
 
-**7. Deploy** das edge functions atualizadas
+**Execution lists**: Após o sync, o webhook-inbound continua acumulando leads normalmente usando o `senderPhone` ou `senderLid` como antes.
 
 ### Resultado
-- LIDs salvos na coluna `lid`, não em `phone`
-- Phone fica null quando só temos LID (sem resolução Z-API)
-- Dados existentes corrigidos via migration
-- UI mostra o identificador correto
+- Membros sempre salvos com telefone real (da lista do grupo)
+- Detecção de entrada/saída por comparação (não depende do evento @lid)
+- Nome e status de admin atualizados automaticamente
+- Leads criados com telefone correto
 
