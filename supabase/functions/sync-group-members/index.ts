@@ -98,7 +98,18 @@ Deno.serve(async (req) => {
     }
 
     // 4. Parse n8n response (supports array or object with participants/members)
-    const raw = await n8nResp.json();
+    const rawText = await n8nResp.text();
+    console.log(`[sync] n8n raw response (${rawText.length} chars): ${rawText.slice(0, 500)}`);
+
+    let raw: any = null;
+    if (rawText.trim().length > 0) {
+      try {
+        raw = JSON.parse(rawText);
+      } catch (e) {
+        console.error("[sync] Failed to parse n8n JSON:", e);
+      }
+    }
+
     let participants: N8nParticipant[] = [];
 
     if (Array.isArray(raw)) {
