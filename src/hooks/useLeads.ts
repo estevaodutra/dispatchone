@@ -6,7 +6,7 @@ export interface Lead {
   id: string;
   user_id: string;
   name: string | null;
-  phone: string;
+  phone: string | null;
   lid: string | null;
   email: string | null;
   tags: string[];

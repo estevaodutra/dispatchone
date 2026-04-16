@@ -359,7 +359,7 @@ export default function Leads() {
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => {
               const csv = ["nome,telefone,email,tags,origem,tipo,grupo", ...leads.map((l) =>
-                `"${l.name || ""}","${l.phone}","${l.email || ""}","${(l.tags || []).join(",")}","${SOURCE_LABELS[l.source_type || ""] || ""}","${l.active_campaign_type || ""}","${l.source_group_name || ""}"`
+                `"${l.name || ""}","${l.phone || ""}","${l.lid || ""}","${l.email || ""}","${(l.tags || []).join(",")}","${SOURCE_LABELS[l.source_type || ""] || ""}","${l.active_campaign_type || ""}","${l.source_group_name || ""}"`
               )].join("\n");
               const blob = new Blob([csv], { type: "text/csv" });
               const url = URL.createObjectURL(blob);
@@ -415,7 +415,7 @@ export default function Leads() {
                         <span className="font-medium">{lead.name || "—"}</span>
                       </div>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{formatPhone(lead.phone)}</TableCell>
+                    <TableCell className="text-muted-foreground">{lead.phone ? formatPhone(lead.phone) : "—"}</TableCell>
                     <TableCell>
                       {lead.lid ? (
                         <span
