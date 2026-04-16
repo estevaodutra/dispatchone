@@ -81,5 +81,8 @@ verify_jwt = false
 [functions.group-execution-processor]
 verify_jwt = false
 
+[functions.sync-group-members]
+verify_jwt = false
+
 [functions.refresh-instance-status]
 verify_jwt = false
