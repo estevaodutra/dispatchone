@@ -323,6 +323,27 @@ export function useGroupExecutionList(campaignId: string) {
     },
   });
 
+  const manualExecute = useMutation({
+    mutationFn: async (params: {
+      listId: string;
+      members: Array<{ phone: string; lid?: string | null; name?: string | null }>;
+      intervalSeconds?: number;
+    }) => {
+      const { data, error } = await supabase.functions.invoke("group-execution-processor", {
+        body: {
+          list_id: params.listId,
+          members: params.members,
+          interval_seconds: params.intervalSeconds ?? 0,
+        },
+      });
+      if (error) throw error;
+      return data as { ok: boolean; processed: number; errors: number };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
   const deleteList = useMutation({
     mutationFn: async (listId: string) => {
       const { error } = await (supabase as any)
