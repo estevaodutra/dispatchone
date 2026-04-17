@@ -152,9 +152,88 @@ Deno.serve(async (req) => {
               .or(`message_id.eq.${pollMessageId},zaap_id.eq.${pollMessageId}`)
               .maybeSingle();
 
-            if (pollMessage) {
+            // FALLBACK: If poll not registered (legacy bug or send race), try auto-register from group_message_logs
+            let resolvedPoll = pollMessage;
+            if (!resolvedPoll) {
+              console.log(`[webhook-inbound] Poll ${pollMessageId} not in poll_messages, trying auto-register from logs...`);
+              
+              const { data: logEntry } = await supabase
+                .from("group_message_logs")
+                .select("id, user_id, group_campaign_id, sequence_id, group_jid, instance_id, payload, zaap_id, external_message_id")
+                .or(`external_message_id.eq.${pollMessageId},zaap_id.eq.${pollMessageId}`)
+                .eq("node_type", "poll")
+                .eq("status", "sent")
+                .order("sent_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (logEntry) {
+                const logPayload = logEntry.payload as Record<string, unknown> | null;
+                const logNode = logPayload?.node as Record<string, unknown> | undefined;
+                const nodeId = logNode?.id as string | undefined;
+
+                if (nodeId) {
+                  const { data: nodeRecord } = await supabase
+                    .from("sequence_nodes")
+                    .select("config")
+                    .eq("id", nodeId)
+                    .maybeSingle();
+
+                  if (nodeRecord) {
+                    const nodeConfig = nodeRecord.config as Record<string, unknown>;
+                    const messageIdForInsert = logEntry.external_message_id || logEntry.zaap_id;
+
+                    if (messageIdForInsert) {
+                      const { data: insertedPoll, error: registerError } = await supabase
+                        .from("poll_messages")
+                        .insert({
+                          user_id: logEntry.user_id,
+                          message_id: messageIdForInsert,
+                          zaap_id: logEntry.zaap_id,
+                          node_id: nodeId,
+                          sequence_id: logEntry.sequence_id,
+                          campaign_id: logEntry.group_campaign_id,
+                          group_jid: logEntry.group_jid || groupJid,
+                          instance_id: logEntry.instance_id,
+                          question_text: (nodeConfig.question as string) || (nodeConfig.label as string) || "",
+                          options: nodeConfig.options || [],
+                          option_actions: nodeConfig.optionActions || {},
+                          sent_at: new Date().toISOString(),
+                        })
+                        .select("id, options, instance_id")
+                        .single();
+
+                      if (registerError) {
+                        console.error(`[webhook-inbound] Auto-register failed:`, registerError.message);
+                        await supabase
+                          .from("webhook_events")
+                          .update({
+                            processing_status: "error",
+                            processing_error: `poll_auto_register_failed: ${registerError.message}`,
+                          })
+                          .eq("id", insertedEvent.id);
+                      } else {
+                        resolvedPoll = insertedPoll;
+                        console.log(`[webhook-inbound] ✅ Auto-registered poll ${pollMessageId} from log ${logEntry.id}`);
+                      }
+                    }
+                  }
+                }
+              } else {
+                console.log(`[webhook-inbound] No matching log found for poll ${pollMessageId}`);
+                await supabase
+                  .from("webhook_events")
+                  .update({
+                    processing_status: "error",
+                    processing_error: `poll_message_not_registered: ${pollMessageId}`,
+                  })
+                  .eq("id", insertedEvent.id);
+              }
+            }
+
+            if (resolvedPoll) {
               const votedOptionText = options[0]?.name || "";
-              const pollOptions = pollMessage.options as string[];
+              const pollOptions = resolvedPoll.options as string[];
               let optionIndex = pollOptions.findIndex(
                 (opt) => opt.toLowerCase() === votedOptionText.toLowerCase()
               );
@@ -170,7 +249,7 @@ Deno.serve(async (req) => {
               if (optionIndex >= 0) {
                 const pollPayload = {
                   message_id: pollMessageId,
-                  instance_id: pollMessage.instance_id || instance?.id || "",
+                  instance_id: resolvedPoll.instance_id || instance?.id || "",
                   group_jid: groupJid,
                   respondent: {
                     phone: participantPhone,
@@ -210,9 +289,14 @@ Deno.serve(async (req) => {
                   .eq("id", insertedEvent.id);
               } else {
                 console.log(`[webhook-inbound] Could not match voted option "${votedOptionText}" to poll options`);
+                await supabase
+                  .from("webhook_events")
+                  .update({
+                    processing_status: "error",
+                    processing_error: `poll_option_no_match: "${votedOptionText}"`,
+                  })
+                  .eq("id", insertedEvent.id);
               }
-            } else {
-              console.log(`[webhook-inbound] Poll message not found for message_id: ${pollMessageId}`);
             }
           }
         }
