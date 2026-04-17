@@ -50,13 +50,13 @@ function ExecutionListDetail({
   onEdit: () => void;
 }) {
   const { useListLeads, toggleActive, executeNow } = useGroupExecutionList(campaignId);
-  const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id);
+  const fulltime = isFulltime(list);
+  const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [countdown, setCountdown] = useState("");
   const [windowExpired, setWindowExpired] = useState(false);
-  const fulltime = isFulltime(list);
 
   useEffect(() => {
     if (!list.current_window_end || !list.is_active) {
