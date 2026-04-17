@@ -307,18 +307,59 @@ async function executeAction(
   switch (list.action_type) {
     case "webhook": {
       if (!list.webhook_url) throw new Error("No webhook URL configured");
+
+      // Enrich context with campaign + group info for variable substitution
+      const { data: campaign } = await supabase
+        .from("group_campaigns")
+        .select("id, name, instance_id")
+        .eq("id", list.campaign_id)
+        .maybeSingle();
+      const { data: campaignGroups } = await supabase
+        .from("campaign_groups")
+        .select("group_jid")
+        .eq("campaign_id", list.campaign_id)
+        .limit(1);
+      const groupJid = (campaignGroups && campaignGroups[0]?.group_jid) || null;
+
+      const timestamp = new Date().toISOString();
+      const basePayload: Record<string, any> = {
+        phone: lead.phone,
+        name: lead.name,
+        origin_event: lead.origin_event,
+        origin_detail: lead.origin_detail,
+        campaign_id: list.campaign_id,
+        cycle_id: list.current_cycle_id,
+        executed_at: timestamp,
+      };
+
+      // Build variable substitution context
+      const ctx: Record<string, any> = {
+        lead: {
+          phone: lead.phone,
+          name: lead.name,
+          email: null,
+          lid: lead.lid ?? null,
+        },
+        campaign: {
+          id: list.campaign_id,
+          name: campaign?.name ?? null,
+        },
+        group: { id: groupJid },
+        event: { type: lead.origin_event ?? null },
+        timestamp,
+      };
+
+      const customParams =
+        list.webhook_params && typeof list.webhook_params === "object"
+          ? replaceVariables(list.webhook_params, ctx)
+          : {};
+
+      const finalPayload = { ...basePayload, ...customParams };
+
       const resp = await fetch(list.webhook_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: lead.phone,
-          name: lead.name,
-          origin_event: lead.origin_event,
-          origin_detail: lead.origin_detail,
-          campaign_id: list.campaign_id,
-          cycle_id: list.current_cycle_id,
-          executed_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify(finalPayload),
       });
       if (!resp.ok) {
         const text = await resp.text();
