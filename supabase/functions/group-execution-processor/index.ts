@@ -16,7 +16,7 @@ interface ExecutionList {
   monitored_events: string[];
   action_type: string;
   webhook_url: string | null;
-  webhook_params: Record<string, any> | null;
+  webhook_params: Record<string, any> | Array<{ id?: string; name: string; type: string; value: string }> | null;
   message_template: string | null;
   call_campaign_id: string | null;
   current_cycle_id: string;
@@ -60,6 +60,34 @@ function replaceVariables(obj: any, ctx: Record<string, any>): any {
     return result;
   }
   return obj;
+}
+
+// Convert webhook_params (array of typed key-value fields OR legacy object) to a plain object,
+// applying variable substitution and type coercion. Empty/invalid → {}.
+function paramsToObject(params: any, ctx: Record<string, any>): Record<string, any> {
+  if (Array.isArray(params)) {
+    const result: Record<string, any> = {};
+    for (const field of params) {
+      const name = typeof field?.name === "string" ? field.name.trim() : "";
+      if (!name) continue;
+      const rawValue = field?.value ?? "";
+      const substituted = replaceVariables(String(rawValue), ctx);
+      const type = field?.type;
+      if (type === "number") {
+        const n = Number(substituted);
+        result[name] = Number.isFinite(n) ? n : 0;
+      } else if (type === "boolean") {
+        result[name] = substituted === "true" || substituted === "1";
+      } else {
+        result[name] = substituted;
+      }
+    }
+    return result;
+  }
+  if (params && typeof params === "object") {
+    return replaceVariables(params, ctx) as Record<string, any>;
+  }
+  return {};
 }
 
 function calculateNextWindow(list: ExecutionList): { nextStart: string; nextEnd: string } {
@@ -349,10 +377,7 @@ async function executeAction(
         timestamp,
       };
 
-      const customParams =
-        list.webhook_params && typeof list.webhook_params === "object"
-          ? replaceVariables(list.webhook_params, ctx)
-          : {};
+      const customParams = paramsToObject(list.webhook_params, ctx);
 
       const finalPayload = { ...basePayload, ...customParams };
 

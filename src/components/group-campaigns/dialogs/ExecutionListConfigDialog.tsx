@@ -12,7 +12,9 @@ import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, AlertCircle, ChevronDown, Copy } from "lucide-react";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, ChevronDown, Copy, GripVertical, Trash2, Plus, Type, Hash, ToggleLeft } from "lucide-react";
+
+type WebhookField = { id: string; name: string; type: "string" | "number" | "boolean"; value: string };
 
 interface ExecutionListConfigDialogProps {
   open: boolean;
@@ -26,7 +28,7 @@ interface ExecutionListConfigDialogProps {
     monitored_events: string[];
     action_type: "webhook" | "message" | "call";
     webhook_url?: string;
-    webhook_params?: Record<string, any>;
+    webhook_params?: Record<string, any> | WebhookField[];
     message_template?: string;
     call_campaign_id?: string;
     execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -69,8 +71,8 @@ export function ExecutionListConfigDialog({
   const [monitoredEvents, setMonitoredEvents] = useState<string[]>(["group_join"]);
   const [actionType, setActionType] = useState<"webhook" | "message" | "call">("webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookParams, setWebhookParams] = useState("");
-  const [webhookParamsError, setWebhookParamsError] = useState<string | null>(null);
+  const [webhookFields, setWebhookFields] = useState<WebhookField[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
   const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
@@ -93,8 +95,27 @@ export function ExecutionListConfigDialog({
       setActionType(existing.action_type as "webhook" | "message" | "call");
       setWebhookUrl(existing.webhook_url || "");
       const params = (existing as any).webhook_params;
-      setWebhookParams(params && Object.keys(params).length > 0 ? JSON.stringify(params, null, 2) : "");
-      setWebhookParamsError(null);
+      if (Array.isArray(params)) {
+        setWebhookFields(
+          params.map((p: any) => ({
+            id: p.id || crypto.randomUUID(),
+            name: String(p.name || ""),
+            type: (["string", "number", "boolean"].includes(p.type) ? p.type : "string") as WebhookField["type"],
+            value: String(p.value ?? ""),
+          }))
+        );
+      } else if (params && typeof params === "object" && Object.keys(params).length > 0) {
+        setWebhookFields(
+          Object.entries(params).map(([k, v]) => ({
+            id: crypto.randomUUID(),
+            name: k,
+            type: "string" as const,
+            value: typeof v === "string" ? v : JSON.stringify(v),
+          }))
+        );
+      } else {
+        setWebhookFields([]);
+      }
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
       setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
@@ -109,8 +130,7 @@ export function ExecutionListConfigDialog({
       setMonitoredEvents(["group_join"]);
       setActionType("webhook");
       setWebhookUrl("");
-      setWebhookParams("");
-      setWebhookParamsError(null);
+      setWebhookFields([]);
       setMessageTemplate("");
       setCallCampaignId("");
       setExecScheduleType("window_end");
@@ -131,22 +151,35 @@ export function ExecutionListConfigDialog({
     );
   };
 
-  const handleParamsChange = (text: string) => {
-    setWebhookParams(text);
-    if (!text.trim()) {
-      setWebhookParamsError(null);
+  const addField = () => {
+    setWebhookFields((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), name: "", type: "string", value: "" },
+    ]);
+  };
+
+  const removeField = (id: string) => {
+    setWebhookFields((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const updateField = (id: string, updates: Partial<WebhookField>) => {
+    setWebhookFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
+  };
+
+  const handleDragStart = (index: number) => setDragIndex(index);
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+  const handleDrop = (targetIndex: number) => {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      setDragIndex(null);
       return;
     }
-    try {
-      const parsed = JSON.parse(text);
-      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
-        setWebhookParamsError("Use um objeto JSON válido");
-      } else {
-        setWebhookParamsError(null);
-      }
-    } catch {
-      setWebhookParamsError("JSON inválido");
-    }
+    setWebhookFields((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+    setDragIndex(null);
   };
 
   const copyVariable = (variable: string) => {
@@ -154,26 +187,27 @@ export function ExecutionListConfigDialog({
     toast.success(`Copiado: ${variable}`);
   };
 
+  const hasDuplicateNames = () => {
+    const names = webhookFields.map((f) => f.name.trim()).filter((n) => n.length > 0);
+    return new Set(names).size !== names.length;
+  };
+
   const isValid = () => {
     if (!name.trim()) return false;
     if (monitoredEvents.length === 0) return false;
     if (windowType === "duration" && durationHours < 1) return false;
     if (actionType === "webhook" && !webhookUrl.trim()) return false;
-    if (actionType === "webhook" && webhookParamsError) return false;
+    if (actionType === "webhook" && hasDuplicateNames()) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
     if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
   };
 
-  const parseParams = (): Record<string, any> => {
-    if (!webhookParams.trim()) return {};
-    try {
-      const parsed = JSON.parse(webhookParams);
-      return typeof parsed === "object" && !Array.isArray(parsed) && parsed !== null ? parsed : {};
-    } catch {
-      return {};
-    }
+  const buildWebhookParams = (): WebhookField[] => {
+    return webhookFields
+      .filter((f) => f.name.trim().length > 0)
+      .map((f) => ({ id: f.id, name: f.name.trim(), type: f.type, value: f.value }));
   };
 
   const handleSave = () => {
@@ -188,7 +222,7 @@ export function ExecutionListConfigDialog({
       monitored_events: monitoredEvents,
       action_type: actionType,
       webhook_url: actionType === "webhook" ? webhookUrl : undefined,
-      webhook_params: actionType === "webhook" ? parseParams() : undefined,
+      webhook_params: actionType === "webhook" ? buildWebhookParams() : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
       execution_schedule_type: execScheduleType,
@@ -317,26 +351,113 @@ export function ExecutionListConfigDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Parâmetros Adicionais (JSON)</Label>
-                  <Textarea
-                    value={webhookParams}
-                    onChange={(e) => handleParamsChange(e.target.value)}
-                    placeholder={`{\n  "source": "dispatchone",\n  "lead_phone": "{{lead.phone}}",\n  "campaign": "{{campaign.name}}"\n}`}
-                    className={cn(
-                      "font-mono text-xs min-h-[120px]",
-                      webhookParamsError && "border-destructive focus-visible:ring-destructive"
-                    )}
-                  />
-                  {webhookParamsError ? (
-                    <p className="text-xs text-destructive flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {webhookParamsError}
-                    </p>
+                  <Label className="text-xs text-muted-foreground">Parâmetros Adicionais</Label>
+
+                  {webhookFields.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={addField}
+                      className="w-full border-2 border-dashed border-border rounded-md py-6 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Adicionar Campo
+                    </button>
                   ) : (
-                    <p className="text-xs text-muted-foreground">
-                      💡 Esses dados serão mesclados ao payload do webhook. Use JSON válido.
+                    <div className="space-y-2">
+                      {webhookFields.map((field, index) => (
+                        <div
+                          key={field.id}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(index)}
+                          className={cn(
+                            "flex items-center gap-2 group",
+                            dragIndex === index && "opacity-50"
+                          )}
+                        >
+                          <button
+                            type="button"
+                            draggable
+                            onDragStart={() => handleDragStart(index)}
+                            onDragEnd={() => setDragIndex(null)}
+                            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-1 shrink-0"
+                            aria-label="Arrastar"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </button>
+
+                          <Input
+                            placeholder="nome"
+                            value={field.name}
+                            onChange={(e) => updateField(field.id, { name: e.target.value })}
+                            className="flex-1 h-9 text-sm"
+                          />
+
+                          <Select
+                            value={field.type}
+                            onValueChange={(v) => updateField(field.id, { type: v as WebhookField["type"] })}
+                          >
+                            <SelectTrigger className="w-[120px] h-9 text-xs shrink-0">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="string">
+                                <span className="flex items-center gap-2">
+                                  <Type className="h-3 w-3" /> String
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="number">
+                                <span className="flex items-center gap-2">
+                                  <Hash className="h-3 w-3" /> Number
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="boolean">
+                                <span className="flex items-center gap-2">
+                                  <ToggleLeft className="h-3 w-3" /> Boolean
+                                </span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Input
+                            placeholder="valor (use {{variavel}})"
+                            value={field.value}
+                            onChange={(e) => updateField(field.id, { value: e.target.value })}
+                            className="flex-1 h-9 text-sm font-mono"
+                          />
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeField(field.id)}
+                            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Remover campo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addField}
+                        className="w-full border border-dashed border-border rounded-md py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Adicionar Campo
+                      </button>
+                    </div>
+                  )}
+
+                  {hasDuplicateNames() && (
+                    <p className="text-xs text-destructive">
+                      Existem nomes de campo duplicados.
                     </p>
                   )}
+
+                  <p className="text-xs text-muted-foreground">
+                    💡 Esses dados serão mesclados ao payload do webhook.
+                  </p>
 
                   <Collapsible>
                     <CollapsibleTrigger className="flex items-center gap-1 text-xs text-primary hover:underline">
