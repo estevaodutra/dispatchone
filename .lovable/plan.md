@@ -1,39 +1,35 @@
 
+## Plano: Lista 24h cumulativa exibe histórico processado
 
-## Diagnóstico
+### Problema
+A lista "Entrada de Lead" é configurada como **24h cumulativa** (window 00:00→23:59) com execução **imediata**. Os leads `group_join` são capturados corretamente (28+ registros no banco, todos com status `executed`), mas a UI mostra "0 leads no ciclo" e "Nenhum lead capturado neste ciclo ainda".
 
-A tabela `webhook_events` confirma que **44 eventos `group_join` chegaram** corretamente nas últimas 3 horas, todos com classificação correta, `instance_id`, `user_id` e `chat_jid` preenchidos. O grupo `120363408661213011-group` (campanha "Jonathan") tem campaign_groups vinculado corretamente.
+**Causa**: O hook `useListLeads` filtra por `cycle_id = current_cycle_id`. Em listas 24h, cada lead acabou recebendo um `cycle_id` diferente (pelo histórico de execuções anteriores), então só aparecem os do ciclo atual — que costuma ficar vazio porque cada lead novo é processado imediatamente.
 
-**MAS** os logs do `webhook-inbound` mostram que NENHUMA das `console.log` dos blocos "Detected group_join" (linha 239) ou "Found N linked campaigns" (linha 286) foi executada. E os logs do `sync-group-members` estão **completamente vazios**.
+### Solução
 
-Isto significa que a **versão deployada do `webhook-inbound` não está executando o bloco de auto-sync** — provavelmente um problema de deploy ou o bloco foi adicionado mas a edge function não foi redeployada.
+Para listas **24h cumulativas**, exibir o histórico completo das **últimas 24 horas**, ignorando `cycle_id`. Para listas com janela normal, manter o comportamento atual (filtro por `cycle_id`).
 
-Adicionalmente, eventos `GROUP_PARTICIPANT_INVITE` (entrada por link) trazem o **LID** em `notificationParameters[0]` e `phone = JID do grupo`. O `extractContext` extrai `senderLid` corretamente e zera `senderPhone`, mas a condição atual no `webhook-inbound` (`context.senderPhone || context.senderLid`) deveria funcionar — confirmando que o problema é apenas o deploy.
+### Alterações
 
-## Solução
+**1. `src/hooks/useGroupExecutionList.ts`** — `useListLeads`
+- Adicionar parâmetro `isFulltime: boolean`
+- Quando `isFulltime = true`: query por `list_id` apenas, com filtro `created_at >= now() - 24h`, ignorando `cycle_id`
+- Quando `isFulltime = false`: comportamento atual (`list_id` + `cycle_id`)
 
-### 1. Forçar redeploy do `webhook-inbound`
-A versão em produção não está executando o bloco de auto-sync. Vou redeployar para garantir que o código atual (com o bloco AUTO-SYNC GROUP MEMBERS na linha 269-340) entre em vigor.
+**2. `src/components/group-campaigns/tabs/ExecutionListTab.tsx`** — `ExecutionListDetail`
+- Passar `isFulltime` para `useListLeads`
+- Atualizar contador "Total de leads" para usar `leads.length` (todos das últimas 24h) em vez de `pendingLeads.length` quando fulltime
+- Manter botão "Executar Agora" desabilitado quando não há `pending` (já correto)
+- Adicionar coluna mostrando hora completa (`dd/MM HH:mm`) em vez de só `HH:mm` para listas 24h, já que abrange dia inteiro
 
-### 2. Adicionar logs de diagnóstico extras
-Adicionar `console.log` antes da condição da linha 272-277 para confirmar quando a função é/não é chamada e por quê:
-```typescript
-console.log(`[webhook-inbound] group event check: type=${classification.eventType}, jid=${context.chatJid}, phone=${context.senderPhone}, lid=${context.senderLid}, userId=${instance?.user_id}`);
-```
+### Comportamento resultante
 
-### 3. Reprocessar os eventos `group_join` que ficaram sem sync
-Após confirmar que o auto-sync está ativo, disparar manualmente um `sync-group-members` para a campanha Jonathan (`261d7ef9-51ea-4ed0-a574-b1a34d8f10e3`) com o JID `120363408661213011-group` para popular os ~10+ membros que entraram via link nas últimas horas.
+- Lista "Entrada de Lead" passa a exibir os 28+ leads das últimas 24h, com seus status (`executed`, `pending`, `failed`)
+- Card "Total de leads" mostra o total acumulado em 24h
+- Cada novo `group_join` aparece em tempo real (já existe Realtime subscription)
+- Listas com janela normal (não-24h) continuam isoladas por ciclo, sem mudança
 
-### 4. (Bônus de robustez) Disparar sync mesmo sem phone/lid
-Para entradas via link onde nem `senderPhone` nem `senderLid` foram extraídos por algum motivo, ainda vale chamar o sync — basta haver `chatJid` e `instance.user_id`. Vou afrouxar a condição para:
-```typescript
-if ((eventType === "group_join" || eventType === "group_leave") && context.chatJid && instance?.user_id)
-```
-Removendo o requisito `(senderPhone || senderLid)`, já que o sync recupera todos os participantes do n8n e faz o diff completo independente de quem disparou o evento.
+### Fora de escopo
 
-## Arquivos alterados
-
-- `supabase/functions/webhook-inbound/index.ts` — afrouxar condição (linhas 272-277), adicionar log de diagnóstico
-- Redeploy de `webhook-inbound` e `sync-group-members`
-- Disparo manual do sync para a campanha Jonathan via `supabase.functions.invoke`
-
+- Não vamos alterar a lógica de `cycle_id` no `group-execution-processor` (já está correta para fulltime — só atualiza `last_executed_at`). A discrepância de cycle_ids no histórico é resíduo de execuções antigas.
