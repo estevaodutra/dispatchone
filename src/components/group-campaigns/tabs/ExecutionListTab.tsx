@@ -40,6 +40,15 @@ function isFulltime(list: GroupExecutionList): boolean {
   return list.window_type === "fixed" && list.window_start_time?.slice(0, 5) === "00:00" && list.window_end_time?.slice(0, 5) === "23:59";
 }
 
+// Filter out technical sender labels (e.g. WhatsApp event types) used as names
+const INVALID_NAMES = new Set(["invite", "add", "remove", "leave", "promote", "demote"]);
+const displayName = (name?: string | null): string | null => {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed || INVALID_NAMES.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+};
+
 // ── Detail view for a single list ──
 function ExecutionListDetail({
   list,
@@ -282,12 +291,12 @@ function ExecutionListDetail({
                       <Checkbox
                         checked={selectedLeadIds.has(lead.id)}
                         onCheckedChange={(v) => toggleLead(lead.id, v === true)}
-                        aria-label={`Selecionar ${lead.name || lead.phone}`}
+                        aria-label={`Selecionar ${displayName(lead.name) || lead.phone}`}
                       />
                     </TableCell>
                     <TableCell className="font-medium">
-                      {lead.name || lead.phone}
-                      {lead.name && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
+                      {displayName(lead.name) || lead.phone}
+                      {displayName(lead.name) && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
                     </TableCell>
                     <TableCell><Badge variant="outline">{lead.origin_event}</Badge></TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(new Date(lead.created_at), fulltime ? "dd/MM HH:mm" : "HH:mm")}</TableCell>
