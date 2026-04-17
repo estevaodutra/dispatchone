@@ -15,6 +15,7 @@ export interface GroupExecutionList {
   monitored_events: string[];
   action_type: "webhook" | "message" | "call";
   webhook_url: string | null;
+  webhook_params: Record<string, any>;
   message_template: string | null;
   call_campaign_id: string | null;
   current_cycle_id: string;
@@ -168,6 +169,7 @@ export function useGroupExecutionList(campaignId: string) {
       monitored_events: string[];
       action_type: "webhook" | "message" | "call";
       webhook_url?: string;
+      webhook_params?: Record<string, any>;
       message_template?: string;
       call_campaign_id?: string;
       execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -190,6 +192,7 @@ export function useGroupExecutionList(campaignId: string) {
           monitored_events: config.monitored_events,
           action_type: config.action_type,
           webhook_url: config.action_type === "webhook" ? config.webhook_url : null,
+          webhook_params: config.action_type === "webhook" ? (config.webhook_params || {}) : {},
           message_template: config.action_type === "message" ? config.message_template : null,
           call_campaign_id: config.action_type === "call" ? config.call_campaign_id : null,
           current_window_start: start,
@@ -222,6 +225,7 @@ export function useGroupExecutionList(campaignId: string) {
         monitored_events: string[];
         action_type: "webhook" | "message" | "call";
         webhook_url?: string;
+        webhook_params?: Record<string, any>;
         message_template?: string;
         call_campaign_id?: string;
         execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -242,6 +246,7 @@ export function useGroupExecutionList(campaignId: string) {
           monitored_events: params.config.monitored_events,
           action_type: params.config.action_type,
           webhook_url: params.config.action_type === "webhook" ? params.config.webhook_url : null,
+          webhook_params: params.config.action_type === "webhook" ? (params.config.webhook_params || {}) : {},
           message_template: params.config.action_type === "message" ? params.config.message_template : null,
           call_campaign_id: params.config.action_type === "call" ? params.config.call_campaign_id : null,
           current_window_start: start,
