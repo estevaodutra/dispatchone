@@ -131,15 +131,49 @@ export function ExecutionListConfigDialog({
     );
   };
 
+  const handleParamsChange = (text: string) => {
+    setWebhookParams(text);
+    if (!text.trim()) {
+      setWebhookParamsError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
+        setWebhookParamsError("Use um objeto JSON válido");
+      } else {
+        setWebhookParamsError(null);
+      }
+    } catch {
+      setWebhookParamsError("JSON inválido");
+    }
+  };
+
+  const copyVariable = (variable: string) => {
+    navigator.clipboard.writeText(variable);
+    toast.success(`Copiado: ${variable}`);
+  };
+
   const isValid = () => {
     if (!name.trim()) return false;
     if (monitoredEvents.length === 0) return false;
     if (windowType === "duration" && durationHours < 1) return false;
     if (actionType === "webhook" && !webhookUrl.trim()) return false;
+    if (actionType === "webhook" && webhookParamsError) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
     if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
+  };
+
+  const parseParams = (): Record<string, any> => {
+    if (!webhookParams.trim()) return {};
+    try {
+      const parsed = JSON.parse(webhookParams);
+      return typeof parsed === "object" && !Array.isArray(parsed) && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
   };
 
   const handleSave = () => {
@@ -154,6 +188,7 @@ export function ExecutionListConfigDialog({
       monitored_events: monitoredEvents,
       action_type: actionType,
       webhook_url: actionType === "webhook" ? webhookUrl : undefined,
+      webhook_params: actionType === "webhook" ? parseParams() : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
       execution_schedule_type: execScheduleType,
