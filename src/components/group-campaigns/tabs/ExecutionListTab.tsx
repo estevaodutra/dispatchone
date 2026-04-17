@@ -505,15 +505,22 @@ function LeadEventDialog({
                 <div className="text-xs text-muted-foreground">Nome</div>
                 <div className="font-medium">{displayName(lead.name) || <span className="text-muted-foreground italic">sem nome</span>}</div>
               </div>
-              <div>
-                <div className="text-xs text-muted-foreground">Telefone</div>
-                <div className="font-mono text-sm flex items-center gap-1">
-                  {lead.phone}
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(lead.phone, "Telefone")}>
-                    <Copy className="h-3 w-3" />
-                  </Button>
-                </div>
-              </div>
+              {(() => {
+                // Detect if "phone" stored is actually a LID (15+ digits, no country prefix)
+                const phoneDigits = (lead.phone || "").replace(/\D/g, "");
+                const phoneIsLid = phoneDigits.length >= 14 && !phoneDigits.startsWith("55") && !phoneDigits.startsWith("1");
+                return (
+                  <div>
+                    <div className="text-xs text-muted-foreground">{phoneIsLid ? "Identificador (LID)" : "Telefone"}</div>
+                    <div className="font-mono text-sm flex items-center gap-1">
+                      {lead.phone}
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(lead.phone, phoneIsLid ? "LID" : "Telefone")}>
+                        <Copy className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })()}
               {lead.lid && (
                 <div className="col-span-2">
                   <div className="text-xs text-muted-foreground">LID</div>
@@ -566,9 +573,20 @@ function LeadEventDialog({
                   </div>
                   <div className="text-xs text-muted-foreground font-mono">{matchedMember.phone}</div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => copyToClipboard(matchedMember.phone, "Telefone do membro")}
+                  title="Copiar telefone real para buscar na aba Membros"
+                >
+                  <Copy className="h-3 w-3 mr-1" />
+                  Copiar telefone
+                </Button>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground italic">Membro não encontrado nesta campanha.</p>
+              <p className="text-sm text-muted-foreground italic">
+                Membro não encontrado nesta campanha. {lead.lid ? "O LID não corresponde a nenhum membro sincronizado — tente listar os membros novamente." : "Tente buscar pelo telefone ou LID na aba Membros."}
+              </p>
             )}
           </div>
 
