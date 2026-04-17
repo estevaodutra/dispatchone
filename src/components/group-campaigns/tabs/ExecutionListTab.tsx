@@ -40,6 +40,15 @@ function isFulltime(list: GroupExecutionList): boolean {
   return list.window_type === "fixed" && list.window_start_time?.slice(0, 5) === "00:00" && list.window_end_time?.slice(0, 5) === "23:59";
 }
 
+// Filter out technical sender labels (e.g. WhatsApp event types) used as names
+const INVALID_NAMES = new Set(["invite", "add", "remove", "leave", "promote", "demote"]);
+const displayName = (name?: string | null): string | null => {
+  if (!name) return null;
+  const trimmed = name.trim();
+  if (!trimmed || INVALID_NAMES.has(trimmed.toLowerCase())) return null;
+  return trimmed;
+};
+
 // ── Detail view for a single list ──
 function ExecutionListDetail({
   list,
