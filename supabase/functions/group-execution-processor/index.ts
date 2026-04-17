@@ -16,6 +16,7 @@ interface ExecutionList {
   monitored_events: string[];
   action_type: string;
   webhook_url: string | null;
+  webhook_params: Record<string, any> | null;
   message_template: string | null;
   call_campaign_id: string | null;
   current_cycle_id: string;
@@ -33,6 +34,32 @@ interface ExecutionLead {
   name: string | null;
   origin_event: string | null;
   origin_detail: string | null;
+  lid?: string | null;
+}
+
+// Recursive variable substitution: replaces {{entity.field}} and {{field}} in strings,
+// arrays, and objects. Unknown variables remain literal for easier debugging.
+function replaceVariables(obj: any, ctx: Record<string, any>): any {
+  if (typeof obj === "string") {
+    return obj
+      .replace(/\{\{(\w+)\.(\w+)\}\}/g, (match, entity, field) => {
+        const value = ctx?.[entity]?.[field];
+        return value !== undefined && value !== null ? String(value) : match;
+      })
+      .replace(/\{\{(\w+)\}\}/g, (match, field) => {
+        const value = ctx?.[field];
+        return value !== undefined && value !== null && typeof value !== "object"
+          ? String(value)
+          : match;
+      });
+  }
+  if (Array.isArray(obj)) return obj.map((item) => replaceVariables(item, ctx));
+  if (obj !== null && typeof obj === "object") {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) result[k] = replaceVariables(v, ctx);
+    return result;
+  }
+  return obj;
 }
 
 function calculateNextWindow(list: ExecutionList): { nextStart: string; nextEnd: string } {
