@@ -171,20 +171,20 @@ function ExecutionListDetail({
 
       <Card><CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold">Leads do ciclo atual</span>
+          <span className="text-sm font-semibold">{fulltime ? "Histórico das últimas 24h" : "Leads do ciclo atual"}</span>
           <Button variant="destructive" size="sm" onClick={() => setShowExecuteConfirm(true)} disabled={pendingLeads.length === 0 || executeNow.isPending}>
             <Play className="h-4 w-4 mr-1" />{executeNow.isPending ? "Executando..." : "Executar Agora"}
           </Button>
         </div>
         {leads.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">Nenhum lead capturado neste ciclo ainda.</p>
+          <p className="text-sm text-muted-foreground text-center py-6">{fulltime ? "Nenhum lead processado nas últimas 24h." : "Nenhum lead capturado neste ciclo ainda."}</p>
         ) : (
           <>
             <Table>
               <TableHeader><TableRow>
                 <TableHead>Nome / Número</TableHead>
                 <TableHead>Evento</TableHead>
-                <TableHead>Entrou às</TableHead>
+                <TableHead>{fulltime ? "Capturado em" : "Entrou às"}</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -195,7 +195,7 @@ function ExecutionListDetail({
                       {lead.name && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
                     </TableCell>
                     <TableCell><Badge variant="outline">{lead.origin_event}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{format(new Date(lead.created_at), "HH:mm")}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{format(new Date(lead.created_at), fulltime ? "dd/MM HH:mm" : "HH:mm")}</TableCell>
                     <TableCell>
                       <Badge variant={lead.status === "executed" ? "default" : lead.status === "failed" ? "destructive" : "secondary"}>
                         {lead.status}
