@@ -67,10 +67,12 @@ function ExecutionListDetail({
   const { useListLeads, toggleActive, executeNow, executeLeads } = useGroupExecutionList(campaignId);
   const fulltime = isFulltime(list);
   const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
+  const { members } = useGroupMembers(campaignId);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
   const [showReexecConfirm, setShowReexecConfirm] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [viewingLead, setViewingLead] = useState<GroupExecutionLead | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [countdown, setCountdown] = useState("");
