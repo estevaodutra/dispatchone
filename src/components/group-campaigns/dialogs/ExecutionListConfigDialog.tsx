@@ -12,7 +12,9 @@ import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, AlertCircle, ChevronDown, Copy } from "lucide-react";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, ChevronDown, Copy, GripVertical, Trash2, Plus, Type, Hash, ToggleLeft } from "lucide-react";
+
+type WebhookField = { id: string; name: string; type: "string" | "number" | "boolean"; value: string };
 
 interface ExecutionListConfigDialogProps {
   open: boolean;
@@ -26,7 +28,7 @@ interface ExecutionListConfigDialogProps {
     monitored_events: string[];
     action_type: "webhook" | "message" | "call";
     webhook_url?: string;
-    webhook_params?: Record<string, any>;
+    webhook_params?: Record<string, any> | WebhookField[];
     message_template?: string;
     call_campaign_id?: string;
     execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -69,8 +71,8 @@ export function ExecutionListConfigDialog({
   const [monitoredEvents, setMonitoredEvents] = useState<string[]>(["group_join"]);
   const [actionType, setActionType] = useState<"webhook" | "message" | "call">("webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookParams, setWebhookParams] = useState("");
-  const [webhookParamsError, setWebhookParamsError] = useState<string | null>(null);
+  const [webhookFields, setWebhookFields] = useState<WebhookField[]>([]);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
   const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
@@ -93,8 +95,27 @@ export function ExecutionListConfigDialog({
       setActionType(existing.action_type as "webhook" | "message" | "call");
       setWebhookUrl(existing.webhook_url || "");
       const params = (existing as any).webhook_params;
-      setWebhookParams(params && Object.keys(params).length > 0 ? JSON.stringify(params, null, 2) : "");
-      setWebhookParamsError(null);
+      if (Array.isArray(params)) {
+        setWebhookFields(
+          params.map((p: any) => ({
+            id: p.id || crypto.randomUUID(),
+            name: String(p.name || ""),
+            type: (["string", "number", "boolean"].includes(p.type) ? p.type : "string") as WebhookField["type"],
+            value: String(p.value ?? ""),
+          }))
+        );
+      } else if (params && typeof params === "object" && Object.keys(params).length > 0) {
+        setWebhookFields(
+          Object.entries(params).map(([k, v]) => ({
+            id: crypto.randomUUID(),
+            name: k,
+            type: "string" as const,
+            value: typeof v === "string" ? v : JSON.stringify(v),
+          }))
+        );
+      } else {
+        setWebhookFields([]);
+      }
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
       setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
@@ -109,8 +130,7 @@ export function ExecutionListConfigDialog({
       setMonitoredEvents(["group_join"]);
       setActionType("webhook");
       setWebhookUrl("");
-      setWebhookParams("");
-      setWebhookParamsError(null);
+      setWebhookFields([]);
       setMessageTemplate("");
       setCallCampaignId("");
       setExecScheduleType("window_end");
