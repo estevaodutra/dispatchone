@@ -50,13 +50,13 @@ function ExecutionListDetail({
   onEdit: () => void;
 }) {
   const { useListLeads, toggleActive, executeNow } = useGroupExecutionList(campaignId);
-  const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id);
+  const fulltime = isFulltime(list);
+  const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [countdown, setCountdown] = useState("");
   const [windowExpired, setWindowExpired] = useState(false);
-  const fulltime = isFulltime(list);
 
   useEffect(() => {
     if (!list.current_window_end || !list.is_active) {
@@ -129,8 +129,8 @@ function ExecutionListDetail({
 
       <div className={`grid grid-cols-2 ${fulltime ? "md:grid-cols-3" : "md:grid-cols-4"} gap-3`}>
         <Card><CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Users className="h-4 w-4" />{fulltime ? "Total de leads" : "Leads no ciclo"}</div>
-          <div className="text-2xl font-bold">{pendingLeads.length}</div>
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Users className="h-4 w-4" />{fulltime ? "Total de leads (24h)" : "Leads no ciclo"}</div>
+          <div className="text-2xl font-bold">{fulltime ? leads.length : pendingLeads.length}</div>
         </CardContent></Card>
         {!fulltime && (
           <Card><CardContent className="p-4">
@@ -171,20 +171,20 @@ function ExecutionListDetail({
 
       <Card><CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-semibold">Leads do ciclo atual</span>
+          <span className="text-sm font-semibold">{fulltime ? "Histórico das últimas 24h" : "Leads do ciclo atual"}</span>
           <Button variant="destructive" size="sm" onClick={() => setShowExecuteConfirm(true)} disabled={pendingLeads.length === 0 || executeNow.isPending}>
             <Play className="h-4 w-4 mr-1" />{executeNow.isPending ? "Executando..." : "Executar Agora"}
           </Button>
         </div>
         {leads.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">Nenhum lead capturado neste ciclo ainda.</p>
+          <p className="text-sm text-muted-foreground text-center py-6">{fulltime ? "Nenhum lead processado nas últimas 24h." : "Nenhum lead capturado neste ciclo ainda."}</p>
         ) : (
           <>
             <Table>
               <TableHeader><TableRow>
                 <TableHead>Nome / Número</TableHead>
                 <TableHead>Evento</TableHead>
-                <TableHead>Entrou às</TableHead>
+                <TableHead>{fulltime ? "Capturado em" : "Entrou às"}</TableHead>
                 <TableHead>Status</TableHead>
               </TableRow></TableHeader>
               <TableBody>
@@ -195,7 +195,7 @@ function ExecutionListDetail({
                       {lead.name && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
                     </TableCell>
                     <TableCell><Badge variant="outline">{lead.origin_event}</Badge></TableCell>
-                    <TableCell className="text-sm text-muted-foreground">{format(new Date(lead.created_at), "HH:mm")}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground">{format(new Date(lead.created_at), fulltime ? "dd/MM HH:mm" : "HH:mm")}</TableCell>
                     <TableCell>
                       <Badge variant={lead.status === "executed" ? "default" : lead.status === "failed" ? "destructive" : "secondary"}>
                         {lead.status}

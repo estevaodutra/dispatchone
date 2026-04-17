@@ -105,8 +105,8 @@ export function useGroupExecutionList(campaignId: string) {
     enabled: !!campaignId && !!user,
   });
 
-  const useListLeads = (listId: string | undefined, cycleId: string | undefined) => {
-    const leadsKey = ["group-execution-leads", listId, cycleId];
+  const useListLeads = (listId: string | undefined, cycleId: string | undefined, isFulltime: boolean = false) => {
+    const leadsKey = ["group-execution-leads", listId, isFulltime ? "fulltime-24h" : cycleId];
 
     // Realtime subscription for execution leads
     useEffect(() => {
@@ -131,22 +131,29 @@ export function useGroupExecutionList(campaignId: string) {
       return () => {
         supabase.removeChannel(channel);
       };
-    }, [listId, cycleId]);
+    }, [listId, cycleId, isFulltime]);
 
     return useQuery({
       queryKey: leadsKey,
       queryFn: async () => {
-        const { data, error } = await (supabase as any)
+        let query = (supabase as any)
           .from("group_execution_leads")
           .select("*")
-          .eq("list_id", listId)
-          .eq("cycle_id", cycleId)
-          .order("created_at", { ascending: false });
+          .eq("list_id", listId);
+
+        if (isFulltime) {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          query = query.gte("created_at", since);
+        } else {
+          query = query.eq("cycle_id", cycleId);
+        }
+
+        const { data, error } = await query.order("created_at", { ascending: false });
 
         if (error) throw error;
         return (data || []) as GroupExecutionLead[];
       },
-      enabled: !!listId && !!cycleId,
+      enabled: !!listId && (isFulltime || !!cycleId),
     });
   };
 
