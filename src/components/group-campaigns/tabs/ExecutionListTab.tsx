@@ -56,7 +56,8 @@ function ExecutionListDetail({
   const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
-  const [showAll, setShowAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [countdown, setCountdown] = useState("");
   const [windowExpired, setWindowExpired] = useState(false);
 
