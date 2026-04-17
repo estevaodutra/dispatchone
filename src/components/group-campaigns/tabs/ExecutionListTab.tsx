@@ -282,12 +282,12 @@ function ExecutionListDetail({
                       <Checkbox
                         checked={selectedLeadIds.has(lead.id)}
                         onCheckedChange={(v) => toggleLead(lead.id, v === true)}
-                        aria-label={`Selecionar ${lead.name || lead.phone}`}
+                        aria-label={`Selecionar ${displayName(lead.name) || lead.phone}`}
                       />
                     </TableCell>
                     <TableCell className="font-medium">
-                      {lead.name || lead.phone}
-                      {lead.name && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
+                      {displayName(lead.name) || lead.phone}
+                      {displayName(lead.name) && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
                     </TableCell>
                     <TableCell><Badge variant="outline">{lead.origin_event}</Badge></TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(new Date(lead.created_at), fulltime ? "dd/MM HH:mm" : "HH:mm")}</TableCell>
