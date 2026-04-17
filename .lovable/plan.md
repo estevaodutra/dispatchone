@@ -1,44 +1,36 @@
 
 
-## Plano: Visualizar evento disparado + vincular lead ao membro via LID
+## Plano: Resolver vínculo Lead ↔ Membro e busca por LID
 
-### Objetivo
-1. Adicionar botão "olho" em cada linha da lista 24h para ver o evento original disparado
-2. Relacionar cada lead capturado ao membro correspondente na aba **Membros** (via LID), permitindo navegar/identificar quem é a pessoa
+### Diagnóstico
+Confirmado via DB:
+- O "telefone" `196748727320770` mostrado no histórico 24h é na verdade um **LID** (15+ dígitos, sem código de país), não telefone real
+- `group_execution_leads.phone` recebe o LID quando o evento `group_join` chega antes da resolução phone↔LID
+- `group_members` tem ambos: `phone` real (`556192113800`) + `lid` (`128853498429553@lid`)
+- Por isso a busca na aba Membros não encontra: você pesquisou um LID na coluna `phone`
 
-### Investigação
-- `group_execution_leads` já tem `origin_event` e `origin_detail` (texto, mas geralmente JSON)
-- `group_members` tem `lid`, `phone`, `name`, `profile_photo` — pode haver match por `phone` OU por `lid`
-- Hoje `group_execution_leads.name` recebe `senderName` (ex: "invite") e não tem coluna `lid`
+### Soluções
 
-### Alterações
+**1. Webhook-inbound — separar phone real de LID**
+Em `supabase/functions/webhook-inbound/index.ts`, quando inserir em `group_execution_leads`:
+- Se `senderPhone` for um LID (heurística: >14 dígitos, sem `55`/código país, ou flag do classifier), gravar em `lid` e deixar `phone` nulo
+- Tentar resolver phone real consultando `group_members` por `lid` antes de inserir; se encontrar, preencher ambos
+- Para linhas antigas: migration de backfill que cruza `group_execution_leads.phone` com `group_members.lid` (movendo valor de `phone` → `lid` e preenchendo phone real quando match)
 
-**1. Migration — adicionar coluna `lid` em `group_execution_leads`**
-- Permite vincular precisamente ao membro mesmo quando phone vier vazio/diferente
-- Backfill opcional: tentar preencher via LID extraído de `origin_detail` JSON
+**2. ExecutionListTab — busca e exibição inteligentes**
+Em `src/components/group-campaigns/tabs/ExecutionListTab.tsx`:
+- No `LeadEventDialog`, resolver membro por **LID primeiro** (mais preciso), depois telefone
+- Mostrar claramente "Identificador: LID" vs "Telefone" no detalhe do lead
+- Botão "Ver na lista de Membros" que copia o **telefone real do membro vinculado** (não o LID) para que a busca na aba Membros funcione
 
-**2. `supabase/functions/webhook-inbound/index.ts`**
-- Ao fazer upsert em `group_execution_leads`, incluir `lid: context.senderLid`
+**3. MembersTab — busca por LID**
+Em `src/components/group-campaigns/tabs/MembersTab.tsx`:
+- Estender o filtro de busca para também procurar em `member.lid` (não só `phone`/`name`)
+- Normalização: aceitar tanto `128853498429553` quanto `128853498429553@lid`
 
-**3. `src/hooks/useGroupExecutionList.ts`**
-- Expor `lid` no tipo `GroupExecutionLead`
-
-**4. `src/hooks/useGroupMembers.ts`** (já existe)
-- Reutilizado para resolver membro por `phone` ou `lid` no detalhe do evento
-
-**5. `src/components/group-campaigns/tabs/ExecutionListTab.tsx`** — `ExecutionListDetail`
-- Nova coluna "Ações" com `Button` ícone `Eye` por linha
-- Estado `viewingLead`
-- Novo componente inline `LeadEventDialog`:
-  - **Lead capturado**: nome (filtrado via `displayName`), telefone, LID (com copiar), status badge, capturado em, executado em
-  - **Membro vinculado** (se houver match): foto, nome, telefone, badge "Admin" se aplicável, botão "Ver na aba Membros" (rola/filtra)
-  - **Origem**: `origin_event` + bloco `<pre>` com `origin_detail` formatado (try JSON.parse → indentado, fallback texto cru)
-  - **Ação configurada na lista**: tipo (`webhook` / `mensagem` / `call`) + alvo
-  - **Erro**: bloco vermelho com `error_message` se `status = failed`
-  - Botão "Re-executar este lead" (reusa `executeLeads.mutate({ listId, leadIds: [lead.id] })`)
-
-### Comportamento
-- Operador clica no olho → modal mostra payload original + a quem o lead pertence (membro do grupo via LID/phone)
-- Para leads de campanha pirata ou sem membro vinculado: mostra "Membro não encontrado nesta campanha"
-- Re-execução individual funciona dentro do modal sem fechá-lo
+### Comportamento final
+- Histórico 24h continua mostrando o identificador disponível, mas com label correto (LID vs telefone)
+- Modal de detalhe vincula corretamente ao membro via LID e oferece o telefone real para busca cruzada
+- Aba Membros encontra a pessoa tanto por telefone quanto por LID
+- Linhas antigas em `group_execution_leads` são corrigidas via backfill (migration)
 
