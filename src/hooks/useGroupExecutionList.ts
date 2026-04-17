@@ -34,6 +34,7 @@ export interface GroupExecutionLead {
   list_id: string;
   cycle_id: string;
   phone: string;
+  lid: string | null;
   name: string | null;
   origin_event: string | null;
   origin_detail: string | null;

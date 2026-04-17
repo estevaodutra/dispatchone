@@ -380,6 +380,18 @@ Deno.serve(async (req) => {
             const execPhone = context.senderPhone || (context.senderLid ? context.senderLid.split("@")[0] : null);
             if (!execPhone) continue;
 
+            // Build full event detail (JSON) for later inspection in UI
+            const originDetailPayload = {
+              chatName: context.chatName || null,
+              chatJid: context.chatJid || null,
+              senderPhone: context.senderPhone || null,
+              senderLid: context.senderLid || null,
+              senderName: context.senderName || null,
+              eventType: classification.eventType,
+              receivedAt: new Date().toISOString(),
+              raw: payload.raw_event,
+            };
+
             const { error: upsertError } = await supabase
               .from("group_execution_leads")
               .upsert(
@@ -388,9 +400,10 @@ Deno.serve(async (req) => {
                   user_id: execList.user_id,
                   cycle_id: execList.current_cycle_id,
                   phone: execPhone,
+                  lid: context.senderLid || null,
                   name: context.senderName || null,
                   origin_event: classification.eventType,
-                  origin_detail: context.chatName || null,
+                  origin_detail: JSON.stringify(originDetailPayload),
                   status: "pending",
                 },
                 { onConflict: "list_id,phone,cycle_id", ignoreDuplicates: true }
