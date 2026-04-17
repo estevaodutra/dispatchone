@@ -1023,14 +1023,19 @@ Deno.serve(async (req) => {
                 // option_actions still comes from original config (they are action configs, not text)
                 const optionActions = ((node.config as Record<string, unknown>).optionActions as Record<string, unknown>) || {};
                 
-                console.log(`[ExecuteMessage] Registering poll in poll_messages table with resolved values`);
-                console.log(`[ExecuteMessage] Poll question: ${pollQuestion.substring(0, 100)}...`);
+                // CRITICAL: message_id has UNIQUE constraint. Never insert empty string.
+                // Use externalMessageId when present, otherwise fall back to zaapId (Z-API always returns one).
+                const messageIdForInsert = externalMessageId || zaapId;
                 
-                const { error: pollInsertError } = await supabase
-                  .from("poll_messages")
-                  .insert({
+                if (!messageIdForInsert) {
+                  console.error(`[ExecuteMessage] ❌ Cannot register poll: both externalMessageId and zaapId are missing`);
+                } else {
+                  console.log(`[ExecuteMessage] Registering poll in poll_messages table with resolved values`);
+                  console.log(`[ExecuteMessage] Poll question: ${pollQuestion.substring(0, 100)}...`);
+                  
+                  const pollPayload = {
                     user_id: userId,
-                    message_id: externalMessageId || "",
+                    message_id: messageIdForInsert,
                     zaap_id: zaapId,
                     node_id: node.id,
                     sequence_id: effectiveSequenceId,
@@ -1041,12 +1046,23 @@ Deno.serve(async (req) => {
                     options: pollOptions,
                     option_actions: optionActions,
                     sent_at: new Date().toISOString(),
-                  });
-                
-                if (pollInsertError) {
-                  console.error(`[ExecuteMessage] Failed to register poll:`, pollInsertError);
-                } else {
-                  console.log(`[ExecuteMessage] Poll registered: zaap_id=${zaapId}, message_id=${externalMessageId}`);
+                  };
+                  
+                  const { error: pollInsertError } = await supabase
+                    .from("poll_messages")
+                    .insert(pollPayload);
+                  
+                  if (pollInsertError) {
+                    console.error(`[ExecuteMessage] ❌ Failed to register poll:`, JSON.stringify({
+                      error: pollInsertError.message,
+                      code: pollInsertError.code,
+                      details: pollInsertError.details,
+                      hint: pollInsertError.hint,
+                      payload: { ...pollPayload, options: `[${pollOptions.length} items]` },
+                    }));
+                  } else {
+                    console.log(`[ExecuteMessage] ✅ Poll registered: zaap_id=${zaapId}, message_id=${messageIdForInsert}`);
+                  }
                 }
               }
             } else {
