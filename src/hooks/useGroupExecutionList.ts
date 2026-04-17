@@ -15,7 +15,7 @@ export interface GroupExecutionList {
   monitored_events: string[];
   action_type: "webhook" | "message" | "call";
   webhook_url: string | null;
-  webhook_params: Record<string, any>;
+  webhook_params: Record<string, any> | Array<{ id: string; name: string; type: string; value: string }>;
   message_template: string | null;
   call_campaign_id: string | null;
   current_cycle_id: string;
@@ -169,7 +169,7 @@ export function useGroupExecutionList(campaignId: string) {
       monitored_events: string[];
       action_type: "webhook" | "message" | "call";
       webhook_url?: string;
-      webhook_params?: Record<string, any>;
+      webhook_params?: Record<string, any> | Array<{ id: string; name: string; type: string; value: string }>;
       message_template?: string;
       call_campaign_id?: string;
       execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -225,7 +225,7 @@ export function useGroupExecutionList(campaignId: string) {
         monitored_events: string[];
         action_type: "webhook" | "message" | "call";
         webhook_url?: string;
-        webhook_params?: Record<string, any>;
+        webhook_params?: Record<string, any> | Array<{ id: string; name: string; type: string; value: string }>;
         message_template?: string;
         call_campaign_id?: string;
         execution_schedule_type?: "window_end" | "scheduled" | "immediate";
