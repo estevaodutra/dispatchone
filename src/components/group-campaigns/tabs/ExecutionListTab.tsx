@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -51,11 +52,13 @@ function ExecutionListDetail({
   onBack: () => void;
   onEdit: () => void;
 }) {
-  const { useListLeads, toggleActive, executeNow } = useGroupExecutionList(campaignId);
+  const { useListLeads, toggleActive, executeNow, executeLeads } = useGroupExecutionList(campaignId);
   const fulltime = isFulltime(list);
   const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
+  const [showReexecConfirm, setShowReexecConfirm] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [countdown, setCountdown] = useState("");
@@ -135,6 +138,46 @@ function ExecutionListDetail({
     } catch { toast.error("Erro ao executar lista"); }
   };
 
+  const handleReexecuteSelected = async () => {
+    const ids = Array.from(selectedLeadIds);
+    if (ids.length === 0) return;
+    try {
+      const result: any = await executeLeads.mutateAsync({ listId: list.id, leadIds: ids });
+      const ok = result?.processed ?? ids.length;
+      const fail = result?.errors ?? 0;
+      if (fail > 0) {
+        toast.warning(`Re-execução: ${ok} ok, ${fail} falhas`);
+      } else {
+        toast.success(`${ok} lead(s) reprocessado(s)`);
+      }
+      setSelectedLeadIds(new Set());
+      setShowReexecConfirm(false);
+    } catch { toast.error("Erro ao reprocessar leads"); }
+  };
+
+  // Toggle individual lead selection
+  const toggleLead = (id: string, checked: boolean) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  // Toggle select-all on current page
+  const pageIds = paginatedLeads.map((l) => l.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedLeadIds.has(id));
+  const somePageSelected = pageIds.some((id) => selectedLeadIds.has(id));
+  const togglePageAll = (checked: boolean) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (checked) pageIds.forEach((id) => next.add(id));
+      else pageIds.forEach((id) => next.delete(id));
+      return next;
+    });
+  };
+
   const windowLabel =
     list.window_type === "fixed"
       ? `${list.window_start_time?.slice(0, 5) || "?"} → ${list.window_end_time?.slice(0, 5) || "?"} (fixo)`
@@ -200,11 +243,19 @@ function ExecutionListDetail({
       </div>
 
       <Card><CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <span className="text-sm font-semibold">{fulltime ? "Histórico das últimas 24h" : "Leads do ciclo atual"}</span>
-          <Button variant="destructive" size="sm" onClick={() => setShowExecuteConfirm(true)} disabled={pendingLeads.length === 0 || executeNow.isPending}>
-            <Play className="h-4 w-4 mr-1" />{executeNow.isPending ? "Executando..." : "Executar Agora"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedLeadIds.size > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowReexecConfirm(true)} disabled={executeLeads.isPending}>
+                <RotateCw className="h-4 w-4 mr-1" />
+                {executeLeads.isPending ? "Reprocessando..." : `Executar Selecionados (${selectedLeadIds.size})`}
+              </Button>
+            )}
+            <Button variant="destructive" size="sm" onClick={() => setShowExecuteConfirm(true)} disabled={pendingLeads.length === 0 || executeNow.isPending}>
+              <Play className="h-4 w-4 mr-1" />{executeNow.isPending ? "Executando..." : "Executar Agora"}
+            </Button>
+          </div>
         </div>
         {leads.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">{fulltime ? "Nenhum lead processado nas últimas 24h." : "Nenhum lead capturado neste ciclo ainda."}</p>
@@ -212,6 +263,13 @@ function ExecutionListDetail({
           <>
             <Table>
               <TableHeader><TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => togglePageAll(v === true)}
+                    aria-label="Selecionar todos da página"
+                  />
+                </TableHead>
                 <TableHead>Nome / Número</TableHead>
                 <TableHead>Evento</TableHead>
                 <TableHead>{fulltime ? "Capturado em" : "Entrou às"}</TableHead>
@@ -219,7 +277,14 @@ function ExecutionListDetail({
               </TableRow></TableHeader>
               <TableBody>
                 {paginatedLeads.map((lead) => (
-                  <TableRow key={lead.id}>
+                  <TableRow key={lead.id} data-state={selectedLeadIds.has(lead.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedLeadIds.has(lead.id)}
+                        onCheckedChange={(v) => toggleLead(lead.id, v === true)}
+                        aria-label={`Selecionar ${lead.name || lead.phone}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">
                       {lead.name || lead.phone}
                       {lead.name && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
@@ -302,6 +367,23 @@ function ExecutionListDetail({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleExecuteNow} disabled={executeNow.isPending}>
               {executeNow.isPending ? "Executando..." : "Confirmar Execução"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReexecConfirm} onOpenChange={setShowReexecConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reprocessar Leads Selecionados</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso irá disparar novamente a ação configurada ({ACTION_LABELS[list.action_type]}) para os {selectedLeadIds.size} lead(s) selecionado(s), independente do status atual. Não afeta o ciclo da lista.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReexecuteSelected} disabled={executeLeads.isPending}>
+              {executeLeads.isPending ? "Reprocessando..." : "Confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
