@@ -362,6 +362,40 @@ Deno.serve(async (req) => {
             .eq("campaign_id", campaignId)
             .eq("is_active", true);
 
+          // Resolve real phone from LID via group_members (if needed)
+          let resolvedPhone = context.senderPhone || null;
+          let resolvedLid = context.senderLid || null;
+
+          // Heuristic: if "phone" looks like a LID (>14 digits and missing country code prefix), treat it as LID
+          const looksLikeLid = (val: string | null | undefined): boolean => {
+            if (!val) return false;
+            const digits = val.replace(/\D/g, "");
+            // Real BR phones: 10-13 digits with 55 prefix usually 12-13. LIDs are typically 15+.
+            return digits.length >= 14 && !digits.startsWith("55") && !digits.startsWith("1");
+          };
+
+          if (!resolvedLid && looksLikeLid(resolvedPhone)) {
+            // The "phone" we got is actually a LID
+            resolvedLid = resolvedPhone;
+            resolvedPhone = null;
+          }
+
+          // If we have a LID but no phone, try to look up the real phone from group_members
+          if (resolvedLid && !resolvedPhone) {
+            const lidNumeric = resolvedLid.split("@")[0].replace(/\D/g, "");
+            const { data: memberMatch } = await supabase
+              .from("group_members")
+              .select("phone, lid")
+              .or(`lid.eq.${resolvedLid},lid.eq.${lidNumeric},lid.eq.${lidNumeric}@lid`)
+              .not("phone", "is", null)
+              .limit(1)
+              .maybeSingle();
+            if (memberMatch?.phone) {
+              resolvedPhone = memberMatch.phone;
+              console.log(`[webhook-inbound] Resolved LID ${resolvedLid} → phone ${resolvedPhone}`);
+            }
+          }
+
           for (const execList of (execLists || [])) {
             // Check if event is monitored
             if (!(execList.monitored_events as string[]).includes(classification.eventType)) continue;
@@ -376,16 +410,16 @@ Deno.serve(async (req) => {
               if (!execList.current_window_end || new Date(execList.current_window_end) <= new Date()) continue;
             }
 
-            // Use phone if available, otherwise use LID numeric as fallback identifier
-            const execPhone = context.senderPhone || (context.senderLid ? context.senderLid.split("@")[0] : null);
+            // Use real phone if available, otherwise use LID numeric as fallback identifier
+            const execPhone = resolvedPhone || (resolvedLid ? resolvedLid.split("@")[0] : null);
             if (!execPhone) continue;
 
             // Build full event detail (JSON) for later inspection in UI
             const originDetailPayload = {
               chatName: context.chatName || null,
               chatJid: context.chatJid || null,
-              senderPhone: context.senderPhone || null,
-              senderLid: context.senderLid || null,
+              senderPhone: resolvedPhone,
+              senderLid: resolvedLid,
               senderName: context.senderName || null,
               eventType: classification.eventType,
               receivedAt: new Date().toISOString(),
@@ -400,7 +434,7 @@ Deno.serve(async (req) => {
                   user_id: execList.user_id,
                   cycle_id: execList.current_cycle_id,
                   phone: execPhone,
-                  lid: context.senderLid || null,
+                  lid: resolvedLid,
                   name: context.senderName || null,
                   origin_event: classification.eventType,
                   origin_detail: JSON.stringify(originDetailPayload),
