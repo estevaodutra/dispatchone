@@ -84,10 +84,9 @@ export function MembersTab({ campaignId }: MembersTabProps) {
       const phoneMatch = m.phone?.toLowerCase().includes(term);
       const nameMatch = m.name?.toLowerCase().includes(term);
       // LID match: accept "128853498429553", "128853498429553@lid", or partial
-      const lidStr = (m as any).lid as string | undefined;
-      const lidNormalized = lidStr?.toLowerCase().replace(/@lid$/, "") || "";
-      const lidMatch = !!lidStr && (
-        lidStr.toLowerCase().includes(term) ||
+      const lidNormalized = m.lid?.toLowerCase().replace(/@lid$/, "") || "";
+      const lidMatch = !!m.lid && (
+        m.lid.toLowerCase().includes(term) ||
         (termDigits.length > 0 && lidNormalized.includes(termDigits))
       );
       return phoneMatch || nameMatch || lidMatch;
