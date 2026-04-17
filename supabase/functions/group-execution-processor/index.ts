@@ -16,6 +16,7 @@ interface ExecutionList {
   monitored_events: string[];
   action_type: string;
   webhook_url: string | null;
+  webhook_params: Record<string, any> | null;
   message_template: string | null;
   call_campaign_id: string | null;
   current_cycle_id: string;
@@ -33,6 +34,32 @@ interface ExecutionLead {
   name: string | null;
   origin_event: string | null;
   origin_detail: string | null;
+  lid?: string | null;
+}
+
+// Recursive variable substitution: replaces {{entity.field}} and {{field}} in strings,
+// arrays, and objects. Unknown variables remain literal for easier debugging.
+function replaceVariables(obj: any, ctx: Record<string, any>): any {
+  if (typeof obj === "string") {
+    return obj
+      .replace(/\{\{(\w+)\.(\w+)\}\}/g, (match, entity, field) => {
+        const value = ctx?.[entity]?.[field];
+        return value !== undefined && value !== null ? String(value) : match;
+      })
+      .replace(/\{\{(\w+)\}\}/g, (match, field) => {
+        const value = ctx?.[field];
+        return value !== undefined && value !== null && typeof value !== "object"
+          ? String(value)
+          : match;
+      });
+  }
+  if (Array.isArray(obj)) return obj.map((item) => replaceVariables(item, ctx));
+  if (obj !== null && typeof obj === "object") {
+    const result: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) result[k] = replaceVariables(v, ctx);
+    return result;
+  }
+  return obj;
 }
 
 function calculateNextWindow(list: ExecutionList): { nextStart: string; nextEnd: string } {
@@ -101,8 +128,7 @@ Deno.serve(async (req) => {
 
       const { data: leads } = await supabase
         .from("group_execution_leads")
-        .select("id, phone, name, origin_event, origin_detail")
-        .eq("list_id", forcedListId)
+        .select("id, phone, name, origin_event, origin_detail, lid")
         .in("id", forcedLeadIds);
 
       let processed = 0;
@@ -199,8 +225,7 @@ Deno.serve(async (req) => {
       // Fetch pending leads for current cycle
       const { data: leads } = await supabase
         .from("group_execution_leads")
-        .select("id, phone, name, origin_event, origin_detail")
-        .eq("list_id", list.id)
+        .select("id, phone, name, origin_event, origin_detail, lid")
         .eq("cycle_id", list.current_cycle_id)
         .eq("status", "pending");
 
@@ -282,18 +307,59 @@ async function executeAction(
   switch (list.action_type) {
     case "webhook": {
       if (!list.webhook_url) throw new Error("No webhook URL configured");
+
+      // Enrich context with campaign + group info for variable substitution
+      const { data: campaign } = await supabase
+        .from("group_campaigns")
+        .select("id, name, instance_id")
+        .eq("id", list.campaign_id)
+        .maybeSingle();
+      const { data: campaignGroups } = await supabase
+        .from("campaign_groups")
+        .select("group_jid")
+        .eq("campaign_id", list.campaign_id)
+        .limit(1);
+      const groupJid = (campaignGroups && campaignGroups[0]?.group_jid) || null;
+
+      const timestamp = new Date().toISOString();
+      const basePayload: Record<string, any> = {
+        phone: lead.phone,
+        name: lead.name,
+        origin_event: lead.origin_event,
+        origin_detail: lead.origin_detail,
+        campaign_id: list.campaign_id,
+        cycle_id: list.current_cycle_id,
+        executed_at: timestamp,
+      };
+
+      // Build variable substitution context
+      const ctx: Record<string, any> = {
+        lead: {
+          phone: lead.phone,
+          name: lead.name,
+          email: null,
+          lid: lead.lid ?? null,
+        },
+        campaign: {
+          id: list.campaign_id,
+          name: campaign?.name ?? null,
+        },
+        group: { id: groupJid },
+        event: { type: lead.origin_event ?? null },
+        timestamp,
+      };
+
+      const customParams =
+        list.webhook_params && typeof list.webhook_params === "object"
+          ? replaceVariables(list.webhook_params, ctx)
+          : {};
+
+      const finalPayload = { ...basePayload, ...customParams };
+
       const resp = await fetch(list.webhook_url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: lead.phone,
-          name: lead.name,
-          origin_event: lead.origin_event,
-          origin_detail: lead.origin_detail,
-          campaign_id: list.campaign_id,
-          cycle_id: list.current_cycle_id,
-          executed_at: new Date().toISOString(),
-        }),
+        body: JSON.stringify(finalPayload),
       });
       if (!resp.ok) {
         const text = await resp.text();

@@ -9,7 +9,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
-import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, AlertCircle, ChevronDown, Copy } from "lucide-react";
 
 interface ExecutionListConfigDialogProps {
   open: boolean;
@@ -23,6 +26,7 @@ interface ExecutionListConfigDialogProps {
     monitored_events: string[];
     action_type: "webhook" | "message" | "call";
     webhook_url?: string;
+    webhook_params?: Record<string, any>;
     message_template?: string;
     call_campaign_id?: string;
     execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -65,6 +69,8 @@ export function ExecutionListConfigDialog({
   const [monitoredEvents, setMonitoredEvents] = useState<string[]>(["group_join"]);
   const [actionType, setActionType] = useState<"webhook" | "message" | "call">("webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookParams, setWebhookParams] = useState("");
+  const [webhookParamsError, setWebhookParamsError] = useState<string | null>(null);
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
   const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
@@ -86,6 +92,9 @@ export function ExecutionListConfigDialog({
       setMonitoredEvents(existing.monitored_events || ["group_join"]);
       setActionType(existing.action_type as "webhook" | "message" | "call");
       setWebhookUrl(existing.webhook_url || "");
+      const params = (existing as any).webhook_params;
+      setWebhookParams(params && Object.keys(params).length > 0 ? JSON.stringify(params, null, 2) : "");
+      setWebhookParamsError(null);
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
       setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
@@ -100,6 +109,8 @@ export function ExecutionListConfigDialog({
       setMonitoredEvents(["group_join"]);
       setActionType("webhook");
       setWebhookUrl("");
+      setWebhookParams("");
+      setWebhookParamsError(null);
       setMessageTemplate("");
       setCallCampaignId("");
       setExecScheduleType("window_end");
@@ -120,15 +131,49 @@ export function ExecutionListConfigDialog({
     );
   };
 
+  const handleParamsChange = (text: string) => {
+    setWebhookParams(text);
+    if (!text.trim()) {
+      setWebhookParamsError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
+        setWebhookParamsError("Use um objeto JSON válido");
+      } else {
+        setWebhookParamsError(null);
+      }
+    } catch {
+      setWebhookParamsError("JSON inválido");
+    }
+  };
+
+  const copyVariable = (variable: string) => {
+    navigator.clipboard.writeText(variable);
+    toast.success(`Copiado: ${variable}`);
+  };
+
   const isValid = () => {
     if (!name.trim()) return false;
     if (monitoredEvents.length === 0) return false;
     if (windowType === "duration" && durationHours < 1) return false;
     if (actionType === "webhook" && !webhookUrl.trim()) return false;
+    if (actionType === "webhook" && webhookParamsError) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
     if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
+  };
+
+  const parseParams = (): Record<string, any> => {
+    if (!webhookParams.trim()) return {};
+    try {
+      const parsed = JSON.parse(webhookParams);
+      return typeof parsed === "object" && !Array.isArray(parsed) && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
   };
 
   const handleSave = () => {
@@ -143,6 +188,7 @@ export function ExecutionListConfigDialog({
       monitored_events: monitoredEvents,
       action_type: actionType,
       webhook_url: actionType === "webhook" ? webhookUrl : undefined,
+      webhook_params: actionType === "webhook" ? parseParams() : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
       execution_schedule_type: execScheduleType,
@@ -260,14 +306,74 @@ export function ExecutionListConfigDialog({
             </RadioGroup>
 
             {actionType === "webhook" && (
-              <div>
-                <Label className="text-xs text-muted-foreground">URL</Label>
-                <Input
-                  placeholder="https://..."
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                />
-              </div>
+              <>
+                <div>
+                  <Label className="text-xs text-muted-foreground">URL</Label>
+                  <Input
+                    placeholder="https://..."
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Parâmetros Adicionais (JSON)</Label>
+                  <Textarea
+                    value={webhookParams}
+                    onChange={(e) => handleParamsChange(e.target.value)}
+                    placeholder={`{\n  "source": "dispatchone",\n  "lead_phone": "{{lead.phone}}",\n  "campaign": "{{campaign.name}}"\n}`}
+                    className={cn(
+                      "font-mono text-xs min-h-[120px]",
+                      webhookParamsError && "border-destructive focus-visible:ring-destructive"
+                    )}
+                  />
+                  {webhookParamsError ? (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {webhookParamsError}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      💡 Esses dados serão mesclados ao payload do webhook. Use JSON válido.
+                    </p>
+                  )}
+
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center gap-1 text-xs text-primary hover:underline">
+                      <ChevronDown className="h-3 w-3" />
+                      Variáveis Disponíveis
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-2">
+                      <div className="bg-muted/50 rounded-md p-2 space-y-1 border">
+                        {[
+                          { key: "{{lead.phone}}", desc: "Telefone do lead" },
+                          { key: "{{lead.name}}", desc: "Nome do lead" },
+                          { key: "{{lead.lid}}", desc: "LID do lead" },
+                          { key: "{{lead.email}}", desc: "Email do lead" },
+                          { key: "{{campaign.id}}", desc: "ID da campanha" },
+                          { key: "{{campaign.name}}", desc: "Nome da campanha" },
+                          { key: "{{group.id}}", desc: "ID/JID do grupo" },
+                          { key: "{{event.type}}", desc: "Tipo do evento" },
+                          { key: "{{timestamp}}", desc: "Data/hora do evento" },
+                        ].map((v) => (
+                          <button
+                            key={v.key}
+                            type="button"
+                            onClick={() => copyVariable(v.key)}
+                            className="w-full flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-muted text-left"
+                          >
+                            <code className="text-primary">{v.key}</code>
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              {v.desc}
+                              <Copy className="h-3 w-3" />
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              </>
             )}
 
             {actionType === "message" && (

@@ -1226,6 +1226,7 @@ export type Database = {
           name: string
           updated_at: string | null
           user_id: string
+          webhook_params: Json
           webhook_url: string | null
           window_duration_hours: number | null
           window_end_time: string | null
@@ -1251,6 +1252,7 @@ export type Database = {
           name?: string
           updated_at?: string | null
           user_id: string
+          webhook_params?: Json
           webhook_url?: string | null
           window_duration_hours?: number | null
           window_end_time?: string | null
@@ -1276,6 +1278,7 @@ export type Database = {
           name?: string
           updated_at?: string | null
           user_id?: string
+          webhook_params?: Json
           webhook_url?: string | null
           window_duration_hours?: number | null
           window_end_time?: string | null
