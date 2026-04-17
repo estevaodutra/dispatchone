@@ -1,26 +1,34 @@
 
 
-Plano: usar o componente `DataTableWithPagination` (já existe no projeto, em `src/components/dispatch/`) ou paginação inline no `ExecutionListDetail`. Como a tabela atual já é simples (Table do shadcn) e o resto da UI segue padrão similar, vou aplicar paginação inline consistente com o resto do app.
+## Plano: Seleção múltipla e re-execução de leads
 
-### Alteração
+### Objetivo
+Permitir selecionar leads do histórico (24h ou ciclo) e disparar a ação configurada novamente para os selecionados — útil quando alguns falharam ou para re-enviar webhook a leads específicos.
 
-**`src/components/group-campaigns/tabs/ExecutionListTab.tsx`** — `ExecutionListDetail`
+### Alterações
 
-- Remover lógica `showAll` / `displayedLeads.slice(0, 10)` e o botão "Ver todos"
-- Adicionar estado `currentPage` e `itemsPerPage` (default 25)
-- Calcular `paginatedLeads = leads.slice((page-1)*itemsPerPage, page*itemsPerPage)`
-- Resetar `currentPage` quando `leads.length` mudar significativamente (novo lead via realtime)
-- Renderizar abaixo da tabela:
-  - Select de "itens por página" (25 / 50 / 100)
-  - Componente `Pagination` (shadcn `src/components/ui/pagination.tsx`) com Previous / páginas numeradas / Next
-  - Texto "Exibindo X-Y de Z leads"
-- Lógica de páginas visíveis: até 5 páginas com ellipses quando passa disso (mesmo padrão do `DataTableWithPagination`)
-- Esconder paginação quando `leads.length <= itemsPerPage`
+**1. `supabase/functions/group-execution-processor/index.ts`**
+- Adicionar suporte a payload `{ listId, leadIds: string[] }` para execução seletiva
+- Quando `leadIds` for fornecido: buscar apenas esses leads (independente de status), resetar para `pending`, executar `executeAction` para cada, atualizar status individual
+- Não atualizar `current_cycle_id` / `last_executed_at` da lista (re-execução pontual não rotaciona ciclo)
+- Quando `leadIds` ausente: comportamento atual (lista inteira pendente)
+
+**2. `src/hooks/useGroupExecutionList.ts`**
+- Adicionar mutation `executeLeads` que invoca `group-execution-processor` com `{ listId, leadIds }`
+- Invalida query de leads ao concluir
+
+**3. `src/components/group-campaigns/tabs/ExecutionListTab.tsx`** — `ExecutionListDetail`
+- Estado `selectedLeadIds: Set<string>`
+- Adicionar coluna checkbox no `TableHeader` (select all da página atual) e em cada `TableRow`
+- Botão "Executar Selecionados (N)" no header do card, ao lado de "Executar Agora"
+  - Aparece somente quando `selectedLeadIds.size > 0`
+  - Confirmação via `AlertDialog` reutilizando padrão existente
+- Limpar seleção após execução bem-sucedida
+- Manter "Executar Agora" inalterado (executa apenas pendentes do ciclo)
 
 ### Comportamento
 
-- Lista de 40 leads (caso atual): 25 por página → 2 páginas
-- Funciona tanto para listas fulltime (24h) quanto cíclicas
-- Mantém o card de "Total de leads" intacto
-- Sem alterações em hooks ou backend
+- Usuário marca leads específicos (executados, falhados ou pendentes) → clica "Executar Selecionados" → backend reprocessa esses leads → toast de sucesso → lista atualiza via realtime mostrando novos status
+- Funciona em listas 24h (cumulativas) e cíclicas
+- Select-all marca apenas a página visível (consistente com paginação padrão do app)
 
