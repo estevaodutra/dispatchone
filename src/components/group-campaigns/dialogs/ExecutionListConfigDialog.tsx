@@ -9,7 +9,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
 import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
-import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, AlertCircle, ChevronDown, Copy } from "lucide-react";
 
 interface ExecutionListConfigDialogProps {
   open: boolean;
@@ -23,6 +26,7 @@ interface ExecutionListConfigDialogProps {
     monitored_events: string[];
     action_type: "webhook" | "message" | "call";
     webhook_url?: string;
+    webhook_params?: Record<string, any>;
     message_template?: string;
     call_campaign_id?: string;
     execution_schedule_type?: "window_end" | "scheduled" | "immediate";
@@ -65,6 +69,8 @@ export function ExecutionListConfigDialog({
   const [monitoredEvents, setMonitoredEvents] = useState<string[]>(["group_join"]);
   const [actionType, setActionType] = useState<"webhook" | "message" | "call">("webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookParams, setWebhookParams] = useState("");
+  const [webhookParamsError, setWebhookParamsError] = useState<string | null>(null);
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
   const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
