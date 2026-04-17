@@ -138,6 +138,84 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const forcedListId: string | null = body?.list_id ?? null;
     const forcedLeadIds: string[] | null = Array.isArray(body?.lead_ids) && body.lead_ids.length > 0 ? body.lead_ids : null;
+    const manualMembers: Array<{ phone: string; lid?: string | null; name?: string | null }> | null =
+      Array.isArray(body?.members) && body.members.length > 0 ? body.members : null;
+    const intervalSeconds: number = Number(body?.interval_seconds) > 0 ? Number(body.interval_seconds) : 0;
+
+    // ── Manual execution: trigger list action for arbitrary members (from Members tab) ──
+    if (forcedListId && manualMembers) {
+      const { data: list, error: listErr } = await supabase
+        .from("group_execution_lists")
+        .select("*")
+        .eq("id", forcedListId)
+        .maybeSingle();
+
+      if (listErr || !list) {
+        return new Response(JSON.stringify({ ok: false, error: listErr?.message || "List not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const cycleId = (list as ExecutionList).current_cycle_id || crypto.randomUUID();
+      let processed = 0;
+      let errors = 0;
+
+      for (let i = 0; i < manualMembers.length; i++) {
+        const member = manualMembers[i];
+        const phone = String(member.phone || "").trim();
+        if (!phone) continue;
+
+        // Insert as a manual execution lead
+        const { data: inserted, error: insertErr } = await supabase
+          .from("group_execution_leads")
+          .insert({
+            list_id: forcedListId,
+            cycle_id: cycleId,
+            user_id: (list as ExecutionList).user_id,
+            phone,
+            lid: member.lid ?? null,
+            name: member.name ?? null,
+            origin_event: "manual_execute",
+            origin_detail: "members_tab",
+            status: "pending",
+          })
+          .select("id, phone, name, origin_event, origin_detail, lid")
+          .maybeSingle();
+
+        if (insertErr || !inserted) {
+          errors++;
+          console.error(`[group-execution-processor] Manual insert failed:`, insertErr?.message);
+          continue;
+        }
+
+        try {
+          await executeAction(supabaseUrl, supabaseKey, supabase, list as ExecutionList, inserted as ExecutionLead);
+          await supabase
+            .from("group_execution_leads")
+            .update({ status: "executed", executed_at: new Date().toISOString() })
+            .eq("id", inserted.id);
+          processed++;
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error";
+          await supabase
+            .from("group_execution_leads")
+            .update({ status: "failed", error_message: errorMsg, executed_at: new Date().toISOString() })
+            .eq("id", inserted.id);
+          errors++;
+          console.error(`[group-execution-processor] Manual lead ${inserted.id} failed:`, errorMsg);
+        }
+
+        // Rate limit between sends
+        if (intervalSeconds > 0 && i < manualMembers.length - 1) {
+          await new Promise((r) => setTimeout(r, intervalSeconds * 1000));
+        }
+      }
+
+      return new Response(JSON.stringify({ ok: true, mode: "manual", processed, errors }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── Selective re-execution: process only specified leads, do not rotate cycle ──
     if (forcedListId && forcedLeadIds) {
