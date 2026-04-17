@@ -91,7 +91,34 @@ function ExecutionListDetail({
   }, [list.current_window_end, list.is_active, list.window_type, list.window_start_time, list.window_duration_hours]);
 
   const pendingLeads = useMemo(() => leads.filter((l) => l.status === "pending"), [leads]);
-  const displayedLeads = showAll ? leads : leads.slice(0, 10);
+
+  const totalPages = Math.max(1, Math.ceil(leads.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, leads.length);
+  const paginatedLeads = leads.slice(startIndex, endIndex);
+
+  // Reset to a valid page if current page becomes invalid (e.g., new leads arrive via realtime)
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [totalPages, currentPage]);
+
+  const visiblePages = useMemo(() => {
+    const pages: (number | "ellipsis")[] = [];
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (safePage > 3) pages.push("ellipsis");
+      const start = Math.max(2, safePage - 1);
+      const end = Math.min(totalPages - 1, safePage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (safePage < totalPages - 2) pages.push("ellipsis");
+      if (totalPages > 1) pages.push(totalPages);
+    }
+    return pages;
+  }, [totalPages, safePage]);
 
   const handleToggle = async (active: boolean) => {
     try {
