@@ -75,12 +75,22 @@ export function MembersTab({ campaignId }: MembersTabProps) {
     ...(dispatchCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "despacho", status: c.status })),
   ];
 
-  // Filter by search + period
+  // Filter by search + period (search matches name, phone, OR lid)
   const filteredMembers = useMemo(() => {
-    let result = members.filter((m) =>
-      m.phone.includes(searchTerm) ||
-      m.name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const term = searchTerm.trim().toLowerCase();
+    const termDigits = term.replace(/\D/g, "");
+    let result = members.filter((m) => {
+      if (!term) return true;
+      const phoneMatch = m.phone?.toLowerCase().includes(term);
+      const nameMatch = m.name?.toLowerCase().includes(term);
+      // LID match: accept "128853498429553", "128853498429553@lid", or partial
+      const lidNormalized = m.lid?.toLowerCase().replace(/@lid$/, "") || "";
+      const lidMatch = !!m.lid && (
+        m.lid.toLowerCase().includes(term) ||
+        (termDigits.length > 0 && lidNormalized.includes(termDigits))
+      );
+      return phoneMatch || nameMatch || lidMatch;
+    });
 
     if (periodFilter) {
       const threshold = subDays(new Date(), periodFilter);
@@ -491,7 +501,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
             <div className="relative flex-1 max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Buscar por telefone ou nome..."
+                placeholder="Buscar por telefone, nome ou LID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
