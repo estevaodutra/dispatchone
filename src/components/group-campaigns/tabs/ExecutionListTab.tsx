@@ -243,11 +243,19 @@ function ExecutionListDetail({
       </div>
 
       <Card><CardContent className="p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
           <span className="text-sm font-semibold">{fulltime ? "Histórico das últimas 24h" : "Leads do ciclo atual"}</span>
-          <Button variant="destructive" size="sm" onClick={() => setShowExecuteConfirm(true)} disabled={pendingLeads.length === 0 || executeNow.isPending}>
-            <Play className="h-4 w-4 mr-1" />{executeNow.isPending ? "Executando..." : "Executar Agora"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {selectedLeadIds.size > 0 && (
+              <Button variant="outline" size="sm" onClick={() => setShowReexecConfirm(true)} disabled={executeLeads.isPending}>
+                <RotateCw className="h-4 w-4 mr-1" />
+                {executeLeads.isPending ? "Reprocessando..." : `Executar Selecionados (${selectedLeadIds.size})`}
+              </Button>
+            )}
+            <Button variant="destructive" size="sm" onClick={() => setShowExecuteConfirm(true)} disabled={pendingLeads.length === 0 || executeNow.isPending}>
+              <Play className="h-4 w-4 mr-1" />{executeNow.isPending ? "Executando..." : "Executar Agora"}
+            </Button>
+          </div>
         </div>
         {leads.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-6">{fulltime ? "Nenhum lead processado nas últimas 24h." : "Nenhum lead capturado neste ciclo ainda."}</p>
@@ -255,6 +263,13 @@ function ExecutionListDetail({
           <>
             <Table>
               <TableHeader><TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={allPageSelected ? true : somePageSelected ? "indeterminate" : false}
+                    onCheckedChange={(v) => togglePageAll(v === true)}
+                    aria-label="Selecionar todos da página"
+                  />
+                </TableHead>
                 <TableHead>Nome / Número</TableHead>
                 <TableHead>Evento</TableHead>
                 <TableHead>{fulltime ? "Capturado em" : "Entrou às"}</TableHead>
@@ -262,7 +277,14 @@ function ExecutionListDetail({
               </TableRow></TableHeader>
               <TableBody>
                 {paginatedLeads.map((lead) => (
-                  <TableRow key={lead.id}>
+                  <TableRow key={lead.id} data-state={selectedLeadIds.has(lead.id) ? "selected" : undefined}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedLeadIds.has(lead.id)}
+                        onCheckedChange={(v) => toggleLead(lead.id, v === true)}
+                        aria-label={`Selecionar ${lead.name || lead.phone}`}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">
                       {lead.name || lead.phone}
                       {lead.name && <span className="text-xs text-muted-foreground ml-1">{lead.phone}</span>}
@@ -345,6 +367,23 @@ function ExecutionListDetail({
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction onClick={handleExecuteNow} disabled={executeNow.isPending}>
               {executeNow.isPending ? "Executando..." : "Confirmar Execução"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showReexecConfirm} onOpenChange={setShowReexecConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reprocessar Leads Selecionados</AlertDialogTitle>
+            <AlertDialogDescription>
+              Isso irá disparar novamente a ação configurada ({ACTION_LABELS[list.action_type]}) para os {selectedLeadIds.size} lead(s) selecionado(s), independente do status atual. Não afeta o ciclo da lista.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReexecuteSelected} disabled={executeLeads.isPending}>
+              {executeLeads.isPending ? "Reprocessando..." : "Confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
