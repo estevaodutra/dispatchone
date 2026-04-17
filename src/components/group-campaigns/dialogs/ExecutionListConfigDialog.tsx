@@ -92,6 +92,9 @@ export function ExecutionListConfigDialog({
       setMonitoredEvents(existing.monitored_events || ["group_join"]);
       setActionType(existing.action_type as "webhook" | "message" | "call");
       setWebhookUrl(existing.webhook_url || "");
+      const params = (existing as any).webhook_params;
+      setWebhookParams(params && Object.keys(params).length > 0 ? JSON.stringify(params, null, 2) : "");
+      setWebhookParamsError(null);
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
       setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
@@ -106,6 +109,8 @@ export function ExecutionListConfigDialog({
       setMonitoredEvents(["group_join"]);
       setActionType("webhook");
       setWebhookUrl("");
+      setWebhookParams("");
+      setWebhookParamsError(null);
       setMessageTemplate("");
       setCallCampaignId("");
       setExecScheduleType("window_end");
