@@ -1,36 +1,44 @@
 
 
-## Plano: Resolver vínculo Lead ↔ Membro e busca por LID
+## Plano: Parâmetros adicionais (JSON) para webhook da Lista de Execução
 
-### Diagnóstico
-Confirmado via DB:
-- O "telefone" `196748727320770` mostrado no histórico 24h é na verdade um **LID** (15+ dígitos, sem código de país), não telefone real
-- `group_execution_leads.phone` recebe o LID quando o evento `group_join` chega antes da resolução phone↔LID
-- `group_members` tem ambos: `phone` real (`556192113800`) + `lid` (`128853498429553@lid`)
-- Por isso a busca na aba Membros não encontra: você pesquisou um LID na coluna `phone`
+### Objetivo
+Adicionar campo "Parâmetros Adicionais (JSON)" no modal de Lista de Execução (apenas quando ação = webhook). Esses parâmetros são mesclados ao payload do webhook, com substituição de variáveis `{{lead.phone}}`, `{{campaign.id}}`, etc.
 
-### Soluções
+### Alterações
 
-**1. Webhook-inbound — separar phone real de LID**
-Em `supabase/functions/webhook-inbound/index.ts`, quando inserir em `group_execution_leads`:
-- Se `senderPhone` for um LID (heurística: >14 dígitos, sem `55`/código país, ou flag do classifier), gravar em `lid` e deixar `phone` nulo
-- Tentar resolver phone real consultando `group_members` por `lid` antes de inserir; se encontrar, preencher ambos
-- Para linhas antigas: migration de backfill que cruza `group_execution_leads.phone` com `group_members.lid` (movendo valor de `phone` → `lid` e preenchendo phone real quando match)
+**1. Migration — `group_execution_lists.webhook_params`**
+- Adicionar coluna `webhook_params jsonb DEFAULT '{}'::jsonb`
+- Comentário explicativo
 
-**2. ExecutionListTab — busca e exibição inteligentes**
-Em `src/components/group-campaigns/tabs/ExecutionListTab.tsx`:
-- No `LeadEventDialog`, resolver membro por **LID primeiro** (mais preciso), depois telefone
-- Mostrar claramente "Identificador: LID" vs "Telefone" no detalhe do lead
-- Botão "Ver na lista de Membros" que copia o **telefone real do membro vinculado** (não o LID) para que a busca na aba Membros funcione
+**2. `src/hooks/useGroupExecutionList.ts`**
+- Adicionar `webhook_params: Record<string, any>` ao tipo `GroupExecutionList`
+- Aceitar `webhook_params?: Record<string, any>` em `createList` e `updateList` (apenas persistir quando `action_type === "webhook"`, senão `{}`)
 
-**3. MembersTab — busca por LID**
-Em `src/components/group-campaigns/tabs/MembersTab.tsx`:
-- Estender o filtro de busca para também procurar em `member.lid` (não só `phone`/`name`)
-- Normalização: aceitar tanto `128853498429553` quanto `128853498429553@lid`
+**3. `src/components/group-campaigns/dialogs/ExecutionListConfigDialog.tsx`**
+- Estado `webhookParams: string` (texto JSON cru) + `webhookParamsError: string | null`
+- Hidratar do `existing.webhook_params` (stringify com indent 2)
+- Bloco renderizado dentro de `actionType === "webhook"`, após URL:
+  - `Textarea` font-mono para JSON
+  - Validação onChange (try/catch JSON.parse) → exibe erro vermelho com `AlertCircle`
+  - Texto auxiliar: "Esses dados serão mesclados ao payload do webhook"
+  - `Collapsible` "Variáveis Disponíveis" listando: `{{lead.phone}}`, `{{lead.name}}`, `{{lead.lid}}`, `{{lead.email}}`, `{{campaign.id}}`, `{{campaign.name}}`, `{{group.id}}`, `{{event.type}}`, `{{timestamp}}` — cada item clicável copia para clipboard com toast
+- `isValid()`: bloquear save se JSON inválido
+- `handleSave()`: enviar `webhook_params` parseado (ou `{}` se vazio)
 
-### Comportamento final
-- Histórico 24h continua mostrando o identificador disponível, mas com label correto (LID vs telefone)
-- Modal de detalhe vincula corretamente ao membro via LID e oferece o telefone real para busca cruzada
-- Aba Membros encontra a pessoa tanto por telefone quanto por LID
-- Linhas antigas em `group_execution_leads` são corrigidas via backfill (migration)
+**4. `src/components/group-campaigns/tabs/ExecutionListTab.tsx`**
+- Repassar `webhook_params` ao chamar `createList`/`updateList`
+
+**5. `supabase/functions/group-execution-processor/index.ts`**
+- Adicionar `webhook_params` em `interface ExecutionList`
+- Buscar `group_campaigns` (id, name, instance_id) e respectivo `group_jid` da primeira `campaign_groups` para enriquecer contexto de variáveis
+- Função `replaceVariables(obj, ctx)` recursiva (string/array/object) substituindo `{{entity.field}}` e `{{field}}`
+- Em `case "webhook"`: aplicar substituição em `webhook_params`, mesclar com payload base existente (campos extras vencem em conflito apenas para chaves customizadas)
+
+### Comportamento
+- Campo só aparece para ação Webhook
+- JSON inválido bloqueia botão "Salvar" e exibe erro
+- Variáveis não resolvidas permanecem literais (`{{x.y}}`) — facilita depuração
+- Webhook recebe payload base + chaves customizadas com variáveis substituídas
+- Listas existentes funcionam normalmente (default `{}`)
 
