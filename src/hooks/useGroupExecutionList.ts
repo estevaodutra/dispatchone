@@ -338,6 +338,7 @@ export function useGroupExecutionList(campaignId: string) {
     updateList,
     toggleActive,
     executeNow,
+    executeLeads,
     deleteList,
   };
 }
