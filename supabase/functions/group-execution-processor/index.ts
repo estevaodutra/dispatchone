@@ -128,8 +128,7 @@ Deno.serve(async (req) => {
 
       const { data: leads } = await supabase
         .from("group_execution_leads")
-        .select("id, phone, name, origin_event, origin_detail")
-        .eq("list_id", forcedListId)
+        .select("id, phone, name, origin_event, origin_detail, lid")
         .in("id", forcedLeadIds);
 
       let processed = 0;
@@ -226,8 +225,7 @@ Deno.serve(async (req) => {
       // Fetch pending leads for current cycle
       const { data: leads } = await supabase
         .from("group_execution_leads")
-        .select("id, phone, name, origin_event, origin_detail")
-        .eq("list_id", list.id)
+        .select("id, phone, name, origin_event, origin_detail, lid")
         .eq("cycle_id", list.current_cycle_id)
         .eq("status", "pending");
 
