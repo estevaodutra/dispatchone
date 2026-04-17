@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { useGroupExecutionList, GroupExecutionList } from "@/hooks/useGroupExecutionList";
+import { useGroupExecutionList, GroupExecutionList, GroupExecutionLead } from "@/hooks/useGroupExecutionList";
+import { useGroupMembers, GroupMember } from "@/hooks/useGroupMembers";
 import { ExecutionListConfigDialog } from "../dialogs/ExecutionListConfigDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,8 +10,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity, RotateCw } from "lucide-react";
+import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity, RotateCw, Eye, Copy, UserCheck, UserX, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -64,10 +67,12 @@ function ExecutionListDetail({
   const { useListLeads, toggleActive, executeNow, executeLeads } = useGroupExecutionList(campaignId);
   const fulltime = isFulltime(list);
   const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
+  const { members } = useGroupMembers(campaignId);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
   const [showReexecConfirm, setShowReexecConfirm] = useState(false);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+  const [viewingLead, setViewingLead] = useState<GroupExecutionLead | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [countdown, setCountdown] = useState("");
@@ -283,6 +288,7 @@ function ExecutionListDetail({
                 <TableHead>Evento</TableHead>
                 <TableHead>{fulltime ? "Capturado em" : "Entrou às"}</TableHead>
                 <TableHead>Status</TableHead>
+                <TableHead className="w-12 text-right">Ações</TableHead>
               </TableRow></TableHeader>
               <TableBody>
                 {paginatedLeads.map((lead) => (
@@ -304,6 +310,17 @@ function ExecutionListDetail({
                       <Badge variant={lead.status === "executed" ? "default" : lead.status === "failed" ? "destructive" : "secondary"}>
                         {lead.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => setViewingLead(lead)}
+                        aria-label="Ver detalhes do evento"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -397,7 +414,212 @@ function ExecutionListDetail({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <LeadEventDialog
+        lead={viewingLead}
+        list={list}
+        members={members}
+        onClose={() => setViewingLead(null)}
+        onReexecute={async (leadId) => {
+          try {
+            await executeLeads.mutateAsync({ listId: list.id, leadIds: [leadId] });
+            toast.success("Lead reprocessado");
+          } catch { toast.error("Erro ao reprocessar lead"); }
+        }}
+        isReexecuting={executeLeads.isPending}
+      />
     </div>
+  );
+}
+
+// ── Lead event detail dialog ──
+function LeadEventDialog({
+  lead,
+  list,
+  members,
+  onClose,
+  onReexecute,
+  isReexecuting,
+}: {
+  lead: GroupExecutionLead | null;
+  list: GroupExecutionList;
+  members: GroupMember[];
+  onClose: () => void;
+  onReexecute: (leadId: string) => Promise<void>;
+  isReexecuting: boolean;
+}) {
+  // Match member by LID first (precise), fallback to phone
+  const matchedMember = useMemo(() => {
+    if (!lead) return null;
+    if (lead.lid) {
+      const byLid = members.find((m) => m.lid && m.lid === lead.lid);
+      if (byLid) return byLid;
+    }
+    if (lead.phone) {
+      const normalized = lead.phone.replace(/\D/g, "");
+      return members.find((m) => m.phone && m.phone.replace(/\D/g, "") === normalized) || null;
+    }
+    return null;
+  }, [lead, members]);
+
+  // Try to parse origin_detail as JSON for pretty formatting
+  const formattedDetail = useMemo(() => {
+    if (!lead?.origin_detail) return null;
+    try {
+      return JSON.stringify(JSON.parse(lead.origin_detail), null, 2);
+    } catch {
+      return lead.origin_detail;
+    }
+  }, [lead?.origin_detail]);
+
+  if (!lead) return null;
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copiado`);
+  };
+
+  const actionTarget =
+    list.action_type === "webhook"
+      ? list.webhook_url || "—"
+      : list.action_type === "message"
+        ? list.message_template?.slice(0, 80) + (list.message_template && list.message_template.length > 80 ? "..." : "") || "—"
+        : list.action_type === "call"
+          ? `Campanha: ${list.call_campaign_id || "—"}`
+          : "—";
+
+  return (
+    <Dialog open={!!lead} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Detalhes do Evento</DialogTitle>
+          <DialogDescription>Informações sobre o lead capturado e a ação disparada.</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {/* Lead capturado */}
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Lead capturado</div>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <div className="text-xs text-muted-foreground">Nome</div>
+                <div className="font-medium">{displayName(lead.name) || <span className="text-muted-foreground italic">sem nome</span>}</div>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Telefone</div>
+                <div className="font-mono text-sm flex items-center gap-1">
+                  {lead.phone}
+                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(lead.phone, "Telefone")}>
+                    <Copy className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+              {lead.lid && (
+                <div className="col-span-2">
+                  <div className="text-xs text-muted-foreground">LID</div>
+                  <div className="font-mono text-xs flex items-center gap-1 break-all">
+                    {lead.lid}
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0" onClick={() => copyToClipboard(lead.lid!, "LID")}>
+                      <Copy className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs text-muted-foreground">Status</div>
+                <Badge variant={lead.status === "executed" ? "default" : lead.status === "failed" ? "destructive" : "secondary"}>
+                  {lead.status}
+                </Badge>
+              </div>
+              <div>
+                <div className="text-xs text-muted-foreground">Capturado em</div>
+                <div className="text-sm">{format(new Date(lead.created_at), "dd/MM/yyyy HH:mm:ss")}</div>
+              </div>
+              {lead.executed_at && (
+                <div className="col-span-2">
+                  <div className="text-xs text-muted-foreground">Executado em</div>
+                  <div className="text-sm">{format(new Date(lead.executed_at), "dd/MM/yyyy HH:mm:ss")}</div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Membro vinculado */}
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1">
+              {matchedMember ? <UserCheck className="h-3 w-3" /> : <UserX className="h-3 w-3" />}
+              Membro vinculado
+            </div>
+            {matchedMember ? (
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10">
+                  {matchedMember.profilePhoto && <AvatarImage src={matchedMember.profilePhoto} alt={matchedMember.name || matchedMember.phone} />}
+                  <AvatarFallback>{(matchedMember.name || matchedMember.phone).slice(0, 2).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium truncate">{matchedMember.name || "Sem nome"}</span>
+                    {matchedMember.isAdmin && <Badge variant="outline" className="text-xs">Admin</Badge>}
+                    <Badge variant={matchedMember.status === "active" ? "default" : "secondary"} className="text-xs">
+                      {matchedMember.status}
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground font-mono">{matchedMember.phone}</div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">Membro não encontrado nesta campanha.</p>
+            )}
+          </div>
+
+          {/* Origem do evento */}
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Origem</div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Evento:</span>
+              <Badge variant="outline">{lead.origin_event || "—"}</Badge>
+            </div>
+            {formattedDetail && (
+              <pre className="text-xs bg-muted rounded p-2 overflow-x-auto max-h-48 overflow-y-auto whitespace-pre-wrap break-all">
+                {formattedDetail}
+              </pre>
+            )}
+          </div>
+
+          {/* Ação configurada */}
+          <div className="rounded-lg border p-3 space-y-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Ação configurada na lista</div>
+            <div className="flex items-center gap-2 text-sm">
+              {ACTION_ICONS[list.action_type]}
+              <span className="font-medium">{ACTION_LABELS[list.action_type]}</span>
+            </div>
+            <div className="text-xs text-muted-foreground font-mono break-all">{actionTarget}</div>
+          </div>
+
+          {/* Erro */}
+          {lead.status === "failed" && lead.error_message && (
+            <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-3 space-y-1">
+              <div className="text-xs font-semibold text-destructive uppercase tracking-wide flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                Erro
+              </div>
+              <pre className="text-xs text-destructive whitespace-pre-wrap break-all">{lead.error_message}</pre>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose}>Fechar</Button>
+          <Button
+            onClick={() => onReexecute(lead.id)}
+            disabled={isReexecuting}
+          >
+            <RotateCw className="h-4 w-4 mr-1" />
+            {isReexecuting ? "Reprocessando..." : "Re-executar este lead"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
