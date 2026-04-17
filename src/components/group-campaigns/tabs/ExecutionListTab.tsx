@@ -448,8 +448,6 @@ function LeadEventDialog({
   onReexecute: (leadId: string) => Promise<void>;
   isReexecuting: boolean;
 }) {
-  if (!lead) return null;
-
   // Match member by LID first (precise), fallback to phone
   const matchedMember = useMemo(() => {
     if (!lead) return null;
@@ -466,13 +464,15 @@ function LeadEventDialog({
 
   // Try to parse origin_detail as JSON for pretty formatting
   const formattedDetail = useMemo(() => {
-    if (!lead.origin_detail) return null;
+    if (!lead?.origin_detail) return null;
     try {
       return JSON.stringify(JSON.parse(lead.origin_detail), null, 2);
     } catch {
       return lead.origin_detail;
     }
-  }, [lead.origin_detail]);
+  }, [lead?.origin_detail]);
+
+  if (!lead) return null;
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
