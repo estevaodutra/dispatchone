@@ -1157,6 +1157,7 @@ export type Database = {
           error_message: string | null
           executed_at: string | null
           id: string
+          lid: string | null
           list_id: string
           name: string | null
           origin_detail: string | null
@@ -1171,6 +1172,7 @@ export type Database = {
           error_message?: string | null
           executed_at?: string | null
           id?: string
+          lid?: string | null
           list_id: string
           name?: string | null
           origin_detail?: string | null
@@ -1185,6 +1187,7 @@ export type Database = {
           error_message?: string | null
           executed_at?: string | null
           id?: string
+          lid?: string | null
           list_id?: string
           name?: string | null
           origin_detail?: string | null
