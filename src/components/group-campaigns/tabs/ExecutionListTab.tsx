@@ -218,7 +218,7 @@ function ExecutionListDetail({
                 <TableHead>Status</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {displayedLeads.map((lead) => (
+                {paginatedLeads.map((lead) => (
                   <TableRow key={lead.id}>
                     <TableCell className="font-medium">
                       {lead.name || lead.phone}
@@ -235,11 +235,55 @@ function ExecutionListDetail({
                 ))}
               </TableBody>
             </Table>
-            {leads.length > 10 && !showAll && (
-              <div className="text-center mt-3">
-                <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
-                  Exibindo 10 de {leads.length} leads — Ver todos
-                </Button>
+            {leads.length > itemsPerPage && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Itens por página:</span>
+                  <Select value={itemsPerPage.toString()} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1); }}>
+                    <SelectTrigger className="w-20 h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[25, 50, 100].map((opt) => (
+                        <SelectItem key={opt} value={opt.toString()}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-muted-foreground">
+                    Exibindo {startIndex + 1}-{endIndex} de {leads.length}
+                  </span>
+                </div>
+                <Pagination className="mx-0 w-auto justify-end">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className={safePage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                    {visiblePages.map((page, idx) =>
+                      page === "ellipsis" ? (
+                        <PaginationItem key={`ellipsis-${idx}`}>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      ) : (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(page)}
+                            isActive={safePage === page}
+                            className="cursor-pointer"
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    )}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        className={safePage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             )}
           </>
