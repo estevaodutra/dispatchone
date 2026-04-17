@@ -9,7 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -51,11 +52,13 @@ function ExecutionListDetail({
   onBack: () => void;
   onEdit: () => void;
 }) {
-  const { useListLeads, toggleActive, executeNow } = useGroupExecutionList(campaignId);
+  const { useListLeads, toggleActive, executeNow, executeLeads } = useGroupExecutionList(campaignId);
   const fulltime = isFulltime(list);
   const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
+  const [showReexecConfirm, setShowReexecConfirm] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(25);
   const [countdown, setCountdown] = useState("");
@@ -133,6 +136,46 @@ function ExecutionListDetail({
       toast.success("Execução concluída");
       setShowExecuteConfirm(false);
     } catch { toast.error("Erro ao executar lista"); }
+  };
+
+  const handleReexecuteSelected = async () => {
+    const ids = Array.from(selectedLeadIds);
+    if (ids.length === 0) return;
+    try {
+      const result: any = await executeLeads.mutateAsync({ listId: list.id, leadIds: ids });
+      const ok = result?.processed ?? ids.length;
+      const fail = result?.errors ?? 0;
+      if (fail > 0) {
+        toast.warning(`Re-execução: ${ok} ok, ${fail} falhas`);
+      } else {
+        toast.success(`${ok} lead(s) reprocessado(s)`);
+      }
+      setSelectedLeadIds(new Set());
+      setShowReexecConfirm(false);
+    } catch { toast.error("Erro ao reprocessar leads"); }
+  };
+
+  // Toggle individual lead selection
+  const toggleLead = (id: string, checked: boolean) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  // Toggle select-all on current page
+  const pageIds = paginatedLeads.map((l) => l.id);
+  const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedLeadIds.has(id));
+  const somePageSelected = pageIds.some((id) => selectedLeadIds.has(id));
+  const togglePageAll = (checked: boolean) => {
+    setSelectedLeadIds((prev) => {
+      const next = new Set(prev);
+      if (checked) pageIds.forEach((id) => next.add(id));
+      else pageIds.forEach((id) => next.delete(id));
+      return next;
+    });
   };
 
   const windowLabel =
