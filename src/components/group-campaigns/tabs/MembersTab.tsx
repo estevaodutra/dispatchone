@@ -75,12 +75,23 @@ export function MembersTab({ campaignId }: MembersTabProps) {
     ...(dispatchCampaigns || []).map(c => ({ id: c.id, name: c.name, type: "despacho", status: c.status })),
   ];
 
-  // Filter by search + period
+  // Filter by search + period (search matches name, phone, OR lid)
   const filteredMembers = useMemo(() => {
-    let result = members.filter((m) =>
-      m.phone.includes(searchTerm) ||
-      m.name?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const term = searchTerm.trim().toLowerCase();
+    const termDigits = term.replace(/\D/g, "");
+    let result = members.filter((m) => {
+      if (!term) return true;
+      const phoneMatch = m.phone?.toLowerCase().includes(term);
+      const nameMatch = m.name?.toLowerCase().includes(term);
+      // LID match: accept "128853498429553", "128853498429553@lid", or partial
+      const lidStr = (m as any).lid as string | undefined;
+      const lidNormalized = lidStr?.toLowerCase().replace(/@lid$/, "") || "";
+      const lidMatch = !!lidStr && (
+        lidStr.toLowerCase().includes(term) ||
+        (termDigits.length > 0 && lidNormalized.includes(termDigits))
+      );
+      return phoneMatch || nameMatch || lidMatch;
+    });
 
     if (periodFilter) {
       const threshold = subDays(new Date(), periodFilter);
