@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity } from "lucide-react";
 import { toast } from "sonner";
@@ -54,7 +56,8 @@ function ExecutionListDetail({
   const { data: leads = [], isLoading: leadsLoading } = useListLeads(list.id, list.current_cycle_id, fulltime);
 
   const [showExecuteConfirm, setShowExecuteConfirm] = useState(false);
-  const [showAll, setShowAll] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(25);
   const [countdown, setCountdown] = useState("");
   const [windowExpired, setWindowExpired] = useState(false);
 
@@ -88,7 +91,34 @@ function ExecutionListDetail({
   }, [list.current_window_end, list.is_active, list.window_type, list.window_start_time, list.window_duration_hours]);
 
   const pendingLeads = useMemo(() => leads.filter((l) => l.status === "pending"), [leads]);
-  const displayedLeads = showAll ? leads : leads.slice(0, 10);
+
+  const totalPages = Math.max(1, Math.ceil(leads.length / itemsPerPage));
+  const safePage = Math.min(currentPage, totalPages);
+  const startIndex = (safePage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, leads.length);
+  const paginatedLeads = leads.slice(startIndex, endIndex);
+
+  // Reset to a valid page if current page becomes invalid (e.g., new leads arrive via realtime)
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(1);
+  }, [totalPages, currentPage]);
+
+  const visiblePages = useMemo(() => {
+    const pages: (number | "ellipsis")[] = [];
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      pages.push(1);
+      if (safePage > 3) pages.push("ellipsis");
+      const start = Math.max(2, safePage - 1);
+      const end = Math.min(totalPages - 1, safePage + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (safePage < totalPages - 2) pages.push("ellipsis");
+      if (totalPages > 1) pages.push(totalPages);
+    }
+    return pages;
+  }, [totalPages, safePage]);
 
   const handleToggle = async (active: boolean) => {
     try {
@@ -188,7 +218,7 @@ function ExecutionListDetail({
                 <TableHead>Status</TableHead>
               </TableRow></TableHeader>
               <TableBody>
-                {displayedLeads.map((lead) => (
+                {paginatedLeads.map((lead) => (
                   <TableRow key={lead.id}>
                     <TableCell className="font-medium">
                       {lead.name || lead.phone}
@@ -205,11 +235,55 @@ function ExecutionListDetail({
                 ))}
               </TableBody>
             </Table>
-            {leads.length > 10 && !showAll && (
-              <div className="text-center mt-3">
-                <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
-                  Exibindo 10 de {leads.length} leads — Ver todos
-                </Button>
+            {leads.length > itemsPerPage && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Itens por página:</span>
+                  <Select value={itemsPerPage.toString()} onValueChange={(v) => { setItemsPerPage(Number(v)); setCurrentPage(1); }}>
+                    <SelectTrigger className="w-20 h-8"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {[25, 50, 100].map((opt) => (
+                        <SelectItem key={opt} value={opt.toString()}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <span className="text-muted-foreground">
+                    Exibindo {startIndex + 1}-{endIndex} de {leads.length}
+                  </span>
+                </div>
+                <Pagination className="mx-0 w-auto justify-end">
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        className={safePage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                    {visiblePages.map((page, idx) =>
+                      page === "ellipsis" ? (
+                        <PaginationItem key={`ellipsis-${idx}`}>
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      ) : (
+                        <PaginationItem key={page}>
+                          <PaginationLink
+                            onClick={() => setCurrentPage(page)}
+                            isActive={safePage === page}
+                            className="cursor-pointer"
+                          >
+                            {page}
+                          </PaginationLink>
+                        </PaginationItem>
+                      )
+                    )}
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        className={safePage === totalPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
               </div>
             )}
           </>
