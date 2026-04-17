@@ -129,8 +129,8 @@ function ExecutionListDetail({
 
       <div className={`grid grid-cols-2 ${fulltime ? "md:grid-cols-3" : "md:grid-cols-4"} gap-3`}>
         <Card><CardContent className="p-4">
-          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Users className="h-4 w-4" />{fulltime ? "Total de leads" : "Leads no ciclo"}</div>
-          <div className="text-2xl font-bold">{pendingLeads.length}</div>
+          <div className="flex items-center gap-2 text-muted-foreground text-sm mb-1"><Users className="h-4 w-4" />{fulltime ? "Total de leads (24h)" : "Leads no ciclo"}</div>
+          <div className="text-2xl font-bold">{fulltime ? leads.length : pendingLeads.length}</div>
         </CardContent></Card>
         {!fulltime && (
           <Card><CardContent className="p-4">
