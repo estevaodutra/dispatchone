@@ -82,6 +82,60 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const forcedListId: string | null = body?.list_id ?? null;
+    const forcedLeadIds: string[] | null = Array.isArray(body?.lead_ids) && body.lead_ids.length > 0 ? body.lead_ids : null;
+
+    // ── Selective re-execution: process only specified leads, do not rotate cycle ──
+    if (forcedListId && forcedLeadIds) {
+      const { data: list, error: listErr } = await supabase
+        .from("group_execution_lists")
+        .select("*")
+        .eq("id", forcedListId)
+        .maybeSingle();
+
+      if (listErr || !list) {
+        return new Response(JSON.stringify({ ok: false, error: listErr?.message || "List not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      const { data: leads } = await supabase
+        .from("group_execution_leads")
+        .select("id, phone, name, origin_event, origin_detail")
+        .eq("list_id", forcedListId)
+        .in("id", forcedLeadIds);
+
+      let processed = 0;
+      let errors = 0;
+      for (const lead of (leads || []) as ExecutionLead[]) {
+        try {
+          // Reset to pending before re-executing
+          await supabase
+            .from("group_execution_leads")
+            .update({ status: "pending", executed_at: null, error_message: null })
+            .eq("id", lead.id);
+
+          await executeAction(supabaseUrl, supabaseKey, supabase, list as ExecutionList, lead);
+          await supabase
+            .from("group_execution_leads")
+            .update({ status: "executed", executed_at: new Date().toISOString() })
+            .eq("id", lead.id);
+          processed++;
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : "Unknown error";
+          await supabase
+            .from("group_execution_leads")
+            .update({ status: "failed", error_message: errorMsg, executed_at: new Date().toISOString() })
+            .eq("id", lead.id);
+          errors++;
+          console.error(`[group-execution-processor] Re-exec lead ${lead.id} failed:`, errorMsg);
+        }
+      }
+
+      return new Response(JSON.stringify({ ok: true, mode: "selective", processed, errors }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Fetch lists ready for execution
     let query = supabase
@@ -91,9 +145,6 @@ Deno.serve(async (req) => {
 
     if (forcedListId) {
       query = query.eq("id", forcedListId);
-    } else {
-      // We fetch all active lists and filter in code for schedule logic
-      query = query;
     }
 
     const { data: allLists, error: listError } = await query;
