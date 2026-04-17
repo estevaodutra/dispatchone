@@ -306,14 +306,74 @@ export function ExecutionListConfigDialog({
             </RadioGroup>
 
             {actionType === "webhook" && (
-              <div>
-                <Label className="text-xs text-muted-foreground">URL</Label>
-                <Input
-                  placeholder="https://..."
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                />
-              </div>
+              <>
+                <div>
+                  <Label className="text-xs text-muted-foreground">URL</Label>
+                  <Input
+                    placeholder="https://..."
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Parâmetros Adicionais (JSON)</Label>
+                  <Textarea
+                    value={webhookParams}
+                    onChange={(e) => handleParamsChange(e.target.value)}
+                    placeholder={`{\n  "source": "dispatchone",\n  "lead_phone": "{{lead.phone}}",\n  "campaign": "{{campaign.name}}"\n}`}
+                    className={cn(
+                      "font-mono text-xs min-h-[120px]",
+                      webhookParamsError && "border-destructive focus-visible:ring-destructive"
+                    )}
+                  />
+                  {webhookParamsError ? (
+                    <p className="text-xs text-destructive flex items-center gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      {webhookParamsError}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      💡 Esses dados serão mesclados ao payload do webhook. Use JSON válido.
+                    </p>
+                  )}
+
+                  <Collapsible>
+                    <CollapsibleTrigger className="flex items-center gap-1 text-xs text-primary hover:underline">
+                      <ChevronDown className="h-3 w-3" />
+                      Variáveis Disponíveis
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="mt-2">
+                      <div className="bg-muted/50 rounded-md p-2 space-y-1 border">
+                        {[
+                          { key: "{{lead.phone}}", desc: "Telefone do lead" },
+                          { key: "{{lead.name}}", desc: "Nome do lead" },
+                          { key: "{{lead.lid}}", desc: "LID do lead" },
+                          { key: "{{lead.email}}", desc: "Email do lead" },
+                          { key: "{{campaign.id}}", desc: "ID da campanha" },
+                          { key: "{{campaign.name}}", desc: "Nome da campanha" },
+                          { key: "{{group.id}}", desc: "ID/JID do grupo" },
+                          { key: "{{event.type}}", desc: "Tipo do evento" },
+                          { key: "{{timestamp}}", desc: "Data/hora do evento" },
+                        ].map((v) => (
+                          <button
+                            key={v.key}
+                            type="button"
+                            onClick={() => copyVariable(v.key)}
+                            className="w-full flex items-center justify-between text-xs py-1 px-2 rounded hover:bg-muted text-left"
+                          >
+                            <code className="text-primary">{v.key}</code>
+                            <span className="text-muted-foreground flex items-center gap-1">
+                              {v.desc}
+                              <Copy className="h-3 w-3" />
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+                </div>
+              </>
             )}
 
             {actionType === "message" && (
