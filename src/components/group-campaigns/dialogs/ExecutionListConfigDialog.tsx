@@ -222,7 +222,7 @@ export function ExecutionListConfigDialog({
       monitored_events: monitoredEvents,
       action_type: actionType,
       webhook_url: actionType === "webhook" ? webhookUrl : undefined,
-      webhook_params: actionType === "webhook" ? parseParams() : undefined,
+      webhook_params: actionType === "webhook" ? buildWebhookParams() : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
       execution_schedule_type: execScheduleType,
@@ -351,26 +351,113 @@ export function ExecutionListConfigDialog({
                 </div>
 
                 <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Parâmetros Adicionais (JSON)</Label>
-                  <Textarea
-                    value={webhookParams}
-                    onChange={(e) => handleParamsChange(e.target.value)}
-                    placeholder={`{\n  "source": "dispatchone",\n  "lead_phone": "{{lead.phone}}",\n  "campaign": "{{campaign.name}}"\n}`}
-                    className={cn(
-                      "font-mono text-xs min-h-[120px]",
-                      webhookParamsError && "border-destructive focus-visible:ring-destructive"
-                    )}
-                  />
-                  {webhookParamsError ? (
-                    <p className="text-xs text-destructive flex items-center gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      {webhookParamsError}
-                    </p>
+                  <Label className="text-xs text-muted-foreground">Parâmetros Adicionais</Label>
+
+                  {webhookFields.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={addField}
+                      className="w-full border-2 border-dashed border-border rounded-md py-6 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors flex items-center justify-center gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Adicionar Campo
+                    </button>
                   ) : (
-                    <p className="text-xs text-muted-foreground">
-                      💡 Esses dados serão mesclados ao payload do webhook. Use JSON válido.
+                    <div className="space-y-2">
+                      {webhookFields.map((field, index) => (
+                        <div
+                          key={field.id}
+                          onDragOver={handleDragOver}
+                          onDrop={() => handleDrop(index)}
+                          className={cn(
+                            "flex items-center gap-2 group",
+                            dragIndex === index && "opacity-50"
+                          )}
+                        >
+                          <button
+                            type="button"
+                            draggable
+                            onDragStart={() => handleDragStart(index)}
+                            onDragEnd={() => setDragIndex(null)}
+                            className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground p-1 shrink-0"
+                            aria-label="Arrastar"
+                          >
+                            <GripVertical className="h-4 w-4" />
+                          </button>
+
+                          <Input
+                            placeholder="nome"
+                            value={field.name}
+                            onChange={(e) => updateField(field.id, { name: e.target.value })}
+                            className="flex-1 h-9 text-sm"
+                          />
+
+                          <Select
+                            value={field.type}
+                            onValueChange={(v) => updateField(field.id, { type: v as WebhookField["type"] })}
+                          >
+                            <SelectTrigger className="w-[120px] h-9 text-xs shrink-0">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="string">
+                                <span className="flex items-center gap-2">
+                                  <Type className="h-3 w-3" /> String
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="number">
+                                <span className="flex items-center gap-2">
+                                  <Hash className="h-3 w-3" /> Number
+                                </span>
+                              </SelectItem>
+                              <SelectItem value="boolean">
+                                <span className="flex items-center gap-2">
+                                  <ToggleLeft className="h-3 w-3" /> Boolean
+                                </span>
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+
+                          <Input
+                            placeholder="valor (use {{variavel}})"
+                            value={field.value}
+                            onChange={(e) => updateField(field.id, { value: e.target.value })}
+                            className="flex-1 h-9 text-sm font-mono"
+                          />
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeField(field.id)}
+                            className="h-9 w-9 shrink-0 text-muted-foreground hover:text-destructive"
+                            aria-label="Remover campo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addField}
+                        className="w-full border border-dashed border-border rounded-md py-2 text-xs text-muted-foreground hover:border-primary/50 hover:text-foreground transition-colors flex items-center justify-center gap-2"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Adicionar Campo
+                      </button>
+                    </div>
+                  )}
+
+                  {hasDuplicateNames() && (
+                    <p className="text-xs text-destructive">
+                      Existem nomes de campo duplicados.
                     </p>
                   )}
+
+                  <p className="text-xs text-muted-foreground">
+                    💡 Esses dados serão mesclados ao payload do webhook.
+                  </p>
 
                   <Collapsible>
                     <CollapsibleTrigger className="flex items-center gap-1 text-xs text-primary hover:underline">
