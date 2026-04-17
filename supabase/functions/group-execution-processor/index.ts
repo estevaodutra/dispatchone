@@ -158,63 +158,77 @@ Deno.serve(async (req) => {
       }
 
       const cycleId = (list as ExecutionList).current_cycle_id || crypto.randomUUID();
-      let processed = 0;
-      let errors = 0;
+      const totalMembers = manualMembers.length;
 
-      for (let i = 0; i < manualMembers.length; i++) {
-        const member = manualMembers[i];
-        const phone = String(member.phone || "").trim();
-        if (!phone) continue;
+      // Run in background to avoid 150s edge function timeout when sending many
+      // members or when intervalSeconds is large.
+      const backgroundTask = (async () => {
+        let processed = 0;
+        let errors = 0;
+        for (let i = 0; i < manualMembers.length; i++) {
+          const member = manualMembers[i];
+          const phone = String(member.phone || "").trim();
+          if (!phone) continue;
 
-        // Insert as a manual execution lead
-        const { data: inserted, error: insertErr } = await supabase
-          .from("group_execution_leads")
-          .insert({
-            list_id: forcedListId,
-            cycle_id: cycleId,
-            user_id: (list as ExecutionList).user_id,
-            phone,
-            lid: member.lid ?? null,
-            name: member.name ?? null,
-            origin_event: "manual_execute",
-            origin_detail: "members_tab",
-            status: "pending",
-          })
-          .select("id, phone, name, origin_event, origin_detail, lid")
-          .maybeSingle();
-
-        if (insertErr || !inserted) {
-          errors++;
-          console.error(`[group-execution-processor] Manual insert failed:`, insertErr?.message);
-          continue;
-        }
-
-        try {
-          await executeAction(supabaseUrl, supabaseKey, supabase, list as ExecutionList, inserted as ExecutionLead);
-          await supabase
+          const { data: inserted, error: insertErr } = await supabase
             .from("group_execution_leads")
-            .update({ status: "executed", executed_at: new Date().toISOString() })
-            .eq("id", inserted.id);
-          processed++;
-        } catch (err) {
-          const errorMsg = err instanceof Error ? err.message : "Unknown error";
-          await supabase
-            .from("group_execution_leads")
-            .update({ status: "failed", error_message: errorMsg, executed_at: new Date().toISOString() })
-            .eq("id", inserted.id);
-          errors++;
-          console.error(`[group-execution-processor] Manual lead ${inserted.id} failed:`, errorMsg);
-        }
+            .insert({
+              list_id: forcedListId,
+              cycle_id: cycleId,
+              user_id: (list as ExecutionList).user_id,
+              phone,
+              lid: member.lid ?? null,
+              name: member.name ?? null,
+              origin_event: "manual_execute",
+              origin_detail: "members_tab",
+              status: "pending",
+            })
+            .select("id, phone, name, origin_event, origin_detail, lid")
+            .maybeSingle();
 
-        // Rate limit between sends
-        if (intervalSeconds > 0 && i < manualMembers.length - 1) {
-          await new Promise((r) => setTimeout(r, intervalSeconds * 1000));
+          if (insertErr || !inserted) {
+            errors++;
+            console.error(`[group-execution-processor] Manual insert failed:`, insertErr?.message);
+            continue;
+          }
+
+          try {
+            await executeAction(supabaseUrl, supabaseKey, supabase, list as ExecutionList, inserted as ExecutionLead);
+            await supabase
+              .from("group_execution_leads")
+              .update({ status: "executed", executed_at: new Date().toISOString() })
+              .eq("id", inserted.id);
+            processed++;
+          } catch (err) {
+            const errorMsg = err instanceof Error ? err.message : "Unknown error";
+            await supabase
+              .from("group_execution_leads")
+              .update({ status: "failed", error_message: errorMsg, executed_at: new Date().toISOString() })
+              .eq("id", inserted.id);
+            errors++;
+            console.error(`[group-execution-processor] Manual lead ${inserted.id} failed:`, errorMsg);
+          }
+
+          if (intervalSeconds > 0 && i < manualMembers.length - 1) {
+            await new Promise((r) => setTimeout(r, intervalSeconds * 1000));
+          }
         }
+        console.log(`[group-execution-processor] Manual run done: ${processed} ok, ${errors} failed`);
+      })();
+
+      // @ts-ignore EdgeRuntime is available in Supabase Edge Functions
+      if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
+        // @ts-ignore
+        EdgeRuntime.waitUntil(backgroundTask);
+      } else {
+        // Fallback: fire-and-forget
+        backgroundTask.catch((e) => console.error("[group-execution-processor] bg task error:", e));
       }
 
-      return new Response(JSON.stringify({ ok: true, mode: "manual", processed, errors }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ ok: true, mode: "manual", queued: totalMembers, background: true }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     // ── Selective re-execution: process only specified leads, do not rotate cycle ──
