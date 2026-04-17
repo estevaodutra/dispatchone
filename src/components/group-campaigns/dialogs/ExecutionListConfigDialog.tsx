@@ -151,22 +151,35 @@ export function ExecutionListConfigDialog({
     );
   };
 
-  const handleParamsChange = (text: string) => {
-    setWebhookParams(text);
-    if (!text.trim()) {
-      setWebhookParamsError(null);
+  const addField = () => {
+    setWebhookFields((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), name: "", type: "string", value: "" },
+    ]);
+  };
+
+  const removeField = (id: string) => {
+    setWebhookFields((prev) => prev.filter((f) => f.id !== id));
+  };
+
+  const updateField = (id: string, updates: Partial<WebhookField>) => {
+    setWebhookFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
+  };
+
+  const handleDragStart = (index: number) => setDragIndex(index);
+  const handleDragOver = (e: React.DragEvent) => e.preventDefault();
+  const handleDrop = (targetIndex: number) => {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      setDragIndex(null);
       return;
     }
-    try {
-      const parsed = JSON.parse(text);
-      if (typeof parsed !== "object" || Array.isArray(parsed) || parsed === null) {
-        setWebhookParamsError("Use um objeto JSON válido");
-      } else {
-        setWebhookParamsError(null);
-      }
-    } catch {
-      setWebhookParamsError("JSON inválido");
-    }
+    setWebhookFields((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(targetIndex, 0, moved);
+      return next;
+    });
+    setDragIndex(null);
   };
 
   const copyVariable = (variable: string) => {
@@ -174,26 +187,27 @@ export function ExecutionListConfigDialog({
     toast.success(`Copiado: ${variable}`);
   };
 
+  const hasDuplicateNames = () => {
+    const names = webhookFields.map((f) => f.name.trim()).filter((n) => n.length > 0);
+    return new Set(names).size !== names.length;
+  };
+
   const isValid = () => {
     if (!name.trim()) return false;
     if (monitoredEvents.length === 0) return false;
     if (windowType === "duration" && durationHours < 1) return false;
     if (actionType === "webhook" && !webhookUrl.trim()) return false;
-    if (actionType === "webhook" && webhookParamsError) return false;
+    if (actionType === "webhook" && hasDuplicateNames()) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
     if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
   };
 
-  const parseParams = (): Record<string, any> => {
-    if (!webhookParams.trim()) return {};
-    try {
-      const parsed = JSON.parse(webhookParams);
-      return typeof parsed === "object" && !Array.isArray(parsed) && parsed !== null ? parsed : {};
-    } catch {
-      return {};
-    }
+  const buildWebhookParams = (): WebhookField[] => {
+    return webhookFields
+      .filter((f) => f.name.trim().length > 0)
+      .map((f) => ({ id: f.id, name: f.name.trim(), type: f.type, value: f.value }));
   };
 
   const handleSave = () => {
