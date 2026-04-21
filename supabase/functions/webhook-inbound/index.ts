@@ -183,6 +183,10 @@ Deno.serve(async (req) => {
                     const nodeConfig = nodeRecord.config as Record<string, unknown>;
                     const messageIdForInsert = logEntry.external_message_id || logEntry.zaap_id;
 
+                    // Prefer the resolved values stored in the log payload (variables already substituted)
+                    // over the raw template in sequence_nodes.config (which contains {{var}} placeholders).
+                    const logConfig = (logNode?.config as Record<string, unknown>) || {};
+
                     if (messageIdForInsert) {
                       const { data: insertedPoll, error: registerError } = await supabase
                         .from("poll_messages")
@@ -195,8 +199,9 @@ Deno.serve(async (req) => {
                           campaign_id: logEntry.group_campaign_id,
                           group_jid: logEntry.group_jid || groupJid,
                           instance_id: logEntry.instance_id,
-                          question_text: (nodeConfig.question as string) || (nodeConfig.label as string) || "",
-                          options: nodeConfig.options || [],
+                          question_text: (logConfig.question as string) || (logConfig.label as string)
+                                       || (nodeConfig.question as string) || (nodeConfig.label as string) || "",
+                          options: (logConfig.options as unknown[]) || nodeConfig.options || [],
                           option_actions: nodeConfig.optionActions || {},
                           sent_at: new Date().toISOString(),
                         })
