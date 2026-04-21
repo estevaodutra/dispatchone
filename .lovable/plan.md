@@ -1,49 +1,67 @@
 
 
-## Diagnóstico
+## Diagnóstico — `body.poll.question` chega como `{{fileName}}` literal
 
-A enquete está sendo respondida, mas a ação `call_webhook` configurada não dispara porque **a enquete nunca foi registrada na tabela `poll_messages`**.
+Confirmado no banco. A enquete `3EB09505C651971E3B4D33`:
+- **`group_message_logs` (17:14)**: question já resolvida → `ORD-1776791641168_FF9DDD5A` ✅ (substituição funcionou no envio)
+- **`poll_messages` (22:40)**: question salva como `{{fileName}}` literal ❌
 
-Confirmado no banco:
-- Voto recebido referencia `pollMessageId: 3EB0B7095684BBEED809C2`
-- O envio foi bem-sucedido (`group_message_logs` tem o registro com `zaapId` e `messageId` válidos)
-- Mas **`poll_messages` não tem nenhuma linha** para esse ID
-- **0 de 10 votos recentes** encontram match em `poll_messages` (problema sistêmico)
-- `webhook-inbound` segue até a busca em `poll_messages`, não acha, e segue silenciosamente → resposta `{poll_processing: null}` exatamente como o usuário viu
+Quando o voto chegou às 22:40, `handle-poll-response` leu `poll_messages.question_text = "{{fileName}}"` e enviou ao webhook configurado (linha 547: `question: typedPoll.question_text`).
 
-### Causa raiz
+### Causas raiz (duas)
 
-Em `supabase/functions/execute-message/index.ts` (linhas 1029-1044), o INSERT em `poll_messages` usa:
+**1. `execute-message/index.ts` linha 1015** — o registro em `poll_messages` é pulado quando `dest.isPrivate` é true:
 ```ts
-message_id: externalMessageId || ""
+if (node.node_type === "poll" && (zaapId || externalMessageId) && !dest.isPrivate) {
 ```
-A coluna `message_id` tem **UNIQUE INDEX** (`idx_poll_messages_message_id`). Quando alguma resposta da Z-API não traz `messageId` (só `zaapId`), o código grava `message_id=""`. A primeira gravação passa, todas as seguintes batem em violação UNIQUE e **falham silenciosamente** (o `console.error` existe mas os logs do edge function estão indisponíveis para depuração no painel).
+Sequências disparadas por **webhook** sempre usam `sendPrivate: true` (`trigger-sequence` linha 197), então polls enviados em modo privado **nunca** são registrados pelo caminho primário (que tem a question já substituída).
 
-Além disso, o `console.error` no catch do INSERT só aparece em logs — nenhum mecanismo expõe a falha. Sequências mais recentes podem também estar passando `messageId` válido mas ainda assim havendo outro motivo de falha (p.ex. `node_id` que não satisfaz FK), que precisa ser logado adequadamente.
+**2. Fallback de auto-registro** em `webhook-inbound/index.ts` linha 198 e migration de backfill:
+```ts
+question_text: (nodeConfig.question as string) || (nodeConfig.label as string) || "",
+```
+Lê o **template** do `sequence_nodes.config.question` (`{{fileName}}`), não o valor resolvido que está em `group_message_logs.payload.node.config.question`.
+
+Resultado: o fallback acaba sendo o **único** caminho que registra polls privados, e ele salva sempre o template literal.
 
 ## Solução
 
-### 1. `supabase/functions/execute-message/index.ts`
-- Não inserir em `poll_messages` se `externalMessageId` estiver vazio/null — usar `zaap_id` como chave primária de busca em vez disso, ou pular o registro com warning explícito
-- Log mais verboso do erro de insert (incluindo payload) para diagnóstico futuro
-- Garantir `message_id` único: se `externalMessageId` falta, usar `zaapId` como fallback (Z-API sempre retorna `zaapId`)
+### 1. `supabase/functions/execute-message/index.ts` (linha 1015)
+Remover a restrição `!dest.isPrivate` — registrar a poll em `poll_messages` independentemente de ser privado ou para grupo. O `group_jid` salvo continua vindo de `dest.group_jid` (que para envio privado é `{phone}@s.whatsapp.net`, e isso não impede o lookup posterior por `message_id`/`zaap_id`).
 
-### 2. `supabase/functions/handle-poll-response/index.ts`
-- Quando `pollMessage` não for encontrado, registrar erro mais explícito no `processing_error` do `webhook_events` em vez de retornar 404 silencioso
-- Tentar resolver via `group_message_logs` como fallback: buscar `zaap_id`/`external_message_id` lá, encontrar o `node_id`, e reconstruir a action a partir de `sequence_nodes.config.optionActions`
+### 2. `supabase/functions/webhook-inbound/index.ts` (linha 198) — fallback de auto-registro
+Trocar a leitura do template pelo valor já resolvido no log:
+```ts
+const logPayload = logEntry.payload as Record<string, unknown> | null;
+const logNode = logPayload?.node as Record<string, unknown> | undefined;
+const logConfig = (logNode?.config as Record<string, unknown>) || {};
 
-### 3. `supabase/functions/webhook-inbound/index.ts` (linhas 149-216)
-- Quando a busca em `poll_messages` falha, persistir esse fato em `webhook_events.processing_error` ("poll_message_not_registered: {pollMessageId}") em vez de deixar `processing_result=null` sem pista
-- Tentar fallback também consultando `group_message_logs` para auto-registrar a enquete em `poll_messages` na primeira resposta recebida
+question_text: (logConfig.question as string) || (logConfig.label as string)
+            || (nodeConfig.question as string) || (nodeConfig.label as string) || "",
+options: (logConfig.options as unknown[]) || nodeConfig.options || [],
+```
+Mantém `optionActions` vindo de `sequence_nodes.config` (são configurações de ação, não texto).
 
-### 4. Migration de backfill
-- Migration que percorre `group_message_logs` com `node_type='poll'` e zaap_id/external_message_id válidos e que **não tenham** registro em `poll_messages`, e cria os registros faltantes lendo `optionActions` do `sequence_nodes` correspondente
-- Isso recupera as 14+ enquetes recentes não registradas (incluindo a do screenshot) e permite que votos futuros para elas sejam processados
+### 3. Backfill SQL (uma vez)
+Atualizar `poll_messages` existentes que tenham `question_text` contendo `{{` (templates não resolvidos), substituindo pelos valores já resolvidos do `group_message_logs.payload.node.config.question`:
+```sql
+UPDATE poll_messages pm
+SET question_text = COALESCE(
+      gml.payload->'node'->'config'->>'question',
+      gml.payload->'node'->'config'->>'label',
+      pm.question_text
+    ),
+    options = COALESCE(gml.payload->'node'->'config'->'options', pm.options)
+FROM group_message_logs gml
+WHERE (gml.external_message_id = pm.message_id OR gml.zaap_id = pm.zaap_id)
+  AND gml.node_type = 'poll'
+  AND gml.status = 'sent'
+  AND pm.question_text LIKE '%{{%';
+```
 
 ## Comportamento final
 
-- Enquetes existentes não registradas serão recuperadas pela migration → próximos votos disparam `call_webhook` corretamente
-- Novas enquetes terão registro garantido (fallback para `zaap_id` quando `messageId` ausente, sem risco de violação UNIQUE)
-- Falhas serão visíveis via `processing_error` em `webhook_events`, não mais silenciosas
-- Votos para enquetes ainda não registradas tentam fallback via `group_message_logs` → auto-registram → executam ação
+- Polls enviados via gatilho de webhook (privados) passam a registrar `poll_messages` com question já substituída no momento do envio
+- Caso o caminho primário falhe e o fallback dispare, ele lê o valor resolvido do log em vez do template
+- Polls existentes com `{{fileName}}` literal são corrigidos pelo backfill, então votos futuros para enquetes antigas também enviarão a question correta
 
