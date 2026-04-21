@@ -1011,8 +1011,9 @@ Deno.serve(async (req) => {
               console.log(`[ExecuteMessage] ✅ Node ${node.node_type} sent to ${dest.group_name}${dest.isPrivate ? ' (private)' : ''}`);
               webhookResponses.push({ nodeType: node.node_type, nodeOrder: node.node_order, destination: dest.group_jid, status: "sent", data: responseData });
               
-              // If this is a poll node and send was successful, register in poll_messages (only for group sends)
-              if (node.node_type === "poll" && (zaapId || externalMessageId) && !dest.isPrivate) {
+              // If this is a poll node and send was successful, register in poll_messages
+              // (includes private sends — webhook-triggered sequences use sendPrivate=true and still need lookup by message_id/zaap_id)
+              if (node.node_type === "poll" && (zaapId || externalMessageId)) {
                 // Use formattedConfig which has variables already replaced (not node.config which has templates)
                 const pollQuestion = (formattedConfig.question as string) || (formattedConfig.title as string) || "";
                 
