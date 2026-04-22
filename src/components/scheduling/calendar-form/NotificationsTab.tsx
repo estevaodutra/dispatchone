@@ -62,6 +62,10 @@ export function NotificationsTab({ state, onChange }: Props) {
 
   return (
     <div className="space-y-4">
+      <div className="text-xs text-muted-foreground px-1">
+        As mensagens são disparadas via webhook central da agenda. Configure os templates abaixo; a entrega é feita pelo n8n.
+      </div>
+
       <Card className="p-4 space-y-3">
         <div className="flex items-center justify-between">
           <Label className="text-base font-semibold">Confirmação por WhatsApp</Label>

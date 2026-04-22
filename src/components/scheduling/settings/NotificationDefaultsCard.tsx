@@ -16,7 +16,7 @@ export default function NotificationDefaultsCard() {
       <CardHeader><CardTitle className="text-base">Notificações</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label className="text-xs mb-1.5 block">Instância WhatsApp padrão</Label>
+          <Label className="text-xs mb-1.5 block">Instância WhatsApp padrão (hint)</Label>
           <Select value={selected} onValueChange={(v) => upsert.mutate({ default_whatsapp_instance_id: v === "none" ? null : v })}>
             <SelectTrigger className="max-w-sm"><SelectValue placeholder="Selecione" /></SelectTrigger>
             <SelectContent>
@@ -24,6 +24,9 @@ export default function NotificationDefaultsCard() {
               {instances.map((i: any) => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
             </SelectContent>
           </Select>
+          <p className="text-[11px] text-muted-foreground mt-1.5">
+            Enviado como sugestão no payload do webhook da agenda. A escolha final da instância é feita pelo n8n.
+          </p>
         </div>
         <div className="flex items-center justify-between">
           <Label>Enviar confirmação por email</Label>
