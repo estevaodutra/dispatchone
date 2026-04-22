@@ -36,6 +36,16 @@ import CallPanel from "./pages/CallPanel";
 import NotFound from "./pages/NotFound";
 import SchedulingLayout from "./pages/scheduling/SchedulingLayout";
 import CalendarsPage from "./pages/scheduling/CalendarsPage";
+import AttendantsPage from "./pages/scheduling/AttendantsPage";
+import AppointmentsPage from "./pages/scheduling/AppointmentsPage";
+import BookingSelectAttendant from "./pages/public/BookingSelectAttendant";
+import BookingSelectSlot from "./pages/public/BookingSelectSlot";
+import BookingQualification from "./pages/public/BookingQualification";
+import BookingDetails from "./pages/public/BookingDetails";
+import BookingSuccess from "./pages/public/BookingSuccess";
+import BookingManage from "./pages/public/BookingManage";
+import BookingCancel from "./pages/public/BookingCancel";
+import BookingReschedule from "./pages/public/BookingReschedule";
 
 const App = () => {
   const [queryClient] = useState(() => new QueryClient());
