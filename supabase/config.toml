@@ -86,3 +86,12 @@ verify_jwt = false
 
 [functions.refresh-instance-status]
 verify_jwt = false
+
+[functions.scheduling-dispatch]
+verify_jwt = false
+
+[functions.scheduling-reminders]
+verify_jwt = false
+
+[functions.scheduling-webhook-fire]
+verify_jwt = false
