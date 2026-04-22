@@ -44,22 +44,31 @@ const transform = (d: DbAttendant): SchedulingAttendant => ({
   createdAt: d.created_at,
 });
 
-export function useAttendants() {
+export interface AttendantInput {
+  name: string;
+  email?: string | null;
+  bio?: string | null;
+  photoUrl?: string | null;
+  isActive?: boolean;
+}
+
+export function useAttendants(includeInactive = false) {
   const { toast } = useToast();
   const { user } = useAuth();
   const { activeCompanyId } = useCompany();
   const qc = useQueryClient();
 
   const { data: attendants = [], isLoading } = useQuery({
-    queryKey: ["scheduling_attendants", activeCompanyId],
+    queryKey: ["scheduling_attendants", activeCompanyId, includeInactive],
     queryFn: async () => {
       if (!activeCompanyId) return [];
-      const { data, error } = await (supabase as any)
+      let q = (supabase as any)
         .from("scheduling_attendants")
         .select("*")
         .eq("company_id", activeCompanyId)
-        .eq("is_active", true)
         .order("name");
+      if (!includeInactive) q = q.eq("is_active", true);
+      const { data, error } = await q;
       if (error) throw error;
       return (data as DbAttendant[]).map(transform);
     },
@@ -67,7 +76,7 @@ export function useAttendants() {
   });
 
   const create = useMutation({
-    mutationFn: async (input: { name: string; email?: string; bio?: string; photoUrl?: string }) => {
+    mutationFn: async (input: AttendantInput) => {
       if (!user || !activeCompanyId) throw new Error("Não autenticado");
       const { data, error } = await (supabase as any)
         .from("scheduling_attendants")
@@ -78,6 +87,7 @@ export function useAttendants() {
           email: input.email ?? null,
           bio: input.bio ?? null,
           photo_url: input.photoUrl ?? null,
+          is_active: input.isActive ?? true,
         })
         .select()
         .single();
@@ -93,5 +103,57 @@ export function useAttendants() {
     },
   });
 
-  return { attendants, isLoading, create };
+  const update = useMutation({
+    mutationFn: async ({ id, ...input }: AttendantInput & { id: string }) => {
+      const payload: Record<string, unknown> = {};
+      if (input.name !== undefined) payload.name = input.name;
+      if (input.email !== undefined) payload.email = input.email;
+      if (input.bio !== undefined) payload.bio = input.bio;
+      if (input.photoUrl !== undefined) payload.photo_url = input.photoUrl;
+      if (input.isActive !== undefined) payload.is_active = input.isActive;
+      const { data, error } = await (supabase as any)
+        .from("scheduling_attendants")
+        .update(payload)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return transform(data as DbAttendant);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduling_attendants"] });
+      toast({ title: "Atendente atualizado" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Erro ao atualizar", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase as any).from("scheduling_attendants").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scheduling_attendants"] });
+      toast({ title: "Atendente excluído" });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Erro ao excluir", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const uploadPhoto = useMutation({
+    mutationFn: async (file: File) => {
+      if (!activeCompanyId) throw new Error("Empresa não selecionada");
+      const ext = file.name.split(".").pop();
+      const path = `${activeCompanyId}/attendants/${crypto.randomUUID()}.${ext}`;
+      const { error } = await (supabase as any).storage.from("scheduling-assets").upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data } = (supabase as any).storage.from("scheduling-assets").getPublicUrl(path);
+      return data.publicUrl as string;
+    },
+  });
+
+  return { attendants, isLoading, create, update, remove, uploadPhoto };
 }
