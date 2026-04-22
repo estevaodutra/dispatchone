@@ -2479,6 +2479,451 @@ export type Database = {
           },
         ]
       }
+      scheduling_attendants: {
+        Row: {
+          bio: string | null
+          call_operator_id: string | null
+          company_id: string
+          created_at: string
+          email: string | null
+          id: string
+          is_active: boolean
+          linked_user_id: string | null
+          name: string
+          photo_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          bio?: string | null
+          call_operator_id?: string | null
+          company_id: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          linked_user_id?: string | null
+          name: string
+          photo_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          bio?: string | null
+          call_operator_id?: string | null
+          company_id?: string
+          created_at?: string
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          linked_user_id?: string | null
+          name?: string
+          photo_url?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_attendants_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_availability: {
+        Row: {
+          attendant_id: string
+          created_at: string
+          day_of_week: number
+          end_time: string
+          id: string
+          start_time: string
+        }
+        Insert: {
+          attendant_id: string
+          created_at?: string
+          day_of_week: number
+          end_time: string
+          id?: string
+          start_time: string
+        }
+        Update: {
+          attendant_id?: string
+          created_at?: string
+          day_of_week?: number
+          end_time?: string
+          id?: string
+          start_time?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_availability_attendant_id_fkey"
+            columns: ["attendant_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_attendants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_blocked_dates: {
+        Row: {
+          attendant_id: string
+          blocked_date: string
+          created_at: string
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          attendant_id: string
+          blocked_date: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          attendant_id?: string
+          blocked_date?: string
+          created_at?: string
+          id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_blocked_dates_attendant_id_fkey"
+            columns: ["attendant_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_attendants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_calendar_attendants: {
+        Row: {
+          attendant_id: string
+          calendar_id: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          attendant_id: string
+          calendar_id: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          attendant_id?: string
+          calendar_id?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_calendar_attendants_attendant_id_fkey"
+            columns: ["attendant_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_attendants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_calendar_attendants_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_calendars: {
+        Row: {
+          advanced: Json
+          branding: Json
+          color: string
+          company_id: string
+          created_at: string
+          description: string | null
+          distribution: string
+          duration_minutes: number
+          id: string
+          layout: Json
+          modality: string
+          name: string
+          slug: string
+          status: string
+          texts: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          advanced?: Json
+          branding?: Json
+          color?: string
+          company_id: string
+          created_at?: string
+          description?: string | null
+          distribution?: string
+          duration_minutes?: number
+          id?: string
+          layout?: Json
+          modality?: string
+          name: string
+          slug: string
+          status?: string
+          texts?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          advanced?: Json
+          branding?: Json
+          color?: string
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          distribution?: string
+          duration_minutes?: number
+          id?: string
+          layout?: Json
+          modality?: string
+          name?: string
+          slug?: string
+          status?: string
+          texts?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_calendars_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_integrations: {
+        Row: {
+          calendar_id: string
+          call_campaign_enabled: boolean
+          call_campaign_id: string | null
+          call_campaign_timing: string
+          created_at: string
+          id: string
+          in_person_address: string | null
+          in_person_maps_url: string | null
+          updated_at: string
+          video_auto_link: boolean
+          video_include_in_confirmation: boolean
+          video_provider: string | null
+          webhook_cancelled_enabled: boolean
+          webhook_cancelled_url: string | null
+          webhook_completed_enabled: boolean
+          webhook_completed_url: string | null
+          webhook_created_enabled: boolean
+          webhook_created_url: string | null
+          webhook_rescheduled_enabled: boolean
+          webhook_rescheduled_url: string | null
+        }
+        Insert: {
+          calendar_id: string
+          call_campaign_enabled?: boolean
+          call_campaign_id?: string | null
+          call_campaign_timing?: string
+          created_at?: string
+          id?: string
+          in_person_address?: string | null
+          in_person_maps_url?: string | null
+          updated_at?: string
+          video_auto_link?: boolean
+          video_include_in_confirmation?: boolean
+          video_provider?: string | null
+          webhook_cancelled_enabled?: boolean
+          webhook_cancelled_url?: string | null
+          webhook_completed_enabled?: boolean
+          webhook_completed_url?: string | null
+          webhook_created_enabled?: boolean
+          webhook_created_url?: string | null
+          webhook_rescheduled_enabled?: boolean
+          webhook_rescheduled_url?: string | null
+        }
+        Update: {
+          calendar_id?: string
+          call_campaign_enabled?: boolean
+          call_campaign_id?: string | null
+          call_campaign_timing?: string
+          created_at?: string
+          id?: string
+          in_person_address?: string | null
+          in_person_maps_url?: string | null
+          updated_at?: string
+          video_auto_link?: boolean
+          video_include_in_confirmation?: boolean
+          video_provider?: string | null
+          webhook_cancelled_enabled?: boolean
+          webhook_cancelled_url?: string | null
+          webhook_completed_enabled?: boolean
+          webhook_completed_url?: string | null
+          webhook_created_enabled?: boolean
+          webhook_created_url?: string | null
+          webhook_rescheduled_enabled?: boolean
+          webhook_rescheduled_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_integrations_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: true
+            referencedRelation: "scheduling_calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_lead_fields: {
+        Row: {
+          calendar_id: string
+          created_at: string
+          field_name: string
+          field_type: string
+          id: string
+          is_default: boolean
+          is_required: boolean
+          sort_order: number
+        }
+        Insert: {
+          calendar_id: string
+          created_at?: string
+          field_name: string
+          field_type?: string
+          id?: string
+          is_default?: boolean
+          is_required?: boolean
+          sort_order?: number
+        }
+        Update: {
+          calendar_id?: string
+          created_at?: string
+          field_name?: string
+          field_type?: string
+          id?: string
+          is_default?: boolean
+          is_required?: boolean
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_lead_fields_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_notifications: {
+        Row: {
+          calendar_id: string
+          confirmation_message: string | null
+          created_at: string
+          id: string
+          notify_on_cancel: boolean
+          notify_on_reschedule: boolean
+          reminder_15min_enabled: boolean
+          reminder_15min_message: string | null
+          reminder_1day_enabled: boolean
+          reminder_1day_message: string | null
+          reminder_1hour_enabled: boolean
+          reminder_1hour_message: string | null
+          updated_at: string
+          whatsapp_enabled: boolean
+          whatsapp_instance_id: string | null
+        }
+        Insert: {
+          calendar_id: string
+          confirmation_message?: string | null
+          created_at?: string
+          id?: string
+          notify_on_cancel?: boolean
+          notify_on_reschedule?: boolean
+          reminder_15min_enabled?: boolean
+          reminder_15min_message?: string | null
+          reminder_1day_enabled?: boolean
+          reminder_1day_message?: string | null
+          reminder_1hour_enabled?: boolean
+          reminder_1hour_message?: string | null
+          updated_at?: string
+          whatsapp_enabled?: boolean
+          whatsapp_instance_id?: string | null
+        }
+        Update: {
+          calendar_id?: string
+          confirmation_message?: string | null
+          created_at?: string
+          id?: string
+          notify_on_cancel?: boolean
+          notify_on_reschedule?: boolean
+          reminder_15min_enabled?: boolean
+          reminder_15min_message?: string | null
+          reminder_1day_enabled?: boolean
+          reminder_1day_message?: string | null
+          reminder_1hour_enabled?: boolean
+          reminder_1hour_message?: string | null
+          updated_at?: string
+          whatsapp_enabled?: boolean
+          whatsapp_instance_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_notifications_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: true
+            referencedRelation: "scheduling_calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_questions: {
+        Row: {
+          calendar_id: string
+          created_at: string
+          id: string
+          is_required: boolean
+          options: Json
+          question_text: string
+          question_type: string
+          sort_order: number
+        }
+        Insert: {
+          calendar_id: string
+          created_at?: string
+          id?: string
+          is_required?: boolean
+          options?: Json
+          question_text: string
+          question_type?: string
+          sort_order?: number
+        }
+        Update: {
+          calendar_id?: string
+          created_at?: string
+          id?: string
+          is_required?: boolean
+          options?: Json
+          question_text?: string
+          question_type?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_questions_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_calendars"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sequence_connections: {
         Row: {
           condition_path: string | null
