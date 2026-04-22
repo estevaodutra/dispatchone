@@ -2835,17 +2835,20 @@ export type Database = {
           company_id: string
           created_at: string
           description: string | null
+          details_submit_count: number
           distribution: string
           duration_minutes: number
           id: string
           layout: Json
           modality: string
           name: string
+          slot_select_count: number
           slug: string
           status: string
           texts: Json
           updated_at: string
           user_id: string
+          view_count: number
         }
         Insert: {
           advanced?: Json
@@ -2854,17 +2857,20 @@ export type Database = {
           company_id: string
           created_at?: string
           description?: string | null
+          details_submit_count?: number
           distribution?: string
           duration_minutes?: number
           id?: string
           layout?: Json
           modality?: string
           name: string
+          slot_select_count?: number
           slug: string
           status?: string
           texts?: Json
           updated_at?: string
           user_id: string
+          view_count?: number
         }
         Update: {
           advanced?: Json
@@ -2873,17 +2879,20 @@ export type Database = {
           company_id?: string
           created_at?: string
           description?: string | null
+          details_submit_count?: number
           distribution?: string
           duration_minutes?: number
           id?: string
           layout?: Json
           modality?: string
           name?: string
+          slot_select_count?: number
           slug?: string
           status?: string
           texts?: Json
           updated_at?: string
           user_id?: string
+          view_count?: number
         }
         Relationships: [
           {
@@ -2894,6 +2903,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scheduling_global_integrations: {
+        Row: {
+          account_email: string | null
+          company_id: string
+          config: Json
+          connected_at: string | null
+          created_at: string
+          id: string
+          is_connected: boolean
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          account_email?: string | null
+          company_id: string
+          config?: Json
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          account_email?: string | null
+          company_id?: string
+          config?: Json
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       scheduling_integrations: {
         Row: {
@@ -3115,6 +3160,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scheduling_settings: {
+        Row: {
+          company_id: string
+          created_at: string
+          custom_domain: string | null
+          custom_domain_status: string
+          custom_domain_verified_at: string | null
+          default_timezone: string
+          default_whatsapp_instance_id: string | null
+          hide_branding: boolean
+          id: string
+          send_email_confirmation: boolean
+          send_ics_invite: boolean
+          updated_at: string
+          webhook_global_enabled: boolean
+          webhook_global_url: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          custom_domain?: string | null
+          custom_domain_status?: string
+          custom_domain_verified_at?: string | null
+          default_timezone?: string
+          default_whatsapp_instance_id?: string | null
+          hide_branding?: boolean
+          id?: string
+          send_email_confirmation?: boolean
+          send_ics_invite?: boolean
+          updated_at?: string
+          webhook_global_enabled?: boolean
+          webhook_global_url?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          custom_domain?: string | null
+          custom_domain_status?: string
+          custom_domain_verified_at?: string | null
+          default_timezone?: string
+          default_whatsapp_instance_id?: string | null
+          hide_branding?: boolean
+          id?: string
+          send_email_confirmation?: boolean
+          send_ics_invite?: boolean
+          updated_at?: string
+          webhook_global_enabled?: boolean
+          webhook_global_url?: string | null
+        }
+        Relationships: []
       }
       sequence_connections: {
         Row: {
@@ -3525,6 +3621,98 @@ export type Database = {
         }[]
       }
       get_public_calendar: { Args: { p_slug: string }; Returns: Json }
+      get_scheduling_attendant_performance: {
+        Args: {
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: {
+          attendant_id: string
+          completed: number
+          name: string
+          no_shows: number
+          photo_url: string
+          success_rate: number
+          total: number
+        }[]
+      }
+      get_scheduling_by_day: {
+        Args: {
+          p_attendant_id?: string
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: {
+          day: string
+          total: number
+        }[]
+      }
+      get_scheduling_cancel_reasons: {
+        Args: {
+          p_attendant_id?: string
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: {
+          pct: number
+          reason: string
+          total: number
+        }[]
+      }
+      get_scheduling_funnel: {
+        Args: {
+          p_attendant_id?: string
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: Json
+      }
+      get_scheduling_heatmap: {
+        Args: {
+          p_attendant_id?: string
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: {
+          dow: number
+          hour: number
+          total: number
+        }[]
+      }
+      get_scheduling_overview: {
+        Args: {
+          p_attendant_id?: string
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: Json
+      }
+      get_scheduling_sources: {
+        Args: {
+          p_attendant_id?: string
+          p_calendar_id?: string
+          p_company_id: string
+          p_from_date?: string
+          p_to_date?: string
+        }
+        Returns: {
+          pct: number
+          source: string
+          total: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -3541,6 +3729,15 @@ export type Database = {
           previous_status: string
         }[]
       }
+      increment_calendar_details_submit: {
+        Args: { p_slug: string }
+        Returns: undefined
+      }
+      increment_calendar_slot_select: {
+        Args: { p_slug: string }
+        Returns: undefined
+      }
+      increment_calendar_view: { Args: { p_slug: string }; Returns: undefined }
       increment_pirate_counters: {
         Args: { p_campaign_id: string; p_group_jid: string }
         Returns: undefined

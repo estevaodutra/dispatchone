@@ -38,6 +38,8 @@ import SchedulingLayout from "./pages/scheduling/SchedulingLayout";
 import CalendarsPage from "./pages/scheduling/CalendarsPage";
 import AttendantsPage from "./pages/scheduling/AttendantsPage";
 import AppointmentsPage from "./pages/scheduling/AppointmentsPage";
+import AnalyticsPage from "./pages/scheduling/AnalyticsPage";
+import SchedulingSettingsPage from "./pages/scheduling/SchedulingSettingsPage";
 import BookingSelectAttendant from "./pages/public/BookingSelectAttendant";
 import BookingSelectSlot from "./pages/public/BookingSelectSlot";
 import BookingQualification from "./pages/public/BookingQualification";
@@ -121,6 +123,10 @@ const App = () => {
                   >
                     <Route index element={<CalendarsPage />} />
                     <Route path="calendarios" element={<CalendarsPage />} />
+                    <Route path="lista" element={<AppointmentsPage />} />
+                    <Route path="atendentes" element={<AttendantsPage />} />
+                    <Route path="analytics" element={<AnalyticsPage />} />
+                    <Route path="configuracoes" element={<SchedulingSettingsPage />} />
                   </Route>
 
                   {/* Operator Call Script Route (minimal UI, no sidebar) */}

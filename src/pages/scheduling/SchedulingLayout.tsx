@@ -3,10 +3,10 @@ import { cn } from "@/lib/utils";
 
 const TABS = [
   { to: "/agendamentos/calendarios", label: "Calendários", enabled: true },
-  { to: "/agendamentos/lista", label: "Agendamentos", enabled: false },
-  { to: "/agendamentos/atendentes", label: "Atendentes", enabled: false },
-  { to: "/agendamentos/analytics", label: "Analytics", enabled: false },
-  { to: "/agendamentos/configuracoes", label: "Configurações", enabled: false },
+  { to: "/agendamentos/lista", label: "Agendamentos", enabled: true },
+  { to: "/agendamentos/atendentes", label: "Atendentes", enabled: true },
+  { to: "/agendamentos/analytics", label: "Analytics", enabled: true },
+  { to: "/agendamentos/configuracoes", label: "Configurações", enabled: true },
 ];
 
 export default function SchedulingLayout() {
