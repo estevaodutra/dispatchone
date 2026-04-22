@@ -2479,6 +2479,198 @@ export type Database = {
           },
         ]
       }
+      scheduling_appointment_events: {
+        Row: {
+          appointment_id: string
+          created_at: string
+          event_type: string
+          id: string
+          payload: Json
+        }
+        Insert: {
+          appointment_id: string
+          created_at?: string
+          event_type: string
+          id?: string
+          payload?: Json
+        }
+        Update: {
+          appointment_id?: string
+          created_at?: string
+          event_type?: string
+          id?: string
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_appointment_events_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_appointments: {
+        Row: {
+          answers: Json
+          attendant_id: string | null
+          calendar_id: string
+          cancel_comment: string | null
+          cancel_reason: string | null
+          cancel_token: string
+          cancelled_at: string | null
+          company_id: string
+          created_at: string
+          custom_fields: Json
+          id: string
+          internal_notes: string | null
+          lead_email: string | null
+          lead_id: string | null
+          lead_name: string
+          lead_phone: string
+          location_snapshot: Json | null
+          meeting_url: string | null
+          rescheduled_from_id: string | null
+          scheduled_end: string
+          scheduled_start: string
+          status: string
+          timezone: string
+          updated_at: string
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          answers?: Json
+          attendant_id?: string | null
+          calendar_id: string
+          cancel_comment?: string | null
+          cancel_reason?: string | null
+          cancel_token: string
+          cancelled_at?: string | null
+          company_id: string
+          created_at?: string
+          custom_fields?: Json
+          id?: string
+          internal_notes?: string | null
+          lead_email?: string | null
+          lead_id?: string | null
+          lead_name: string
+          lead_phone: string
+          location_snapshot?: Json | null
+          meeting_url?: string | null
+          rescheduled_from_id?: string | null
+          scheduled_end: string
+          scheduled_start: string
+          status?: string
+          timezone?: string
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          answers?: Json
+          attendant_id?: string | null
+          calendar_id?: string
+          cancel_comment?: string | null
+          cancel_reason?: string | null
+          cancel_token?: string
+          cancelled_at?: string | null
+          company_id?: string
+          created_at?: string
+          custom_fields?: Json
+          id?: string
+          internal_notes?: string | null
+          lead_email?: string | null
+          lead_id?: string | null
+          lead_name?: string
+          lead_phone?: string
+          location_snapshot?: Json | null
+          meeting_url?: string | null
+          rescheduled_from_id?: string | null
+          scheduled_end?: string
+          scheduled_start?: string
+          status?: string
+          timezone?: string
+          updated_at?: string
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_appointments_attendant_id_fkey"
+            columns: ["attendant_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_attendants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_appointments_calendar_id_fkey"
+            columns: ["calendar_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_calendars"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_appointments_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduling_appointments_rescheduled_from_id_fkey"
+            columns: ["rescheduled_from_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_appointments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduling_attendant_integrations: {
+        Row: {
+          attendant_id: string
+          config: Json
+          connected_at: string | null
+          created_at: string
+          id: string
+          is_connected: boolean
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          attendant_id: string
+          config?: Json
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          provider: string
+          updated_at?: string
+        }
+        Update: {
+          attendant_id?: string
+          config?: Json
+          connected_at?: string | null
+          created_at?: string
+          id?: string
+          is_connected?: boolean
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduling_attendant_integrations_attendant_id_fkey"
+            columns: ["attendant_id"]
+            isOneToOne: false
+            referencedRelation: "scheduling_attendants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduling_attendants: {
         Row: {
           bio: string | null
@@ -3278,12 +3470,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cancel_appointment_by_token: {
+        Args: { p_comment: string; p_reason: string; p_token: string }
+        Returns: Json
+      }
       clear_daily_queue: {
         Args: never
         Returns: {
           companies_processed: number
           total_expired: number
         }[]
+      }
+      create_public_appointment: { Args: { p_payload: Json }; Returns: Json }
+      get_appointment_by_token: { Args: { p_token: string }; Returns: Json }
+      get_calendar_availability: {
+        Args: {
+          p_attendant_id: string
+          p_calendar_id: string
+          p_from_date: string
+          p_to_date: string
+        }
+        Returns: Json
       }
       get_call_leads_counts: {
         Args: { p_campaign_ids: string[] }
@@ -3317,6 +3524,7 @@ export type Database = {
           unique_respondents: number
         }[]
       }
+      get_public_calendar: { Args: { p_slug: string }; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -3405,6 +3613,10 @@ export type Database = {
           released_operator_id: string
           success: boolean
         }[]
+      }
+      reschedule_appointment_by_token: {
+        Args: { p_new_start: string; p_token: string }
+        Returns: Json
       }
       reserve_operator_for_call: {
         Args: {
