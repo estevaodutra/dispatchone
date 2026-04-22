@@ -21,6 +21,7 @@ import {
   Skull,
   Bot,
   PhoneCall,
+  CalendarDays,
 } from "lucide-react";
 import {
   Sidebar,
@@ -75,6 +76,7 @@ export function AppSidebar() {
     { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
     { title: t("nav.callPanel"), url: "/painel-ligacoes", icon: PhoneCall },
     { title: t("nav.leads") || "Leads", url: "/leads", icon: Users },
+    { title: "Agendamentos", url: "/agendamentos/calendarios", icon: CalendarDays },
     { title: t("nav.phoneNumbers"), url: "/numbers", icon: Phone },
     { title: t("nav.logs") || "Logs", url: "/logs", icon: FileText },
   ];

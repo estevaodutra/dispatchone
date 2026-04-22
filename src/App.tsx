@@ -34,6 +34,8 @@ import Auth from "./pages/Auth";
 import OperatorScript from "./pages/OperatorScript";
 import CallPanel from "./pages/CallPanel";
 import NotFound from "./pages/NotFound";
+import SchedulingLayout from "./pages/scheduling/SchedulingLayout";
+import CalendarsPage from "./pages/scheduling/CalendarsPage";
 
 const App = () => {
   const [queryClient] = useState(() => new QueryClient());
@@ -94,6 +96,21 @@ const App = () => {
                     {/* Telefonia */}
                     <Route path="telefonia/ura" element={<URACampaigns />} />
                     <Route path="telefonia/ligacao" element={<CallCampaigns />} />
+                  </Route>
+
+                  {/* Scheduling routes */}
+                  <Route
+                    path="/agendamentos"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <SchedulingLayout />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<CalendarsPage />} />
+                    <Route path="calendarios" element={<CalendarsPage />} />
                   </Route>
 
                   {/* Operator Call Script Route (minimal UI, no sidebar) */}
