@@ -7,7 +7,7 @@ import { useInstances } from "@/hooks/useInstances";
 
 export default function NotificationDefaultsCard() {
   const { data, upsert } = useSchedulingSettings();
-  const { data: instances = [] } = useInstances();
+  const { instances = [] } = useInstances();
 
   const selected = data?.default_whatsapp_instance_id || "none";
 

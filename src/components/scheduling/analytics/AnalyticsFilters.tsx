@@ -40,8 +40,8 @@ export function applyPreset(preset: Preset, current: FilterState): FilterState {
 }
 
 export default function AnalyticsFilters({ value, onChange }: Props) {
-  const { data: calendars = [] } = useCalendars();
-  const { data: attendants = [] } = useAttendants();
+  const { calendars = [] } = useCalendars();
+  const { attendants = [] } = useAttendants();
 
   return (
     <div className="flex flex-wrap items-end gap-3 p-4 rounded-lg border bg-card">
