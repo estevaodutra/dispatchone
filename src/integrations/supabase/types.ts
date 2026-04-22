@@ -2516,13 +2516,16 @@ export type Database = {
           answers: Json
           attendant_id: string | null
           calendar_id: string
+          call_lead_id: string | null
           cancel_comment: string | null
           cancel_reason: string | null
           cancel_token: string
           cancelled_at: string | null
           company_id: string
+          confirmation_sent_at: string | null
           created_at: string
           custom_fields: Json
+          google_event_id: string | null
           id: string
           internal_notes: string | null
           lead_email: string | null
@@ -2531,6 +2534,9 @@ export type Database = {
           lead_phone: string
           location_snapshot: Json | null
           meeting_url: string | null
+          reminder_15m_sent_at: string | null
+          reminder_1d_sent_at: string | null
+          reminder_1h_sent_at: string | null
           rescheduled_from_id: string | null
           scheduled_end: string
           scheduled_start: string
@@ -2545,13 +2551,16 @@ export type Database = {
           answers?: Json
           attendant_id?: string | null
           calendar_id: string
+          call_lead_id?: string | null
           cancel_comment?: string | null
           cancel_reason?: string | null
           cancel_token: string
           cancelled_at?: string | null
           company_id: string
+          confirmation_sent_at?: string | null
           created_at?: string
           custom_fields?: Json
+          google_event_id?: string | null
           id?: string
           internal_notes?: string | null
           lead_email?: string | null
@@ -2560,6 +2569,9 @@ export type Database = {
           lead_phone: string
           location_snapshot?: Json | null
           meeting_url?: string | null
+          reminder_15m_sent_at?: string | null
+          reminder_1d_sent_at?: string | null
+          reminder_1h_sent_at?: string | null
           rescheduled_from_id?: string | null
           scheduled_end: string
           scheduled_start: string
@@ -2574,13 +2586,16 @@ export type Database = {
           answers?: Json
           attendant_id?: string | null
           calendar_id?: string
+          call_lead_id?: string | null
           cancel_comment?: string | null
           cancel_reason?: string | null
           cancel_token?: string
           cancelled_at?: string | null
           company_id?: string
+          confirmation_sent_at?: string | null
           created_at?: string
           custom_fields?: Json
+          google_event_id?: string | null
           id?: string
           internal_notes?: string | null
           lead_email?: string | null
@@ -2589,6 +2604,9 @@ export type Database = {
           lead_phone?: string
           location_snapshot?: Json | null
           meeting_url?: string | null
+          reminder_15m_sent_at?: string | null
+          reminder_1d_sent_at?: string | null
+          reminder_1h_sent_at?: string | null
           rescheduled_from_id?: string | null
           scheduled_end?: string
           scheduled_start?: string
@@ -2906,36 +2924,48 @@ export type Database = {
       }
       scheduling_global_integrations: {
         Row: {
+          access_token: string | null
           account_email: string | null
           company_id: string
           config: Json
           connected_at: string | null
           created_at: string
+          external_account_id: string | null
           id: string
           is_connected: boolean
           provider: string
+          refresh_token: string | null
+          token_expires_at: string | null
           updated_at: string
         }
         Insert: {
+          access_token?: string | null
           account_email?: string | null
           company_id: string
           config?: Json
           connected_at?: string | null
           created_at?: string
+          external_account_id?: string | null
           id?: string
           is_connected?: boolean
           provider: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
           updated_at?: string
         }
         Update: {
+          access_token?: string | null
           account_email?: string | null
           company_id?: string
           config?: Json
           connected_at?: string | null
           created_at?: string
+          external_account_id?: string | null
           id?: string
           is_connected?: boolean
           provider?: string
+          refresh_token?: string | null
+          token_expires_at?: string | null
           updated_at?: string
         }
         Relationships: []
