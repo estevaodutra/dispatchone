@@ -1,116 +1,103 @@
 
 
-## Plano: Sistema de Agendamento — PARTE 2/4
+## Plano: Sistema de Agendamento — PARTE 3/4 (Analytics + Configurações)
 
-Escopo: jornada pública completa do lead (8 páginas), gerenciamento de Atendentes (CRUD + disponibilidade), e a aba Lista de Agendamentos (admin).
+Escopo: painel de Analytics completo com agregações server-side via RPCs, e página de Configurações globais de Agendamentos (domínio personalizado, fuso, integrações placeholder, branding, webhook global, notificações padrão).
 
-### Modelo de dados (nova migration)
+### Modelo de dados
 
 Tabelas novas:
 
-- **`scheduling_appointments`** — agendamento
-  - `id`, `company_id`, `calendar_id`, `attendant_id`, `lead_id` (FK leads, nullable)
-  - `status` (`confirmed` | `cancelled` | `completed` | `no_show` | `rescheduled`)
-  - `scheduled_start` (timestamptz), `scheduled_end` (timestamptz), `timezone` (text)
-  - `lead_name`, `lead_phone`, `lead_email`, `custom_fields` (jsonb)
-  - `answers` (jsonb — respostas de qualificação)
-  - `meeting_url` (text, para videochamadas), `location_snapshot` (jsonb, presencial)
-  - `cancel_token` (text, único) — link público de gerenciamento
-  - `cancel_reason` (text), `cancel_comment` (text), `cancelled_at`
-  - `rescheduled_from_id` (FK scheduling_appointments, nullable)
-  - `utm_source`, `utm_medium`, `utm_campaign`
-  - `internal_notes` (text)
-  - `created_at`, `updated_at`
-  - Índices: `(calendar_id, scheduled_start)`, `(attendant_id, scheduled_start)`, `(cancel_token)`, `(company_id, scheduled_start)`
+- **`scheduling_settings`** — configurações globais por company (1:1)
+  - `id`, `company_id` (unique), `default_timezone` (default `America/Sao_Paulo`), `custom_domain` (text, nullable), `custom_domain_status` (`pending`|`verified`|`error`), `custom_domain_verified_at`, `hide_branding` (boolean), `webhook_global_enabled` (boolean), `webhook_global_url` (text), `default_whatsapp_instance_id` (uuid), `send_email_confirmation` (boolean), `send_ics_invite` (boolean), `created_at`, `updated_at`
+  - RLS: `is_company_member` para SELECT, `is_company_admin` para UPSERT/UPDATE
 
-- **`scheduling_appointment_events`** — timeline de histórico
-  - `id`, `appointment_id`, `event_type` (`created`|`confirmation_sent`|`reminder_sent`|`status_changed`|`rescheduled`|`cancelled`|`note_added`), `payload` (jsonb), `created_at`
+- **`scheduling_global_integrations`** — integrações OAuth placeholder por company
+  - `id`, `company_id`, `provider` (`google_calendar`|`outlook`|`zoom`|`google_meet`), `is_connected`, `account_email`, `config` (jsonb), `connected_at`
+  - Unique `(company_id, provider)`, RLS via `is_company_admin`
 
-- **`scheduling_attendant_integrations`** — tokens por atendente (placeholder p/ PARTE 4)
-  - `id`, `attendant_id`, `provider` (`google_calendar`|`zoom`|`google_meet`), `is_connected`, `config` (jsonb), `connected_at`
+Coluna adicional em `scheduling_calendars`:
+- `view_count` (integer, default 0) — incrementado por RPC pública `increment_calendar_view(slug)` usada pelo `BookingLayout` (PARTE 2) para medir visitantes
 
-**Acesso público sem auth:**
-- Função RPC `public.get_public_calendar(slug text)` (SECURITY DEFINER) — retorna calendário + atendentes + perguntas + campos, sem exigir sessão
-- Função RPC `public.get_calendar_availability(calendar_id uuid, attendant_id uuid, from_date date, to_date date)` — retorna slots disponíveis considerando `scheduling_availability`, `scheduling_blocked_dates`, `scheduling_appointments` existentes, buffer e duração
-- Função RPC `public.create_public_appointment(payload jsonb)` — insere `scheduling_appointments` com validação de conflito e gera `cancel_token`
-- Função RPC `public.get_appointment_by_token(token text)` — leitura pela página de gerenciar
-- Função RPC `public.cancel_appointment_by_token(token text, reason text, comment text)`
-- Função RPC `public.reschedule_appointment_by_token(token text, new_start timestamptz)`
+### RPCs de Analytics (SECURITY DEFINER, escopo por `company_id`)
 
-RLS nas tabelas novas segue padrão existente (`is_company_member`); páginas públicas usam apenas as RPCs.
+Todas validam `is_company_member(company_id, auth.uid())` e recebem filtros `(company_id uuid, calendar_id uuid null, attendant_id uuid null, from_date date, to_date date)`:
 
-### Rotas e arquivos novos
+- **`get_scheduling_overview`** → `{ conversion_rate, conversion_prev, appointments_total, appointments_prev, cancellations_total, cancellations_prev, no_shows_total, no_shows_prev }` (período atual vs imediatamente anterior de mesma duração)
+- **`get_scheduling_by_day`** → `[{ day date, total int }]` agregando `scheduling_appointments` por `scheduled_start::date`
+- **`get_scheduling_heatmap`** → `[{ dow int, hour int, total int }]` (segunda–sexta, 08–17h por padrão)
+- **`get_scheduling_attendant_performance`** → join com `scheduling_attendants`: `[{ attendant_id, name, photo_url, total, completed, no_shows, success_rate }]`
+- **`get_scheduling_sources`** → agrupa por `utm_source`/`utm_medium` com fallback `"direct"`, retorna `[{ source, total, pct }]`
+- **`get_scheduling_funnel`** → `{ visits, slot_selected, details_filled, confirmed }` — `visits` vem de `scheduling_calendars.view_count`; `slot_selected`/`details_filled` derivados de contadores incrementais (ver abaixo); `confirmed` de `scheduling_appointments`
+- **`get_scheduling_cancel_reasons`** → `[{ reason, total, pct }]` agrupando `scheduling_appointments.cancel_reason`
+
+Para o funil, adicionar colunas a `scheduling_calendars`: `slot_select_count` e `details_submit_count` (int default 0), incrementados pelas páginas públicas `BookingSelectSlot` (ao avançar) e `BookingDetails` (ao enviar) via RPCs `increment_calendar_slot_select(slug)` e `increment_calendar_details_submit(slug)`.
+
+### Arquivos a criar
 
 ```
 src/
-├── pages/public/
-│   ├── BookingLayout.tsx           (wrapper com branding do calendário)
-│   ├── BookingSelectAttendant.tsx  (Página 1)
-│   ├── BookingSelectSlot.tsx       (Páginas 2 e 8 — reutilizado para reagendar)
-│   ├── BookingQualification.tsx    (Página 3)
-│   ├── BookingDetails.tsx          (Página 4)
-│   ├── BookingSuccess.tsx          (Página 5)
-│   ├── BookingManage.tsx           (Página 6)
-│   └── BookingCancel.tsx           (Página 7)
 ├── pages/scheduling/
-│   ├── AttendantsPage.tsx          (lista atendentes)
-│   └── AppointmentsPage.tsx        (lista agendamentos)
-├── components/scheduling/
-│   ├── AttendantCard.tsx
-│   ├── AttendantFormDialog.tsx     (modal com seções: Info, Calendários, Disponibilidade, Integrações)
-│   ├── AttendantAvailabilityEditor.tsx (reaproveita padrão do ScheduleTab)
-│   ├── AppointmentRow.tsx
-│   ├── AppointmentDetailsDialog.tsx (detalhes + timeline + ações)
-│   └── booking/
-│       ├── MiniMonthCalendar.tsx   (grid mensal de dias)
-│       ├── TimeSlotGrid.tsx        (grade de horários disponíveis)
-│       └── BookingSummaryCard.tsx  (resumo reutilizado em várias páginas)
-├── hooks/
-│   ├── usePublicBooking.ts         (flow público: calendar + slots + create)
-│   ├── useAppointments.ts          (admin: lista + filtros + status updates + notes)
-│   ├── useAttendantForm.ts         (CRUD + relations)
-│   └── useAttendantAvailability.ts (horários por atendente)
-└── lib/
-    └── booking-slots.ts            (helpers cliente p/ formatação; cálculo principal é server-side na RPC)
+│   ├── AnalyticsPage.tsx                (orquestra filtros + chama hooks)
+│   └── SchedulingSettingsPage.tsx       (configurações globais)
+├── components/scheduling/analytics/
+│   ├── AnalyticsFilters.tsx             (período/calendário/atendente)
+│   ├── OverviewCards.tsx                (4 cards com deltas)
+│   ├── AppointmentsByDayChart.tsx       (recharts BarChart)
+│   ├── HourHeatmap.tsx                  (grid 5x10 com gradiente)
+│   ├── AttendantPerformanceTable.tsx    (ordenável)
+│   ├── SourcesChart.tsx                 (barras horizontais)
+│   ├── ConversionFunnel.tsx             (funil vertical customizado)
+│   └── CancelReasonsChart.tsx           (pizza recharts)
+├── components/scheduling/settings/
+│   ├── CustomDomainCard.tsx             (input + status badge + verificação)
+│   ├── DefaultTimezoneCard.tsx
+│   ├── GlobalIntegrationsCard.tsx       (4 cards placeholder "Em breve")
+│   ├── BrandingCard.tsx
+│   ├── GlobalWebhookCard.tsx
+│   └── NotificationDefaultsCard.tsx
+└── hooks/
+    ├── useSchedulingAnalytics.ts        (overview, byDay, heatmap, performance, sources, funnel, cancelReasons)
+    └── useSchedulingSettings.ts         (load/upsert settings + integrations)
 ```
 
 Atualizar:
-- `src/App.tsx` — rotas públicas **fora do `ProtectedRoute`**: `/agendar/:slug`, `/agendar/:slug/:attendantId`, `/agendar/:slug/qualificacao`, `/agendar/:slug/dados`, `/agendar/:slug/sucesso`, `/agendamento/:token/gerenciar`, `/agendamento/:token/cancelar`, `/agendamento/:token/reagendar`. Rotas admin novas sob `/agendamentos`: `atendentes`, `lista`
-- `src/pages/scheduling/SchedulingLayout.tsx` — habilitar abas "Agendamentos" e "Atendentes"
-- `src/hooks/useAttendants.ts` — acrescentar `update`, `remove`, `uploadPhoto`
+- `src/pages/scheduling/SchedulingLayout.tsx` — habilitar abas "Analytics" e "Configurações"
+- `src/App.tsx` — rotas `/agendamentos/analytics` e `/agendamentos/configuracoes`
+- `src/pages/public/BookingLayout.tsx` — chamar `increment_calendar_view` em mount (1x por session via sessionStorage)
+- `src/pages/public/BookingSelectSlot.tsx` — chamar `increment_calendar_slot_select` ao confirmar slot
+- `src/pages/public/BookingDetails.tsx` — chamar `increment_calendar_details_submit` ao submeter
+- `src/i18n/locales/{pt,en,es}.ts` — chaves `scheduling.analytics.*` e `scheduling.settings.*`
 
 ### Decisões técnicas
 
-- **Jornada pública sem autenticação**: páginas públicas chamam somente as RPCs `SECURITY DEFINER` (sem RLS no caminho). Estado intermediário da jornada (atendente escolhido, slot, respostas, dados do lead) é mantido em `sessionStorage` com chave `booking:{slug}`.
-- **Cálculo de slots**: feito na RPC `get_calendar_availability` a partir de `scheduling_availability` (por atendente), `scheduling_blocked_dates`, `advanced.buffer_minutes`/`advanced.min_notice_hours`/`advanced.booking_window_days`/`advanced.daily_limit` em `scheduling_calendars`, e agendamentos existentes. Retorna array `[{date, slots: ["09:00", ...]}]`.
-- **Round-robin vs lead_choice**: quando `distribution = round_robin`, a Página 1 é pulada e a RPC `get_calendar_availability` recebe `attendant_id = null` e escolhe o atendente com menos agendamentos futuros naquele slot (empate por `id`). Quando `lead_choice`, Página 1 é obrigatória.
-- **Conflito de horário**: `create_public_appointment` faz `SELECT ... FOR UPDATE` no intervalo e rejeita se já existir appointment ativo sobrepondo o slot do atendente.
-- **`cancel_token`**: gerado via `encode(gen_random_bytes(24), 'base64')` URL-safe; único.
-- **Reagendamento**: cria novo appointment com `rescheduled_from_id`, marca original como `rescheduled`. Não cria um token novo — reusa o mesmo `cancel_token` (atualiza no novo registro).
-- **Branding público**: `BookingLayout` lê `branding`/`texts`/`layout` do calendário e aplica via CSS custom properties no wrapper. Sem tema global — escopo local.
-- **Lista de agendamentos (admin)**: agrupa client-side por data (`HOJE`, `AMANHÃ`, dia/mês). Filtros: busca (nome/telefone), calendário, status, atendente. Paginação `range()` de 50 em 50.
-- **Detalhes do agendamento**: `AppointmentDetailsDialog` mostra 5 seções (Agendamento, Lead, Qualificação, Histórico, Notas). Histórico lê `scheduling_appointment_events`. Ações: Reagendar (abre slot picker admin), Cancelar (confirma + motivo), Marcar concluído, Marcar no-show, Ligar agora (se `modality=call` e `lead_id`, adiciona à `call_queue`), Abrir reunião (se `meeting_url`). Cada ação registra evento na timeline.
-- **Integrações (atendente)**: os cards Google Calendar/Meet/Zoom ficam como placeholders "Conectar em breve" — fluxo OAuth virá na PARTE 4. A tabela `scheduling_attendant_integrations` já fica criada.
-- **Meeting URL**: na PARTE 2 o campo fica vazio para videochamadas (geração automática virá na PARTE 4). Se admin preencher manualmente via detalhes, aparece na confirmação.
-- **Reaproveitamento**: `MiniMonthCalendar` usa `react-day-picker` (já instalado via `src/components/ui/calendar.tsx`). Sem novas dependências.
-- **i18n**: PT/EN/ES com chaves `booking.*` (jornada pública), `scheduling.attendants.*`, `scheduling.appointments.*`.
+- **Agregações server-side**: todos os números vêm de RPCs para evitar baixar milhares de linhas; único SELECT direto do cliente é a lista de calendários/atendentes para preencher filtros
+- **Período anterior**: calculado na RPC como `[from_date - (to_date - from_date) - 1, from_date - 1]` para comparação justa
+- **Heatmap**: grid fixo Seg–Sex × 08h–17h (10 colunas) conforme spec "5x8" ampliado para cobrir jornada comercial; intensidade via opacidade de `hsl(var(--primary))`; células com 0 agendamentos ficam `bg-muted`
+- **Funil**: componente custom (SVG ou divs com `clip-path`) — sem nova dependência; mostra % de cada etapa em relação à anterior e conversão geral destacada no topo
+- **Sources**: `utm_source` ausente → agrupa como `"direct"`; normaliza para `whatsapp`/`email`/`direct`/`other` no cliente
+- **Motivos de cancelamento**: mapeia os 4 presets da PARTE 2 (`schedule_conflict`, `no_longer_needed`, `will_reschedule`, `other`) + registros null → `not_informed`
+- **Domínio personalizado**: campo `custom_domain` é apenas armazenamento declarativo por ora. Status `pending` na criação; botão "Verificar DNS" chama nova edge function `verify-scheduling-domain` que faz `fetch` a `https://dns.google/resolve?name={domain}&type=CNAME` e marca `verified` se `custom.dispatchone.com` estiver no resultado. Sem emissão de SSL nesta parte (fica para PARTE 4 junto com Lovable Custom Domains API)
+- **Integrações globais**: 4 cards "Conectar" desabilitados com badge "Em breve". Tabela `scheduling_global_integrations` já criada para o OAuth real da PARTE 4
+- **Branding "hide_branding"**: quando `true`, `BookingLayout` (PARTE 2) já lê `layout.hide_branding` do calendário — aqui adicionamos fallback ao valor global da company
+- **Webhook global**: toggle + URL; quando `scheduling_integrations.webhook_*_url` do calendário estiver vazio, o disparador (PARTE 4) usará o global
+- **Instância WhatsApp padrão**: select popula de `useInstances()` filtrando por company; usado como fallback nas notificações que não têm instância própria
+- **i18n**: PT/EN/ES
+- **Charts**: reusa `recharts` já presente (`src/components/ui/chart.tsx`) — sem nova dependência
 
 ### Comportamento final
 
-- Lead acessa `dispatchone.lovable.app/agendar/{slug}` → vê branding do calendário
-- Se `distribution=lead_choice` com >1 atendente → escolhe atendente → seleciona data/hora → responde qualificação (se houver) → preenche dados → confirma
-- Página de sucesso mostra resumo + `cancel_token` no link "Gerenciar Agendamento"
-- Lead clica em "Gerenciar" → reagenda (cria novo, marca antigo como `rescheduled`) ou cancela (pede motivo)
-- Admin em `/agendamentos/atendentes` cria/edita atendentes com foto, bio, calendários vinculados e disponibilidade customizada
-- Admin em `/agendamentos/lista` vê agendamentos agrupados por data, filtra, abre detalhes, executa ações (ligar/reagendar/cancelar/concluir/no-show), adiciona notas
-- Histórico (`scheduling_appointment_events`) é alimentado automaticamente a cada mudança de status
-- Confirmações por WhatsApp, lembretes, geração de links de reunião e webhooks ficam para **PARTE 4**
+- Aba Analytics mostra 4 cards com deltas vs período anterior, gráficos preenchidos com dados reais de `scheduling_appointments` agregados por RPC, e filtros que recarregam via React Query keys `(range, calendar, attendant)`
+- Funil começa a fazer sentido assim que usuários acessarem páginas públicas (contadores incrementais em `scheduling_calendars`)
+- Aba Configurações permite salvar domínio personalizado (com verificação DNS básica), fuso padrão, toggles de branding e notificações, instância WhatsApp padrão, webhook global, e exibe placeholders para integrações OAuth
+- Sidebar de `/agendamentos/*` com as 5 abas totalmente navegáveis
 
-### Fora desta parte
+### Fora desta parte (PARTE 4)
 
-- Envio real de WhatsApp de confirmação/lembretes (PARTE 4)
-- Integração OAuth com Google Calendar/Meet/Zoom (PARTE 4)
-- Webhooks de ciclo de vida do agendamento (PARTE 4)
-- Criação automática de lead na campanha de ligação ao confirmar (PARTE 4 — a ação "Ligar agora" manual no admin já funciona)
-- Analytics (PARTE 3)
+- Envio real de WhatsApp de confirmação/lembretes
+- OAuth real Google Calendar/Outlook/Zoom/Meet + criação automática de evento e link de reunião
+- Disparo real de webhooks globais/por-calendário
+- Emissão SSL + roteamento DNS do custom domain (Lovable Custom Domains API)
+- Criação automática de lead na campanha de ligação ao confirmar agendamento
+- Cron de lembretes (1 dia / 1 hora / 15 min antes)
 
