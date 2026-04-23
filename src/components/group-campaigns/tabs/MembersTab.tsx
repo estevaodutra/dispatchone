@@ -44,7 +44,7 @@ interface MembersTabProps {
 }
 
 export function MembersTab({ campaignId }: MembersTabProps) {
-  const { members, stats, isLoading, addMember, addMembersBulk, removeMember, isAdding } = useGroupMembers(campaignId);
+  const { members, stats, isLoading, addMember, addMembersBulk, removeMember, reactivateMember, isAdding } = useGroupMembers(campaignId);
 
   const { linkedGroups } = useCampaignGroups(campaignId);
   const { instances } = useInstances();
@@ -391,7 +391,7 @@ export function MembersTab({ campaignId }: MembersTabProps) {
   const statusColors: Record<string, string> = {
     active: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
     removed: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
-    left: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+    left: "bg-muted text-muted-foreground",
     muted: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
   };
 
@@ -472,9 +472,15 @@ export function MembersTab({ campaignId }: MembersTabProps) {
               <CardDescription>Gerencie os membros do grupo.</CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={handleFetchMembers} disabled={isFetchingMembers || !linkedGroups.length}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchMembers}
+                disabled={isFetchingMembers || !linkedGroups.length}
+                title="Puxa a lista atual de participantes do WhatsApp e atualiza entradas/saídas. Use quando um membro estiver com status incorreto."
+              >
                 {isFetchingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Listar Membros
+                Sincronizar com WhatsApp
               </Button>
               <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
@@ -638,9 +644,15 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="text-destructive" onClick={() => removeMember(member.id)}>
-                              <UserMinus className="mr-2 h-4 w-4" /> Remover
-                            </DropdownMenuItem>
+                            {member.status === "active" ? (
+                              <DropdownMenuItem className="text-destructive" onClick={() => removeMember(member.id)}>
+                                <UserMinus className="mr-2 h-4 w-4" /> Marcar como removido
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => reactivateMember(member.id)}>
+                                <UserCheck className="mr-2 h-4 w-4" /> Marcar como ativo
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
