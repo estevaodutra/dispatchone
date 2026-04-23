@@ -250,6 +250,44 @@ export function useGroupMembers(groupCampaignId: string | null) {
     },
   });
 
+  const reactivateMemberMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // Fetch member to get phone for history
+      const { data: member, error: fetchError } = await supabase
+        .from("group_members")
+        .select("phone, group_campaign_id")
+        .eq("id", id)
+        .single();
+      if (fetchError) throw fetchError;
+
+      const { error } = await supabase
+        .from("group_members")
+        .update({ status: "active", left_at: null })
+        .eq("id", id);
+      if (error) throw error;
+
+      if (member?.phone && member?.group_campaign_id) {
+        await supabase.from("group_member_history").insert({
+          group_campaign_id: member.group_campaign_id,
+          user_id: user.id,
+          member_phone: member.phone,
+          action: "join",
+          reason: "manual",
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["group_members", groupCampaignId] });
+      toast({ title: "Membro reativado", description: "Status atualizado para Ativo." });
+    },
+    onError: (error) => {
+      toast({ title: "Erro", description: error.message, variant: "destructive" });
+    },
+  });
+
   const stats = {
     total: members.length,
     active: members.filter((m) => m.status === "active").length,
