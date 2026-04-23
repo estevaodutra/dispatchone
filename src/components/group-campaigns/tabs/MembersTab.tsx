@@ -644,9 +644,15 @@ export function MembersTab({ campaignId }: MembersTabProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="text-destructive" onClick={() => removeMember(member.id)}>
-                              <UserMinus className="mr-2 h-4 w-4" /> Remover
-                            </DropdownMenuItem>
+                            {member.status === "active" ? (
+                              <DropdownMenuItem className="text-destructive" onClick={() => removeMember(member.id)}>
+                                <UserMinus className="mr-2 h-4 w-4" /> Marcar como removido
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => reactivateMember(member.id)}>
+                                <UserCheck className="mr-2 h-4 w-4" /> Marcar como ativo
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
