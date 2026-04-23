@@ -472,9 +472,15 @@ export function MembersTab({ campaignId }: MembersTabProps) {
               <CardDescription>Gerencie os membros do grupo.</CardDescription>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
-              <Button variant="outline" size="sm" onClick={handleFetchMembers} disabled={isFetchingMembers || !linkedGroups.length}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleFetchMembers}
+                disabled={isFetchingMembers || !linkedGroups.length}
+                title="Puxa a lista atual de participantes do WhatsApp e atualiza entradas/saídas. Use quando um membro estiver com status incorreto."
+              >
                 {isFetchingMembers ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                Listar Membros
+                Sincronizar com WhatsApp
               </Button>
               <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImportCSV} />
               <Button variant="outline" size="sm" onClick={() => fileInputRef.current?.click()}>
