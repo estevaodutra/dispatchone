@@ -44,7 +44,7 @@ interface MembersTabProps {
 }
 
 export function MembersTab({ campaignId }: MembersTabProps) {
-  const { members, stats, isLoading, addMember, addMembersBulk, removeMember, isAdding } = useGroupMembers(campaignId);
+  const { members, stats, isLoading, addMember, addMembersBulk, removeMember, reactivateMember, isAdding } = useGroupMembers(campaignId);
 
   const { linkedGroups } = useCampaignGroups(campaignId);
   const { instances } = useInstances();
