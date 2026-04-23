@@ -326,7 +326,7 @@ Deno.serve(async (req) => {
       typedMessage = message as GroupMessage;
     }
 
-    // Get campaign with instance
+    // Get campaign (left join on instance so we can return a precise error)
     const { data: campaign, error: campaignError } = await supabase
       .from("group_campaigns")
       .select(`
@@ -335,7 +335,7 @@ Deno.serve(async (req) => {
         status,
         instance_id,
         user_id,
-        instances!inner(
+        instances(
           id,
           name,
           phone,
@@ -346,18 +346,30 @@ Deno.serve(async (req) => {
         )
       `)
       .eq("id", campaignId)
-      .single();
+      .maybeSingle();
 
     if (campaignError || !campaign) {
-      console.error("[ExecuteMessage] Campaign not found:", campaignError);
+      console.error("[ExecuteMessage] Campaign not found:", campaignError, "campaignId:", campaignId);
       return new Response(
-        JSON.stringify({ error: "Campaign not found" }),
+        JSON.stringify({ error: "Campaign not found", campaignId }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
     const typedCampaign = campaign as unknown as CampaignData;
     const instance = typedCampaign.instances;
+
+    if (!typedCampaign.instance_id || !instance) {
+      console.error("[ExecuteMessage] Campaign has no instance linked:", campaignId);
+      return new Response(
+        JSON.stringify({
+          error: "Campaign has no WhatsApp instance linked. Open the campaign config and select an instance.",
+          campaignId,
+          campaignName: typedCampaign.name,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     if (instance.status !== "connected") {
       return new Response(
