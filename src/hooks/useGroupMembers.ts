@@ -307,8 +307,10 @@ export function useGroupMembers(groupCampaignId: string | null) {
     updateMember: updateMemberMutation.mutateAsync,
     removeMember: removeMemberMutation.mutateAsync,
     deleteMember: deleteMemberMutation.mutateAsync,
+    reactivateMember: reactivateMemberMutation.mutateAsync,
     isAdding: addMemberMutation.isPending || addMembersBulkMutation.isPending,
     isUpdating: updateMemberMutation.isPending,
     isRemoving: removeMemberMutation.isPending,
+    isReactivating: reactivateMemberMutation.isPending,
   };
 }
