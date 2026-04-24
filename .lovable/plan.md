@@ -1,69 +1,93 @@
 
 
-## Plano: Corrigir status "Removido" indevido em membros de grupo
+## Plano: Visualização de Logs por Nó com Reprocessamento
 
-### Diagnóstico
+### O que será adicionado
 
-O lead `5512983195531` no grupo "Maestria" tem o seguinte histórico no banco:
+Nova opção **"Ver logs"** no menu de cada card de mensagem (ao lado de Editar / Duplicar / Pausar / Executar agora / Excluir) dentro do construtor de sequência. Ao clicar, abre um diálogo lateral mostrando o histórico detalhado de envios daquele nó com possibilidade de reprocessar.
 
-```
-23:19:02 — join (status=active)
-23:21:36 — leave (webhook recebido)
-23:23:13 — sync marcou status=left, left_at=23:23:13
-```
+### UI: novo diálogo `NodeLogsDialog`
 
-A UI exibe "Removido" porque o `status=left` é renderizado com o mesmo badge de `removed`. Se o lead voltou ao grupo depois das 23:23, há dois caminhos possíveis para a inconsistência:
+Aberto pelo card, escopado ao nó (`sequenceId` + `nodeOrder`). Mostra os últimos 50 envios das últimas 72h (filtro de retenção atual da tabela `group_message_logs`).
 
-1. **n8n não retornou o telefone na lista de membros** quando o sync foi disparado pelo webhook ou pelo botão "Listar Membros". Isso pode acontecer por cache, eventual consistency da Z-API, ou o membro entrou depois da última sync.
-2. **Não houve webhook `group_join` posterior** após o retorno (entrou via convite que a instância não viu, ou o webhook foi perdido).
+Cada linha exibe:
+- Status (badge: ✓ Enviado / ⚠️ Pendente / ✗ Erro)
+- Destino (`group_name` ou `recipient_phone`)
+- Instância usada
+- Timestamp (`sent_at`)
+- Tempo de resposta (ms)
+- Mensagem de erro, se houver
 
-### Causa raiz
+Clicando na linha, expande detalhes em accordion:
+- **Payload enviado** (`payload` em JSON formatado, com botão copiar)
+- **Resposta do provedor** (`provider_response` em JSON formatado, com botão copiar)
+- **IDs externos** (`external_message_id`, `zaap_id`)
 
-Em `sync-group-members/index.ts` o diff só considera membros com `status='active'` no DB (linha 75). Quando um membro volta, ele é detectado como "entered" e o upsert reativa para `status='active'` — isso funciona **se** o n8n retornar o telefone. Se não retornar, o membro fica preso em `left` para sempre, mesmo estando no grupo.
+Ações por linha:
+- **Reprocessar este envio** → chama `execute-message` com `sequenceId`, `manualNodeIndex=nodeOrder`, e — se o log foi de envio privado (`recipient_phone` preenchido) — `targetPhones=[recipient_phone]`. Se foi para grupo, reprocessa para todos os grupos vinculados.
+- **Copiar payload** / **Copiar resposta**
 
-Não há um botão claro de "Re-sincronizar agora" na UI — o usuário precisa adivinhar que "Listar Membros" faz isso. Também não há ação manual para marcar um membro específico como `active` quando o usuário **sabe** que está no grupo.
+Ação no header do diálogo:
+- **Reprocessar nó inteiro** (atalho equivalente a "Executar agora", já existente, mas oferecido aqui também)
+- **Atualizar** (refetch manual)
 
-### Correções propostas
+Cabeçalho mostra contadores: `X enviados · Y com erro · Z pendentes` no escopo das últimas 72h.
 
-#### 1. Botão "Forçar Re-sincronização" mais explícito (UI)
+### Hook novo: `useNodeLogs(sequenceId, nodeOrder)`
 
-Em `MembersTab.tsx`, renomear/destacar a ação que dispara `sync-group-members`. Hoje existe o botão "Listar Membros" (`handleFetchMembers`) — vou trocar o label para "Sincronizar com WhatsApp" e adicionar tooltip explicando que ele puxa a lista atual e atualiza status (entradas + saídas).
+- Query React Query, key `["node-logs", sequenceId, nodeOrder]`
+- Seleciona de `group_message_logs` filtrando por `sequence_id` e `node_order`, ordem `sent_at desc`, limite 50
+- Refetch a cada 10s (igual ao `useSequenceLogs` atual) + invalidação via Realtime quando uma row da tabela muda
+- Retorna logs tipados incluindo `payload`, `providerResponse`, `externalMessageId`, `zaapId`, `recipientPhone`, `groupName`, etc.
 
-#### 2. Reativar membro manualmente
+### Mutation nova: `useReprocessLog`
 
-Adicionar item no menu de ações (`...`) por linha:
-- Se `status='active'` → "Marcar como removido" (já existe)
-- Se `status='left'` ou `status='removed'` → **novo** "Marcar como ativo" → atualiza `status='active'`, `left_at=null` e insere registro `join` em `group_member_history` (com nota `manual`).
+- Recebe um `SequenceLog` + `sequenceId` + `nodeOrder`
+- Invoca `supabase.functions.invoke("execute-message", { body })` com:
+  - `campaignId` (do log)
+  - `sequenceId`
+  - `manualNodeIndex: nodeOrder`
+  - Se `recipientPhone` está setado → `targetPhones: [recipientPhone]` (retry privado para aquele destinatário específico)
+- Toast de sucesso/erro e invalidação de `["node-logs", ...]` e `["sequence-logs"]`
 
-#### 3. Distinguir visualmente "Saiu" vs "Removido"
+### Integração no card
 
-No `MembersTab` a coluna Status atualmente trata `left` e `removed` como o mesmo badge "Removido". Vou separar:
-- `active` → badge verde "Ativo"
-- `left` → badge cinza "Saiu" (saída detectada por sync ou webhook)
-- `removed` → badge vermelho "Removido" (ação manual do admin)
-- `muted` → badge amarelo "Silenciado"
+`MessageCard.tsx` ganha:
+- Nova prop opcional `onViewLogs?: () => void`
+- Novo `DropdownMenuItem` "Ver logs" com ícone `History` (lucide), posicionado entre "Executar agora" e o separador
 
-Isso já ajuda o usuário a entender a diferença entre uma saída detectada pelo sync e uma remoção manual.
+`MessageTimeline.tsx` ganha prop `onViewLogsNode?: (node) => void` e propaga para os cards.
 
-#### 4. Corrigir caso específico no banco (one-shot)
+`TimelineSequenceBuilder.tsx`:
+- Estado `viewingLogsNode: LocalNode | null`
+- Renderiza `<NodeLogsDialog node={viewingLogsNode} sequenceId={sequence.id} campaignId={sequence.groupCampaignId} onClose={...} />` quando setado
+- Passa `onViewLogsNode={(node) => setViewingLogsNode(node)}` para `MessageTimeline`
 
-Para o lead `5512983195531` na campanha `66908102-3000-4231-a48a-c6431be4d3be`, fazer um UPDATE direto restaurando para `active` + `left_at=null`, e inserir um registro `join` em `group_member_history` com timestamp atual.
+### Backend
+
+Nenhuma mudança. `execute-message` já:
+- Aceita `manualNodeIndex` para executar um único nó
+- Aceita `targetPhones` para direcionar a destinatários privados específicos
+- Persiste `payload`, `provider_response`, `error_message`, `response_time_ms` em `group_message_logs`
 
 ### Arquivos afetados
 
-- `src/components/group-campaigns/tabs/MembersTab.tsx` — novo item de menu, novos badges, label do botão
-- `src/hooks/useGroupMembers.ts` — nova mutation `reactivateMember(id)` que faz UPDATE + insert no history
-- Migration de dados (insert tool) — corrige o registro específico
+- `src/components/group-campaigns/sequences/NodeLogsDialog.tsx` — **novo**
+- `src/hooks/useNodeLogs.ts` — **novo**
+- `src/components/group-campaigns/sequences/MessageCard.tsx` — adicionar item "Ver logs"
+- `src/components/group-campaigns/sequences/MessageTimeline.tsx` — propagar prop
+- `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx` — montar diálogo
 
 ### Comportamento final
 
-- O usuário consegue distinguir "Saiu" de "Removido" na lista
-- Pode marcar um membro como ativo manualmente quando o sync está atrasado/incorreto
-- O botão de sincronização fica mais óbvio
-- O lead `5512983195531` volta a aparecer como "Ativo" imediatamente
+1. Usuário abre o menu `...` de um card → clica **"Ver logs"**
+2. Diálogo lateral abre listando os últimos envios daquele nó com status, destino, hora e tempo de resposta
+3. Expande linha → vê payload + resposta crua do n8n/Z-API
+4. Clica **"Reprocessar"** numa linha com erro → o nó é re-executado para aquele destinatário específico → toast confirma → lista atualiza via Realtime mostrando o novo envio
 
-### Fora deste escopo
+### Fora do escopo
 
-- Corrigir cache/eventual-consistency do lado do n8n/Z-API (fora do nosso controle)
-- Mecanismo automático de "auto-recuperação" — manter ação manual evita falsos positivos
+- Paginação além de 50 (retenção é 72h e o volume por nó é baixo)
+- Reprocessamento em lote de várias linhas selecionadas (pode vir depois se útil)
+- Edição do payload antes de reprocessar
 
