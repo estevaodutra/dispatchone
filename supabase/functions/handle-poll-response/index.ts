@@ -607,20 +607,36 @@ Deno.serve(async (req) => {
             }
           }
 
+          console.log(`[HandlePollResponse] Webhook payload:`, JSON.stringify(webhookPayload));
+
           const webhookResponse = await fetch(webhookUrl, {
             method: "POST",
             headers,
             body: JSON.stringify(webhookPayload),
           });
 
-          actionResult = { 
-            status: webhookResponse.status, 
+          let responseBodyText = "";
+          try {
+            responseBodyText = await webhookResponse.text();
+          } catch (_e) {
+            responseBodyText = "<unable to read response body>";
+          }
+
+          if (!webhookResponse.ok) {
+            console.error(
+              `[HandlePollResponse] Webhook returned ${webhookResponse.status}: ${responseBodyText.slice(0, 500)}`,
+            );
+          }
+
+          actionResult = {
+            status: webhookResponse.status,
             sent: webhookResponse.ok,
             url: webhookUrl,
             includesRawEvent: !!(actionConfig.config.forwardRawBody && body._raw_event),
+            response_body: responseBodyText.slice(0, 1000),
           };
           actionSuccess = webhookResponse.ok;
-          console.log(`[HandlePollResponse] Webhook called: ${actionSuccess}`);
+          console.log(`[HandlePollResponse] Webhook called: ${actionSuccess} (status ${webhookResponse.status})`);
           break;
         }
 
