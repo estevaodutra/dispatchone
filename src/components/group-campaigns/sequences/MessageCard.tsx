@@ -8,7 +8,7 @@ import {
 import {
   MoreHorizontal, Pencil, Copy, Pause, Play, ArrowUp, ArrowDown, Trash2,
   MessageSquare, Image, Video, Music, FileText, Smile,
-  BarChart3, MousePointerClick, List, MapPin, Contact, Calendar, Zap,
+  BarChart3, MousePointerClick, List, MapPin, Contact, Calendar, Zap, History,
 } from "lucide-react";
 
 export type MessageStatus = "scheduled" | "today" | "sent" | "error" | "paused";
@@ -21,6 +21,7 @@ interface MessageCardProps {
   onDuplicate: () => void;
   onTogglePause: () => void;
   onExecute?: () => void;
+  onViewLogs?: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
   onDelete: () => void;
@@ -108,7 +109,7 @@ function getContentPreview(node: LocalNode): string {
 
 export function MessageCard({
   node, status, errorMessage,
-  onEdit, onDuplicate, onTogglePause, onExecute, onMoveUp, onMoveDown, onDelete,
+  onEdit, onDuplicate, onTogglePause, onExecute, onViewLogs, onMoveUp, onMoveDown, onDelete,
   isFirst, isLast,
 }: MessageCardProps) {
   const meta = TYPE_META[node.nodeType] || TYPE_META.message;
@@ -143,6 +144,11 @@ export function MessageCard({
             {onExecute && (
               <DropdownMenuItem onClick={onExecute} className="text-primary focus:text-primary">
                 <Zap className="mr-2 h-3.5 w-3.5" /> Executar agora
+              </DropdownMenuItem>
+            )}
+            {onViewLogs && (
+              <DropdownMenuItem onClick={onViewLogs}>
+                <History className="mr-2 h-3.5 w-3.5" /> Ver logs
               </DropdownMenuItem>
             )}
             <DropdownMenuSeparator />
