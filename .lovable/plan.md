@@ -1,93 +1,67 @@
 
 
-## Plano: Visualização de Logs por Nó com Reprocessamento
+## Plano: Expor telefone do respondente em local mais previsível no payload do webhook de poll
 
-### O que será adicionado
+### Diagnóstico
 
-Nova opção **"Ver logs"** no menu de cada card de mensagem (ao lado de Editar / Duplicar / Pausar / Executar agora / Excluir) dentro do construtor de sequência. Ao clicar, abre um diálogo lateral mostrando o histórico detalhado de envios daquele nó com possibilidade de reprocessar.
+Para o evento da campanha Maestria (poll `Modelo de Enquete`):
 
-### UI: novo diálogo `NodeLogsDialog`
+- `webhook_events.sender_phone = 5512983195531` (extração correta no nosso lado)
+- O payload enviado ao n8n já contém `respondent.phone` corretamente
+- O n8n retornou **HTTP 500** para essa chamada, indicando que o workflow do n8n falhou ao processar — provavelmente porque está tentando ler o telefone num caminho diferente do que enviamos (ex: campo top-level `phone`, ou estrutura achatada)
 
-Aberto pelo card, escopado ao nó (`sequenceId` + `nodeOrder`). Mostra os últimos 50 envios das últimas 72h (filtro de retenção atual da tabela `group_message_logs`).
+Outros 4 votos no mesmo período retornaram 200 (URL n8n diferente). Logo o telefone existe no payload — só não está num caminho que o workflow `datacrazy` consegue ler.
 
-Cada linha exibe:
-- Status (badge: ✓ Enviado / ⚠️ Pendente / ✗ Erro)
-- Destino (`group_name` ou `recipient_phone`)
-- Instância usada
-- Timestamp (`sent_at`)
-- Tempo de resposta (ms)
-- Mensagem de erro, se houver
+### Mudança proposta no payload do webhook (handle-poll-response, action `call_webhook`)
 
-Clicando na linha, expande detalhes em accordion:
-- **Payload enviado** (`payload` em JSON formatado, com botão copiar)
-- **Resposta do provedor** (`provider_response` em JSON formatado, com botão copiar)
-- **IDs externos** (`external_message_id`, `zaap_id`)
+Acrescentar campos achatados no topo do payload, mantendo a estrutura aninhada já existente para retrocompatibilidade. O payload passa de:
 
-Ações por linha:
-- **Reprocessar este envio** → chama `execute-message` com `sequenceId`, `manualNodeIndex=nodeOrder`, e — se o log foi de envio privado (`recipient_phone` preenchido) — `targetPhones=[recipient_phone]`. Se foi para grupo, reprocessa para todos os grupos vinculados.
-- **Copiar payload** / **Copiar resposta**
+```json
+{
+  "event": "poll_vote",
+  "poll": { ... },
+  "vote": { "option_index": 0, "option_text": "..." },
+  "respondent": { "phone": "5512...", "name": "...", "jid": "..." },
+  "group": { "jid": "..." }
+}
+```
 
-Ação no header do diálogo:
-- **Reprocessar nó inteiro** (atalho equivalente a "Executar agora", já existente, mas oferecido aqui também)
-- **Atualizar** (refetch manual)
+Para:
 
-Cabeçalho mostra contadores: `X enviados · Y com erro · Z pendentes` no escopo das últimas 72h.
+```json
+{
+  "event": "poll_vote",
+  "phone": "5512983195531",          // ← novo (top-level)
+  "name": "Estevão Dutra",            // ← novo (top-level)
+  "option": "PERGUNTA 1 (Lead Quente)", // ← novo (top-level)
+  "option_index": 0,                  // ← novo (top-level)
+  "group_jid": "120363424430105624-group", // ← novo (top-level)
+  "poll": { ... },
+  "vote": { ... },
+  "respondent": { ... },
+  "group": { ... },
+  "instance": { ... }
+}
+```
 
-### Hook novo: `useNodeLogs(sequenceId, nodeOrder)`
+Isso permite que workflows externos (n8n, Make, Zapier) leiam `body.phone` diretamente sem precisar navegar `body.respondent.phone`.
 
-- Query React Query, key `["node-logs", sequenceId, nodeOrder]`
-- Seleciona de `group_message_logs` filtrando por `sequence_id` e `node_order`, ordem `sent_at desc`, limite 50
-- Refetch a cada 10s (igual ao `useSequenceLogs` atual) + invalidação via Realtime quando uma row da tabela muda
-- Retorna logs tipados incluindo `payload`, `providerResponse`, `externalMessageId`, `zaapId`, `recipientPhone`, `groupName`, etc.
+### Diagnóstico extra
 
-### Mutation nova: `useReprocessLog`
-
-- Recebe um `SequenceLog` + `sequenceId` + `nodeOrder`
-- Invoca `supabase.functions.invoke("execute-message", { body })` com:
-  - `campaignId` (do log)
-  - `sequenceId`
-  - `manualNodeIndex: nodeOrder`
-  - Se `recipientPhone` está setado → `targetPhones: [recipientPhone]` (retry privado para aquele destinatário específico)
-- Toast de sucesso/erro e invalidação de `["node-logs", ...]` e `["sequence-logs"]`
-
-### Integração no card
-
-`MessageCard.tsx` ganha:
-- Nova prop opcional `onViewLogs?: () => void`
-- Novo `DropdownMenuItem` "Ver logs" com ícone `History` (lucide), posicionado entre "Executar agora" e o separador
-
-`MessageTimeline.tsx` ganha prop `onViewLogsNode?: (node) => void` e propaga para os cards.
-
-`TimelineSequenceBuilder.tsx`:
-- Estado `viewingLogsNode: LocalNode | null`
-- Renderiza `<NodeLogsDialog node={viewingLogsNode} sequenceId={sequence.id} campaignId={sequence.groupCampaignId} onClose={...} />` quando setado
-- Passa `onViewLogsNode={(node) => setViewingLogsNode(node)}` para `MessageTimeline`
-
-### Backend
-
-Nenhuma mudança. `execute-message` já:
-- Aceita `manualNodeIndex` para executar um único nó
-- Aceita `targetPhones` para direcionar a destinatários privados específicos
-- Persiste `payload`, `provider_response`, `error_message`, `response_time_ms` em `group_message_logs`
+Adicionar log que imprime o JSON completo enviado ao webhook e o status/corpo da resposta no `console.log`, para futuras depurações ficarem visíveis em `edge_function_logs`.
 
 ### Arquivos afetados
 
-- `src/components/group-campaigns/sequences/NodeLogsDialog.tsx` — **novo**
-- `src/hooks/useNodeLogs.ts` — **novo**
-- `src/components/group-campaigns/sequences/MessageCard.tsx` — adicionar item "Ver logs"
-- `src/components/group-campaigns/sequences/MessageTimeline.tsx` — propagar prop
-- `src/components/group-campaigns/sequences/TimelineSequenceBuilder.tsx` — montar diálogo
+- `supabase/functions/handle-poll-response/index.ts` — adicionar campos top-level no `basePayload` do case `call_webhook` (linhas 542-566) + log do payload e da resposta de erro
 
 ### Comportamento final
 
-1. Usuário abre o menu `...` de um card → clica **"Ver logs"**
-2. Diálogo lateral abre listando os últimos envios daquele nó com status, destino, hora e tempo de resposta
-3. Expande linha → vê payload + resposta crua do n8n/Z-API
-4. Clica **"Reprocessar"** numa linha com erro → o nó é re-executado para aquele destinatário específico → toast confirma → lista atualiza via Realtime mostrando o novo envio
+- Workflow do n8n consegue ler `{{$json.phone}}` direto, sem precisar de `{{$json.respondent.phone}}`
+- Estrutura aninhada existente preservada (zero quebra para integrações já configuradas)
+- Logs mostram o payload exato enviado, facilitando debug de 500 do lado do destinatário
 
-### Fora do escopo
+### Fora deste escopo
 
-- Paginação além de 50 (retenção é 72h e o volume por nó é baixo)
-- Reprocessamento em lote de várias linhas selecionadas (pode vir depois se útil)
-- Edição do payload antes de reprocessar
+- Investigar por que o workflow `datacrazy` no n8n retornou 500 (do lado do usuário, não do código DispatchOne)
+- Reprocessamento automático em caso de 5xx (já existe a opção manual de reprocessar via UI de logs)
 
