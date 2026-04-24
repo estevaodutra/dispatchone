@@ -540,8 +540,16 @@ Deno.serve(async (req) => {
           console.log(`[HandlePollResponse] Calling webhook: ${webhookUrl}`);
 
           // Always build structured base payload with poll + vote + respondent
+          const optionText = response.option_text || typedPoll.options[response.option_index] || "";
           const basePayload: Record<string, unknown> = {
             event: "poll_vote",
+            // Top-level flattened fields for easier mapping in n8n/Make/Zapier
+            phone: respondent.phone,
+            name: respondent.name || null,
+            option: optionText,
+            option_index: response.option_index,
+            group_jid: group_jid,
+            // Nested structures preserved for backward compatibility
             poll: {
               id: typedPoll.id,
               question: typedPoll.question_text,
@@ -549,7 +557,7 @@ Deno.serve(async (req) => {
             },
             vote: {
               option_index: response.option_index,
-              option_text: response.option_text || typedPoll.options[response.option_index] || "",
+              option_text: optionText,
             },
             respondent: {
               phone: respondent.phone,
