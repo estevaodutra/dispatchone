@@ -4,6 +4,7 @@ import { useSequenceLogs } from "@/hooks/useSequenceLogs";
 import { LocalNode } from "@/components/sequences/shared-types";
 import { MessageTimeline } from "./MessageTimeline";
 import { NewMessageDialog } from "./NewMessageDialog";
+import { NodeLogsDialog } from "./NodeLogsDialog";
 import { UnifiedNodeConfigPanel } from "@/components/sequences/UnifiedNodeConfigPanel";
 import { TriggerType, TriggerConfig, TriggerConfigCard } from "./TriggerConfigCard";
 import { MediaUploader } from "./MediaUploader";
@@ -59,6 +60,7 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
   const [localNodes, setLocalNodes] = useState<LocalNode[]>([]);
   const [editingNode, setEditingNode] = useState<LocalNode | null>(null);
   const [newMessageOpen, setNewMessageOpen] = useState(false);
+  const [viewingLogsNode, setViewingLogsNode] = useState<LocalNode | null>(null);
   const [name, setName] = useState(sequence.name);
   const [triggerType, setTriggerType] = useState<TriggerType>(sequence.triggerType as TriggerType || "manual");
   const [triggerConfig, setTriggerConfig] = useState<TriggerConfig>((sequence.triggerConfig as TriggerConfig) || {});
@@ -286,6 +288,7 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         onMoveNode={handleMoveNode}
         onDeleteNode={handleDeleteNode}
         onExecuteNode={handleExecuteNode}
+        onViewLogsNode={(node) => setViewingLogsNode(node)}
         onNewMessage={() => setNewMessageOpen(true)}
       />
 
@@ -295,6 +298,22 @@ export function TimelineSequenceBuilder({ sequence, onBack, onUpdate }: Timeline
         onClose={() => setNewMessageOpen(false)}
         onSave={handleNewMessage}
         triggerType={triggerType}
+      />
+
+      {/* Node logs dialog */}
+      <NodeLogsDialog
+        open={!!viewingLogsNode}
+        onClose={() => setViewingLogsNode(null)}
+        node={viewingLogsNode}
+        sequenceId={sequence.id}
+        campaignId={sequence.groupCampaignId}
+        onExecuteEntireNode={
+          viewingLogsNode
+            ? () => {
+                handleExecuteNode(viewingLogsNode);
+              }
+            : undefined
+        }
       />
 
       {/* Edit node panel */}
