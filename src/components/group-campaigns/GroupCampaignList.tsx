@@ -32,10 +32,12 @@ import {
   Pause,
   MessageSquare,
   FileEdit,
+  Copy,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 interface GroupCampaignListProps {
   campaigns: GroupCampaign[];
