@@ -290,6 +290,15 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
               {isDeletingAll ? "Removendo..." : "Remover Todos"}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={handleSyncFromBase}
+            disabled={isSyncing}
+            title="Adiciona à fila os leads desta campanha que estão na base mas não aparecem aqui"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+            {isSyncing ? "Sincronizando..." : "Sincronizar leads da base"}
+          </Button>
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Adicionar Lead
