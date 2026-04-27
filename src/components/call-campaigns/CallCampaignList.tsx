@@ -38,6 +38,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCallCampaignCounts } from "@/hooks/useCallCampaignCounts";
+import { toast } from "sonner";
 
 interface CallCampaignListProps {
   campaigns: CallCampaign[];
