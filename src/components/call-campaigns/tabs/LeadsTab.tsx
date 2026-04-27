@@ -40,12 +40,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye, PhoneCall } from "lucide-react";
+import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye, PhoneCall, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCard } from "@/components/dispatch";
 import { QueueControlPanel } from "../QueueControlPanel";
 import { format } from "date-fns";
 import type { CallLead } from "@/hooks/useCallLeads";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface LeadsTabProps {
   campaignId: string;
@@ -108,6 +111,9 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
     ? `Discar ${effectiveCount} ${bulkDialLabel.toLowerCase()}`
     : `Discar todos ${bulkDialLabel.toLowerCase()}`;
 
+  const queryClient = useQueryClient();
+  const [isSyncing, setIsSyncing] = useState(false);
+
   const handleAddLead = async () => {
     if (!newLead.phone.trim()) return;
     await addLead({
@@ -117,6 +123,94 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
     });
     setNewLead({ phone: "", name: "", email: "" });
     setShowAddDialog(false);
+  };
+
+  const handleSyncFromBase = async () => {
+    setIsSyncing(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Não autenticado");
+
+      // Pega todos os leads da base ligados a esta campanha (paginado)
+      const baseLeads: { phone: string; name: string | null; email: string | null }[] = [];
+      let from = 0;
+      const PAGE = 1000;
+      while (true) {
+        const { data, error } = await supabase
+          .from("leads")
+          .select("phone, name, email")
+          .eq("active_campaign_id", campaignId)
+          .eq("user_id", user.id)
+          .not("phone", "is", null)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        baseLeads.push(...data.filter(l => l.phone) as { phone: string; name: string | null; email: string | null }[]);
+        if (data.length < PAGE) break;
+        from += PAGE;
+      }
+
+      // Pega telefones já existentes em call_leads
+      const existing = new Set<string>();
+      let efrom = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("call_leads")
+          .select("phone")
+          .eq("campaign_id", campaignId)
+          .range(efrom, efrom + PAGE - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        data.forEach(d => existing.add(d.phone));
+        if (data.length < PAGE) break;
+        efrom += PAGE;
+      }
+
+      const missing = baseLeads.filter(l => !existing.has(l.phone));
+      if (missing.length === 0) {
+        toast.info("Nenhum lead pendente para sincronizar");
+        return;
+      }
+
+      // Insere em batches pequenos com checagem de erro
+      const BATCH = 50;
+      let synced = 0;
+      let failed = 0;
+      for (let i = 0; i < missing.length; i += BATCH) {
+        const batch = missing.slice(i, i + BATCH);
+        const rows = batch.map(l => ({
+          campaign_id: campaignId,
+          user_id: user.id,
+          phone: l.phone,
+          name: l.name,
+          email: l.email,
+          status: "pending",
+        }));
+        const { error } = await (supabase as any).from("call_leads").upsert(rows, { onConflict: "phone,campaign_id" });
+        if (error) {
+          // Fallback row-by-row
+          for (const row of rows) {
+            const { error: rowError } = await (supabase as any).from("call_leads").upsert([row], { onConflict: "phone,campaign_id" });
+            if (rowError) failed++; else synced++;
+          }
+        } else {
+          synced += batch.length;
+        }
+      }
+
+      queryClient.invalidateQueries({ queryKey: ["call_leads"] });
+      queryClient.invalidateQueries({ queryKey: ["call-leads"] });
+
+      if (failed > 0) {
+        toast.warning(`Sincronizados ${synced} leads. ${failed} falharam.`);
+      } else {
+        toast.success(`Sincronizados ${synced} leads da base para a fila`);
+      }
+    } catch (err) {
+      toast.error("Erro ao sincronizar: " + (err as Error).message);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   if (isLoading) {
@@ -196,6 +290,15 @@ export function LeadsTab({ campaignId, queueExecutionEnabled = false }: LeadsTab
               {isDeletingAll ? "Removendo..." : "Remover Todos"}
             </Button>
           )}
+          <Button
+            variant="outline"
+            onClick={handleSyncFromBase}
+            disabled={isSyncing}
+            title="Adiciona à fila os leads desta campanha que estão na base mas não aparecem aqui"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+            {isSyncing ? "Sincronizando..." : "Sincronizar leads da base"}
+          </Button>
           <Button onClick={() => setShowAddDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Adicionar Lead

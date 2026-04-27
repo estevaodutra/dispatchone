@@ -46,6 +46,41 @@ export interface LeadStats {
 }
 
 const PAGE_SIZE = 20;
+const SYNC_BATCH_SIZE = 50;
+
+/**
+ * Upsert seguro em batches pequenos com fallback row-a-row.
+ * Garante que falhas em uma linha não cancelam o batch inteiro silenciosamente.
+ * Retorna { synced, failed } para feedback ao usuário.
+ */
+async function safeBatchUpsert<T extends Record<string, unknown>>(
+  table: string,
+  rows: T[],
+  onConflict: string
+): Promise<{ synced: number; failed: number }> {
+  let synced = 0;
+  let failed = 0;
+  for (let i = 0; i < rows.length; i += SYNC_BATCH_SIZE) {
+    const batch = rows.slice(i, i + SYNC_BATCH_SIZE);
+    const { error } = await (supabase as any).from(table).upsert(batch, { onConflict });
+    if (!error) {
+      synced += batch.length;
+      continue;
+    }
+    // Fallback: tenta uma a uma para isolar o problema
+    console.warn(`[safeBatchUpsert] batch failed for ${table}:`, error.message);
+    for (const row of batch) {
+      const { error: rowError } = await (supabase as any).from(table).upsert([row], { onConflict });
+      if (rowError) {
+        failed++;
+        console.warn(`[safeBatchUpsert] row failed for ${table}:`, rowError.message, row);
+      } else {
+        synced++;
+      }
+    }
+  }
+  return { synced, failed };
+}
 
 export function useLeads(filters: LeadFilters = {}) {
   const { toast } = useToast();
@@ -287,20 +322,15 @@ export function useLeads(filters: LeadFilters = {}) {
               .in("id", batch);
             leadsData.push(...(data || []));
           }
-          for (let i = 0; i < leadsData.length; i += 200) {
-            const batch = leadsData.slice(i, i + 200);
-            const rows = batch.map(l => ({
-              campaign_id: campaignId,
-              user_id: user.id,
-              phone: l.phone,
-              name: l.name,
-              email: l.email,
-              status: "pending",
-            }));
-            await supabase.from("call_leads").upsert(rows as any, {
-              onConflict: "phone,campaign_id"
-            });
-          }
+          const callRows = leadsData.map(l => ({
+            campaign_id: campaignId,
+            user_id: user.id,
+            phone: l.phone,
+            name: l.name,
+            email: l.email,
+            status: "pending",
+          }));
+          await safeBatchUpsert("call_leads", callRows, "phone,campaign_id");
         }
       }
 
@@ -308,17 +338,13 @@ export function useLeads(filters: LeadFilters = {}) {
       if (campaignType === "despacho") {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          for (let i = 0; i < toUpdate.length; i += 200) {
-            const batch = toUpdate.slice(i, i + 200);
-            const rows = batch.map(leadId => ({
-              campaign_id: campaignId,
-              user_id: user.id,
-              lead_id: leadId,
-              status: "active",
-            }));
-            await supabase.from("dispatch_campaign_contacts")
-              .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
-          }
+          const dispatchRows = toUpdate.map(leadId => ({
+            campaign_id: campaignId,
+            user_id: user.id,
+            lead_id: leadId,
+            status: "active",
+          }));
+          await safeBatchUpsert("dispatch_campaign_contacts", dispatchRows, "campaign_id,lead_id");
         }
       }
 
@@ -401,6 +427,9 @@ export function useLeads(filters: LeadFilters = {}) {
         return cType === "ligacao" && cId;
       });
 
+      let callLeadsSynced = 0;
+      let callLeadsFailed = 0;
+
       if (ligacaoLeads.length > 0) {
         const byCampaign = new Map<string, typeof ligacaoLeads>();
         for (const l of ligacaoLeads) {
@@ -410,20 +439,17 @@ export function useLeads(filters: LeadFilters = {}) {
         }
 
         for (const [campaignId, campaignLeads] of byCampaign) {
-          for (let i = 0; i < campaignLeads.length; i += 200) {
-            const batch = campaignLeads.slice(i, i + 200);
-            const rows = batch.map(l => ({
-              campaign_id: campaignId,
-              user_id: user.id,
-              phone: l.phone,
-              name: l.name || null,
-              email: l.email || null,
-              status: "pending",
-            }));
-            await supabase.from("call_leads").upsert(rows as any, {
-              onConflict: "phone,campaign_id",
-            });
-          }
+          const rows = campaignLeads.map(l => ({
+            campaign_id: campaignId,
+            user_id: user.id,
+            phone: l.phone,
+            name: l.name || null,
+            email: l.email || null,
+            status: "pending",
+          }));
+          const result = await safeBatchUpsert("call_leads", rows, "phone,campaign_id");
+          callLeadsSynced += result.synced;
+          callLeadsFailed += result.failed;
         }
       }
 
@@ -433,6 +459,9 @@ export function useLeads(filters: LeadFilters = {}) {
         const cId = l.campaignId || defaultCampaignId;
         return cType === "despacho" && cId;
       });
+
+      let dispatchSynced = 0;
+      let dispatchFailed = 0;
 
       if (despachoLeads.length > 0) {
         const byCampaignD = new Map<string, typeof despachoLeads>();
@@ -452,21 +481,19 @@ export function useLeads(filters: LeadFilters = {}) {
             leadIds.push(...(data || []).map(d => d.id));
           }
 
-          for (let i = 0; i < leadIds.length; i += 200) {
-            const batch = leadIds.slice(i, i + 200);
-            const rows = batch.map(leadId => ({
-              campaign_id: dCampaignId,
-              user_id: user.id,
-              lead_id: leadId,
-              status: "active",
-            }));
-            await supabase.from("dispatch_campaign_contacts")
-              .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
-          }
+          const rows = leadIds.map(leadId => ({
+            campaign_id: dCampaignId,
+            user_id: user.id,
+            lead_id: leadId,
+            status: "active",
+          }));
+          const result = await safeBatchUpsert("dispatch_campaign_contacts", rows, "campaign_id,lead_id");
+          dispatchSynced += result.synced;
+          dispatchFailed += result.failed;
         }
       }
 
-      return { imported, updated, skipped };
+      return { imported, updated, skipped, callLeadsSynced, callLeadsFailed, dispatchSynced, dispatchFailed };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["leads"] });
@@ -474,7 +501,17 @@ export function useLeads(filters: LeadFilters = {}) {
       queryClient.invalidateQueries({ queryKey: ["call-leads"] });
       queryClient.invalidateQueries({ queryKey: ["call_leads"] });
       queryClient.invalidateQueries({ queryKey: ["dispatch_contacts"] });
-      toast({ title: "Importação concluída", description: `${result.imported} importados, ${result.updated} atualizados, ${result.skipped} ignorados` });
+
+      const syncFailed = (result.callLeadsFailed || 0) + (result.dispatchFailed || 0);
+      const syncOk = (result.callLeadsSynced || 0) + (result.dispatchSynced || 0);
+      let desc = `${result.imported} importados, ${result.updated} atualizados, ${result.skipped} ignorados`;
+      if (syncOk > 0) desc += ` • ${syncOk} sincronizados na campanha`;
+      if (syncFailed > 0) {
+        desc += ` • ${syncFailed} falharam ao sincronizar`;
+        toast({ title: "Importação concluída com avisos", description: desc, variant: "destructive" });
+      } else {
+        toast({ title: "Importação concluída", description: desc });
+      }
     },
     onError: () => toast({ title: "Erro na importação", variant: "destructive" }),
   });
