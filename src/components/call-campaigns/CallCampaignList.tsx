@@ -177,6 +177,14 @@ export function CallCampaignList({
                         <Settings className="mr-2 h-4 w-4" />
                         Configurar
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        navigator.clipboard.writeText(campaign.id);
+                        toast.success("ID copiado", { description: campaign.id });
+                      }}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copiar ID
+                      </DropdownMenuItem>
                       {campaign.status !== "active" && campaign.status !== "completed" && (
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
