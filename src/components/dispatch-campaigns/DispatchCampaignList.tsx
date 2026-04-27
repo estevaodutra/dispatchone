@@ -135,6 +135,13 @@ export function DispatchCampaignList({
                         <DropdownMenuItem onClick={e => { e.stopPropagation(); onSelect(campaign); }}>
                           <Settings className="mr-2 h-4 w-4" /> Configurar
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={e => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(campaign.id);
+                          toast.success("ID copiado", { description: campaign.id });
+                        }}>
+                          <Copy className="mr-2 h-4 w-4" /> Copiar ID
+                        </DropdownMenuItem>
                         {campaign.status !== "active" && (
                           <DropdownMenuItem onClick={e => { e.stopPropagation(); onStatusChange(campaign.id, "active"); }}>
                             <Play className="mr-2 h-4 w-4" /> Ativar
