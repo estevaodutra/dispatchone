@@ -322,20 +322,15 @@ export function useLeads(filters: LeadFilters = {}) {
               .in("id", batch);
             leadsData.push(...(data || []));
           }
-          for (let i = 0; i < leadsData.length; i += 200) {
-            const batch = leadsData.slice(i, i + 200);
-            const rows = batch.map(l => ({
-              campaign_id: campaignId,
-              user_id: user.id,
-              phone: l.phone,
-              name: l.name,
-              email: l.email,
-              status: "pending",
-            }));
-            await supabase.from("call_leads").upsert(rows as any, {
-              onConflict: "phone,campaign_id"
-            });
-          }
+          const callRows = leadsData.map(l => ({
+            campaign_id: campaignId,
+            user_id: user.id,
+            phone: l.phone,
+            name: l.name,
+            email: l.email,
+            status: "pending",
+          }));
+          await safeBatchUpsert("call_leads", callRows, "phone,campaign_id");
         }
       }
 
@@ -343,17 +338,13 @@ export function useLeads(filters: LeadFilters = {}) {
       if (campaignType === "despacho") {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          for (let i = 0; i < toUpdate.length; i += 200) {
-            const batch = toUpdate.slice(i, i + 200);
-            const rows = batch.map(leadId => ({
-              campaign_id: campaignId,
-              user_id: user.id,
-              lead_id: leadId,
-              status: "active",
-            }));
-            await supabase.from("dispatch_campaign_contacts")
-              .upsert(rows as any, { onConflict: "campaign_id,lead_id" });
-          }
+          const dispatchRows = toUpdate.map(leadId => ({
+            campaign_id: campaignId,
+            user_id: user.id,
+            lead_id: leadId,
+            status: "active",
+          }));
+          await safeBatchUpsert("dispatch_campaign_contacts", dispatchRows, "campaign_id,lead_id");
         }
       }
 
