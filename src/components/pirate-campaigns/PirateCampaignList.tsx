@@ -12,9 +12,10 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Search, MoreVertical, Skull, Settings, Trash2, Play, Pause, Users, BarChart3,
+  Plus, Search, MoreVertical, Skull, Settings, Trash2, Play, Pause, Users, BarChart3, Copy,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "sonner";
 
 interface PirateCampaignListProps {
   campaigns: PirateCampaign[];
@@ -113,6 +114,14 @@ export function PirateCampaignList({
                         <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onSelect(campaign); }}>
                           <Settings className="mr-2 h-4 w-4" />
                           Configurar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(campaign.id);
+                          toast.success("ID copiado", { description: campaign.id });
+                        }}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar ID
                         </DropdownMenuItem>
                         {campaign.status !== "active" && (
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onStatusChange(campaign.id, "active"); }}>
