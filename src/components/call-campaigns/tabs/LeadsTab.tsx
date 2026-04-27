@@ -40,12 +40,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye, PhoneCall } from "lucide-react";
+import { Plus, Trash2, UserPlus, Clock, CheckCircle, XCircle, Phone, Eye, PhoneCall, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MetricCard } from "@/components/dispatch";
 import { QueueControlPanel } from "../QueueControlPanel";
 import { format } from "date-fns";
 import type { CallLead } from "@/hooks/useCallLeads";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface LeadsTabProps {
   campaignId: string;
