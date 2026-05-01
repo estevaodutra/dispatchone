@@ -22,6 +22,9 @@ import {
   Bot,
   PhoneCall,
   CalendarDays,
+  Wallet,
+  Receipt,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Sidebar,
@@ -71,6 +74,15 @@ export function AppSidebar() {
 
   const isCampaignsRoute = location.pathname.startsWith("/campaigns");
   const [campaignsOpen, setCampaignsOpen] = useState(isCampaignsRoute);
+
+  const isWalletRoute = location.pathname.startsWith("/carteira");
+  const [walletOpen, setWalletOpen] = useState(isWalletRoute);
+
+  const walletSubItems = [
+    { title: "Saldo e Recarga", url: "/carteira", icon: Wallet, end: true },
+    { title: "Extrato", url: "/carteira/extrato", icon: Receipt, end: false },
+    { title: "Configurações", url: "/carteira/configuracoes", icon: SlidersHorizontal, end: false },
+  ];
 
   const mainNavItems = [
     { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
@@ -335,7 +347,100 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {isCollapsed ? (
+                <SidebarMenuItem>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip="Carteira"
+                        className={cn(
+                          "flex items-center rounded-lg py-2 text-sidebar-foreground transition-colors w-full justify-center px-0",
+                          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          isWalletRoute && "bg-sidebar-accent text-sidebar-primary font-medium"
+                        )}
+                      >
+                        <Wallet className="h-4 w-4 flex-shrink-0" />
+                      </SidebarMenuButton>
+                    </PopoverTrigger>
+                    <PopoverContent side="right" align="start" className="w-52 p-1">
+                      {walletSubItems.map((item) => (
+                        <NavLink
+                          key={item.url}
+                          to={item.url}
+                          end={item.end}
+                          className={cn(
+                            "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-popover-foreground transition-colors",
+                            "hover:bg-accent hover:text-accent-foreground"
+                          )}
+                          activeClassName="bg-accent text-accent-foreground font-medium"
+                        >
+                          <item.icon className="h-3.5 w-3.5" />
+                          <span>{item.title}</span>
+                        </NavLink>
+                      ))}
+                    </PopoverContent>
+                  </Popover>
+                </SidebarMenuItem>
+              ) : (
+                <Collapsible
+                  open={walletOpen}
+                  onOpenChange={setWalletOpen}
+                  className="group/collapsible"
+                >
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        tooltip="Carteira"
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2 text-sidebar-foreground transition-colors w-full",
+                          "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                          isWalletRoute && "bg-sidebar-accent text-sidebar-primary font-medium"
+                        )}
+                      >
+                        <Wallet className="h-4 w-4 flex-shrink-0" />
+                        <span className="flex-1">Carteira</span>
+                        <ChevronRight
+                          className={cn(
+                            "h-4 w-4 transition-transform duration-200",
+                            walletOpen && "rotate-90"
+                          )}
+                        />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {walletSubItems.map((item) => (
+                          <SidebarMenuSubItem key={item.url}>
+                            <SidebarMenuSubButton asChild>
+                              <NavLink
+                                to={item.url}
+                                end={item.end}
+                                className={cn(
+                                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-sidebar-foreground transition-colors",
+                                  "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                                )}
+                                activeClassName="bg-sidebar-accent text-sidebar-primary font-medium"
+                              >
+                                <item.icon className="h-3.5 w-3.5" />
+                                <span>{item.title}</span>
+                              </NavLink>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
         <Separator className="mx-auto w-4/5 my-2" />
+
 
         <SidebarGroup className="pt-2">
           <SidebarGroupContent>

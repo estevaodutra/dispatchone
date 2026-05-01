@@ -48,6 +48,9 @@ import BookingSuccess from "./pages/public/BookingSuccess";
 import BookingManage from "./pages/public/BookingManage";
 import BookingCancel from "./pages/public/BookingCancel";
 import BookingReschedule from "./pages/public/BookingReschedule";
+import WalletPage from "./pages/wallet/WalletPage";
+import ExtratoPage from "./pages/wallet/ExtratoPage";
+import WalletSettingsPage from "./pages/wallet/WalletSettingsPage";
 
 const App = () => {
   const [queryClient] = useState(() => new QueryClient());
@@ -215,6 +218,36 @@ const App = () => {
                       <ProtectedRoute>
                         <AppLayout>
                           <Settings />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/carteira"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <WalletPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/carteira/extrato"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <ExtratoPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/carteira/configuracoes"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <WalletSettingsPage />
                         </AppLayout>
                       </ProtectedRoute>
                     }
