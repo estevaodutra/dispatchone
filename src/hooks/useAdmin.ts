@@ -46,8 +46,8 @@ export function useAdminCompanies() {
           .gte("created_at", new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()),
       ]);
 
-      const wMap = new Map((walletsRes.data || []).map((w: any) => [w.company_id, w]));
-      const oMap = new Map((ownersRes.data || []).map((o: any) => [o.id, o]));
+      const wMap = new Map<string, any>((walletsRes.data || []).map((w: any) => [w.company_id, w]));
+      const oMap = new Map<string, any>((ownersRes.data || []).map((o: any) => [o.id, o]));
       const memberCounts = new Map<string, number>();
       (membersRes.data || []).forEach((m: any) => {
         memberCounts.set(m.company_id, (memberCounts.get(m.company_id) || 0) + 1);
