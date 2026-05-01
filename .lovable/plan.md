@@ -1,61 +1,62 @@
-## Goal
+## Problema
 
-Atualizar o payload enviado pelos disparos de webhook em **ações de chamada** (`execute-call-action`) para o novo formato aninhado solicitado, contendo blocos `account`, `lead`, `campaign`, `operator` e `call` (com `actions`).
+A atualização anterior alterou o payload na edge function `execute-call-action`, mas o `CallActionDialog` **nunca chama essa função** — ele monta o payload localmente e dispara via `webhook-proxy` diretamente. Por isso o payload continua no formato antigo (`{ event, lead, campaign, ... }`).
 
-## Formato alvo
+Local exato (`src/components/operator/CallActionDialog.tsx`, linhas ~241–291):
 
-O payload passa a ser um **array com um objeto** (como solicitado), no shape:
+- `custom_message` → `supabase.functions.invoke("webhook-proxy", { url, payload: {event, call_id, lead, campaign, ...} })`
+- `webhook` → `supabase.functions.invoke("webhook-proxy", { url, payload: { lead, campaignId, actionType } })`
 
-```json
-[{
-  "account":  { "id": "...", "name": "..." },
-  "lead":     { "id": "...", "name": "...", "phone": "..." },
-  "campaign": { "id": "...", "name": "..." },
-  "operator": { "id": "...", "name": "...", "email": "..." },
-  "call": {
-    "id": "...", "status": "...", "attempts": 1,
-    "duration": 0, "cost": null, "recording": "...",
-    "actions": { "id": "...", "name": "...", "text": "..." }
-  }
-}]
+## Solução
+
+Substituir as duas chamadas locais para que o disparo da automação passe pela edge function `execute-call-action`, que já monta o novo payload aninhado (`account / lead / campaign / operator / call.actions`) e envia como array `[payload]`.
+
+### Mudança em `src/components/operator/CallActionDialog.tsx`
+
+Dentro de `executeAutomation(actionId)`, para os tipos `custom_message` **e** `webhook`, trocar o invoke de `webhook-proxy` por:
+
+```ts
+const { error: fnError } = await supabase.functions.invoke("execute-call-action", {
+  body: {
+    action_id: actionId,
+    lead_id: currentData.leadId,
+    campaign_id: currentData.campaignId,
+  },
+});
+if (fnError) {
+  toast({ title: "Webhook falhou", description: fnError.message, variant: "destructive" });
+}
 ```
 
-## Mudanças
+- Remover a busca local de `leadData` e a montagem do payload antigo (não são mais necessárias — a edge function refaz a busca).
+- Manter intactos os ramos `start_sequence`, `add_tag` e `update_status`.
 
-### 1. `supabase/functions/execute-call-action/index.ts`
+### Garantia de que o `custom_message` chega no payload
 
-- Criar uma função interna `buildActionPayload({ action, lead, campaign, operator, callLog, account, customMessage })` que monta o objeto no novo shape.
-- Para os cases **`webhook`** e **`custom_message`**, antes do `fetch`, buscar dados extras necessários:
-  - `call_leads` → `id, name, phone` (já é buscado).
-  - `call_campaigns` → `id, name, company_id`.
-  - `companies` (via `company_id`) → `id, name` para popular `account`.
-  - `call_logs` mais recente do par lead+campaign → `id, call_status, attempt_number, duration_seconds, audio_url, custom_message, operator_id`.
-  - `call_operators` (via `operator_id` do log) → `id, operator_name, email` (fallback `null` se ausente).
-- Mapear no payload:
-  - `call.status` ← `call_logs.call_status`
-  - `call.attempts` ← `call_logs.attempt_number`
-  - `call.duration` ← `call_logs.duration_seconds`
-  - `call.recording` ← `call_logs.audio_url`
-  - `call.cost` ← `null` (campo não existe hoje no schema)
-  - `call.actions.id/name` ← `call_script_actions.id/name`
-  - `call.actions.text` ← para `custom_message`, usa `call_logs.custom_message`; para `webhook`, usa `actionConfig.text` se existir, senão `""`.
-- Enviar o body como **array com um objeto** (`JSON.stringify([payload])`) conforme requisitado.
-- Manter o mesmo tratamento de resposta (`status_code`, `response_body` em erro) e a persistência do `automationNote` no `call_logs.notes`.
+Hoje a edge function lê `call_logs.custom_message` do log mais recente para popular `call.actions.text`. O `CallActionDialog` já grava esse valor em `call_logs.custom_message` antes de disparar a automação (no `handleSave`, antes de `executeAutomation`), então o texto correto será capturado.
 
-### 2. Compatibilidade
+Verificar no fluxo de `handleSave` que a inserção/atualização do `call_logs` (com `custom_message` preenchido) acontece **antes** do `await executeAutomation(...)`. Se não estiver, ajustar a ordem para garantir.
 
-- O novo payload **substitui** o antigo (formato achatado com `event`, `lead_id`, `campaign_id`, `lead`, etc.). Como a mudança foi solicitada explicitamente pelo usuário, os webhooks externos (n8n etc.) precisarão consumir o novo schema.
-- Os outros tipos de ação (`add_tag`, `update_status`, `start_sequence`) **não são alterados** — só afetam o banco/sequências.
+### Sem alterações em
 
-### 3. Sem alterações de UI ou banco
-
-- Nenhuma migração SQL.
-- Nenhum componente React precisa mudar — o payload é interno do edge function.
-
-## Arquivos afetados
-
-- `supabase/functions/execute-call-action/index.ts` (única alteração)
+- `supabase/functions/execute-call-action/index.ts` (já está com o novo formato)
+- `webhook-proxy` (deixa de ser usado por essas duas ações; segue funcionando para outros usos)
+- Banco de dados / RLS / tipos
 
 ## Validação
 
-Após implementar, disparar uma ação de webhook a partir do `CallActionDialog` e conferir nos logs do edge function que o body enviado segue o novo shape, com `account.name` populado a partir da empresa da campanha e `operator` populado a partir do `call_logs` mais recente.
+1. Disparar uma ação `webhook` no `CallActionDialog`.
+2. Conferir nos logs de `execute-call-action` que o body enviado segue o shape:
+   ```json
+   [{
+     "account": {...}, "lead": {...}, "campaign": {...},
+     "operator": {...},
+     "call": { "id":"...", "status":"...", "attempts":..., "duration":..., "cost":null, "recording":"...",
+               "actions": { "id":"...", "name":"...", "text":"..." } }
+   }]
+   ```
+3. Repetir para `custom_message` e confirmar que `call.actions.text` traz o texto da mensagem personalizada.
+
+## Arquivos afetados
+
+- `src/components/operator/CallActionDialog.tsx` (única alteração)
