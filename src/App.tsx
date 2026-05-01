@@ -51,6 +51,8 @@ import BookingReschedule from "./pages/public/BookingReschedule";
 import WalletPage from "./pages/wallet/WalletPage";
 import ExtratoPage from "./pages/wallet/ExtratoPage";
 import WalletSettingsPage from "./pages/wallet/WalletSettingsPage";
+import AwaitingAccess from "./pages/AwaitingAccess";
+import MembersPage from "./pages/settings/MembersPage";
 
 const App = () => {
   const [queryClient] = useState(() => new QueryClient());
@@ -68,7 +70,17 @@ const App = () => {
                 <Routes>
                   {/* Public route */}
                   <Route path="/auth" element={<Auth />} />
-                  
+
+                  {/* Awaiting access — authenticated but no company */}
+                  <Route
+                    path="/aguardando-acesso"
+                    element={
+                      <ProtectedRoute requireCompany={false}>
+                        <AwaitingAccess />
+                      </ProtectedRoute>
+                    }
+                  />
+
                   {/* Protected routes */}
                   <Route
                     path="/"
@@ -248,6 +260,16 @@ const App = () => {
                       <ProtectedRoute>
                         <AppLayout>
                           <WalletSettingsPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/configuracoes/membros"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <MembersPage />
                         </AppLayout>
                       </ProtectedRoute>
                     }
