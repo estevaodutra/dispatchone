@@ -95,3 +95,12 @@ verify_jwt = false
 
 [functions.scheduling-webhook-fire]
 verify_jwt = false
+
+[functions.create-pix-payment]
+verify_jwt = false
+
+[functions.webhook-payment-confirmation]
+verify_jwt = false
+
+[functions.wallet-debit-ura]
+verify_jwt = false
