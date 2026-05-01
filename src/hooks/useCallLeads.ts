@@ -235,6 +235,11 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
 
       // Mirror para a base global de leads (não bloqueia em caso de erro)
       try {
+        const { data: camp } = await (supabase as any)
+          .from("call_campaigns")
+          .select("name")
+          .eq("id", campaignId)
+          .maybeSingle();
         await (supabase as any).from("leads").upsert({
           user_id: user.id,
           phone: lead.phone,
@@ -245,6 +250,7 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
           active_campaign_type: "ligacao",
           source_type: "campaign_manual",
           source_campaign_id: campaignId,
+          source_name: camp?.name ?? null,
         }, { onConflict: "user_id,phone" });
       } catch (e) {
         console.warn("[addLead] failed to mirror to leads table:", e);
