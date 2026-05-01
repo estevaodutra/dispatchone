@@ -223,6 +223,36 @@ const App = () => {
                     }
                   />
                   <Route
+                    path="/carteira"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <WalletPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/carteira/extrato"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <ExtratoPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/carteira/configuracoes"
+                    element={
+                      <ProtectedRoute>
+                        <AppLayout>
+                          <WalletSettingsPage />
+                        </AppLayout>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
                     path="/api-docs"
                     element={
                       <ProtectedRoute>
