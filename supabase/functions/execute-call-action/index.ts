@@ -344,47 +344,27 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Get lead data and custom_message from call_logs
-        let leadData = null;
-        let customMessageText = null;
-        if (lead_id) {
-          const { data } = await supabase
-            .from("call_leads")
-            .select("*")
-            .eq("id", lead_id)
-            .single();
-          leadData = data;
-        }
-
-        // Find the latest call_log for this lead+campaign to get custom_message
+        // Fetch the custom_message text from the latest call_log to use as actions.text
+        let customMessageText: string | null = null;
         if (lead_id && campaign_id) {
           const { data: logData } = await supabase
             .from("call_logs")
-            .select("custom_message, notes")
+            .select("custom_message")
             .eq("lead_id", lead_id)
             .eq("campaign_id", campaign_id)
             .order("created_at", { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
           customMessageText = logData?.custom_message || null;
         }
 
-        const customWebhookPayload = {
-          event: "call.action",
-          action_id,
-          action_type: "custom_message",
-          custom_message: customMessageText,
-          lead_id,
-          campaign_id,
-          lead: leadData,
-          timestamp: new Date().toISOString(),
-        };
+        const payload = await buildActionPayload(customMessageText);
 
         try {
           const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(customWebhookPayload),
+            body: JSON.stringify([payload]),
           });
 
           results.success = response.ok;
