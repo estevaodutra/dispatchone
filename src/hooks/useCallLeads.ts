@@ -232,11 +232,31 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
         .single();
 
       if (error) throw error;
+
+      // Mirror para a base global de leads (não bloqueia em caso de erro)
+      try {
+        await (supabase as any).from("leads").upsert({
+          user_id: user.id,
+          phone: lead.phone,
+          name: lead.name || null,
+          email: lead.email || null,
+          custom_fields: lead.customFields || {},
+          active_campaign_id: campaignId,
+          active_campaign_type: "ligacao",
+          source_type: "campaign_manual",
+          source_campaign_id: campaignId,
+        }, { onConflict: "user_id,phone" });
+      } catch (e) {
+        console.warn("[addLead] failed to mirror to leads table:", e);
+      }
+
       return transformDbToFrontend(data as DbCallLead);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       toast({ title: "Lead adicionado", description: "Lead adicionado com sucesso." });
     },
     onError: (error: Error) => {
