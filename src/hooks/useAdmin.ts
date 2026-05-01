@@ -99,7 +99,7 @@ export function useAdminCompanyDetails(companyId: string | null) {
       const profilesRes = memberIds.length
         ? await sb.from("profiles").select("id, email, full_name").in("id", memberIds)
         : { data: [] };
-      const pMap = new Map((profilesRes.data || []).map((p: any) => [p.id, p]));
+      const pMap = new Map<string, any>((profilesRes.data || []).map((p: any) => [p.id, p]));
 
       const totals = { recharged: 0, consumed: 0 };
       (txAggRes.data || []).forEach((t: any) => {
