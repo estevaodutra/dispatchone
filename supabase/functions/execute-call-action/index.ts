@@ -234,31 +234,13 @@ Deno.serve(async (req) => {
           break;
         }
 
-        // Build payload with lead data
-        let leadData = null;
-        if (lead_id) {
-          const { data } = await supabase
-            .from("call_leads")
-            .select("*")
-            .eq("id", lead_id)
-            .single();
-          leadData = data;
-        }
-
-        const webhookPayload = {
-          event: "retry_exceeded",
-          action_id,
-          lead_id,
-          campaign_id,
-          lead: leadData,
-          timestamp: new Date().toISOString(),
-        };
+        const payload = await buildActionPayload();
 
         try {
           const response = await fetch(webhookUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(webhookPayload),
+            body: JSON.stringify([payload]),
           });
 
           results.success = response.ok;
