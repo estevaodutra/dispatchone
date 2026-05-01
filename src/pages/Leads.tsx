@@ -53,6 +53,7 @@ const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual",
   call_campaign: "Campanha Ligação",
   dispatch_campaign: "Campanha Despacho",
+  campaign_manual: "Campanha (manual)",
 };
 
 const TYPE_BADGES: Record<string, { label: string; className: string }> = {
