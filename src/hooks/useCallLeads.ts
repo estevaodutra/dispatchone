@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/contexts/CompanyContext";
+import { safeBatchUpsert } from "@/lib/supabase-batch";
 
 export type CallLeadStatus = "pending" | "calling" | "in_progress" | "completed" | "no_answer" | "busy" | "failed" | "cancelled";
 
@@ -231,11 +232,31 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
         .single();
 
       if (error) throw error;
+
+      // Mirror para a base global de leads (não bloqueia em caso de erro)
+      try {
+        await (supabase as any).from("leads").upsert({
+          user_id: user.id,
+          phone: lead.phone,
+          name: lead.name || null,
+          email: lead.email || null,
+          custom_fields: lead.customFields || {},
+          active_campaign_id: campaignId,
+          active_campaign_type: "ligacao",
+          source_type: "campaign_manual",
+          source_campaign_id: campaignId,
+        }, { onConflict: "user_id,phone" });
+      } catch (e) {
+        console.warn("[addLead] failed to mirror to leads table:", e);
+      }
+
       return transformDbToFrontend(data as DbCallLead);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       toast({ title: "Lead adicionado", description: "Lead adicionado com sucesso." });
     },
     onError: (error: Error) => {
@@ -270,11 +291,32 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
         .select();
 
       if (error) throw error;
+
+      // Mirror para a base global de leads (não bloqueia em caso de erro)
+      try {
+        const leadsRows = leadsData.map((lead) => ({
+          user_id: user.id,
+          phone: lead.phone,
+          name: lead.name || null,
+          email: lead.email || null,
+          custom_fields: lead.customFields || {},
+          active_campaign_id: campaignId,
+          active_campaign_type: "ligacao",
+          source_type: "campaign_manual",
+          source_campaign_id: campaignId,
+        }));
+        await safeBatchUpsert("leads", leadsRows, "user_id,phone");
+      } catch (e) {
+        console.warn("[addLeadsBatch] failed to mirror to leads table:", e);
+      }
+
       return (data as DbCallLead[]).map(transformDbToFrontend);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       toast({ title: "Leads importados", description: `${data.length} leads importados com sucesso.` });
     },
     onError: (error: Error) => {
