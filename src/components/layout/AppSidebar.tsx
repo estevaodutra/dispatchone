@@ -22,6 +22,9 @@ import {
   Bot,
   PhoneCall,
   CalendarDays,
+  Wallet,
+  Receipt,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   Sidebar,
