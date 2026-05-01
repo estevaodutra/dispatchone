@@ -291,11 +291,32 @@ export function useCallLeads(campaignId: string, statusFilter?: CallLeadStatus) 
         .select();
 
       if (error) throw error;
+
+      // Mirror para a base global de leads (não bloqueia em caso de erro)
+      try {
+        const leadsRows = leadsData.map((lead) => ({
+          user_id: user.id,
+          phone: lead.phone,
+          name: lead.name || null,
+          email: lead.email || null,
+          custom_fields: lead.customFields || {},
+          active_campaign_id: campaignId,
+          active_campaign_type: "ligacao",
+          source_type: "campaign_manual",
+          source_campaign_id: campaignId,
+        }));
+        await safeBatchUpsert("leads", leadsRows, "user_id,phone");
+      } catch (e) {
+        console.warn("[addLeadsBatch] failed to mirror to leads table:", e);
+      }
+
       return (data as DbCallLead[]).map(transformDbToFrontend);
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["call_leads", campaignId] });
       queryClient.invalidateQueries({ queryKey: ["call_leads_stats", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["leads"] });
+      queryClient.invalidateQueries({ queryKey: ["leads-stats"] });
       toast({ title: "Leads importados", description: `${data.length} leads importados com sucesso.` });
     },
     onError: (error: Error) => {
