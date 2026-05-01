@@ -1,169 +1,166 @@
+# Painel do Superadmin
 
-# Sistema de Acesso por Empresa
+Painel global em `/admin` para gerenciar toda a plataforma, separado do app cliente. Reusa autenticação existente, mas com layout, sidebar e roteamento próprios.
 
-Bloquear novos usuários até serem adicionados a uma empresa por um admin. O backend de membership (`companies`, `company_members`, `is_company_member`, `is_company_admin`) já existe — o trabalho aqui é **remover a auto-criação de empresa no signup**, adicionar a tela de espera, proteger o roteamento, e expor uma UI mínima de gestão de membros.
+## Decisão importante de segurança
 
-A Fase 4 (papéis granulares manager/viewer) **não** será incluída agora — hoje só existem `admin` e `operator`. Mantemos esse escopo e listo isso como follow-up.
+O prompt sugere `profiles.is_superadmin BOOLEAN`. **Vou divergir**: o projeto já tem o padrão correto com a tabela `user_roles` + enum `app_role` + função `has_role()` (security definer). Adicionar uma flag em `profiles` quebraria o padrão e abriria risco de privilege escalation (regra core do projeto). Em vez disso:
 
----
+- Adiciono o valor `'superadmin'` ao enum `public.app_role`
+- Crio função `public.is_superadmin(uuid)` (security definer, igual ao padrão `is_company_admin`)
+- Promoção/demissão de superadmin = INSERT/DELETE em `user_roles` (apenas outro superadmin pode fazer)
 
-## Fase 1 — Bloqueio Básico (foco principal)
+## Fase 1 — Base, Dashboard, RLS
 
-### 1.1 Migration: parar de criar empresa automaticamente
+### Migration
 
-Hoje o trigger `handle_new_user` (em `20260224125722...sql`) cria uma `company` + `company_members` (admin) para todo novo signup. Isso quebra a regra "usuário novo não pode acessar nada".
+```sql
+-- 1. Estende enum
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'superadmin';
 
-Nova migration:
+-- 2. Função helper
+CREATE OR REPLACE FUNCTION public.is_superadmin(_user_id uuid)
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$ SELECT EXISTS (SELECT 1 FROM public.user_roles
+                     WHERE user_id = _user_id AND role = 'superadmin') $$;
 
-- `CREATE OR REPLACE FUNCTION public.handle_new_user()` que **só** insere em `profiles` e `user_roles`. Remove os `INSERT` em `companies` / `company_members`.
-- Mantém `SECURITY DEFINER` e `SET search_path = public`.
-- Remove a policy `Authenticated can insert companies` da tabela `companies` (ou troca para exigir `service_role`), para garantir que um usuário recém-criado **não** consiga criar a própria company pelo client. Criação de empresa fica restrita a admin/seed via SQL.
-- Não mexe no trigger `trg_companies_create_owner_operator` (esse continua válido quando um admin criar uma company manualmente).
-- Não toca em `is_company_member` / `is_company_admin` (já existem como SECURITY DEFINER).
+-- 3. Tabelas novas
+CREATE TABLE public.admin_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id uuid NOT NULL,
+  action text NOT NULL,
+  target_type text, target_id uuid,
+  details jsonb NOT NULL DEFAULT '{}',
+  ip_address text, user_agent text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX ... (admin, action, target, created);
 
-> Nota: o schema atual usa `company_members.is_active boolean` (não `status text`). Vamos seguir o schema existente — todo o código novo filtra por `is_active = true`. Não vamos adicionar colunas `status / invited_by / invited_at / accepted_at` agora para evitar refactor amplo das policies já em produção.
+CREATE TABLE public.platform_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  key text UNIQUE NOT NULL,
+  value jsonb NOT NULL,
+  description text,
+  updated_by uuid, updated_at timestamptz DEFAULT now()
+);
+INSERT INTO platform_settings (key, value, description) VALUES
+  ('min_recharge_amount', '250', '...'),
+  ('recharge_presets', '[250,500,1000,2000]', '...'),
+  ('low_balance_alert', '50', '...'),
+  ('maintenance_mode', 'false', '...'),
+  ('maintenance_message', '""', '...');
 
-### 1.2 Hook `useCompanyAccess`
+CREATE TABLE public.pricing_rules (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_id uuid,            -- NULL = preço global
+  action_type text NOT NULL,  -- 'call' | 'ura'
+  unit text NOT NULL,         -- 'minute' | '30s'
+  price numeric(10,4) NOT NULL,
+  valid_from timestamptz DEFAULT now(),
+  valid_until timestamptz,
+  created_at timestamptz DEFAULT now()
+);
 
-`CompanyContext` já carrega `companies` para o user logado. Vamos derivar dele:
+-- 4. RLS — somente superadmin
+ALTER TABLE admin_logs ENABLE RLS;
+CREATE POLICY "Superadmin full access" ON admin_logs FOR ALL TO authenticated
+  USING (is_superadmin(auth.uid())) WITH CHECK (is_superadmin(auth.uid()));
+-- mesmo padrão para platform_settings e pricing_rules
 
-- `hasCompanyAccess = !isLoading && companies.length > 0`
-- Exposto via `useCompany()` (já existente) ou um helper `useCompanyAccess()` fino em cima dele.
+-- 5. Policies adicionais para superadmin VER tudo (sem precisar ser membro)
+CREATE POLICY "Superadmin can view all companies" ON companies FOR SELECT
+  TO authenticated USING (is_superadmin(auth.uid()));
+CREATE POLICY "Superadmin can view all wallets" ON wallets FOR SELECT
+  TO authenticated USING (is_superadmin(auth.uid()));
+CREATE POLICY "Superadmin can view all transactions" ON wallet_transactions
+  FOR SELECT TO authenticated USING (is_superadmin(auth.uid()));
+CREATE POLICY "Superadmin can view all members" ON company_members FOR SELECT
+  TO authenticated USING (is_superadmin(auth.uid()));
+CREATE POLICY "Superadmin can view all profiles" ON profiles FOR SELECT
+  TO authenticated USING (is_superadmin(auth.uid()));
+-- (similares para wallet_payments, call_logs se necessário em métricas)
+```
 
-Sem nova chamada de rede — reaproveita o fetch que já roda no `CompanyProvider`.
+### Frontend
 
-### 1.3 Tela `/aguardando-acesso`
+- `src/hooks/useSuperadmin.ts` — verifica `user_roles.role = 'superadmin'`, retorna `{ isSuperadmin, isLoading }`
+- `src/components/auth/AdminRoute.tsx` — guarda de rota: aguarda load → se não for superadmin, `<Navigate to="/" />`
+- `src/components/admin/AdminLayout.tsx` — layout próprio com sidebar dedicada (header simples "DispatchOne Admin", badge vermelha "Modo Admin", botão "Voltar ao app")
+- `src/components/admin/AdminSidebar.tsx` — itens: Dashboard, Empresas, Usuários, Financeiro (collapsible com Transações/Recargas/Consumo), Preços, Provedores, Relatórios, Configurações
+- `src/pages/admin/AdminDashboard.tsx` — 6 cards de métrica + gráfico (recharts já no projeto) + lista empresas recentes + alertas
+- Roteamento em `src/App.tsx`: bloco `/admin/*` envolto em `<ProtectedRoute><AdminRoute><AdminLayout>`
 
-Novo arquivo `src/pages/AwaitingAccess.tsx`:
+### Edge Function de bootstrap
+- `admin-bootstrap` (uma vez) — promove o primeiro usuário a superadmin se nenhum existir. Alternativa: instruir usuário a rodar SQL manual. **Vou usar SQL manual via insert** após a migration aplicar (pedir email).
 
-- Layout centralizado, sem sidebar/header (renderizado fora do `AppLayout`).
-- Logo + ícone de cadeado/relógio (`lucide-react` `Clock` ou `Lock`).
-- Título "Aguardando acesso".
-- Mensagem explicando que precisa ser adicionado por um admin.
-- Mostra `user.email`.
-- Botão **Verificar novamente** → chama `refetch()` do `CompanyContext` (não recarrega a página).
-- Botão **Sair** → `signOut()` do `AuthContext` e navega para `/auth`.
-- Usa `Card`, `Button` shadcn já no projeto. Sem novas dependências.
+## Fase 2 — Empresas e Usuários
 
-### 1.4 Proteção de rotas
+- `src/pages/admin/AdminCompanies.tsx` — tabela com filtros (busca, status, saldo). Ações: ver, editar, adicionar saldo, ativar/desativar, excluir.
+- `src/components/admin/CompanyDetailsDialog.tsx` — abas Informações / Owner / Membros / Financeiro / Uso.
+- `src/components/admin/AddBalanceManualDialog.tsx` — valor + motivo (select) + observação.
+- `src/pages/admin/AdminUsers.tsx` — lista profiles + memberships agregados; ações: tornar/remover superadmin, adicionar em empresa.
+- `src/components/admin/UserDetailsDialog.tsx`.
 
-Atualizar `src/components/auth/ProtectedRoute.tsx`:
+### Edge Functions
+- `admin-add-balance` — valida superadmin, credita wallet via RPC SECURITY DEFINER, cria `wallet_transactions` (type=adjustment), grava `admin_logs`.
+- `admin-toggle-company` — ativa/desativa (adiciona coluna `is_active boolean DEFAULT true` em `companies`).
+- `admin-set-superadmin` — INSERT/DELETE em `user_roles` com role superadmin, grava log.
+- `admin-add-user-to-company` — reusa lógica de `company-add-member` mas sem precisar ser admin da empresa.
 
-- Mantém o check de `user`.
-- Adiciona check de `useCompany()`: se não está carregando e `companies.length === 0`, faz `<Navigate to="/aguardando-acesso" replace />`.
-- Aceita prop opcional `requireCompany={false}` para a própria rota `/aguardando-acesso` não ficar em loop.
+### RPC necessária
+```sql
+CREATE OR REPLACE FUNCTION public.wallet_credit_manual(
+  _company_id uuid, _amount numeric, _reason text, _description text
+) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER ...
+-- valida is_superadmin(auth.uid()), atualiza wallet, insere transaction
+```
 
-Atualizar `src/App.tsx`:
+## Fase 3 — Financeiro
 
-- Importar `AwaitingAccess` e registrar `<Route path="/aguardando-acesso" element={<ProtectedRoute requireCompany={false}><AwaitingAccess /></ProtectedRoute>} />`.
-- Demais rotas continuam como estão (todas já passam por `ProtectedRoute` + `AppLayout`).
+- `src/pages/admin/AdminTransactions.tsx` — tabela paginada de `wallet_transactions` com filtros período/empresa/tipo/categoria + cards de resumo.
+- `src/pages/admin/AdminRecharges.tsx` — `wallet_payments` com filtros + métricas (ticket médio, conversão).
+- `src/pages/admin/AdminConsumption.tsx` — transações tipo `consumption` com breakdown por categoria (call/ura).
+- Hook `useAdminTransactions`, `useAdminRecharges`, `useAdminConsumption` (React Query, paginação `.range()`).
 
-Atualizar `src/pages/Auth.tsx`:
+## Fase 4 — Preços, Provedores, Relatórios, Configurações
 
-- No `useEffect` de pós-login, se `user` existir mas `companies.length === 0` (após `CompanyContext` carregar), redirecionar para `/aguardando-acesso` em vez de `/`.
+- `src/pages/admin/AdminPricing.tsx` — duas seções: globais (linhas onde `company_id IS NULL`) e exceções por empresa. Modal editar.
+- `src/pages/admin/AdminProviders.tsx` — formulários para credenciais (gravadas como secrets via tool em build mode; UI mostra status + botão "atualizar").
+- `src/pages/admin/AdminReports.tsx` — lista de relatórios + export CSV (client-side via `papaparse` ou implementação manual).
+- `src/pages/admin/AdminSettings.tsx` — CRUD `platform_settings` com seções (Recarga, Alertas, Limites, Manutenção).
 
----
+### Wiring de preços
+- `wallet-debit-ura` e `call-status` (consumo de ligação) passam a consultar `pricing_rules` (exceção por company → fallback global) em vez de constante hardcoded.
 
-## Fase 2 — Gerenciamento de Membros
+## Diagrama de rotas
 
-Há um edge function pronto: `supabase/functions/company-add-member/index.ts` que valida se o caller é admin, busca user por email em `profiles`, e cria `company_members` (+ `call_operators` se role=operator). Vamos consumi-lo.
+```text
+/                         → app cliente (atual)
+/admin                    → AdminDashboard
+/admin/empresas           → AdminCompanies
+/admin/usuarios           → AdminUsers
+/admin/financeiro/transacoes
+/admin/financeiro/recargas
+/admin/financeiro/consumo
+/admin/precos
+/admin/provedores
+/admin/relatorios
+/admin/configuracoes
+```
 
-### 2.1 Página `/configuracoes/membros`
-
-Nova rota e nova página `src/pages/settings/MembersPage.tsx`:
-
-- Acessível apenas se `useCompany().isAdmin === true`. Caso contrário, mostra mensagem "Apenas administradores podem gerenciar membros".
-- Tabela de membros atuais da `activeCompany`: avatar (placeholder), nome (`profiles.full_name`), email (`profiles.email`), badge de role (`admin`/`operator`), data de entrada (`joined_at`), ação **Remover**.
-- Seção "Adicionar membro": input email, select role (`admin` | `operator`), input opcional `extension`, botão **Adicionar** → chama `supabase.functions.invoke('company-add-member', { body: { company_id, email, role, extension } })`.
-- Toast com erros conhecidos: `not_admin`, `user_not_found`, `already_member`.
-- **Remover**: `delete` em `company_members` filtrando `company_id` + `user_id` (a policy `Admins can delete members` já cobre).
-
-### 2.2 Sidebar
-
-Em `AppSidebar.tsx`, adicionar item "Membros" dentro do grupo de Configurações (ou no topo de Settings) — visível apenas se `isAdmin`. Link para `/configuracoes/membros`.
-
----
-
-## Fase 3 — Múltiplas Empresas (mínimo)
-
-`CompanyContext` já guarda `activeCompanyId` no `localStorage` e expõe `setActiveCompany(id)`. Falta apenas a UI:
-
-- Em `src/components/layout/AppHeader.tsx`, adicionar um `Select` (shadcn) populado com `companies` do `useCompany()`.
-- Esconder se `companies.length <= 1`.
-- `onValueChange` chama `setActiveCompany(id)`. Não é necessário `window.location.reload()` — os hooks que dependem de `activeCompanyId` já reagem ao contexto.
-
----
-
-## Fase 4 — Papéis Granulares (NÃO incluído nesta entrega)
-
-`manager` e `viewer` exigiriam:
-- Migração para expandir os valores aceitos em `company_members.role`.
-- Refactor das policies que hoje fazem `is_company_admin(company_id, user.id)` → precisariam virar checks por role específica.
-- Revisão da matriz de permissões em todas as ~30 tabelas.
-
-Listo isso como **follow-up**, não como parte deste plano. Hoje continuamos só com `admin` e `operator`.
-
----
+Todas envoltas em `ProtectedRoute → AdminRoute → AdminLayout`.
 
 ## Detalhes técnicos
 
-### Arquivos a criar
+- **Auditoria**: toda mutação admin grava em `admin_logs` (admin_id, action, target_type, target_id, details com old/new value).
+- **Sem subdomínio** `admin.dispatchone.com` na fase inicial — apenas `/admin` (subdomínio exigiria configuração de DNS/Lovable Cloud separada; pode ser feito depois sem refazer código).
+- **Promoção do primeiro superadmin**: após a migration, executo um INSERT manual em `user_roles` para o email que você indicar (preciso saber qual conta é o superadmin inicial).
+- **Sidebar do app cliente**: adiciono link discreto "🛡️ Painel Admin" no menu do usuário (`AppHeader` dropdown) visível apenas se `isSuperadmin`.
+- **Charts**: usar `recharts` (já dependência do projeto pelos componentes existentes).
+- **Maintenance mode**: `ProtectedRoute` lê `platform_settings.maintenance_mode`; se `true` e usuário não é superadmin, mostra tela de manutenção.
 
-```
-supabase/migrations/{timestamp}_disable_auto_company_signup.sql
-src/pages/AwaitingAccess.tsx
-src/pages/settings/MembersPage.tsx
-src/hooks/useCompanyMembers.ts        (lista + remove membros via supabase client)
-```
+## Pergunta para você antes de começar
 
-### Arquivos a editar
+Qual email deve ser promovido a superadmin inicial? (necessário para o INSERT manual após a migration — sem isso ninguém consegue acessar `/admin`.)
 
-```
-src/components/auth/ProtectedRoute.tsx   — checa membership
-src/App.tsx                              — registra /aguardando-acesso e /configuracoes/membros
-src/pages/Auth.tsx                       — pós-login decide entre / e /aguardando-acesso
-src/components/layout/AppSidebar.tsx     — item "Membros" (admins)
-src/components/layout/AppHeader.tsx      — seletor de empresa quando >1
-src/contexts/CompanyContext.tsx          — (opcional) expor helper hasAccess
-```
-
-### SQL da nova migration (resumo)
-
-```sql
--- handle_new_user: SEM criar company
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-BEGIN
-  INSERT INTO public.profiles (id, email, full_name)
-  VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
-
-  INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'user');
-
-  RETURN NEW;
-END;
-$$;
-
--- impede client de criar company por conta própria
-DROP POLICY IF EXISTS "Authenticated can insert companies" ON public.companies;
-```
-
-> Os usuários **já existentes** continuam com suas companies (não removemos nada). Só novos signups passam a cair na tela de espera.
-
-### RLS / segurança
-
-- `company_members` já tem `Admins can insert members` usando `is_company_admin(...)`. Combinada com a edge function (que usa service role e checa caller admin), a Fase 2 funciona.
-- `companies`: ao remover a policy de INSERT, criação de novas empresas só será possível via SQL/admin (intencional). Se no futuro precisar permitir auto-cadastro de empresa para usuários verificados, criamos uma edge function dedicada com regras de negócio.
-
-### Riscos / pontos de atenção
-
-1. **Usuários existentes sem membership ativo** ficam bloqueados. Query atual mostra que todos os 4 usuários têm pelo menos 1 — seguro.
-2. Após Fase 1, **não haverá fluxo self-service para o primeiro admin** de uma nova empresa. Para criar a primeira empresa de um cliente novo, será via SQL/console. Confirmar se é o esperado.
-3. O `CompanyContext` faz fetch ao montar — durante esse loading, `ProtectedRoute` deve mostrar o spinner (não redirecionar prematuramente para `/aguardando-acesso`).
-
-### Fora de escopo
-
-- Convites por email para usuários ainda não cadastrados.
-- Papéis `manager` / `viewer`.
-- Coluna `current_company_id` em `profiles` (já temos `localStorage` no `CompanyContext`).
-- Notificação ao admin quando alguém novo se cadastra (pode ser follow-up).
+Posso começar pela **Fase 1** (base + dashboard + proteção de rota) e seguir nas demais fases em mensagens subsequentes, ou prefere que eu entregue tudo de uma vez?
