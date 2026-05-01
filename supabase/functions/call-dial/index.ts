@@ -648,6 +648,10 @@ Deno.serve(async (req) => {
                 await supabase.from('call_logs').update({ call_status: 'scheduled', started_at: null, operator_id: null }).eq('id', callLog.id);
                 await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
                 await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+                if (walletReservationId) {
+                  await supabase.rpc('wallet_cancel_reservation', { p_reservation_id: walletReservationId }).catch(() => {});
+                  walletReservationId = null;
+                }
                 callStatus = 'scheduled';
                 reservedOperator = null;
               } else {
