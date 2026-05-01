@@ -3474,6 +3474,222 @@ export type Database = {
         }
         Relationships: []
       }
+      wallet_alerts: {
+        Row: {
+          company_id: string
+          created_at: string
+          id: string
+          kind: string
+          wallet_id: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          id?: string
+          kind: string
+          wallet_id: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          id?: string
+          kind?: string
+          wallet_id?: string
+        }
+        Relationships: []
+      }
+      wallet_payments: {
+        Row: {
+          amount: number
+          company_id: string
+          created_at: string
+          expires_at: string | null
+          id: string
+          mp_payment_id: string | null
+          mp_qr_code: string | null
+          mp_qr_code_base64: string | null
+          mp_ticket_url: string | null
+          paid_at: string | null
+          status: string
+          updated_at: string
+          wallet_id: string
+        }
+        Insert: {
+          amount: number
+          company_id: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          mp_payment_id?: string | null
+          mp_qr_code?: string | null
+          mp_qr_code_base64?: string | null
+          mp_ticket_url?: string | null
+          paid_at?: string | null
+          status?: string
+          updated_at?: string
+          wallet_id: string
+        }
+        Update: {
+          amount?: number
+          company_id?: string
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          mp_payment_id?: string | null
+          mp_qr_code?: string | null
+          mp_qr_code_base64?: string | null
+          mp_ticket_url?: string | null
+          paid_at?: string | null
+          status?: string
+          updated_at?: string
+          wallet_id?: string
+        }
+        Relationships: []
+      }
+      wallet_reservations: {
+        Row: {
+          amount: number
+          category: string
+          company_id: string
+          created_at: string
+          finalized_amount: number | null
+          finalized_at: string | null
+          id: string
+          metadata: Json
+          reference_id: string | null
+          reference_type: string | null
+          status: string
+          wallet_id: string
+        }
+        Insert: {
+          amount: number
+          category: string
+          company_id: string
+          created_at?: string
+          finalized_amount?: number | null
+          finalized_at?: string | null
+          id?: string
+          metadata?: Json
+          reference_id?: string | null
+          reference_type?: string | null
+          status?: string
+          wallet_id: string
+        }
+        Update: {
+          amount?: number
+          category?: string
+          company_id?: string
+          created_at?: string
+          finalized_amount?: number | null
+          finalized_at?: string | null
+          id?: string
+          metadata?: Json
+          reference_id?: string | null
+          reference_type?: string | null
+          status?: string
+          wallet_id?: string
+        }
+        Relationships: []
+      }
+      wallet_transactions: {
+        Row: {
+          amount: number
+          balance_after: number
+          balance_before: number
+          category: string | null
+          company_id: string
+          created_at: string
+          description: string | null
+          id: string
+          metadata: Json
+          reference_id: string | null
+          reference_type: string | null
+          status: string
+          type: string
+          wallet_id: string
+        }
+        Insert: {
+          amount: number
+          balance_after: number
+          balance_before: number
+          category?: string | null
+          company_id: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json
+          reference_id?: string | null
+          reference_type?: string | null
+          status?: string
+          type: string
+          wallet_id: string
+        }
+        Update: {
+          amount?: number
+          balance_after?: number
+          balance_before?: number
+          category?: string | null
+          company_id?: string
+          created_at?: string
+          description?: string | null
+          id?: string
+          metadata?: Json
+          reference_id?: string | null
+          reference_type?: string | null
+          status?: string
+          type?: string
+          wallet_id?: string
+        }
+        Relationships: []
+      }
+      wallets: {
+        Row: {
+          alert_email_enabled: boolean | null
+          alert_in_app_enabled: boolean | null
+          balance: number
+          company_id: string
+          created_at: string
+          daily_limit: number | null
+          daily_limit_action: string | null
+          daily_spent: number
+          daily_spent_date: string
+          id: string
+          low_balance_alert: number | null
+          reserved_balance: number
+          updated_at: string
+        }
+        Insert: {
+          alert_email_enabled?: boolean | null
+          alert_in_app_enabled?: boolean | null
+          balance?: number
+          company_id: string
+          created_at?: string
+          daily_limit?: number | null
+          daily_limit_action?: string | null
+          daily_spent?: number
+          daily_spent_date?: string
+          id?: string
+          low_balance_alert?: number | null
+          reserved_balance?: number
+          updated_at?: string
+        }
+        Update: {
+          alert_email_enabled?: boolean | null
+          alert_in_app_enabled?: boolean | null
+          balance?: number
+          company_id?: string
+          created_at?: string
+          daily_limit?: number | null
+          daily_limit_action?: string | null
+          daily_spent?: number
+          daily_spent_date?: string
+          id?: string
+          low_balance_alert?: number | null
+          reserved_balance?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       webhook_configs: {
         Row: {
           category: string
@@ -3866,6 +4082,54 @@ export type Database = {
           resolved_operator_name: string
           was_cooldown_seconds: number
         }[]
+      }
+      wallet_cancel_reservation: {
+        Args: { p_reservation_id: string }
+        Returns: undefined
+      }
+      wallet_credit: {
+        Args: {
+          p_amount: number
+          p_category: string
+          p_company_id: string
+          p_description?: string
+          p_metadata?: Json
+          p_reference_id?: string
+          p_reference_type?: string
+          p_type: string
+        }
+        Returns: string
+      }
+      wallet_debit: {
+        Args: {
+          p_amount: number
+          p_category: string
+          p_company_id: string
+          p_description?: string
+          p_metadata?: Json
+          p_reference_id?: string
+          p_reference_type?: string
+        }
+        Returns: string
+      }
+      wallet_finalize_reservation: {
+        Args: {
+          p_actual_amount: number
+          p_description?: string
+          p_metadata?: Json
+          p_reservation_id: string
+        }
+        Returns: undefined
+      }
+      wallet_reserve: {
+        Args: {
+          p_amount: number
+          p_category: string
+          p_company_id: string
+          p_reference_id?: string
+          p_reference_type?: string
+        }
+        Returns: string
       }
     }
     Enums: {

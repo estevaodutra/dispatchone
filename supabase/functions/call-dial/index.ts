@@ -520,6 +520,41 @@ Deno.serve(async (req) => {
       console.error('[call-dial] Reserve operator error:', err);
     }
 
+    // ==================== WALLET: RESERVE BALANCE FOR CALL ====================
+    // Reserve R$ 0.80 (estimated 2 minutes @ R$ 0.40/min) before firing webhook
+    let walletReservationId: string | null = null;
+    if (reservedOperator && campaign.company_id) {
+      try {
+        const { data: resId, error: walletErr } = await supabase.rpc('wallet_reserve', {
+          p_company_id: campaign.company_id,
+          p_amount: 0.80,
+          p_category: 'call',
+          p_reference_type: 'call_log',
+          p_reference_id: callLog.id,
+        });
+        if (walletErr) {
+          console.error('[call-dial] Wallet reserve failed:', walletErr.message);
+          // Insufficient balance — revert operator + mark log as failed
+          await supabase.from('call_logs').update({
+            call_status: 'failed',
+            ended_at: new Date().toISOString(),
+            notes: 'Saldo insuficiente na carteira',
+          }).eq('id', callLog.id);
+          await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true }).catch(() => {});
+          await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'insufficient_balance',
+            message: 'Saldo insuficiente na carteira para realizar a ligação.',
+          }), { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+        walletReservationId = resId as unknown as string;
+        console.log('[call-dial] Wallet reservation created:', walletReservationId);
+      } catch (e) {
+        console.error('[call-dial] Wallet reserve exception:', (e as Error).message);
+      }
+    }
+
     // ==================== UPDATE LEAD STATUS ====================
     console.log('[call-dial] Updating lead status');
     
@@ -613,6 +648,10 @@ Deno.serve(async (req) => {
                 await supabase.from('call_logs').update({ call_status: 'scheduled', started_at: null, operator_id: null }).eq('id', callLog.id);
                 await supabase.rpc('release_operator', { p_call_id: callLog.id, p_force: true });
                 await supabase.from('call_leads').update({ status: 'pending', assigned_operator_id: null }).eq('id', lead.id);
+                if (walletReservationId) {
+                  await supabase.rpc('wallet_cancel_reservation', { p_reservation_id: walletReservationId }).catch(() => {});
+                  walletReservationId = null;
+                }
                 callStatus = 'scheduled';
                 reservedOperator = null;
               } else {
