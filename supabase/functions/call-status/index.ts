@@ -549,6 +549,37 @@ Deno.serve(async (req) => {
     // ==================== REMOVE FROM CALL QUEUE ON TERMINAL STATUS ====================
     const ALL_TERMINAL = ['completed', 'no_answer', 'voicemail', 'failed', 'busy', 'not_found', 'cancelled', 'timeout'];
     if (ALL_TERMINAL.includes(mappedStatus)) {
+      // ==================== WALLET: FINALIZE OR CANCEL RESERVATION ====================
+      try {
+        const { data: reservations } = await supabase
+          .from('wallet_reservations')
+          .select('id')
+          .eq('reference_type', 'call_log')
+          .eq('reference_id', callLog.id)
+          .eq('status', 'active')
+          .limit(1);
+
+        const reservationId = reservations && reservations[0]?.id;
+        if (reservationId) {
+          if (mappedStatus === 'completed' && updateData.duration_seconds && updateData.duration_seconds > 0) {
+            const minutes = Math.ceil(updateData.duration_seconds / 60);
+            const cost = +(minutes * 0.40).toFixed(2);
+            console.log('[call-status] Finalizing wallet reservation:', reservationId, 'cost:', cost);
+            await supabase.rpc('wallet_finalize_reservation', {
+              p_reservation_id: reservationId,
+              p_actual_amount: cost,
+              p_description: `Ligação ${minutes} min`,
+              p_metadata: { call_log_id: callLog.id, duration_seconds: updateData.duration_seconds, minutes },
+            });
+          } else {
+            console.log('[call-status] Cancelling wallet reservation (no charge):', reservationId);
+            await supabase.rpc('wallet_cancel_reservation', { p_reservation_id: reservationId });
+          }
+        }
+      } catch (walletErr) {
+        console.error('[call-status] Wallet handling error:', (walletErr as Error).message);
+      }
+
       console.log('[call-status] Removing from call_queue for call_log_id:', callLog.id);
       const { data: deleted } = await supabase
         .from('call_queue')
