@@ -49,39 +49,7 @@ export interface LeadStats {
 const PAGE_SIZE = 20;
 const SYNC_BATCH_SIZE = 50;
 
-/**
- * Upsert seguro em batches pequenos com fallback row-a-row.
- * Garante que falhas em uma linha não cancelam o batch inteiro silenciosamente.
- * Retorna { synced, failed } para feedback ao usuário.
- */
-async function safeBatchUpsert<T extends Record<string, unknown>>(
-  table: string,
-  rows: T[],
-  onConflict: string
-): Promise<{ synced: number; failed: number }> {
-  let synced = 0;
-  let failed = 0;
-  for (let i = 0; i < rows.length; i += SYNC_BATCH_SIZE) {
-    const batch = rows.slice(i, i + SYNC_BATCH_SIZE);
-    const { error } = await (supabase as any).from(table).upsert(batch, { onConflict });
-    if (!error) {
-      synced += batch.length;
-      continue;
-    }
-    // Fallback: tenta uma a uma para isolar o problema
-    console.warn(`[safeBatchUpsert] batch failed for ${table}:`, error.message);
-    for (const row of batch) {
-      const { error: rowError } = await (supabase as any).from(table).upsert([row], { onConflict });
-      if (rowError) {
-        failed++;
-        console.warn(`[safeBatchUpsert] row failed for ${table}:`, rowError.message, row);
-      } else {
-        synced++;
-      }
-    }
-  }
-  return { synced, failed };
-}
+// safeBatchUpsert moved to @/lib/supabase-batch
 
 export function useLeads(filters: LeadFilters = {}) {
   const { toast } = useToast();
