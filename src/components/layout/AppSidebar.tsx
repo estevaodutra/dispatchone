@@ -70,7 +70,7 @@ export function AppSidebar() {
   const { t } = useLanguage();
   const location = useLocation();
   const isCollapsed = state === "collapsed";
-  const { companies, activeCompany, setActiveCompany } = useCompany();
+  const { companies, activeCompany, setActiveCompany, isAdmin } = useCompany();
 
   const isCampaignsRoute = location.pathname.startsWith("/campaigns");
   const [campaignsOpen, setCampaignsOpen] = useState(isCampaignsRoute);
@@ -110,6 +110,7 @@ export function AppSidebar() {
     { title: t("nav.webhookEvents") || "Eventos", url: "/events", icon: Radio },
     { title: t("nav.alerts"), url: "/alerts", icon: Bell },
     { title: t("nav.billing"), url: "/billing", icon: CreditCard },
+    ...(isAdmin ? [{ title: "Membros", url: "/configuracoes/membros", icon: Users }] : []),
     { title: t("nav.settings"), url: "/settings", icon: Settings },
     { title: t("nav.apiDocs"), url: "/api-docs", icon: Code2 },
   ];
