@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_logs: {
+        Row: {
+          action: string
+          admin_id: string
+          created_at: string
+          details: Json
+          id: string
+          ip_address: string | null
+          target_id: string | null
+          target_type: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          admin_id: string
+          created_at?: string
+          details?: Json
+          id?: string
+          ip_address?: string | null
+          target_id?: string | null
+          target_type?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          admin_id?: string
+          created_at?: string
+          details?: Json
+          id?: string
+          ip_address?: string | null
+          target_id?: string | null
+          target_type?: string | null
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       alerts: {
         Row: {
           created_at: string | null
@@ -708,6 +744,7 @@ export type Database = {
         Row: {
           created_at: string | null
           id: string
+          is_active: boolean
           name: string
           owner_id: string
           updated_at: string | null
@@ -715,6 +752,7 @@ export type Database = {
         Insert: {
           created_at?: string | null
           id?: string
+          is_active?: boolean
           name: string
           owner_id: string
           updated_at?: string | null
@@ -722,6 +760,7 @@ export type Database = {
         Update: {
           created_at?: string | null
           id?: string
+          is_active?: boolean
           name?: string
           owner_id?: string
           updated_at?: string | null
@@ -2155,6 +2194,33 @@ export type Database = {
           },
         ]
       }
+      platform_settings: {
+        Row: {
+          description: string | null
+          id: string
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       poll_messages: {
         Row: {
           campaign_id: string
@@ -2261,6 +2327,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pricing_rules: {
+        Row: {
+          action_type: string
+          company_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          price: number
+          unit: string
+          valid_from: string
+          valid_until: string | null
+        }
+        Insert: {
+          action_type: string
+          company_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          price: number
+          unit: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Update: {
+          action_type?: string
+          company_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          price?: number
+          unit?: string
+          valid_from?: string
+          valid_until?: string | null
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -3996,6 +4098,7 @@ export type Database = {
         Args: { _company_id: string; _user_id: string }
         Returns: boolean
       }
+      is_superadmin: { Args: { _user_id: string }; Returns: boolean }
       queue_clear_all_preview: {
         Args: { p_company_id: string }
         Returns: {
@@ -4097,6 +4200,15 @@ export type Database = {
           p_reference_id?: string
           p_reference_type?: string
           p_type: string
+        }
+        Returns: string
+      }
+      wallet_credit_manual: {
+        Args: {
+          p_amount: number
+          p_company_id: string
+          p_description?: string
+          p_reason: string
         }
         Returns: string
       }
