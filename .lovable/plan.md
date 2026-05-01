@@ -1,62 +1,45 @@
-## Problema
+## Auto-criar operador para o owner da empresa
 
-A atualização anterior alterou o payload na edge function `execute-call-action`, mas o `CallActionDialog` **nunca chama essa função** — ele monta o payload localmente e dispara via `webhook-proxy` diretamente. Por isso o payload continua no formato antigo (`{ event, lead, campaign, ... }`).
+### Migration (schema + backfill)
 
-Local exato (`src/components/operator/CallActionDialog.tsx`, linhas ~241–291):
+```sql
+-- Função + trigger
+CREATE OR REPLACE FUNCTION public.handle_new_company_create_operator()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_name text;
+BEGIN
+  SELECT COALESCE(NULLIF(p.full_name,''), split_part(u.email,'@',1), 'Operador')
+    INTO v_name
+    FROM auth.users u LEFT JOIN public.profiles p ON p.id = u.id
+   WHERE u.id = NEW.owner_id;
 
-- `custom_message` → `supabase.functions.invoke("webhook-proxy", { url, payload: {event, call_id, lead, campaign, ...} })`
-- `webhook` → `supabase.functions.invoke("webhook-proxy", { url, payload: { lead, campaignId, actionType } })`
+  IF NOT EXISTS (SELECT 1 FROM public.call_operators
+                  WHERE user_id = NEW.owner_id AND company_id = NEW.id) THEN
+    INSERT INTO public.call_operators (user_id, company_id, operator_name, is_active, status)
+    VALUES (NEW.owner_id, NEW.id, COALESCE(v_name,'Operador'), true, 'available');
+  END IF;
+  RETURN NEW;
+END; $$;
 
-## Solução
+DROP TRIGGER IF EXISTS trg_companies_create_owner_operator ON public.companies;
+CREATE TRIGGER trg_companies_create_owner_operator
+AFTER INSERT ON public.companies
+FOR EACH ROW EXECUTE FUNCTION public.handle_new_company_create_operator();
 
-Substituir as duas chamadas locais para que o disparo da automação passe pela edge function `execute-call-action`, que já monta o novo payload aninhado (`account / lead / campaign / operator / call.actions`) e envia como array `[payload]`.
-
-### Mudança em `src/components/operator/CallActionDialog.tsx`
-
-Dentro de `executeAutomation(actionId)`, para os tipos `custom_message` **e** `webhook`, trocar o invoke de `webhook-proxy` por:
-
-```ts
-const { error: fnError } = await supabase.functions.invoke("execute-call-action", {
-  body: {
-    action_id: actionId,
-    lead_id: currentData.leadId,
-    campaign_id: currentData.campaignId,
-  },
-});
-if (fnError) {
-  toast({ title: "Webhook falhou", description: fnError.message, variant: "destructive" });
-}
+-- Backfill empresas existentes
+INSERT INTO public.call_operators (user_id, company_id, operator_name, is_active, status)
+SELECT c.owner_id, c.id,
+       COALESCE(NULLIF(p.full_name,''), split_part(u.email,'@',1), 'Operador'),
+       true, 'available'
+FROM public.companies c
+LEFT JOIN auth.users u ON u.id = c.owner_id
+LEFT JOIN public.profiles p ON p.id = c.owner_id
+WHERE NOT EXISTS (
+  SELECT 1 FROM public.call_operators co
+   WHERE co.user_id = c.owner_id AND co.company_id = c.id
+);
 ```
 
-- Remover a busca local de `leadData` e a montagem do payload antigo (não são mais necessárias — a edge function refaz a busca).
-- Manter intactos os ramos `start_sequence`, `add_tag` e `update_status`.
-
-### Garantia de que o `custom_message` chega no payload
-
-Hoje a edge function lê `call_logs.custom_message` do log mais recente para popular `call.actions.text`. O `CallActionDialog` já grava esse valor em `call_logs.custom_message` antes de disparar a automação (no `handleSave`, antes de `executeAutomation`), então o texto correto será capturado.
-
-Verificar no fluxo de `handleSave` que a inserção/atualização do `call_logs` (com `custom_message` preenchido) acontece **antes** do `await executeAutomation(...)`. Se não estiver, ajustar a ordem para garantir.
-
-### Sem alterações em
-
-- `supabase/functions/execute-call-action/index.ts` (já está com o novo formato)
-- `webhook-proxy` (deixa de ser usado por essas duas ações; segue funcionando para outros usos)
-- Banco de dados / RLS / tipos
-
-## Validação
-
-1. Disparar uma ação `webhook` no `CallActionDialog`.
-2. Conferir nos logs de `execute-call-action` que o body enviado segue o shape:
-   ```json
-   [{
-     "account": {...}, "lead": {...}, "campaign": {...},
-     "operator": {...},
-     "call": { "id":"...", "status":"...", "attempts":..., "duration":..., "cost":null, "recording":"...",
-               "actions": { "id":"...", "name":"...", "text":"..." } }
-   }]
-   ```
-3. Repetir para `custom_message` e confirmar que `call.actions.text` traz o texto da mensagem personalizada.
-
-## Arquivos afetados
-
-- `src/components/operator/CallActionDialog.tsx` (única alteração)
+### Resultado
+- `autoconsultas@gmail.com` aparece imediatamente como operador na empresa "Diogo".
+- Toda empresa nova já nasce com o owner cadastrado como operador ativo.
