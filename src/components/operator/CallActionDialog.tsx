@@ -250,44 +250,20 @@ export function CallActionDialog({
 
       if (!actionData) return;
 
-      if (actionData.action_type === "custom_message" && actionData.action_config?.webhook_url) {
-        const { data: leadData } = await (supabase as any)
-          .from("call_leads")
-          .select("*")
-          .eq("id", currentData.leadId)
-          .single();
-
-        const payload = {
-          event: "call.action",
-          timestamp: new Date().toISOString(),
-          call_id: currentData.callId,
-          action: { id: actionId, name: selectedAction?.name, type: "custom_message" },
-          custom_message: customMessage,
-          lead: leadData,
-          campaign: { id: currentData.campaignId, name: currentData.campaignName },
-          observations: notes,
-        };
-
-        const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
-          body: { url: actionData.action_config.webhook_url, payload },
+      if (
+        (actionData.action_type === "custom_message" && actionData.action_config?.webhook_url) ||
+        (actionData.action_type === "webhook" && (actionData.action_config?.url || actionData.action_config?.webhook_url))
+      ) {
+        const { error: fnError } = await supabase.functions.invoke("execute-call-action", {
+          body: {
+            action_id: actionId,
+            lead_id: currentData.leadId,
+            campaign_id: currentData.campaignId,
+          },
         });
 
-        if (proxyError) {
-          toast({ title: "Webhook falhou", description: proxyError.message, variant: "destructive" });
-        }
-      } else if (actionData.action_type === "webhook" && actionData.action_config?.url) {
-        const { data: leadData } = await (supabase as any)
-          .from("call_leads")
-          .select("*")
-          .eq("id", currentData.leadId)
-          .single();
-
-        const { error: proxyError } = await supabase.functions.invoke("webhook-proxy", {
-          body: { url: actionData.action_config.url, payload: { lead: leadData, campaignId: currentData.campaignId, actionType: "webhook" } },
-        });
-
-        if (proxyError) {
-          toast({ title: "Webhook falhou", description: proxyError.message, variant: "destructive" });
+        if (fnError) {
+          toast({ title: "Webhook falhou", description: fnError.message, variant: "destructive" });
         }
       } else if (actionData.action_type === "start_sequence" && actionData.action_config) {
         const { campaignId: seqCampaignId, campaignType, sequenceId } = actionData.action_config as {
