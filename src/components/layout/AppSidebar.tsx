@@ -75,6 +75,15 @@ export function AppSidebar() {
   const isCampaignsRoute = location.pathname.startsWith("/campaigns");
   const [campaignsOpen, setCampaignsOpen] = useState(isCampaignsRoute);
 
+  const isWalletRoute = location.pathname.startsWith("/carteira");
+  const [walletOpen, setWalletOpen] = useState(isWalletRoute);
+
+  const walletSubItems = [
+    { title: "Saldo e Recarga", url: "/carteira", icon: Wallet, end: true },
+    { title: "Extrato", url: "/carteira/extrato", icon: Receipt, end: false },
+    { title: "Configurações", url: "/carteira/configuracoes", icon: SlidersHorizontal, end: false },
+  ];
+
   const mainNavItems = [
     { title: t("nav.dashboard"), url: "/", icon: LayoutDashboard },
     { title: t("nav.callPanel"), url: "/painel-ligacoes", icon: PhoneCall },
