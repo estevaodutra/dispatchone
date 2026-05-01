@@ -1,68 +1,61 @@
-## Objetivo
+## Goal
 
-Fazer a página **Leads** mostrar também o **nome da campanha** quando o lead foi enviado direto para uma campanha de ligação.
+Atualizar o payload enviado pelos disparos de webhook em **ações de chamada** (`execute-call-action`) para o novo formato aninhado solicitado, contendo blocos `account`, `lead`, `campaign`, `operator` e `call` (com `actions`).
 
-## Problema atual
+## Formato alvo
 
-O vínculo já existe:
-- `active_campaign_id` está preenchido
-- `active_campaign_type = 'ligacao'`
+O payload passa a ser um **array com um objeto** (como solicitado), no shape:
 
-Por isso o lead aparece como **Em Campanha**.
-
-Mas o nome da campanha não aparece na listagem porque a coluna **Origem** depende de `source_name`, e esse campo não está sendo preenchido no fluxo de leads criados direto pela campanha.
-
-## Implementação
-
-### 1. Preencher `source_name` ao espelhar leads da campanha para a base global
-Arquivo: `src/hooks/useCallLeads.ts`
-
-Nos fluxos abaixo:
-- `addLeadMutation`
-- `addLeadsBatchMutation`
-
-Antes do `upsert` em `leads`, buscar o nome da campanha (`call_campaigns.name`) usando o `campaignId` atual do hook e salvar junto com:
-- `source_name = nome da campanha`
-- `source_type = 'campaign_manual'`
-- `source_campaign_id = campaignId`
-- `active_campaign_id = campaignId`
-- `active_campaign_type = 'ligacao'`
-
-Assim, novos leads já entrarão na página Leads com o nome da campanha visível.
-
-### 2. Atualizar os leads que já foram sincronizados
-Executar um backfill para preencher `source_name` nos leads já existentes:
-
-```sql
-UPDATE public.leads l
-SET source_name = cc.name
-FROM public.call_campaigns cc
-WHERE l.source_type = 'campaign_manual'
-  AND l.source_campaign_id = cc.id
-  AND (l.source_name IS NULL OR l.source_name = '');
+```json
+[{
+  "account":  { "id": "...", "name": "..." },
+  "lead":     { "id": "...", "name": "...", "phone": "..." },
+  "campaign": { "id": "...", "name": "..." },
+  "operator": { "id": "...", "name": "...", "email": "..." },
+  "call": {
+    "id": "...", "status": "...", "attempts": 1,
+    "duration": 0, "cost": null, "recording": "...",
+    "actions": { "id": "...", "name": "...", "text": "..." }
+  }
+}]
 ```
 
-### 3. Melhorar fallback visual na página Leads
-Arquivo: `src/pages/Leads.tsx`
+## Mudanças
 
-Adicionar o label para `campaign_manual` em `SOURCE_LABELS`, para que mesmo se `source_name` vier vazio em algum caso excepcional, a coluna **Origem** mostre pelo menos algo útil, como:
-- `campaign_manual: "Campanha (manual)"`
+### 1. `supabase/functions/execute-call-action/index.ts`
 
-## Resultado esperado
+- Criar uma função interna `buildActionPayload({ action, lead, campaign, operator, callLog, account, customMessage })` que monta o objeto no novo shape.
+- Para os cases **`webhook`** e **`custom_message`**, antes do `fetch`, buscar dados extras necessários:
+  - `call_leads` → `id, name, phone` (já é buscado).
+  - `call_campaigns` → `id, name, company_id`.
+  - `companies` (via `company_id`) → `id, name` para popular `account`.
+  - `call_logs` mais recente do par lead+campaign → `id, call_status, attempt_number, duration_seconds, audio_url, custom_message, operator_id`.
+  - `call_operators` (via `operator_id` do log) → `id, operator_name, email` (fallback `null` se ausente).
+- Mapear no payload:
+  - `call.status` ← `call_logs.call_status`
+  - `call.attempts` ← `call_logs.attempt_number`
+  - `call.duration` ← `call_logs.duration_seconds`
+  - `call.recording` ← `call_logs.audio_url`
+  - `call.cost` ← `null` (campo não existe hoje no schema)
+  - `call.actions.id/name` ← `call_script_actions.id/name`
+  - `call.actions.text` ← para `custom_message`, usa `call_logs.custom_message`; para `webhook`, usa `actionConfig.text` se existir, senão `""`.
+- Enviar o body como **array com um objeto** (`JSON.stringify([payload])`) conforme requisitado.
+- Manter o mesmo tratamento de resposta (`status_code`, `response_body` em erro) e a persistência do `automationNote` no `call_logs.notes`.
 
-Na página **Leads**, para leads enviados direto para campanha, ficará visível:
-- **Tipo**: Ligação
-- **Origem**: nome da campanha, por exemplo `AutoConsultas | ColdCall | Proteção Veicular`
+### 2. Compatibilidade
 
-## Arquivos / mudanças
+- O novo payload **substitui** o antigo (formato achatado com `event`, `lead_id`, `campaign_id`, `lead`, etc.). Como a mudança foi solicitada explicitamente pelo usuário, os webhooks externos (n8n etc.) precisarão consumir o novo schema.
+- Os outros tipos de ação (`add_tag`, `update_status`, `start_sequence`) **não são alterados** — só afetam o banco/sequências.
 
-- `src/hooks/useCallLeads.ts`
-- `src/pages/Leads.tsx`
-- 1 migration SQL de backfill de dados
+### 3. Sem alterações de UI ou banco
 
-## Fora do escopo
+- Nenhuma migração SQL.
+- Nenhum componente React precisa mudar — o payload é interno do edge function.
 
-- Alterar layout da tabela de Leads
-- Criar nova coluna separada só para “Campanha”
+## Arquivos afetados
 
-Se você aprovar, eu aplico essa correção agora.
+- `supabase/functions/execute-call-action/index.ts` (única alteração)
+
+## Validação
+
+Após implementar, disparar uma ação de webhook a partir do `CallActionDialog` e conferir nos logs do edge function que o body enviado segue o novo shape, com `account.name` populado a partir da empresa da campanha e `operator` populado a partir do `call_logs` mais recente.

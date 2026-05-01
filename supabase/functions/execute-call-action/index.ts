@@ -49,6 +49,119 @@ Deno.serve(async (req) => {
 
     console.log(`[execute-call-action] type=${actionType} config=${JSON.stringify(actionConfig)}`);
 
+    // Re-fetch action with name to use in payloads
+    const { data: actionFull } = await supabase
+      .from("call_script_actions")
+      .select("id, name")
+      .eq("id", action_id)
+      .maybeSingle();
+
+    // Helper to build the new standardized webhook payload
+    async function buildActionPayload(textOverride?: string | null): Promise<Record<string, unknown>> {
+      // Lead
+      let leadRow: any = null;
+      if (lead_id) {
+        const { data } = await supabase
+          .from("call_leads")
+          .select("id, name, phone")
+          .eq("id", lead_id)
+          .maybeSingle();
+        leadRow = data;
+      }
+
+      // Campaign + company
+      let campaignRow: any = null;
+      let companyRow: any = null;
+      if (campaign_id) {
+        const { data: c } = await supabase
+          .from("call_campaigns")
+          .select("id, name, company_id")
+          .eq("id", campaign_id)
+          .maybeSingle();
+        campaignRow = c;
+        if (c?.company_id) {
+          const { data: comp } = await supabase
+            .from("companies")
+            .select("id, name")
+            .eq("id", c.company_id)
+            .maybeSingle();
+          companyRow = comp;
+        }
+      }
+
+      // Latest call_log for this lead+campaign
+      let logRow: any = null;
+      if (lead_id && campaign_id) {
+        const { data } = await supabase
+          .from("call_logs")
+          .select("id, call_status, attempt_number, duration_seconds, audio_url, custom_message, operator_id")
+          .eq("lead_id", lead_id)
+          .eq("campaign_id", campaign_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        logRow = data;
+      }
+
+      // Operator
+      let operatorRow: any = null;
+      if (logRow?.operator_id) {
+        const { data: op } = await supabase
+          .from("call_operators")
+          .select("id, operator_name, user_id")
+          .eq("id", logRow.operator_id)
+          .maybeSingle();
+        operatorRow = op;
+        if (op?.user_id) {
+          const { data: prof } = await supabase
+            .from("profiles")
+            .select("email")
+            .eq("id", op.user_id)
+            .maybeSingle();
+          if (prof) operatorRow.email = prof.email;
+        }
+      }
+
+      const actionText =
+        textOverride !== undefined
+          ? textOverride
+          : ((actionConfig.text as string) || "");
+
+      return {
+        account: {
+          id: companyRow?.id ?? null,
+          name: companyRow?.name ?? null,
+        },
+        lead: {
+          id: leadRow?.id ?? null,
+          name: leadRow?.name ?? null,
+          phone: leadRow?.phone ?? null,
+        },
+        campaign: {
+          id: campaignRow?.id ?? null,
+          name: campaignRow?.name ?? null,
+        },
+        operator: {
+          id: operatorRow?.id ?? null,
+          name: operatorRow?.operator_name ?? null,
+          email: operatorRow?.email ?? null,
+        },
+        call: {
+          id: logRow?.id ?? null,
+          status: logRow?.call_status ?? null,
+          attempts: logRow?.attempt_number ?? null,
+          duration: logRow?.duration_seconds ?? null,
+          cost: null,
+          recording: logRow?.audio_url ?? null,
+          actions: {
+            id: actionFull?.id ?? action_id,
+            name: actionFull?.name ?? null,
+            text: actionText ?? "",
+          },
+        },
+      };
+    }
+
     // 2. Execute based on action type
     switch (actionType) {
       case "add_tag": {
