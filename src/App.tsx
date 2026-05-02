@@ -53,6 +53,12 @@ import ExtratoPage from "./pages/wallet/ExtratoPage";
 import WalletSettingsPage from "./pages/wallet/WalletSettingsPage";
 import AwaitingAccess from "./pages/AwaitingAccess";
 import MembersPage from "./pages/settings/MembersPage";
+import { AdminRoute } from "@/components/auth/AdminRoute";
+import { AdminLayout } from "@/components/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminCompanies from "./pages/admin/AdminCompanies";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminTransactions from "./pages/admin/AdminTransactions";
 
 const App = () => {
   const [queryClient] = useState(() => new QueryClient());
