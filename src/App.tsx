@@ -290,6 +290,26 @@ const App = () => {
                       </ProtectedRoute>
                     }
                   />
+
+                  {/* Superadmin routes */}
+                  <Route
+                    path="/admin"
+                    element={
+                      <ProtectedRoute requireCompany={false}>
+                        <AdminRoute>
+                          <AdminLayout>
+                            <Outlet />
+                          </AdminLayout>
+                        </AdminRoute>
+                      </ProtectedRoute>
+                    }
+                  >
+                    <Route index element={<AdminDashboard />} />
+                    <Route path="empresas" element={<AdminCompanies />} />
+                    <Route path="usuarios" element={<AdminUsers />} />
+                    <Route path="financeiro/transacoes" element={<AdminTransactions />} />
+                  </Route>
+
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </BrowserRouter>
