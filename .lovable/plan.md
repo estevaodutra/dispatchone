@@ -1,54 +1,21 @@
-## Objetivo
+Promote user `3b6be6fe-4c64-4570-8b62-ae5362bc56af` to superadmin by inserting a row into `public.user_roles` with `role = 'superadmin'`.
 
-Tornar o painel do superadmin acessível via `/admin/*`, conectando as páginas já criadas ao roteador e protegendo tudo com `ProtectedRoute` (login) + `AdminRoute` (verificação de superadmin) + `AdminLayout` (sidebar e header próprios).
+## Current state
 
-## Mudanças
+The user already has a `user` role row in `user_roles`. The `app_role` enum already has the `superadmin` value, and `is_superadmin()` checks `user_roles` — so adding the superadmin row immediately unlocks `/admin`.
 
-### 1. `src/App.tsx`
+## Change
 
-Adicionar imports:
-- `AdminRoute` de `@/components/auth/AdminRoute`
-- `AdminLayout` de `@/components/admin/AdminLayout`
-- Páginas: `AdminDashboard`, `AdminCompanies`, `AdminUsers`, `AdminTransactions` de `@/pages/admin/*`
+Run a single idempotent SQL statement (via migration) on `public.user_roles`:
 
-Registrar um grupo de rotas aninhadas em `/admin` usando `Outlet`, com a seguinte estrutura de proteção (de fora pra dentro): `ProtectedRoute requireCompany={false}` → `AdminRoute` → `AdminLayout`. O `requireCompany={false}` é importante para que um superadmin sem vínculo com empresa não seja redirecionado para `/aguardando-acesso`.
-
-Rotas filhas:
-- `index` → `AdminDashboard`
-- `empresas` → `AdminCompanies`
-- `usuarios` → `AdminUsers`
-- `financeiro/transacoes` → `AdminTransactions`
-
-As demais entradas do `AdminSidebar` (Recargas, Consumo, Preços, Provedores, Relatórios, Configurações) ainda não têm página implementada e ficarão para uma próxima fase — por enquanto não serão registradas (cairão em `NotFound`, comportamento aceitável até a Fase 3/4).
-
-Trecho aproximado:
-
-```tsx
-<Route
-  path="/admin"
-  element={
-    <ProtectedRoute requireCompany={false}>
-      <AdminRoute>
-        <AdminLayout>
-          <Outlet />
-        </AdminLayout>
-      </AdminRoute>
-    </ProtectedRoute>
-  }
->
-  <Route index element={<AdminDashboard />} />
-  <Route path="empresas" element={<AdminCompanies />} />
-  <Route path="usuarios" element={<AdminUsers />} />
-  <Route path="financeiro/transacoes" element={<AdminTransactions />} />
-</Route>
+```sql
+INSERT INTO public.user_roles (user_id, role)
+VALUES ('3b6be6fe-4c64-4570-8b62-ae5362bc56af', 'superadmin')
+ON CONFLICT (user_id, role) DO NOTHING;
 ```
 
-### 2. Nada mais precisa mudar
+The existing `user` role is kept (additive), so nothing else breaks.
 
-- `AdminRoute` já redireciona não-superadmins para `/` e não-autenticados para `/auth`.
-- `AdminLayout` já renderiza sidebar/header próprios e usa `children`, compatível com `<Outlet />`.
-- `NotFound` já está como catch-all (`*`), então `/admin/qualquer-coisa-inexistente` cairá nele.
+## Verification
 
-## Pendência (fora do escopo desta tarefa)
-
-Para um superadmin conseguir efetivamente entrar em `/admin`, é necessário inserir manualmente uma linha em `user_roles` com `role = 'superadmin'` para o usuário desejado. Após aprovação, posso pedir o e-mail e rodar a migration de seed.
+After approval, query `user_roles` to confirm the row exists, then the user can access `/admin` after refreshing.
