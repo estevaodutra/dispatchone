@@ -785,6 +785,7 @@ export function ExecutionListTab({ campaignId }: ExecutionListTabProps) {
         onSave={handleSave}
         existing={editingList}
         isSaving={createList.isPending || updateList.isPending}
+        campaignId={campaignId}
       />
 
       <AlertDialog open={!!deletingId} onOpenChange={(v) => { if (!v) setDeletingId(null); }}>
