@@ -197,6 +197,7 @@ export function useGroupExecutionList(campaignId: string) {
           webhook_params: config.action_type === "webhook" ? (config.webhook_params ?? {}) : {},
           message_template: config.action_type === "message" ? config.message_template : null,
           call_campaign_id: config.action_type === "call" ? config.call_campaign_id : null,
+          sequence_id: config.action_type === "sequence" ? config.sequence_id : null,
           current_window_start: start,
           current_window_end: end,
           is_active: true,
