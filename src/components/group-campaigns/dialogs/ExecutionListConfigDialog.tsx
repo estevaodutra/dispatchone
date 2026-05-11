@@ -27,17 +27,19 @@ interface ExecutionListConfigDialogProps {
     window_end_time?: string;
     window_duration_hours?: number;
     monitored_events: string[];
-    action_type: "webhook" | "message" | "call";
+    action_type: "webhook" | "message" | "call" | "sequence";
     webhook_url?: string;
     webhook_params?: Record<string, any> | WebhookField[];
     message_template?: string;
     call_campaign_id?: string;
+    sequence_id?: string;
     execution_schedule_type?: "window_end" | "scheduled" | "immediate";
     execution_scheduled_time?: string;
     execution_days_of_week?: number[];
   }) => void;
   existing?: GroupExecutionList | null;
   isSaving?: boolean;
+  campaignId: string;
 }
 
 const EVENT_OPTIONS = [
