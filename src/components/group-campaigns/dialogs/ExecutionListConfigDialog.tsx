@@ -98,7 +98,7 @@ export function ExecutionListConfigDialog({
       setEndTime(existing.window_end_time?.slice(0, 5) || "18:00");
       setDurationHours(existing.window_duration_hours || 6);
       setMonitoredEvents(existing.monitored_events || ["group_join"]);
-      setActionType(existing.action_type as "webhook" | "message" | "call");
+      setActionType(existing.action_type as "webhook" | "message" | "call" | "sequence");
       setWebhookUrl(existing.webhook_url || "");
       const params = (existing as any).webhook_params;
       if (Array.isArray(params)) {
