@@ -53,8 +53,7 @@ export function UnifiedSequenceList<T>({
 
   const handleCreate = async () => {
     if (form.triggerType !== "webhook" && usedTriggerTypes.has(form.triggerType)) {
-      toast.error("Já existe uma sequência com este gatilho");
-      return;
+      toast.warning("Atenção: já existe outra sequência com este mesmo gatilho (evento duplicado)");
     }
     await onCreate(form);
     setShowCreate(false);
@@ -206,7 +205,7 @@ export function UnifiedSequenceList<T>({
                     {triggerTypes.map(trigger => {
                       const isUsed = usedTriggerTypes.has(trigger.value);
                       return (
-                        <SelectItem key={trigger.value} value={trigger.value} disabled={isUsed}>
+                        <SelectItem key={trigger.value} value={trigger.value}>
                           <div className="flex items-center gap-2">
                             <trigger.icon className="h-4 w-4" />
                             {trigger.label}
@@ -223,8 +222,8 @@ export function UnifiedSequenceList<T>({
                     const Icon = trigger.icon;
                     const isUsed = usedTriggerTypes.has(trigger.value);
                     return (
-                      <div key={trigger.value} className={`flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer ${isUsed ? "opacity-50 pointer-events-none" : ""}`}>
-                        <RadioGroupItem value={trigger.value} id={trigger.value} disabled={isUsed} />
+                      <div key={trigger.value} className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent cursor-pointer">
+                        <RadioGroupItem value={trigger.value} id={trigger.value} />
                         <Icon className="h-4 w-4 text-muted-foreground" />
                         <div className="flex-1">
                           <Label htmlFor={trigger.value} className="font-medium cursor-pointer">
