@@ -13,11 +13,12 @@ export interface GroupExecutionList {
   window_end_time: string | null;
   window_duration_hours: number | null;
   monitored_events: string[];
-  action_type: "webhook" | "message" | "call";
+  action_type: "webhook" | "message" | "call" | "sequence";
   webhook_url: string | null;
   webhook_params: Record<string, any> | Array<{ id: string; name: string; type: string; value: string }>;
   message_template: string | null;
   call_campaign_id: string | null;
+  sequence_id: string | null;
   current_cycle_id: string;
   current_window_start: string | null;
   current_window_end: string | null;
