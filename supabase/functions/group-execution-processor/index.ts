@@ -19,6 +19,7 @@ interface ExecutionList {
   webhook_params: Record<string, any> | Array<{ id?: string; name: string; type: string; value: string }> | null;
   message_template: string | null;
   call_campaign_id: string | null;
+  sequence_id: string | null;
   current_cycle_id: string;
   current_window_start: string | null;
   current_window_end: string | null;
