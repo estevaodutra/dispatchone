@@ -31,12 +31,14 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
   webhook: <Webhook className="h-4 w-4" />,
   message: <MessageSquare className="h-4 w-4" />,
   call: <Phone className="h-4 w-4" />,
+  sequence: <Workflow className="h-4 w-4" />,
 };
 
 const ACTION_LABELS: Record<string, string> = {
   webhook: "Webhook",
   message: "Mensagem",
   call: "Ligação",
+  sequence: "Sequência",
 };
 
 function isFulltime(list: GroupExecutionList): boolean {
