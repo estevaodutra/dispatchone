@@ -124,6 +124,7 @@ export function ExecutionListConfigDialog({
       }
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
+      setSequenceId((existing as any).sequence_id || "");
       setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
       setExecScheduledTime(existing.execution_scheduled_time || "10:00");
       setExecDaysOfWeek(existing.execution_days_of_week || [1, 2, 3, 4, 5]);
