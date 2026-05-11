@@ -205,7 +205,7 @@ export function UnifiedSequenceList<T>({
                     {triggerTypes.map(trigger => {
                       const isUsed = usedTriggerTypes.has(trigger.value);
                       return (
-                        <SelectItem key={trigger.value} value={trigger.value} disabled={isUsed}>
+                        <SelectItem key={trigger.value} value={trigger.value}>
                           <div className="flex items-center gap-2">
                             <trigger.icon className="h-4 w-4" />
                             {trigger.label}
