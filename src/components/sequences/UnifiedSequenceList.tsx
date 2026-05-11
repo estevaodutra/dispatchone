@@ -53,8 +53,7 @@ export function UnifiedSequenceList<T>({
 
   const handleCreate = async () => {
     if (form.triggerType !== "webhook" && usedTriggerTypes.has(form.triggerType)) {
-      toast.error("Já existe uma sequência com este gatilho");
-      return;
+      toast.warning("Atenção: já existe outra sequência com este mesmo gatilho (evento duplicado)");
     }
     await onCreate(form);
     setShowCreate(false);
