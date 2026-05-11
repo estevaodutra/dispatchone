@@ -168,11 +168,12 @@ export function useGroupExecutionList(campaignId: string) {
       window_end_time?: string;
       window_duration_hours?: number;
       monitored_events: string[];
-      action_type: "webhook" | "message" | "call";
+      action_type: "webhook" | "message" | "call" | "sequence";
       webhook_url?: string;
       webhook_params?: Record<string, any> | Array<{ id: string; name: string; type: string; value: string }>;
       message_template?: string;
       call_campaign_id?: string;
+      sequence_id?: string;
       execution_schedule_type?: "window_end" | "scheduled" | "immediate";
       execution_scheduled_time?: string;
       execution_days_of_week?: number[];
