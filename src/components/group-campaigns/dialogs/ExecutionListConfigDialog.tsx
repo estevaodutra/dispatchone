@@ -65,6 +65,7 @@ export function ExecutionListConfigDialog({
   onSave,
   existing,
   isSaving,
+  campaignId,
 }: ExecutionListConfigDialogProps) {
   const [name, setName] = useState("");
   const [windowType, setWindowType] = useState<"fixed" | "duration" | "fulltime">("fixed");
@@ -72,17 +73,19 @@ export function ExecutionListConfigDialog({
   const [endTime, setEndTime] = useState("18:00");
   const [durationHours, setDurationHours] = useState(6);
   const [monitoredEvents, setMonitoredEvents] = useState<string[]>(["group_join"]);
-  const [actionType, setActionType] = useState<"webhook" | "message" | "call">("webhook");
+  const [actionType, setActionType] = useState<"webhook" | "message" | "call" | "sequence">("webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookFields, setWebhookFields] = useState<WebhookField[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
+  const [sequenceId, setSequenceId] = useState("");
   const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
   const [execScheduledTime, setExecScheduledTime] = useState("10:00");
   const [execDaysOfWeek, setExecDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
 
   const { campaigns: callCampaigns } = useCallCampaigns();
+  const { sequences } = useSequences(campaignId);
 
   useEffect(() => {
     if (existing) {
