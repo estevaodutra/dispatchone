@@ -13,7 +13,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity, RotateCw, Eye, Copy, UserCheck, UserX, AlertCircle } from "lucide-react";
+import { ClipboardList, Clock, Zap, Users, Pencil, Play, Webhook, MessageSquare, Phone, ArrowLeft, Plus, Trash2, RefreshCw, Infinity, RotateCw, Eye, Copy, UserCheck, UserX, AlertCircle, Workflow } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
