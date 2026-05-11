@@ -702,6 +702,7 @@ export function ExecutionListTab({ campaignId }: ExecutionListTabProps) {
           onSave={handleSave}
           existing={editingList}
           isSaving={updateList.isPending}
+          campaignId={campaignId}
         />
       </>
     );
