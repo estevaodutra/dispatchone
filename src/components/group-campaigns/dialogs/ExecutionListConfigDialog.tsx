@@ -331,7 +331,7 @@ export function ExecutionListConfigDialog({
           {/* Action Type */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Ação ao Executar</Label>
-            <RadioGroup value={actionType} onValueChange={(v) => setActionType(v as "webhook" | "message" | "call")}>
+            <RadioGroup value={actionType} onValueChange={(v) => setActionType(v as "webhook" | "message" | "call" | "sequence")}>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="webhook" id="at-webhook" />
                 <Webhook className="h-4 w-4 text-muted-foreground" />
@@ -346,6 +346,11 @@ export function ExecutionListConfigDialog({
                 <RadioGroupItem value="call" id="at-call" />
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <Label htmlFor="at-call">Disparo de Ligação</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="sequence" id="at-sequence" />
+                <Workflow className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="at-sequence">Disparo de Sequência</Label>
               </div>
             </RadioGroup>
 
