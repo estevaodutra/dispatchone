@@ -552,6 +552,38 @@ async function executeAction(
       break;
     }
 
+    case "sequence": {
+      if (!list.sequence_id) throw new Error("No sequence configured");
+
+      const triggerContext = {
+        respondentPhone: lead.phone,
+        respondentName: lead.name ?? "",
+        respondentJid: `${lead.phone}@s.whatsapp.net`,
+        groupJid: "",
+        sendPrivate: true,
+        customFields: {
+          name: lead.name ?? "",
+          phone: lead.phone,
+          lid: lead.lid ?? "",
+          origin_event: lead.origin_event ?? "",
+          origin_detail: lead.origin_detail ?? "",
+        },
+      };
+
+      const { error: executeError } = await supabase.functions.invoke("execute-message", {
+        body: {
+          campaignId: list.campaign_id,
+          sequenceId: list.sequence_id,
+          triggerContext,
+        },
+      });
+
+      if (executeError) {
+        throw new Error(`Sequence execution failed: ${executeError.message ?? executeError}`);
+      }
+      break;
+    }
+
     default:
       throw new Error(`Unknown action type: ${list.action_type}`);
   }
