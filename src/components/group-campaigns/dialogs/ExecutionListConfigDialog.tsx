@@ -542,6 +542,27 @@ export function ExecutionListConfigDialog({
                 </Select>
               </div>
             )}
+
+            {actionType === "sequence" && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Sequência</Label>
+                <Select value={sequenceId} onValueChange={setSequenceId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a sequência..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(sequences || []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}{!s.active ? " (inativa)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  A sequência será disparada para cada lead em modo privado, usando {"{{name}}"} e {"{{phone}}"} como variáveis.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Execution Schedule */}
