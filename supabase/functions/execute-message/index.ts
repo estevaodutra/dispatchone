@@ -430,9 +430,14 @@ Deno.serve(async (req) => {
     if (isManualNodeExecution && manualNodeIndex !== undefined) {
       // Try exact node_order match first, fallback to positional index
       let manualNode = sequenceNodes.filter(n => n.node_order === manualNodeIndex);
-      if (manualNode.length === 0 && manualNodeIndex < sequenceNodes.length) {
+      if (manualNode.length === 0 && manualNodeIndex >= 0 && manualNodeIndex < sequenceNodes.length) {
         manualNode = [sequenceNodes[manualNodeIndex]];
         console.log(`[ExecuteMessage] Manual node: exact order ${manualNodeIndex} not found, using positional index`);
+      }
+      // Final fallback: if there's only one node in the sequence, use it regardless of index
+      if (manualNode.length === 0 && sequenceNodes.length === 1) {
+        manualNode = [sequenceNodes[0]];
+        console.log(`[ExecuteMessage] Manual node: index ${manualNodeIndex} out of range, using sole node available`);
       }
       if (manualNode.length === 0) {
         return new Response(
