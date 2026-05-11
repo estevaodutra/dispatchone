@@ -208,6 +208,7 @@ export function ExecutionListConfigDialog({
     if (actionType === "webhook" && hasDuplicateNames()) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
+    if (actionType === "sequence" && !sequenceId) return false;
     if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
   };
