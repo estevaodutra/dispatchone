@@ -234,6 +234,7 @@ export function ExecutionListConfigDialog({
       webhook_params: actionType === "webhook" ? buildWebhookParams() : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
+      sequence_id: actionType === "sequence" ? sequenceId : undefined,
       execution_schedule_type: execScheduleType,
       execution_scheduled_time: execScheduleType === "scheduled" ? execScheduledTime : undefined,
       execution_days_of_week: execScheduleType === "scheduled" ? execDaysOfWeek : undefined,
