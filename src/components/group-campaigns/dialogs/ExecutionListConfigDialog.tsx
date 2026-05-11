@@ -140,6 +140,7 @@ export function ExecutionListConfigDialog({
       setWebhookFields([]);
       setMessageTemplate("");
       setCallCampaignId("");
+      setSequenceId("");
       setExecScheduleType("window_end");
       setExecScheduledTime("10:00");
       setExecDaysOfWeek([1, 2, 3, 4, 5]);
