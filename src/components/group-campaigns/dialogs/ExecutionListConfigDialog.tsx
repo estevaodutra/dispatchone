@@ -8,11 +8,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCallCampaigns } from "@/hooks/useCallCampaigns";
+import { useSequences } from "@/hooks/useSequences";
 import { GroupExecutionList } from "@/hooks/useGroupExecutionList";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, ChevronDown, Copy, GripVertical, Trash2, Plus, Type, Hash, ToggleLeft } from "lucide-react";
+import { Webhook, MessageSquare, Phone, Clock, CalendarClock, Zap, ChevronDown, Copy, GripVertical, Trash2, Plus, Type, Hash, ToggleLeft, Workflow } from "lucide-react";
 
 type WebhookField = { id: string; name: string; type: "string" | "number" | "boolean"; value: string };
 
@@ -26,17 +27,19 @@ interface ExecutionListConfigDialogProps {
     window_end_time?: string;
     window_duration_hours?: number;
     monitored_events: string[];
-    action_type: "webhook" | "message" | "call";
+    action_type: "webhook" | "message" | "call" | "sequence";
     webhook_url?: string;
     webhook_params?: Record<string, any> | WebhookField[];
     message_template?: string;
     call_campaign_id?: string;
+    sequence_id?: string;
     execution_schedule_type?: "window_end" | "scheduled" | "immediate";
     execution_scheduled_time?: string;
     execution_days_of_week?: number[];
   }) => void;
   existing?: GroupExecutionList | null;
   isSaving?: boolean;
+  campaignId: string;
 }
 
 const EVENT_OPTIONS = [
@@ -62,6 +65,7 @@ export function ExecutionListConfigDialog({
   onSave,
   existing,
   isSaving,
+  campaignId,
 }: ExecutionListConfigDialogProps) {
   const [name, setName] = useState("");
   const [windowType, setWindowType] = useState<"fixed" | "duration" | "fulltime">("fixed");
@@ -69,17 +73,19 @@ export function ExecutionListConfigDialog({
   const [endTime, setEndTime] = useState("18:00");
   const [durationHours, setDurationHours] = useState(6);
   const [monitoredEvents, setMonitoredEvents] = useState<string[]>(["group_join"]);
-  const [actionType, setActionType] = useState<"webhook" | "message" | "call">("webhook");
+  const [actionType, setActionType] = useState<"webhook" | "message" | "call" | "sequence">("webhook");
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookFields, setWebhookFields] = useState<WebhookField[]>([]);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [messageTemplate, setMessageTemplate] = useState("");
   const [callCampaignId, setCallCampaignId] = useState("");
+  const [sequenceId, setSequenceId] = useState("");
   const [execScheduleType, setExecScheduleType] = useState<"window_end" | "scheduled" | "immediate">("window_end");
   const [execScheduledTime, setExecScheduledTime] = useState("10:00");
   const [execDaysOfWeek, setExecDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
 
   const { campaigns: callCampaigns } = useCallCampaigns();
+  const { sequences } = useSequences(campaignId);
 
   useEffect(() => {
     if (existing) {
@@ -92,7 +98,7 @@ export function ExecutionListConfigDialog({
       setEndTime(existing.window_end_time?.slice(0, 5) || "18:00");
       setDurationHours(existing.window_duration_hours || 6);
       setMonitoredEvents(existing.monitored_events || ["group_join"]);
-      setActionType(existing.action_type as "webhook" | "message" | "call");
+      setActionType(existing.action_type as "webhook" | "message" | "call" | "sequence");
       setWebhookUrl(existing.webhook_url || "");
       const params = (existing as any).webhook_params;
       if (Array.isArray(params)) {
@@ -118,6 +124,7 @@ export function ExecutionListConfigDialog({
       }
       setMessageTemplate(existing.message_template || "");
       setCallCampaignId(existing.call_campaign_id || "");
+      setSequenceId((existing as any).sequence_id || "");
       setExecScheduleType((existing.execution_schedule_type as "window_end" | "scheduled" | "immediate") || "window_end");
       setExecScheduledTime(existing.execution_scheduled_time || "10:00");
       setExecDaysOfWeek(existing.execution_days_of_week || [1, 2, 3, 4, 5]);
@@ -133,6 +140,7 @@ export function ExecutionListConfigDialog({
       setWebhookFields([]);
       setMessageTemplate("");
       setCallCampaignId("");
+      setSequenceId("");
       setExecScheduleType("window_end");
       setExecScheduledTime("10:00");
       setExecDaysOfWeek([1, 2, 3, 4, 5]);
@@ -200,6 +208,7 @@ export function ExecutionListConfigDialog({
     if (actionType === "webhook" && hasDuplicateNames()) return false;
     if (actionType === "message" && !messageTemplate.trim()) return false;
     if (actionType === "call" && !callCampaignId) return false;
+    if (actionType === "sequence" && !sequenceId) return false;
     if (execScheduleType === "scheduled" && !execScheduledTime) return false;
     return true;
   };
@@ -225,6 +234,7 @@ export function ExecutionListConfigDialog({
       webhook_params: actionType === "webhook" ? buildWebhookParams() : undefined,
       message_template: actionType === "message" ? messageTemplate : undefined,
       call_campaign_id: actionType === "call" ? callCampaignId : undefined,
+      sequence_id: actionType === "sequence" ? sequenceId : undefined,
       execution_schedule_type: execScheduleType,
       execution_scheduled_time: execScheduleType === "scheduled" ? execScheduledTime : undefined,
       execution_days_of_week: execScheduleType === "scheduled" ? execDaysOfWeek : undefined,
@@ -321,7 +331,7 @@ export function ExecutionListConfigDialog({
           {/* Action Type */}
           <div className="space-y-3">
             <Label className="text-sm font-semibold">Ação ao Executar</Label>
-            <RadioGroup value={actionType} onValueChange={(v) => setActionType(v as "webhook" | "message" | "call")}>
+            <RadioGroup value={actionType} onValueChange={(v) => setActionType(v as "webhook" | "message" | "call" | "sequence")}>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="webhook" id="at-webhook" />
                 <Webhook className="h-4 w-4 text-muted-foreground" />
@@ -336,6 +346,11 @@ export function ExecutionListConfigDialog({
                 <RadioGroupItem value="call" id="at-call" />
                 <Phone className="h-4 w-4 text-muted-foreground" />
                 <Label htmlFor="at-call">Disparo de Ligação</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="sequence" id="at-sequence" />
+                <Workflow className="h-4 w-4 text-muted-foreground" />
+                <Label htmlFor="at-sequence">Disparo de Sequência</Label>
               </div>
             </RadioGroup>
 
@@ -525,6 +540,27 @@ export function ExecutionListConfigDialog({
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {actionType === "sequence" && (
+              <div>
+                <Label className="text-xs text-muted-foreground">Sequência</Label>
+                <Select value={sequenceId} onValueChange={setSequenceId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a sequência..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(sequences || []).map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}{!s.active ? " (inativa)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  A sequência será disparada para cada lead em modo privado, usando {"{{name}}"} e {"{{phone}}"} como variáveis.
+                </p>
               </div>
             )}
           </div>

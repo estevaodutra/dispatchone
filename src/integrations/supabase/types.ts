@@ -1263,6 +1263,7 @@ export type Database = {
           message_template: string | null
           monitored_events: string[]
           name: string
+          sequence_id: string | null
           updated_at: string | null
           user_id: string
           webhook_params: Json
@@ -1289,6 +1290,7 @@ export type Database = {
           message_template?: string | null
           monitored_events?: string[]
           name?: string
+          sequence_id?: string | null
           updated_at?: string | null
           user_id: string
           webhook_params?: Json
@@ -1315,6 +1317,7 @@ export type Database = {
           message_template?: string | null
           monitored_events?: string[]
           name?: string
+          sequence_id?: string | null
           updated_at?: string | null
           user_id?: string
           webhook_params?: Json
@@ -1324,7 +1327,15 @@ export type Database = {
           window_start_time?: string | null
           window_type?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "group_execution_lists_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "message_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       group_member_history: {
         Row: {
