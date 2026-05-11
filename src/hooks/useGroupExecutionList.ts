@@ -253,6 +253,7 @@ export function useGroupExecutionList(campaignId: string) {
           webhook_params: params.config.action_type === "webhook" ? (params.config.webhook_params ?? {}) : {},
           message_template: params.config.action_type === "message" ? params.config.message_template : null,
           call_campaign_id: params.config.action_type === "call" ? params.config.call_campaign_id : null,
+          sequence_id: params.config.action_type === "sequence" ? params.config.sequence_id : null,
           current_window_start: start,
           current_window_end: end,
           current_cycle_id: crypto.randomUUID(),
