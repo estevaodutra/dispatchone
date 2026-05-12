@@ -10,6 +10,7 @@ import { AnalyticsTab } from "./tabs/AnalyticsTab";
 import { GroupsListTab } from "./tabs/GroupsListTab";
 import { SequencesTab } from "./tabs/SequencesTab";
 import { ExecutionListTab } from "./tabs/ExecutionListTab";
+import { useExportGroupCampaign } from "@/hooks/useExportGroupCampaign";
 
 interface GroupCampaignDetailsProps {
   campaign: GroupCampaign;
