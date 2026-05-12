@@ -7,6 +7,7 @@ import { ConfigTab } from "./tabs/ConfigTab";
 import { ContactsTab } from "./tabs/ContactsTab";
 import { SequencesTab } from "./tabs/SequencesTab";
 import { AnalyticsTab } from "./tabs/AnalyticsTab";
+import { useExportDispatchCampaign } from "@/hooks/useExportDispatchCampaign";
 
 interface DispatchCampaignDetailsProps {
   campaign: DispatchCampaign;
