@@ -34,6 +34,7 @@ export interface MessageSequence {
   updatedAt: string;
   nodes?: SequenceNode[];
   connections?: SequenceConnection[];
+  campaignName?: string;
 }
 
 interface DbSequence {
