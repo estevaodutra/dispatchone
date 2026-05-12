@@ -2,7 +2,7 @@ import { useState } from "react";
 import { DispatchCampaign } from "@/hooks/useDispatchCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, Users, Workflow, BarChart3 } from "lucide-react";
+import { ArrowLeft, Settings, Users, Workflow, BarChart3, Download } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { ContactsTab } from "./tabs/ContactsTab";
 import { SequencesTab } from "./tabs/SequencesTab";
