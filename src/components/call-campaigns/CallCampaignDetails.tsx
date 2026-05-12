@@ -8,6 +8,7 @@ import { ScriptTab } from "./tabs/ScriptTab";
 import { ActionsTab } from "./tabs/ActionsTab";
 import { LeadsTab } from "./tabs/LeadsTab";
 import { HistoryTab } from "./tabs/HistoryTab";
+import { useExportCallCampaign } from "@/hooks/useExportCallCampaign";
 
 interface CallCampaignDetailsProps {
   campaign: CallCampaign;
