@@ -553,7 +553,7 @@ export function ExecutionListConfigDialog({
                   <SelectContent>
                     {(sequences || []).map((s) => (
                       <SelectItem key={s.id} value={s.id}>
-                        {s.name}{!s.active ? " (inativa)" : ""}
+                        {s.campaignName ? `[${s.campaignName}] ` : ""}{s.name}{!s.active ? " (inativa)" : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
