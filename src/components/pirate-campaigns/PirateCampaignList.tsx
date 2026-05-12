@@ -36,6 +36,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export function PirateCampaignList({
   campaigns, isLoading, onSelect, onDelete, onStatusChange, onCreateNew,
 }: PirateCampaignListProps) {
+  const { exportCampaign } = useExportPirateCampaign();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
