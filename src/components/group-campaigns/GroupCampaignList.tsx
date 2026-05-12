@@ -68,6 +68,7 @@ export function GroupCampaignList({
   const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { exportCampaign } = useExportGroupCampaign();
 
   const filteredCampaigns = campaigns.filter((c) =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
