@@ -21,12 +21,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Search, MoreVertical, Settings, Trash2, Play, Pause, FileEdit, Megaphone, Copy,
+  Plus, Search, MoreVertical, Settings, Trash2, Play, Pause, FileEdit, Megaphone, Copy, Download
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useExportDispatchCampaign } from "@/hooks/useExportDispatchCampaign";
 
 interface DispatchCampaignListProps {
   campaigns: DispatchCampaign[];
