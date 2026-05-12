@@ -2,7 +2,7 @@ import { useState } from "react";
 import { GroupCampaign } from "@/hooks/useGroupCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, Users, Shield, BarChart3, List, Workflow, ClipboardList } from "lucide-react";
+import { ArrowLeft, Settings, Users, Shield, BarChart3, List, Workflow, ClipboardList, Download } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { MembersTab } from "./tabs/MembersTab";
 import { ModerationTab } from "./tabs/ModerationTab";
