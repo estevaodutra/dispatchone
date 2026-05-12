@@ -488,7 +488,9 @@ function LeadEventDialog({
         ? list.message_template?.slice(0, 80) + (list.message_template && list.message_template.length > 80 ? "..." : "") || "—"
         : list.action_type === "call"
           ? `Campanha: ${list.call_campaign_id || "—"}`
-          : "—";
+          : list.action_type === "sequence"
+            ? `Sequência ID: ${list.sequence_id || "—"}`
+            : "—";
 
   return (
     <Dialog open={!!lead} onOpenChange={(v) => { if (!v) onClose(); }}>
