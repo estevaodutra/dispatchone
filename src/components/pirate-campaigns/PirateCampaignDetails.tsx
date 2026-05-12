@@ -19,6 +19,7 @@ interface PirateCampaignDetailsProps {
 
 export function PirateCampaignDetails({ campaign, onBack, onUpdate }: PirateCampaignDetailsProps) {
   const [activeTab, setActiveTab] = useState("config");
+  const { exportCampaign, isExporting } = useExportPirateCampaign();
   const { groups } = usePirateGroups(campaign.id);
   const { leads } = usePirateLeads(campaign.id);
 
