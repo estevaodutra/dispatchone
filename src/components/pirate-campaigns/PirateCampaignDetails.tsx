@@ -40,18 +40,31 @@ export function PirateCampaignDetails({ campaign, onBack, onUpdate }: PirateCamp
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <div className="flex items-center gap-2">
-            <Skull className="h-5 w-5" />
-            <h1 className="text-2xl font-bold">{campaign.name}</h1>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <div className="flex items-center gap-2">
+              <Skull className="h-5 w-5" />
+              <h1 className="text-2xl font-bold">{campaign.name}</h1>
+            </div>
+            {campaign.description && (
+              <p className="text-muted-foreground">{campaign.description}</p>
+            )}
           </div>
-          {campaign.description && (
-            <p className="text-muted-foreground">{campaign.description}</p>
-          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => exportCampaign(campaign.id, campaign.name)}
+            disabled={isExporting}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {isExporting ? "Exportando..." : "Exportar Campanha"}
+          </Button>
         </div>
       </div>
 
