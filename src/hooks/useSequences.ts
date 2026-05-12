@@ -34,6 +34,7 @@ export interface MessageSequence {
   updatedAt: string;
   nodes?: SequenceNode[];
   connections?: SequenceConnection[];
+  campaignName?: string;
 }
 
 interface DbSequence {
@@ -102,7 +103,7 @@ const transformConnection = (db: DbConnection): SequenceConnection => ({
 });
 
 // Hook for managing message sequences
-export function useSequences(campaignId: string | undefined) {
+export function useSequences(campaignId: string | undefined | "all") {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -110,14 +111,23 @@ export function useSequences(campaignId: string | undefined) {
     queryKey: ["message_sequences", campaignId],
     queryFn: async () => {
       if (!campaignId) return [];
-      const { data, error } = await supabase
+      
+      let query = supabase
         .from("message_sequences")
-        .select("*")
-        .eq("group_campaign_id", campaignId)
+        .select("*, group_campaigns(name)")
         .order("created_at", { ascending: false });
+        
+      if (campaignId !== "all") {
+        query = query.eq("group_campaign_id", campaignId);
+      }
+
+      const { data, error } = await query;
 
       if (error) throw error;
-      return (data as DbSequence[]).map(transformSequence);
+      return data.map((db: any) => ({
+        ...transformSequence(db),
+        campaignName: db.group_campaigns?.name
+      }));
     },
     enabled: !!campaignId,
   });
