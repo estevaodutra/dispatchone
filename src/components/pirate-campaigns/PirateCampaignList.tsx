@@ -12,10 +12,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Search, MoreVertical, Skull, Settings, Trash2, Play, Pause, Users, BarChart3, Copy,
+  Plus, Search, MoreVertical, Skull, Settings, Trash2, Play, Pause, Users, BarChart3, Copy, Download,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useExportPirateCampaign } from "@/hooks/useExportPirateCampaign";
 
 interface PirateCampaignListProps {
   campaigns: PirateCampaign[];
