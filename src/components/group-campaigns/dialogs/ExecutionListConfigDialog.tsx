@@ -85,7 +85,7 @@ export function ExecutionListConfigDialog({
   const [execDaysOfWeek, setExecDaysOfWeek] = useState<number[]>([1, 2, 3, 4, 5]);
 
   const { campaigns: callCampaigns } = useCallCampaigns();
-  const { sequences } = useSequences(campaignId);
+  const { sequences } = useSequences("all");
 
   useEffect(() => {
     if (existing) {
