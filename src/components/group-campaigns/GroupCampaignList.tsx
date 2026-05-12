@@ -33,11 +33,13 @@ import {
   MessageSquare,
   FileEdit,
   Copy,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useExportGroupCampaign } from "@/hooks/useExportGroupCampaign";
 
 interface GroupCampaignListProps {
   campaigns: GroupCampaign[];
