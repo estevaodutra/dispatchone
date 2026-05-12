@@ -78,6 +78,7 @@ export function CallCampaignList({
   isDuplicating,
 }: CallCampaignListProps) {
   const { data: counts } = useCallCampaignCounts(campaigns.map(c => c.id));
+  const { exportCampaign } = useExportCallCampaign();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
