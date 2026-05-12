@@ -33,12 +33,14 @@ import {
   Users,
   Star,
   Copy,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCallCampaignCounts } from "@/hooks/useCallCampaignCounts";
 import { toast } from "sonner";
+import { useExportCallCampaign } from "@/hooks/useExportCallCampaign";
 
 interface CallCampaignListProps {
   campaigns: CallCampaign[];
