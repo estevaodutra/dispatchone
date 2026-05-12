@@ -20,11 +20,32 @@ export function useExportGroupCampaign() {
 
       // 2. Fetch Sequences/Messages
       const { data: sequences, error: sequencesError } = await supabase
-        .from("group_messages")
+        .from("message_sequences")
         .select("*")
         .eq("group_campaign_id", campaignId);
         
       if (sequencesError) throw sequencesError;
+
+      // 2.1 Fetch nodes and connections for sequences
+      const sequenceIds = (sequences || []).map(s => s.id);
+      let nodes: any[] = [];
+      let connections: any[] = [];
+      
+      if (sequenceIds.length > 0) {
+        const { data: fetchedNodes, error: nodesError } = await supabase
+          .from("sequence_nodes")
+          .select("*")
+          .in("sequence_id", sequenceIds);
+        if (nodesError) throw nodesError;
+        nodes = fetchedNodes || [];
+
+        const { data: fetchedConnections, error: connectionsError } = await supabase
+          .from("sequence_connections")
+          .select("*")
+          .in("sequence_id", sequenceIds);
+        if (connectionsError) throw connectionsError;
+        connections = fetchedConnections || [];
+      }
 
       // 3. Fetch Execution Lists
       const { data: executionLists, error: execError } = await supabase
@@ -53,12 +74,20 @@ export function useExportGroupCampaign() {
           message_permission: campaign.message_permission,
           edit_permission: campaign.edit_permission
         },
-        sequences: sequences.map(s => {
+        sequences: (sequences || []).map(s => {
           // Exclude ids and relations to prevent conflicts on import
           const { id, group_campaign_id, user_id, created_at, ...rest } = s;
           return { _original_id: id, ...rest };
         }),
-        execution_lists: executionLists.map(l => {
+        sequence_nodes: nodes.map(n => {
+          const { id, user_id, created_at, ...rest } = n;
+          return { _original_id: id, ...rest };
+        }),
+        sequence_connections: connections.map(c => {
+          const { id, user_id, created_at, ...rest } = c;
+          return { _original_id: id, ...rest };
+        }),
+        execution_lists: (executionLists || []).map(l => {
           // Exclude ids and state data
           const { id, campaign_id, user_id, created_at, updated_at, last_executed_at, current_cycle_id, ...rest } = l;
           return { _original_id: id, ...rest };
