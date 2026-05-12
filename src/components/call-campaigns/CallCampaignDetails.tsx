@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CallCampaign } from "@/hooks/useCallCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, FileText, Zap, UserCheck, History } from "lucide-react";
+import { ArrowLeft, Settings, FileText, Zap, UserCheck, History, Download } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { ScriptTab } from "./tabs/ScriptTab";
 import { ActionsTab } from "./tabs/ActionsTab";
