@@ -48,6 +48,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export function DispatchCampaignList({
   campaigns, isLoading, onSelect, onDelete, onStatusChange, onCreateNew,
 }: DispatchCampaignListProps) {
+  const { exportCampaign } = useExportDispatchCampaign();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
