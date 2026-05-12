@@ -33,11 +33,13 @@ import {
   MessageSquare,
   FileEdit,
   Copy,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useExportGroupCampaign } from "@/hooks/useExportGroupCampaign";
 
 interface GroupCampaignListProps {
   campaigns: GroupCampaign[];
@@ -66,6 +68,7 @@ export function GroupCampaignList({
   const { t } = useLanguage();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const { exportCampaign } = useExportGroupCampaign();
 
   const filteredCampaigns = campaigns.filter((c) =>
     c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -170,6 +173,13 @@ export function GroupCampaignList({
                       }}>
                         <Copy className="mr-2 h-4 w-4" />
                         Copiar ID
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        exportCampaign(campaign.id, campaign.name);
+                      }}>
+                        <Download className="mr-2 h-4 w-4" />
+                        Exportar
                       </DropdownMenuItem>
                       {campaign.status !== "active" && (
                         <DropdownMenuItem onClick={(e) => {

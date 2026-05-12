@@ -21,12 +21,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Search, MoreVertical, Settings, Trash2, Play, Pause, FileEdit, Megaphone, Copy,
+  Plus, Search, MoreVertical, Settings, Trash2, Play, Pause, FileEdit, Megaphone, Copy, Download
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useExportDispatchCampaign } from "@/hooks/useExportDispatchCampaign";
 
 interface DispatchCampaignListProps {
   campaigns: DispatchCampaign[];
@@ -47,6 +48,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export function DispatchCampaignList({
   campaigns, isLoading, onSelect, onDelete, onStatusChange, onCreateNew,
 }: DispatchCampaignListProps) {
+  const { exportCampaign } = useExportDispatchCampaign();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -141,6 +143,12 @@ export function DispatchCampaignList({
                           toast.success("ID copiado", { description: campaign.id });
                         }}>
                           <Copy className="mr-2 h-4 w-4" /> Copiar ID
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={e => {
+                          e.stopPropagation();
+                          exportCampaign(campaign.id, campaign.name);
+                        }}>
+                          <Download className="mr-2 h-4 w-4" /> Exportar
                         </DropdownMenuItem>
                         {campaign.status !== "active" && (
                           <DropdownMenuItem onClick={e => { e.stopPropagation(); onStatusChange(campaign.id, "active"); }}>

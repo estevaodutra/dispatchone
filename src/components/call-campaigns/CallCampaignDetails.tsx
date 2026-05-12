@@ -2,12 +2,13 @@ import { useState } from "react";
 import { CallCampaign } from "@/hooks/useCallCampaigns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Settings, FileText, Zap, UserCheck, History } from "lucide-react";
+import { ArrowLeft, Settings, FileText, Zap, UserCheck, History, Download } from "lucide-react";
 import { ConfigTab } from "./tabs/ConfigTab";
 import { ScriptTab } from "./tabs/ScriptTab";
 import { ActionsTab } from "./tabs/ActionsTab";
 import { LeadsTab } from "./tabs/LeadsTab";
 import { HistoryTab } from "./tabs/HistoryTab";
+import { useExportCallCampaign } from "@/hooks/useExportCallCampaign";
 
 interface CallCampaignDetailsProps {
   campaign: CallCampaign;
@@ -21,19 +22,33 @@ export function CallCampaignDetails({
   onUpdate,
 }: CallCampaignDetailsProps) {
   const [activeTab, setActiveTab] = useState("config");
+  const { exportCampaign, isExporting } = useExportCallCampaign();
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div>
-          <h1 className="text-2xl font-bold">{campaign.name}</h1>
-          {campaign.description && (
-            <p className="text-muted-foreground">{campaign.description}</p>
-          )}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-bold">{campaign.name}</h1>
+            {campaign.description && (
+              <p className="text-muted-foreground">{campaign.description}</p>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => exportCampaign(campaign.id, campaign.name)}
+            disabled={isExporting}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {isExporting ? "Exportando..." : "Exportar Campanha"}
+          </Button>
         </div>
       </div>
 

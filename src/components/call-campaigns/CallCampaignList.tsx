@@ -33,12 +33,14 @@ import {
   Users,
   Star,
   Copy,
+  Download,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useCallCampaignCounts } from "@/hooks/useCallCampaignCounts";
 import { toast } from "sonner";
+import { useExportCallCampaign } from "@/hooks/useExportCallCampaign";
 
 interface CallCampaignListProps {
   campaigns: CallCampaign[];
@@ -76,6 +78,7 @@ export function CallCampaignList({
   isDuplicating,
 }: CallCampaignListProps) {
   const { data: counts } = useCallCampaignCounts(campaigns.map(c => c.id));
+  const { exportCampaign } = useExportCallCampaign();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -177,15 +180,22 @@ export function CallCampaignList({
                         <Settings className="mr-2 h-4 w-4" />
                         Configurar
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={(e) => {
-                        e.stopPropagation();
-                        navigator.clipboard.writeText(campaign.id);
-                        toast.success("ID copiado", { description: campaign.id });
-                      }}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copiar ID
-                      </DropdownMenuItem>
-                      {campaign.status !== "active" && campaign.status !== "completed" && (
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          navigator.clipboard.writeText(campaign.id);
+                          toast.success("ID copiado", { description: campaign.id });
+                        }}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copiar ID
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          exportCampaign(campaign.id, campaign.name);
+                        }}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Exportar
+                        </DropdownMenuItem>
+                        {campaign.status !== "active" && campaign.status !== "completed" && (
                         <DropdownMenuItem onClick={(e) => {
                           e.stopPropagation();
                           onStatusChange(campaign.id, "active");

@@ -12,10 +12,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  Plus, Search, MoreVertical, Skull, Settings, Trash2, Play, Pause, Users, BarChart3, Copy,
+  Plus, Search, MoreVertical, Skull, Settings, Trash2, Play, Pause, Users, BarChart3, Copy, Download,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
+import { useExportPirateCampaign } from "@/hooks/useExportPirateCampaign";
 
 interface PirateCampaignListProps {
   campaigns: PirateCampaign[];
@@ -35,6 +36,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export function PirateCampaignList({
   campaigns, isLoading, onSelect, onDelete, onStatusChange, onCreateNew,
 }: PirateCampaignListProps) {
+  const { exportCampaign } = useExportPirateCampaign();
   const [searchTerm, setSearchTerm] = useState("");
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -122,6 +124,13 @@ export function PirateCampaignList({
                         }}>
                           <Copy className="mr-2 h-4 w-4" />
                           Copiar ID
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => {
+                          e.stopPropagation();
+                          exportCampaign(campaign.id, campaign.name);
+                        }}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Exportar
                         </DropdownMenuItem>
                         {campaign.status !== "active" && (
                           <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onStatusChange(campaign.id, "active"); }}>
