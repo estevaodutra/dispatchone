@@ -5,10 +5,11 @@ import { usePirateLeads } from "@/hooks/usePirateLeads";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, Users, BarChart3, Skull, CalendarDays, Settings } from "lucide-react";
+import { ArrowLeft, Users, BarChart3, Skull, CalendarDays, Settings, Download } from "lucide-react";
 import { PirateGroupsTab } from "./tabs/PirateGroupsTab";
 import { PirateLeadsTab } from "./tabs/PirateLeadsTab";
 import { PirateConfigTab } from "./tabs/PirateConfigTab";
+import { useExportPirateCampaign } from "@/hooks/useExportPirateCampaign";
 
 interface PirateCampaignDetailsProps {
   campaign: PirateCampaign;
