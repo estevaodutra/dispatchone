@@ -114,9 +114,9 @@ export function useSequences(campaignId: string | undefined | "all") {
       
       let query = supabase
         .from("message_sequences")
-        .select("*, group_campaigns(name)")
+        .select("*")
         .order("created_at", { ascending: false });
-        
+
       if (campaignId !== "all") {
         query = query.eq("group_campaign_id", campaignId);
       }
@@ -124,9 +124,28 @@ export function useSequences(campaignId: string | undefined | "all") {
       const { data, error } = await query;
 
       if (error) throw error;
-      return data.map((db: any) => ({
-        ...transformSequence(db),
-        campaignName: db.group_campaigns?.name
+
+      const sequences = (data || []).map((db: any) => transformSequence(db));
+
+      // Fetch campaign names separately (no FK relationship in PostgREST cache)
+      const campaignIds = Array.from(
+        new Set(sequences.map((s) => s.groupCampaignId).filter(Boolean))
+      );
+      let campaignNameMap: Record<string, string> = {};
+      if (campaignIds.length > 0) {
+        const { data: campaigns } = await supabase
+          .from("group_campaigns")
+          .select("id, name")
+          .in("id", campaignIds);
+        campaignNameMap = (campaigns || []).reduce((acc: Record<string, string>, c: any) => {
+          acc[c.id] = c.name;
+          return acc;
+        }, {});
+      }
+
+      return sequences.map((s) => ({
+        ...s,
+        campaignName: campaignNameMap[s.groupCampaignId],
       }));
     },
     enabled: !!campaignId,
